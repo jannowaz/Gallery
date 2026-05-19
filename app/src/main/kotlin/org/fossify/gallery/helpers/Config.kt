@@ -143,6 +143,10 @@ class Config(context: Context) : BaseConfig(context) {
 
     fun isExplorer2Hidden(path: String) = explorer2HiddenFolders.contains(path)
 
+    var forceDarkMode: Boolean
+        get() = prefs.getBoolean(FORCE_DARK_MODE, false)
+        set(force) = prefs.edit().putBoolean(FORCE_DARK_MODE, force).apply()
+
     fun addExcludedFolder(path: String) {
         addExcludedFolders(HashSet<String>(Arrays.asList(path)))
     }

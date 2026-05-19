@@ -1,6 +1,7 @@
 package org.fossify.gallery.activities
 
 import android.content.Intent
+import androidx.appcompat.app.AppCompatDelegate
 import org.fossify.commons.activities.BaseSplashActivity
 import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.gallery.extensions.config
@@ -11,6 +12,11 @@ import org.fossify.gallery.models.Favorite
 
 class SplashActivity : BaseSplashActivity() {
     override fun initActivity() {
+        if (config.forceDarkMode) {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
+        } else {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+        }
         // check if previously selected favorite items have been properly migrated into the new Favorites table
         if (config.wereFavoritesMigrated) {
             launchActivity()
