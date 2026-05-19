@@ -894,7 +894,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     private fun isExplorer2Active() = binding.tabLayout.selectedTabPosition == 2
 
-    private fun fadeInContent() { binding.directoriesGrid.alpha = 0f; binding.directoriesGrid.animate().alpha(1f).setDuration(200).start() }
+    private fun fadeInContent() { binding.directoriesGrid.animate().cancel(); binding.directoriesGrid.alpha = 0f; binding.directoriesGrid.animate().alpha(1f).setDuration(200).start() }
 
     private fun showLoading() { binding.loadingIndicator.show() }
     private fun hideLoading() { binding.loadingIndicator.hide() }
