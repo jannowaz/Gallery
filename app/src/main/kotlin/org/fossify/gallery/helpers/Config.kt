@@ -608,7 +608,7 @@ class Config(context: Context) : BaseConfig(context) {
         set(showFolderMediaCount) = prefs.edit().putInt(FOLDER_MEDIA_COUNT, showFolderMediaCount).apply()
 
     var folderStyle: Int
-        get() = prefs.getInt(FOLDER_THUMBNAIL_STYLE, FOLDER_STYLE_SQUARE)
+        get() = prefs.getInt(FOLDER_THUMBNAIL_STYLE, FOLDER_STYLE_ROUNDED_CORNERS)
         set(folderStyle) = prefs.edit().putInt(FOLDER_THUMBNAIL_STYLE, folderStyle).apply()
 
     var limitFolderTitle: Boolean
@@ -620,7 +620,7 @@ class Config(context: Context) : BaseConfig(context) {
         set(thumbnailSpacing) = prefs.edit().putInt(THUMBNAIL_SPACING, thumbnailSpacing).apply()
 
     var fileRoundedCorners: Boolean
-        get() = prefs.getBoolean(FILE_ROUNDED_CORNERS, false)
+        get() = prefs.getBoolean(FILE_ROUNDED_CORNERS, true)
         set(fileRoundedCorners) = prefs.edit().putBoolean(FILE_ROUNDED_CORNERS, fileRoundedCorners).apply()
 
     var customFoldersOrder: String
