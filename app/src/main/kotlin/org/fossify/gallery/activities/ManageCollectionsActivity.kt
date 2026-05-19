@@ -125,30 +125,16 @@ class ManageCollectionsActivity : SimpleActivity() {
             val collections = collectionDB.getAll()
             val dirs = ArrayList<Directory>()
             for (col in collections) {
-                val dir = Directory().apply {
+                dirs.add(Directory().apply {
                     path = "collection:${col.id}"
                     name = col.name
                     location = 1
+                    tmb = ""
+                    mediaCnt = 0
+                    subfoldersMediaCount = 0
+                    subfoldersCount = 1
                     containsMediaFilesDirectly = false
-                    // get thumbnail
-                    val included = col.getIncludedPaths()
-                    val tmb = if (included.isNotEmpty()) {
-                        try { mediaDB.getMediaFromPath(included.first()).firstOrNull()?.path } catch (_: Exception) { null } ?: ""
-                    } else {
-                        // all folders: try first folder with media
-                        try {
-                            val allDirs = directoryDB.getAll()
-                            var found: String? = null
-                            for (d in allDirs) {
-                                val m = mediaDB.getMediaFromPath(d.path).firstOrNull()
-                                if (m != null) { found = m.path; break }
-                            }
-                            found ?: ""
-                        } catch (_: Exception) { "" }
-                    }
-                    this.tmb = tmb
-                }
-                dirs.add(dir)
+                })
             }
             runOnUiThread {
                 binding.collectionsEmptyPlaceholder.visibility = if (dirs.isEmpty()) View.VISIBLE else View.GONE

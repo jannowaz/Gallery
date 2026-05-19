@@ -951,9 +951,9 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     }
 
     private fun setupExplorer2Breadcrumbs(pathPrefix: String) {
-        val c = binding.breadcrumbBar.breadcrumbContainer; c.removeAllViews()
-        if (pathPrefix == internalStoragePath) { binding.breadcrumbBar.breadcrumbScroll.beGone(); return }
-        binding.breadcrumbBar.breadcrumbScroll.beVisible()
+        val c = binding.breadcrumbBarBottom.breadcrumbContainer; c.removeAllViews()
+        if (pathPrefix == internalStoragePath) { binding.breadcrumbBarBottom.breadcrumbScroll.beGone(); return }
+        binding.breadcrumbBarBottom.breadcrumbScroll.beVisible()
         val parts = pathPrefix.removePrefix(internalStoragePath).trimStart('/').split("/").filter { it.isNotEmpty() }
         c.addView(TextView(this).apply { text = "\uD83D\uDCC1"; setTextColor(getProperPrimaryColor()); setPadding(8,0,4,0); setOnClickListener { navigateExplorer2(internalStoragePath) } })
         var acc = internalStoragePath

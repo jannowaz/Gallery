@@ -2,9 +2,10 @@
 <HorizontalScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/breadcrumb_scroll"
     android:layout_width="match_parent"
-    android:layout_height="40dp"
+    android:layout_height="28dp"
     android:scrollbars="none"
-    android:background="@android:color/black"
+    android:background="#CC000000"
+    android:fillViewport="true"
     android:visibility="gone">
 
     <LinearLayout

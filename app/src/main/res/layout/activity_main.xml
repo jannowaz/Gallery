@@ -91,16 +91,11 @@
             android:textSize="@dimen/bigger_text_size"
             android:visibility="gone" />
 
-        <include
-            android:id="@+id/breadcrumb_bar"
-            layout="@layout/breadcrumb_bar"
-            android:layout_below="@+id/directories_switch_searching" />
-
         <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
             android:id="@+id/directories_refresh_layout"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_below="@+id/breadcrumb_bar"
+            android:layout_below="@+id/directories_switch_searching"
             android:layout_alignWithParentIfMissing="true">
 
             <com.qtalk.recyclerviewfastscroller.RecyclerViewFastScroller
@@ -121,6 +116,14 @@
             </com.qtalk.recyclerviewfastscroller.RecyclerViewFastScroller>
             </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
     </RelativeLayout>
+
+        <include
+            android:id="@+id/breadcrumb_bar_bottom"
+            layout="@layout/breadcrumb_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:layout_marginBottom="52dp" />
 
     <com.google.android.material.tabs.TabLayout
         android:id="@+id/tab_layout"
