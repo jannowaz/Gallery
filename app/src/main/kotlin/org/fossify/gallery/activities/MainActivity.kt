@@ -930,8 +930,10 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                     if (path == internalStoragePath && e.name?.lowercase() == "android") continue
                     if (config.isExplorer2Hidden(e.absolutePath)) continue
                     val tmb = findQuickThumbnail(e) ?: ""
-                    val cnt = e.listFiles()?.count { !it.name!!.startsWith(".") } ?: 0
-                    folders.add(Directory().apply { this.path = e.absolutePath; this.name = e.name ?: ""; this.tmb = tmb; location = 1; mediaCnt = cnt; subfoldersCount = 1; subfoldersMediaCount = cnt; containsMediaFilesDirectly = tmb.isNotEmpty() })
+                    val subDirs = e.listFiles()?.count { it.isDirectory && !it.name!!.startsWith(".") } ?: 0
+                    val directMedia = e.listFiles()?.count { it.isFile && (it.extension?.lowercase() ?: "") in MEDIA_EXTENSIONS } ?: 0
+                    val totalMedia = directMedia + countMediaRecursive(e)
+                    folders.add(Directory().apply { this.path = e.absolutePath; this.name = e.name ?: ""; this.tmb = tmb; location = 1; mediaCnt = totalMedia; subfoldersCount = subDirs; subfoldersMediaCount = totalMedia; containsMediaFilesDirectly = tmb.isNotEmpty() })
                 } else if (e.isFile && mc < 200) {
                     if ((e.extension?.lowercase() ?: "") in MEDIA_EXTENSIONS) { mc++; files.add(Directory().apply { this.path = e.absolutePath; this.name = e.name ?: ""; this.tmb = e.absolutePath; location = 1; mediaCnt = 0; subfoldersCount = 0; subfoldersMediaCount = 0; containsMediaFilesDirectly = true }) }
                 }
@@ -965,6 +967,17 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     }
 
     private val MEDIA_EXTENSIONS = listOf("jpg","jpeg","png","gif","mp4","mkv","webp","heic","avif","bmp","svg","apng","jxl","mov","3gp","wmv","flv","avi")
+
+    private fun countMediaRecursive(dir: File, depth: Int = 0): Int {
+        if (depth > 2) return 0
+        var count = 0
+        val subs = dir.listFiles() ?: return 0
+        for (s in subs) {
+            if (s.isDirectory && !s.name!!.startsWith(".")) count += countMediaRecursive(s, depth + 1)
+            else if (s.isFile && (s.extension?.lowercase() ?: "") in MEDIA_EXTENSIONS) count++
+        }
+        return count
+    }
 
     private fun findQuickThumbnail(dir: File): String? { val files = dir.listFiles()?.sortedByDescending { it.lastModified() } ?: return null; for (f in files) { if (f.isFile && (f.extension?.lowercase() ?: "") in MEDIA_EXTENSIONS) return f.absolutePath }; return null }
 
