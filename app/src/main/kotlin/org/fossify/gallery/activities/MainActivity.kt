@@ -649,15 +649,12 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     }
 
     private fun getDirectories() {
-        if (mIsGettingDirs) {
-            return
-        }
-
+        if (mIsGettingDirs) { return }
         mShouldStopFetching = true
         mIsGettingDirs = true
         val getImages = mIsPickImageIntent || mIsGetImageContentIntent
         val getVideos = mIsPickVideoIntent || mIsGetVideoContentIntent
-
+        if (!mLoadedInitialPhotos) runOnUiThread { showLoading("Medien werden gescannt...") }
         getCachedDirectories(getVideos && !getImages, getImages && !getVideos) {
             gotDirectories(addTempFolderIfNeeded(it))
         }
@@ -896,8 +893,8 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     private fun fadeInContent() { binding.directoriesGrid.animate().cancel(); binding.directoriesGrid.alpha = 0f; binding.directoriesGrid.animate().alpha(1f).setDuration(200).start() }
 
-    private fun showLoading() { binding.loadingIndicator.show() }
-    private fun hideLoading() { binding.loadingIndicator.hide() }
+    private fun showLoading(status: String = "") { binding.loadingIndicator.show(); if (status.isNotEmpty()) { binding.loadingStatus.text = status; binding.loadingStatus.beVisible() } else { binding.loadingStatus.beGone() } }
+    private fun hideLoading() { binding.loadingIndicator.hide(); binding.loadingStatus.beGone() }
 
     private fun updateTabColors() {
         val bg = getProperBackgroundColor(); val tc = getProperTextColor(); val pc = getProperPrimaryColor()
@@ -921,7 +918,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         mCurrentPathPrefix = path
         if (mOpenedSubfolders.lastOrNull() != path) mOpenedSubfolders.add(path)
         binding.directoriesGrid.adapter = null
-        runOnUiThread { showLoading() }
+        runOnUiThread { showLoading("Ordner werden geladen...") }
         ensureBackgroundThread {
             val dir = File(path); val entries = dir.listFiles() ?: emptyArray()
             val folders = ArrayList<Directory>(); val files = ArrayList<Directory>(); var mc = 0

@@ -18,6 +18,16 @@
         android:indeterminate="true"
         android:visibility="gone" />
 
+    <org.fossify.commons.views.MyTextView
+        android:id="@+id/loading_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginTop="56dp"
+        android:textSize="14sp"
+        android:alpha="0.7"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/skeleton_grid"
         android:layout_width="match_parent"
