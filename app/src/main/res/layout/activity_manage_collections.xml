@@ -33,7 +33,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
         android:layout_margin="16dp"
-        android:layout_marginBottom="68dp"
+        android:layout_marginBottom="72dp"
         android:src="@android:drawable/ic_input_add"
         app:fabSize="normal" />
 

@@ -418,8 +418,9 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     override fun onBackPressedCompat(): Boolean {
         return if (binding.mainMenu.isSearchOpen) {
-            binding.mainMenu.closeSearch()
-            true
+            binding.mainMenu.closeSearch(); true
+        } else if (isExplorer2Active()) {
+            if (mOpenedSubfolders.size > 1) { mOpenedSubfolders.removeAt(mOpenedSubfolders.lastIndex); navigateExplorer2(mOpenedSubfolders.last()); true } else { true }
         } else if (config.groupDirectSubfolders) {
             if (mCurrentPathPrefix.isEmpty()) {
                 appLockManager.lock()
@@ -894,8 +895,8 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     private fun fadeInContent() { binding.directoriesGrid.alpha = 0f; binding.directoriesGrid.animate().alpha(1f).setDuration(200).start() }
 
-    private fun showLoading() { binding.skeletonGrid.beVisible(); binding.loadingIndicator.show() }
-    private fun hideLoading() { binding.skeletonGrid.beGone(); binding.loadingIndicator.hide() }
+    private fun showLoading() { binding.loadingIndicator.show() }
+    private fun hideLoading() { binding.loadingIndicator.hide() }
 
     private fun updateTabColors() {
         val bg = getProperBackgroundColor(); val tc = getProperTextColor(); val pc = getProperPrimaryColor()
@@ -969,7 +970,12 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         runOnUiThread { hideLoading(); binding.directoriesRefreshLayout.isEnabled = false; binding.directoriesRefreshLayout.isRefreshing = false; binding.directoriesGrid.adapter = null
             if (dirs.isEmpty()) { binding.directoriesEmptyPlaceholder.text = getString(R.string.no_favorite_folders); binding.directoriesEmptyPlaceholder.beVisible(); binding.directoriesEmptyPlaceholder2.beGone(); binding.directoriesFastscroller.beGone() }
             else { binding.directoriesEmptyPlaceholder.beGone(); binding.directoriesEmptyPlaceholder2.beGone(); binding.directoriesFastscroller.beVisible()
-                binding.directoriesGrid.adapter = DirectoryAdapter(this, dirs, this, binding.directoriesGrid, false, binding.directoriesRefreshLayout) { clicked -> val d = clicked as Directory; activateExplorer2(); mOpenedSubfolders.clear(); navigateExplorer2(d.path) } } }
+                binding.directoriesGrid.adapter = DirectoryAdapter(this, dirs, this, binding.directoriesGrid, false, binding.directoriesRefreshLayout) { clicked -> val d = clicked as Directory
+                    deactivateExplorer(false)
+                    mSavedFolderStyle = config.folderStyle; mSavedFolderCount = config.showFolderMediaCount
+                    config.folderStyle = FOLDER_STYLE_ROUNDED_CORNERS; config.showFolderMediaCount = FOLDER_MEDIA_CNT_BRACKETS
+                    navigateExplorer2(d.path)
+                } } }
     }
 
     private fun openCollections() { deactivateExplorer(); hideKeyboard(); Intent(this, ManageCollectionsActivity::class.java).apply { addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION); startActivity(this) }; overridePendingTransition(0, 0); binding.tabLayout.getTabAt(1)?.select() }
