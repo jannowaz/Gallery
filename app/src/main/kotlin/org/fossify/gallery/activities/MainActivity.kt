@@ -9,6 +9,7 @@ import android.os.Handler
 import android.provider.MediaStore
 import android.provider.MediaStore.Images
 import android.provider.MediaStore.Video
+import android.view.HapticFeedbackConstants
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
@@ -876,6 +877,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab) {
                 if (mFromTabIntent) return
+                tab.view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                 if (isExplorer2Active()) restoreExplorer2Style()
                 binding.directoriesGrid.adapter = null
                 when (tab.position) { 0 -> showAllMedia(); 1 -> deactivateExplorer(); 2 -> activateExplorer2(); 3 -> openCollections(); 4 -> showFavoriteFolders() }
@@ -889,6 +891,11 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     private fun deactivateExplorer(refreshAdapter: Boolean = true) { config.groupDirectSubfolders = false; mCurrentPathPrefix = ""; mOpenedSubfolders.clear(); mOpenedSubfolders.add(""); if (refreshAdapter) setupAdapter(mDirs) }
 
     private fun isExplorer2Active() = binding.tabLayout.selectedTabPosition == 2
+
+    private fun fadeInContent() { binding.directoriesGrid.alpha = 0f; binding.directoriesGrid.animate().alpha(1f).setDuration(200).start() }
+
+    private fun showLoading() { binding.skeletonGrid.beVisible(); showLoading() }
+    private fun hideLoading() { binding.skeletonGrid.beGone(); hideLoading() }
 
     private fun updateTabColors() {
         val bg = getProperBackgroundColor(); val tc = getProperTextColor(); val pc = getProperPrimaryColor()
@@ -912,7 +919,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         mCurrentPathPrefix = path
         if (mOpenedSubfolders.lastOrNull() != path) mOpenedSubfolders.add(path)
         binding.directoriesGrid.adapter = null
-        runOnUiThread { binding.loadingIndicator.show() }
+        runOnUiThread { showLoading() }
         ensureBackgroundThread {
             val dir = File(path); val entries = dir.listFiles() ?: emptyArray()
             val folders = ArrayList<Directory>(); val files = ArrayList<Directory>(); var mc = 0
@@ -930,12 +937,13 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
             }
             val combined = ArrayList<Directory>(); combined.addAll(folders); combined.addAll(files)
             runOnUiThread {
-                binding.loadingIndicator.hide(); binding.directoriesEmptyPlaceholder.beGone(); binding.directoriesEmptyPlaceholder2.beGone()
+                hideLoading(); binding.directoriesEmptyPlaceholder.beGone(); binding.directoriesEmptyPlaceholder2.beGone()
                 binding.directoriesRefreshLayout.isEnabled = false; binding.directoriesRefreshLayout.isRefreshing = false
                 binding.directoriesFastscroller.beVisibleIf(combined.isNotEmpty())
                 if (combined.isEmpty()) { binding.directoriesEmptyPlaceholder.text = getString(org.fossify.commons.R.string.no_items_found); binding.directoriesEmptyPlaceholder.beVisible() }
                 else { binding.directoriesGrid.adapter = DirectoryAdapter(this@MainActivity, combined, this@MainActivity, binding.directoriesGrid, false, binding.directoriesRefreshLayout) { clicked -> val d = clicked as Directory; if (d.subfoldersCount == 0 && d.containsMediaFilesDirectly) { Intent(this@MainActivity, ViewPagerActivity::class.java).apply { putExtra(DIRECTORY, File(d.path).parent ?: d.path); putExtra(PATH, d.path); startActivity(this) } } else navigateExplorer2(d.path) } }
                 setupExplorer2Breadcrumbs(mCurrentPathPrefix)
+                fadeInContent()
                 mExplorer2InProgress = false
             }
         }
@@ -958,7 +966,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     private fun showFavoriteFolders() {
         deactivateExplorer(); val favs = config.favoriteFolders.toList(); val dirs = ArrayList<Directory>()
         for (fav in favs) dirs.add(Directory().apply { path = fav; name = File(fav).name.ifEmpty { fav }; location = 1; containsMediaFilesDirectly = true; tmb = ""; subfoldersCount = 0 })
-        runOnUiThread { binding.loadingIndicator.hide(); binding.directoriesRefreshLayout.isEnabled = false; binding.directoriesRefreshLayout.isRefreshing = false; binding.directoriesGrid.adapter = null
+        runOnUiThread { hideLoading(); binding.directoriesRefreshLayout.isEnabled = false; binding.directoriesRefreshLayout.isRefreshing = false; binding.directoriesGrid.adapter = null
             if (dirs.isEmpty()) { binding.directoriesEmptyPlaceholder.text = getString(R.string.no_favorite_folders); binding.directoriesEmptyPlaceholder.beVisible(); binding.directoriesEmptyPlaceholder2.beGone(); binding.directoriesFastscroller.beGone() }
             else { binding.directoriesEmptyPlaceholder.beGone(); binding.directoriesEmptyPlaceholder2.beGone(); binding.directoriesFastscroller.beVisible()
                 binding.directoriesGrid.adapter = DirectoryAdapter(this, dirs, this, binding.directoriesGrid, false, binding.directoriesRefreshLayout) { clicked -> val d = clicked as Directory; activateExplorer2(); mOpenedSubfolders.clear(); navigateExplorer2(d.path) } } }
@@ -1670,6 +1678,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         binding.directoriesGrid.postDelayed({
             binding.directoriesGrid.scrollBy(0, 0)
         }, 500)
+        fadeInContent()
     }
 
     private fun setupScrollDirection() {
