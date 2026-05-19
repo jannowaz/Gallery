@@ -191,6 +191,13 @@
             android:parentActivityName=".activities.SettingsActivity" />
 
         <activity
+            android:name=".activities.ManageCollectionsActivity"
+            android:configChanges="orientation"
+            android:exported="false"
+            android:label="@string/collections"
+            android:parentActivityName=".activities.MainActivity" />
+
+        <activity
             android:name=".activities.PhotoActivity"
             android:configChanges="orientation|keyboardHidden|screenSize"
             android:exported="true">

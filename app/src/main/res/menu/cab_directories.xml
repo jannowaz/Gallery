@@ -22,6 +22,16 @@
         android:title="@string/pin_to_the_top"
         app:showAsAction="always" />
     <item
+        android:id="@+id/cab_add_to_favorites"
+        android:icon="@drawable/ic_star_vector"
+        android:title="@string/add_to_favorites"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/cab_remove_from_favorites"
+        android:icon="@drawable/ic_star_outline_vector"
+        android:title="@string/remove_from_favorites"
+        app:showAsAction="ifRoom" />
+    <item
         android:id="@+id/cab_unpin"
         android:icon="@drawable/ic_pin_vector"
         android:title="@string/unpin_folder"
@@ -84,6 +94,16 @@
         android:id="@+id/cab_exclude"
         android:showAsAction="never"
         android:title="@string/exclude"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/cab_hide_explorer2"
+        android:showAsAction="never"
+        android:title="Hide in Explorer2"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/cab_unhide_explorer2"
+        android:showAsAction="never"
+        android:title="Show in Explorer2"
         app:showAsAction="never" />
     <item
         android:id="@+id/cab_lock"

@@ -7,7 +7,9 @@ import org.fossify.commons.helpers.SORT_BY_DATE_MODIFIED
 import org.fossify.commons.helpers.SORT_BY_DATE_TAKEN
 import org.fossify.commons.helpers.SORT_BY_SIZE
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.getFavoritePaths
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.*
 import org.fossify.gallery.models.Medium
 import org.fossify.gallery.models.ThumbnailItem
@@ -38,18 +40,9 @@ class GetMediaAsynctask(
         val dateTakens = if (getProperDateTaken) mediaFetcher.getDateTakens() else HashMap()
 
         val media = if (showAll) {
-            val foldersToScan = mediaFetcher.getFoldersToScan().filter { it != RECYCLE_BIN && it != FAVORITES && !context.config.isFolderProtected(it) }
-            val media = ArrayList<Medium>()
-            foldersToScan.forEach {
-                val newMedia = mediaFetcher.getFilesFrom(
-                    it, isPickImage, isPickVideo, getProperDateTaken, getProperLastModified, getProperFileSize,
-                    favoritePaths, getVideoDurations, lastModifieds, dateTakens.clone() as HashMap<String, Long>, null
-                )
-                media.addAll(newMedia)
-            }
-
-            mediaFetcher.sortMedia(media, context.config.getFolderSorting(SHOW_ALL))
-            media
+            var rawMedia = ArrayList(context.mediaDB.getNewestMedia(500))
+            mediaFetcher.sortMedia(rawMedia, context.config.getFolderSorting(SHOW_ALL))
+            rawMedia
         } else {
             mediaFetcher.getFilesFrom(
                 mPath, isPickImage, isPickVideo, getProperDateTaken, getProperLastModified, getProperFileSize, favoritePaths,

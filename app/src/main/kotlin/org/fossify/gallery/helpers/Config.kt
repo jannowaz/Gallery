@@ -107,6 +107,42 @@ class Config(context: Context) : BaseConfig(context) {
         pinnedFolders = currPinnedFolders
     }
 
+    var favoriteFolders: Set<String>
+        get() = prefs.getStringSet(FAVORITE_FOLDERS, HashSet<String>())!!
+        set(folders) = prefs.edit().putStringSet(FAVORITE_FOLDERS, folders).apply()
+
+    fun addFavoriteFolder(path: String) {
+        val curr = HashSet(favoriteFolders)
+        curr.add(path)
+        favoriteFolders = curr
+    }
+
+    fun removeFavoriteFolder(path: String) {
+        val curr = HashSet(favoriteFolders)
+        curr.remove(path)
+        favoriteFolders = curr
+    }
+
+    fun isFavoriteFolder(path: String) = favoriteFolders.contains(path)
+
+    var explorer2HiddenFolders: Set<String>
+        get() = prefs.getStringSet(EXPLORER2_HIDDEN_FOLDERS, HashSet<String>())!!
+        set(folders) = prefs.edit().putStringSet(EXPLORER2_HIDDEN_FOLDERS, folders).apply()
+
+    fun hideExplorer2Folder(path: String) {
+        val curr = HashSet(explorer2HiddenFolders)
+        curr.add(path)
+        explorer2HiddenFolders = curr
+    }
+
+    fun unhideExplorer2Folder(path: String) {
+        val curr = HashSet(explorer2HiddenFolders)
+        curr.remove(path)
+        explorer2HiddenFolders = curr
+    }
+
+    fun isExplorer2Hidden(path: String) = explorer2HiddenFolders.contains(path)
+
     fun addExcludedFolder(path: String) {
         addExcludedFolders(HashSet<String>(Arrays.asList(path)))
     }
@@ -516,6 +552,10 @@ class Config(context: Context) : BaseConfig(context) {
     var groupDirectSubfolders: Boolean
         get() = prefs.getBoolean(GROUP_DIRECT_SUBFOLDERS, false)
         set(groupDirectSubfolders) = prefs.edit().putBoolean(GROUP_DIRECT_SUBFOLDERS, groupDirectSubfolders).apply()
+
+    var explorerMode: Boolean
+        get() = prefs.getBoolean(EXPLORER_MODE, false)
+        set(explorerMode) = prefs.edit().putBoolean(EXPLORER_MODE, explorerMode).apply()
 
     var showWidgetFolderName: Boolean
         get() = prefs.getBoolean(SHOW_WIDGET_FOLDER_NAME, true)

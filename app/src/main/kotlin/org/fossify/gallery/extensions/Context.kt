@@ -12,6 +12,7 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.PictureDrawable
 import android.media.AudioManager
 import android.net.Uri
+import android.os.Environment
 import android.os.Process
 import android.provider.MediaStore.Files
 import android.provider.MediaStore.Images
@@ -90,6 +91,7 @@ import org.fossify.gallery.helpers.LOCATION_INTERNAL
 import org.fossify.gallery.helpers.LOCATION_OTG
 import org.fossify.gallery.helpers.LOCATION_SD
 import org.fossify.gallery.helpers.MediaFetcher
+import org.fossify.gallery.helpers.RatingWriter
 import org.fossify.gallery.helpers.MyWidgetProvider
 import org.fossify.gallery.helpers.PicassoRoundedCornersTransformation
 import org.fossify.gallery.helpers.RECYCLE_BIN
@@ -103,6 +105,7 @@ import org.fossify.gallery.helpers.TYPE_PORTRAITS
 import org.fossify.gallery.helpers.TYPE_RAWS
 import org.fossify.gallery.helpers.TYPE_SVGS
 import org.fossify.gallery.helpers.TYPE_VIDEOS
+import org.fossify.gallery.interfaces.CollectionDao
 import org.fossify.gallery.interfaces.DateTakensDao
 import org.fossify.gallery.interfaces.DirectoryDao
 import org.fossify.gallery.interfaces.FavoritesDao
@@ -144,6 +147,9 @@ val Context.favoritesDB: FavoritesDao
 
 val Context.dateTakensDB: DateTakensDao
     get() = GalleryDatabase.getInstance(applicationContext).DateTakensDao()
+
+val Context.collectionDB: CollectionDao
+    get() = GalleryDatabase.getInstance(applicationContext).CollectionDao()
 
 val Context.recycleBin: File get() = filesDir
 
@@ -268,9 +274,13 @@ fun Context.getDirsToShow(
             it.subfoldersMediaCount = it.mediaCnt
         }
 
-        val filledDirs = fillWithSharedDirectParents(dirs)
-        val parentDirs = getDirectParentSubfolders(filledDirs, currentPathPrefix)
-        updateSubfolderCounts(filledDirs, parentDirs)
+        val filledDirs = walkUpCreateMissingAncestors(
+            dirs = dirs,
+            rootPath = Environment.getExternalStorageDirectory().absolutePath
+        )
+        val withSharedParents = fillWithSharedDirectParents(filledDirs)
+        val parentDirs = getDirectParentSubfolders(withSharedParents, currentPathPrefix)
+        updateSubfolderCounts(withSharedParents, parentDirs)
 
         // show the current folder as an available option too, not just subfolders
         if (currentPathPrefix.isNotEmpty()) {
@@ -291,6 +301,28 @@ fun Context.getDirsToShow(
         dirs.forEach { it.subfoldersMediaCount = it.mediaCnt }
         dirs
     }
+}
+
+fun Context.walkUpCreateMissingAncestors(
+    dirs: ArrayList<Directory>,
+    rootPath: String
+): ArrayList<Directory> {
+    val result = ArrayList<Directory>(dirs)
+    val existingPaths = dirs.map { it.path.lowercase() }.toHashSet()
+    val rootLower = rootPath.lowercase()
+
+    for (dir in dirs) {
+        var parent = File(dir.path).parent ?: continue
+        while (true) {
+            if (parent.isNullOrEmpty() || parent.lowercase() == rootLower) break
+            if (!existingPaths.contains(parent.lowercase())) {
+                addParentWithoutMediaFiles(result, parent)
+                existingPaths.add(parent.lowercase())
+            }
+            parent = File(parent).parent ?: break
+        }
+    }
+    return result
 }
 
 private fun Context.addParentWithoutMediaFiles(into: ArrayList<Directory>, path: String): Boolean {
@@ -347,7 +379,7 @@ fun Context.fillWithSharedDirectParents(dirs: ArrayList<Directory>): ArrayList<D
     }
 
     childCounts
-        .filter { dir -> dir.value > 1 && dirs.none { it.path.equals(dir.key, true) } }
+        .filter { dir -> dir.value >= 1 && dirs.none { it.path.equals(dir.key, true) } }
         .toList()
         .sortedByDescending { it.first.length }
         .forEach { (parent, _) ->
@@ -1084,6 +1116,13 @@ fun Context.updateFavorite(path: String, isFavorite: Boolean) {
     } catch (e: Exception) {
         toast(org.fossify.commons.R.string.unknown_error_occurred)
     }
+}
+
+fun Context.updateRating(path: String, rating: Int) {
+    try {
+        mediaDB.updateRating(path, rating)
+        RatingWriter.writeRating(path, rating)
+    } catch (_: Exception) { }
 }
 
 // remove the "recycle_bin" from the file path prefix, replace it with real bin path /data/user...

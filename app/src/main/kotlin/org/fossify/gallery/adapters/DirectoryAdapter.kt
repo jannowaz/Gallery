@@ -191,6 +191,14 @@ class DirectoryAdapter(
 
             checkHideBtnVisibility(this, selectedPaths)
             checkPinBtnVisibility(this, selectedPaths)
+
+            val favFolders = config.favoriteFolders
+            findItem(R.id.cab_add_to_favorites).isVisible = selectedPaths.any { !favFolders.contains(it) && it != FAVORITES && it != RECYCLE_BIN }
+            findItem(R.id.cab_remove_from_favorites).isVisible = selectedPaths.any { favFolders.contains(it) }
+
+            val hiddenFolders = config.explorer2HiddenFolders
+            findItem(R.id.cab_hide_explorer2).isVisible = selectedPaths.any { !hiddenFolders.contains(it) && it != FAVORITES && it != RECYCLE_BIN }
+            findItem(R.id.cab_unhide_explorer2).isVisible = selectedPaths.any { hiddenFolders.contains(it) }
         }
     }
 
@@ -206,12 +214,16 @@ class DirectoryAdapter(
             R.id.cab_rename -> renameDir()
             R.id.cab_pin -> pinFolders(true)
             R.id.cab_unpin -> pinFolders(false)
+            R.id.cab_add_to_favorites -> toggleFavoriteFolders(true)
+            R.id.cab_remove_from_favorites -> toggleFavoriteFolders(false)
             R.id.cab_change_order -> changeOrder()
             R.id.cab_empty_recycle_bin -> tryEmptyRecycleBin(true)
             R.id.cab_empty_disable_recycle_bin -> emptyAndDisableRecycleBin()
             R.id.cab_hide -> toggleFoldersVisibility(true)
             R.id.cab_unhide -> toggleFoldersVisibility(false)
             R.id.cab_exclude -> tryExcludeFolder()
+            R.id.cab_hide_explorer2 -> toggleExplorer2Folders(true)
+            R.id.cab_unhide_explorer2 -> toggleExplorer2Folders(false)
             R.id.cab_lock -> tryLockFolder()
             R.id.cab_unlock -> unlockFolder()
             R.id.cab_copy_to -> copyFilesTo()
@@ -553,6 +565,21 @@ class DirectoryAdapter(
         currentDirectoriesHash = 0
         pinnedFolders = config.pinnedFolders
         listener?.recheckPinnedFolders()
+    }
+
+    private fun toggleFavoriteFolders(add: Boolean) {
+        for (path in getSelectedPaths()) {
+            if (add) config.addFavoriteFolder(path) else config.removeFavoriteFolder(path)
+        }
+        finishActMode()
+    }
+
+    private fun toggleExplorer2Folders(hide: Boolean) {
+        for (path in getSelectedPaths()) {
+            if (hide) config.hideExplorer2Folder(path) else config.unhideExplorer2Folder(path)
+        }
+        finishActMode()
+        listener?.refreshItems()
     }
 
     private fun changeOrder() {

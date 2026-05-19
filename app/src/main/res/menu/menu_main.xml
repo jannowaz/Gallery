@@ -9,9 +9,9 @@
         android:title="@string/open_camera"
         app:showAsAction="always" />
     <item
-        android:id="@+id/show_all"
-        android:icon="@drawable/ic_files_vector"
-        android:title="@string/show_all"
+        android:id="@+id/collections"
+        android:icon="@drawable/ic_collections_vector"
+        android:title="@string/collections"
         app:showAsAction="always" />
     <item
         android:id="@+id/sort"

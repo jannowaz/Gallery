@@ -81,6 +81,9 @@ const val LAST_EDITOR_CROP_ASPECT_RATIO = "last_editor_crop_aspect_ratio"
 const val LAST_EDITOR_CROP_OTHER_ASPECT_RATIO_X = "last_editor_crop_other_aspect_ratio_x_2"
 const val LAST_EDITOR_CROP_OTHER_ASPECT_RATIO_Y = "last_editor_crop_other_aspect_ratio_y_2"
 const val GROUP_DIRECT_SUBFOLDERS = "group_direct_subfolders"
+const val EXPLORER_MODE = "explorer_mode"
+const val FAVORITE_FOLDERS = "favorite_folders"
+const val EXPLORER2_HIDDEN_FOLDERS = "explorer2_hidden_folders"
 const val SHOW_WIDGET_FOLDER_NAME = "show_widget_folder_name"
 const val ALLOW_ONE_TO_ONE_ZOOM = "allow_one_to_one_zoom"
 const val ALLOW_ROTATING_WITH_GESTURES = "allow_rotating_with_gestures"
@@ -214,6 +217,7 @@ const val GROUP_BY_EXTENSION = 16
 const val GROUP_BY_FOLDER = 32
 const val GROUP_BY_LAST_MODIFIED_MONTHLY = 64
 const val GROUP_BY_DATE_TAKEN_MONTHLY = 128
+const val GROUP_BY_RATING = 256
 const val GROUP_DESCENDING = 1024
 const val GROUP_SHOW_FILE_COUNT = 2048
 
@@ -233,8 +237,9 @@ const val BOTTOM_ACTION_SET_AS = 2048
 const val BOTTOM_ACTION_COPY = 4096
 const val BOTTOM_ACTION_MOVE = 8192
 const val BOTTOM_ACTION_RESIZE = 16384
+const val BOTTOM_ACTION_RATING = 32768
 
-const val DEFAULT_BOTTOM_ACTIONS = BOTTOM_ACTION_TOGGLE_FAVORITE or BOTTOM_ACTION_EDIT or BOTTOM_ACTION_SHARE or BOTTOM_ACTION_DELETE
+const val DEFAULT_BOTTOM_ACTIONS = BOTTOM_ACTION_TOGGLE_FAVORITE or BOTTOM_ACTION_EDIT or BOTTOM_ACTION_SHARE or BOTTOM_ACTION_DELETE or BOTTOM_ACTION_RATING
 
 // aspect ratios used at the editor for cropping
 const val ASPECT_RATIO_FREE = 0
@@ -259,6 +264,7 @@ const val FOLDER_MEDIA_CNT_NONE = 3
 
 const val FOLDER_STYLE_SQUARE = 1
 const val FOLDER_STYLE_ROUNDED_CORNERS = 2
+const val FOLDER_STYLE_CARD = 3
 
 // animations
 const val THUMBNAIL_FADE_DURATION_MS = 150

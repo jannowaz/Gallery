@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.view.ViewGroup
 import android.widget.RelativeLayout
+import com.google.android.material.tabs.TabLayout
 import androidx.core.net.toUri
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -27,6 +28,7 @@ import org.fossify.commons.extensions.getFilenameFromPath
 import org.fossify.commons.extensions.getIsPathDirectory
 import org.fossify.commons.extensions.getLatestMediaByDateId
 import org.fossify.commons.extensions.getLatestMediaId
+import org.fossify.commons.extensions.getProperBackgroundColor
 import org.fossify.commons.extensions.getProperPrimaryColor
 import org.fossify.commons.extensions.getProperTextColor
 import org.fossify.commons.extensions.getTimeFormat
@@ -64,6 +66,8 @@ import org.fossify.gallery.dialogs.ChangeSortingDialog
 import org.fossify.gallery.dialogs.ChangeViewTypeDialog
 import org.fossify.gallery.dialogs.FilterMediaDialog
 import org.fossify.gallery.dialogs.GrantAllFilesDialog
+import org.fossify.gallery.extensions.addTempFolderIfNeeded
+import org.fossify.gallery.extensions.collectionDB
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.deleteDBPath
 import org.fossify.gallery.extensions.directoryDB
@@ -150,6 +154,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
 
     companion object {
         var mMedia = ArrayList<ThumbnailItem>()
+        private var sCachedAllMedia: ArrayList<ThumbnailItem>? = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -172,13 +177,19 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             return
         }
 
+        if (mPath.isEmpty() || config.showAll) {
+            mShowAll = true
+        }
+
         setupOptionsMenu()
         refreshMenuItems()
         storeStateVariables()
         setupEdgeToEdge(
             padTopSystem = listOf(binding.mediaMenu),
-            padBottomImeAndSystem = listOf(binding.mediaGrid)
+            padBottomImeAndSystem = listOf(binding.mediaGrid, binding.tabLayout)
         )
+
+        setupMediaTabs()
 
         if (mShowAll) {
             registerFileUpdateListener()
@@ -189,6 +200,56 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         }
 
         updateWidgets()
+    }
+
+    private fun setupMediaTabs() {
+        val tabLayout = binding.tabLayout
+        tabLayout.removeAllTabs()
+        val bgColor = getProperBackgroundColor()
+        val textColor = getProperTextColor()
+        val primaryColor = getProperPrimaryColor()
+        tabLayout.setBackgroundColor(bgColor)
+        tabLayout.setTabTextColors(textColor, textColor)
+        tabLayout.setSelectedTabIndicatorColor(primaryColor)
+
+        tabLayout.addTab(tabLayout.newTab().apply {
+            setIcon(R.drawable.ic_files_vector)
+            text = getString(R.string.media_tab)
+        })
+        tabLayout.addTab(tabLayout.newTab().apply {
+            setIcon(R.drawable.ic_folders_vector)
+            text = getString(R.string.folders_tab)
+        })
+        tabLayout.addTab(tabLayout.newTab().apply {
+            setIcon(R.drawable.ic_explore2_vector)
+            text = getString(R.string.explorer2)
+        })
+        tabLayout.addTab(tabLayout.newTab().apply {
+            setIcon(R.drawable.ic_collections_vector)
+            text = getString(R.string.collections)
+        })
+        tabLayout.addTab(tabLayout.newTab().apply {
+            setIcon(R.drawable.ic_star_vector)
+            text = getString(org.fossify.commons.R.string.favorites)
+        })
+
+        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab) {
+                if (tab.position == 0) return
+                val intent = Intent(this@MediaActivity, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                    putExtra("SELECTED_TAB", tab.position)
+                }
+                startActivity(intent)
+                overridePendingTransition(0, 0)
+                finish()
+            }
+
+            override fun onTabUnselected(tab: TabLayout.Tab) {}
+            override fun onTabReselected(tab: TabLayout.Tab) {}
+        })
+        tabLayout.getTabAt(0)?.select()
     }
 
     override fun onStart() {
@@ -658,6 +719,21 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         }
 
         mIsGettingMedia = true
+        if (mPath.startsWith("collection:")) {
+            loadCollectionMedia()
+            return
+        }
+        if (mShowAll) {
+            sCachedAllMedia?.let { cached ->
+                if (cached.isNotEmpty()) {
+                    mMedia = ArrayList(cached)
+                    runOnUiThread { setupAdapter() }
+                }
+            }
+            runOnUiThread { binding.loadingIndicator.show() }
+            startAsyncTask()
+            return
+        }
         if (mLoadedInitialPhotos) {
             startAsyncTask()
         } else {
@@ -1006,6 +1082,9 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         mIsGettingMedia = false
         checkLastMediaChanged()
         mMedia = media
+        if (mShowAll && media.isNotEmpty()) {
+            sCachedAllMedia = ArrayList(media)
+        }
 
         runOnUiThread {
             binding.loadingIndicator.hide()
@@ -1138,5 +1217,55 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     private fun unsetAsDefaultFolder() {
         config.defaultFolder = ""
         refreshMenuItems()
+    }
+
+    private fun loadCollectionMedia() {
+        val collectionId = mPath.removePrefix("collection:").toLongOrNull()
+        if (collectionId == null) { mIsGettingMedia = false; return }
+        runOnUiThread { binding.loadingIndicator.show() }
+        ensureBackgroundThread {
+            val collection = collectionDB.getById(collectionId)
+            if (collection == null) { gotMedia(ArrayList(), false); return@ensureBackgroundThread }
+            val includedPaths = collection.getIncludedPaths()
+            val excludedPaths = collection.getExcludedPaths().toSet()
+            val pathsToScan = if (includedPaths.isEmpty()) {
+                val allDirs = directoryDB.getAll()
+                allDirs.map { it.path }.filter { p -> p != "recycle_bin" && p != "favorites" && excludedPaths.none { ex -> p.startsWith(ex) } }
+            } else includedPaths
+
+            val allMedia = ArrayList<Medium>()
+            val fetcher = MediaFetcher(this@MediaActivity)
+            val dateTakens = HashMap<String, Long>()
+            val lastModifieds = HashMap<String, Long>()
+            val initialPaths = pathsToScan.take(20)
+            for ((i, path) in initialPaths.withIndex()) {
+                if (isDestroyed || isFinishing) return@ensureBackgroundThread
+                var media = mediaDB.getMediaFromPath(path)
+                if (media.isEmpty()) media = fetcher.getFilesFrom(path, false, false, false, false, false, ArrayList(), false, lastModifieds, dateTakens, null)
+                allMedia.addAll(media.filter { m -> excludedPaths.none { ex -> m.path.startsWith(ex) } })
+                if (i % 3 == 2 && allMedia.isNotEmpty()) {
+                    val items = ArrayList<ThumbnailItem>()
+                    allMedia.toList().forEach { items.add(it) }
+                    gotMedia(items, false)
+                }
+            }
+            if (pathsToScan.size > 20) {
+                val remaining = pathsToScan.drop(20)
+                for ((i, path) in remaining.withIndex()) {
+                    if (isDestroyed || isFinishing) return@ensureBackgroundThread
+                    var media = mediaDB.getMediaFromPath(path)
+                    if (media.isEmpty()) media = fetcher.getFilesFrom(path, false, false, false, false, false, ArrayList(), false, lastModifieds, dateTakens, null)
+                    allMedia.addAll(media.filter { m -> excludedPaths.none { ex -> m.path.startsWith(ex) } })
+                    if (i % 5 == 4) {
+                        val items = ArrayList<ThumbnailItem>()
+                        allMedia.toList().forEach { items.add(it) }
+                        gotMedia(items, false)
+                    }
+                }
+            }
+            val items = ArrayList<ThumbnailItem>()
+            allMedia.forEach { items.add(it) }
+            gotMedia(items, false)
+        }
     }
 }

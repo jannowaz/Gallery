@@ -10,6 +10,14 @@
     <string name="pin_to_the_top">Pin to the top</string>
     <string name="show_all">Show all folders content</string>
     <string name="all_folders">All folders</string>
+    <string name="start_tab">Start</string>
+    <string name="media_tab">Medien</string>
+    <string name="folders_tab">Ordner</string>
+    <string name="collections">Sammlungen</string>
+    <string name="explorer2">Durchsuchen</string>
+    <string name="no_collections">No collections\ntap + to create one</string>
+    <string name="explorer">Explorer</string>
+    <string name="explorer_mode">Explorer mode</string>
     <string name="folder_view">Switch to folder view</string>
     <string name="other_folder">Other folder</string>
     <string name="show_on_map">Show on map</string>
@@ -250,6 +258,10 @@
     <!-- Bottom actions -->
     <string name="manage_bottom_actions">Manage visible bottom actions</string>
     <string name="toggle_favorite">Toggle favorite</string>
+    <string name="rating">Rating</string>
+    <string name="add_to_favorites">Add to favorites</string>
+    <string name="remove_from_favorites">Remove from favorites</string>
+    <string name="no_favorite_folders">No favorite folders\nlong-press a folder to add</string>
     <string name="toggle_file_visibility">Toggle file visibility</string>
 
     <!-- Errors -->

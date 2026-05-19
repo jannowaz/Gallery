@@ -43,6 +43,7 @@ class ChangeFolderThumbnailStyleDialog(val activity: BaseSimpleActivity, val cal
 
         val styleBtn = when (config.folderStyle) {
             FOLDER_STYLE_SQUARE -> binding.dialogRadioFolderSquare
+            FOLDER_STYLE_CARD -> binding.dialogRadioFolderRoundedCorners
             else -> binding.dialogRadioFolderRoundedCorners
         }
 
@@ -119,7 +120,8 @@ class ChangeFolderThumbnailStyleDialog(val activity: BaseSimpleActivity, val cal
     override fun onClick(dialog: DialogInterface, which: Int) {
         val style = when (binding.dialogRadioFolderStyle.checkedRadioButtonId) {
             R.id.dialog_radio_folder_square -> FOLDER_STYLE_SQUARE
-            else -> FOLDER_STYLE_ROUNDED_CORNERS
+            R.id.dialog_radio_folder_rounded_corners -> FOLDER_STYLE_ROUNDED_CORNERS
+            else -> FOLDER_STYLE_CARD
         }
 
         val count = when (binding.dialogRadioFolderCountHolder.checkedRadioButtonId) {

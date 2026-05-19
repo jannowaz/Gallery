@@ -26,6 +26,7 @@ import android.view.MenuItem
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
+import android.widget.ImageView
 import android.widget.Toast
 import androidx.core.graphics.drawable.toDrawable
 import androidx.exifinterface.media.ExifInterface
@@ -126,6 +127,7 @@ import org.fossify.gallery.extensions.tryDeleteFileDirItem
 import org.fossify.gallery.extensions.updateDBMediaPath
 import org.fossify.gallery.extensions.updateFavorite
 import org.fossify.gallery.extensions.updateFavoritePaths
+import org.fossify.gallery.extensions.updateRating
 import org.fossify.gallery.fragments.PhotoFragment
 import org.fossify.gallery.fragments.VideoFragment
 import org.fossify.gallery.fragments.ViewPagerFragment
@@ -135,6 +137,7 @@ import org.fossify.gallery.helpers.BOTTOM_ACTION_DELETE
 import org.fossify.gallery.helpers.BOTTOM_ACTION_EDIT
 import org.fossify.gallery.helpers.BOTTOM_ACTION_MOVE
 import org.fossify.gallery.helpers.BOTTOM_ACTION_PROPERTIES
+import org.fossify.gallery.helpers.BOTTOM_ACTION_RATING
 import org.fossify.gallery.helpers.BOTTOM_ACTION_RENAME
 import org.fossify.gallery.helpers.BOTTOM_ACTION_RESIZE
 import org.fossify.gallery.helpers.BOTTOM_ACTION_ROTATE
@@ -951,6 +954,12 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
             toggleFavorite()
         }
 
+        binding.bottomActions.bottomRating.beVisibleIf(visibleBottomActions and BOTTOM_ACTION_RATING != 0 && currentMedium?.getIsInRecycleBin() == false)
+        binding.bottomActions.bottomRating.setOnLongClickListener { toast(R.string.rating); true }
+        binding.bottomActions.bottomRating.setOnClickListener {
+            toggleRatingBar()
+        }
+
         binding.bottomActions.bottomEdit.beVisibleIf(visibleBottomActions and BOTTOM_ACTION_EDIT != 0 && currentMedium?.isSVG() == false)
         binding.bottomActions.bottomEdit.setOnLongClickListener { toast(R.string.edit); true }
         binding.bottomActions.bottomEdit.setOnClickListener {
@@ -1082,6 +1091,45 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
             runOnUiThread {
                 refreshMenuItems()
             }
+        }
+    }
+
+    private fun toggleRatingBar() {
+        if (binding.ratingBar.ratingBarWrapper.visibility == View.VISIBLE) {
+            binding.ratingBar.ratingBarWrapper.beGone()
+        } else {
+            binding.ratingBar.ratingBarWrapper.beVisible()
+            setupRatingStars()
+        }
+    }
+
+    private fun setupRatingStars() {
+        val currentRating = getCurrentMedium()?.rating ?: 0
+        val starIds = intArrayOf(R.id.rating_star_1, R.id.rating_star_2, R.id.rating_star_3, R.id.rating_star_4, R.id.rating_star_5)
+        for ((i, id) in starIds.withIndex()) {
+            val starView = binding.ratingBar.root.findViewById<ImageView>(id)
+            starView?.setImageResource(if (i < currentRating) R.drawable.ic_rating_vector else R.drawable.ic_star_border_vector)
+            starView?.setOnClickListener {
+                setRating(i + 1)
+            }
+        }
+    }
+
+    private fun setRating(rating: Int) {
+        val medium = getCurrentMedium() ?: return
+        medium.rating = rating
+        ensureBackgroundThread {
+            updateRating(medium.path, rating)
+        }
+        setupRatingStars()
+        navigateToNextItem()
+    }
+
+    private fun navigateToNextItem() {
+        val pager = binding.viewPager
+        val nextItem = pager.currentItem + 1
+        if (nextItem < (pager.adapter?.count ?: 0)) {
+            pager.setCurrentItem(nextItem, true)
         }
     }
 
@@ -1527,6 +1575,9 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
             mPos = position
             updateActionbarTitle()
             refreshMenuItems()
+            if (binding.ratingBar.ratingBarWrapper.visibility == View.VISIBLE) {
+                setupRatingStars()
+            }
             scheduleSwipe()
         }
     }

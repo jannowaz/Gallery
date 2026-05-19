@@ -2,7 +2,6 @@ package org.fossify.gallery.activities
 
 import android.content.ClipData
 import android.content.Intent
-import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -288,13 +287,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         handleMediaPermissions()
     }
 
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleTabIntent(intent) }
-
-    private fun handleTabIntent(intent: Intent) {
-        val t = intent.getIntExtra("SELECTED_TAB", -1)
-        if (t in 0..4) { intent.removeExtra("SELECTED_TAB"); mFromTabIntent = true; binding.tabLayout.getTabAt(t)?.select(); mFromTabIntent = false }
-    }
-
     private fun handleMediaPermissions(callback: (() -> Unit)? = null) {
         requestMediaPermissions(enableRationale = true) {
             callback?.invoke()
@@ -312,8 +304,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     override fun onResume() {
         super.onResume()
-        handleTabIntent(intent)
-        if (mShowAllFromTab) { config.showAll = false; mShowAllFromTab = false }
         updateMenuColors()
         config.isThirdPartyIntent = false
         mDateFormat = config.dateFormat
@@ -330,7 +320,9 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         }
 
         if (mStoredScrollHorizontally != config.scrollHorizontally) {
-            if (!isExplorer2Active()) { mLoadedInitialPhotos = false; binding.directoriesGrid.adapter = null; getDirectories() }
+            mLoadedInitialPhotos = false
+            binding.directoriesGrid.adapter = null
+            getDirectories()
         }
 
         if (mStoredTextColor != getProperTextColor()) {
@@ -338,7 +330,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         }
 
         val primaryColor = getProperPrimaryColor()
-        updateTabColors()
         if (mStoredPrimaryColor != primaryColor) {
             getRecyclerAdapter()?.updatePrimaryColor()
         }
@@ -346,7 +337,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         val styleString =
             "${config.folderStyle}${config.showFolderMediaCount}${config.limitFolderTitle}"
         if (mStoredStyleString != styleString) {
-            if (!isExplorer2Active()) setupAdapter(mDirs, forceRecreate = true)
+            setupAdapter(mDirs, forceRecreate = true)
         }
 
         binding.directoriesFastscroller.updateColors(primaryColor)
@@ -521,7 +512,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 R.id.sort -> showSortingDialog()
                 R.id.filter -> showFilterMediaDialog()
                 R.id.open_camera -> launchCamera()
-                R.id.collections -> openCollections()
+                R.id.show_all -> showAllMedia()
                 R.id.change_view_type -> changeViewType()
                 R.id.temporarily_show_hidden -> tryToggleTemporarilyShowHidden()
                 R.id.stop_showing_hidden -> tryToggleTemporarilyShowHidden()
@@ -636,12 +627,12 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
             checkDefaultSpamFolders()
 
             if (config.showAll) {
-                if (mShowAllFromTab) { mShowAllFromTab = false } else { showAllMedia() }
-            } else if (!isExplorer2Active()) {
+                showAllMedia()
+            } else {
                 getDirectories()
             }
 
-            if (!isExplorer2Active()) { setupLayoutManager() }
+            setupLayoutManager()
         }
     }
 
@@ -697,17 +688,15 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     private fun showAllMedia() {
         config.showAll = true
-        mShowAllFromTab = true
         Intent(this, MediaActivity::class.java).apply {
             putExtra(DIRECTORY, "")
-            addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
 
             if (mIsThirdPartyIntent) {
                 handleMediaIntent(this)
             } else {
                 hideKeyboard()
                 startActivity(this)
-                overridePendingTransition(0, 0)
+                finish()
             }
         }
     }
@@ -858,113 +847,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
             }
         }
     }
-
-    private fun setupTabs() {
-        val tabLayout = binding.tabLayout
-        tabLayout.removeAllTabs()
-        val bgColor = getProperBackgroundColor()
-        val textColor = getProperTextColor()
-        val primaryColor = getProperPrimaryColor()
-        tabLayout.setBackgroundColor(bgColor)
-        tabLayout.setTabTextColors(textColor, textColor)
-        tabLayout.setSelectedTabIndicatorColor(primaryColor)
-        tabLayout.addTab(tabLayout.newTab().apply { setIcon(R.drawable.ic_files_vector); text = getString(R.string.media_tab) })
-        tabLayout.addTab(tabLayout.newTab().apply { setIcon(R.drawable.ic_folders_vector); text = getString(R.string.folders_tab) })
-        tabLayout.addTab(tabLayout.newTab().apply { setIcon(R.drawable.ic_explore2_vector); text = getString(R.string.explorer2) })
-        tabLayout.addTab(tabLayout.newTab().apply { setIcon(R.drawable.ic_collections_vector); text = getString(R.string.collections) })
-        tabLayout.addTab(tabLayout.newTab().apply { setIcon(R.drawable.ic_star_vector); text = getString(org.fossify.commons.R.string.favorites) })
-        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
-            override fun onTabSelected(tab: TabLayout.Tab) {
-                if (mFromTabIntent) return
-                if (isExplorer2Active()) restoreExplorer2Style()
-                binding.directoriesGrid.adapter = null
-                when (tab.position) { 0 -> showAllMedia(); 1 -> deactivateExplorer(); 2 -> activateExplorer2(); 3 -> openCollections(); 4 -> showFavoriteFolders() }
-            }
-            override fun onTabUnselected(tab: TabLayout.Tab) {}
-            override fun onTabReselected(tab: TabLayout.Tab) { if (mFromTabIntent) return; if (tab.position == 2) activateExplorer2() }
-        })
-        tabLayout.getTabAt(1)?.select()
-    }
-
-    private fun deactivateExplorer(refreshAdapter: Boolean = true) { config.groupDirectSubfolders = false; mCurrentPathPrefix = ""; mOpenedSubfolders.clear(); mOpenedSubfolders.add(""); if (refreshAdapter) setupAdapter(mDirs) }
-
-    private fun isExplorer2Active() = binding.tabLayout.selectedTabPosition == 2
-
-    private fun updateTabColors() {
-        val bg = getProperBackgroundColor(); val tc = getProperTextColor(); val pc = getProperPrimaryColor()
-        binding.tabLayout.setBackgroundColor(bg); binding.tabLayout.setTabTextColors(tc, tc); binding.tabLayout.setSelectedTabIndicatorColor(pc)
-    }
-
-    private fun restoreExplorer2Style() { config.folderStyle = mSavedFolderStyle; config.showFolderMediaCount = mSavedFolderCount }
-
-    private fun activateExplorer2() {
-        deactivateExplorer()
-        mSavedFolderStyle = config.folderStyle; mSavedFolderCount = config.showFolderMediaCount
-        config.folderStyle = FOLDER_STYLE_ROUNDED_CORNERS; config.showFolderMediaCount = FOLDER_MEDIA_CNT_BRACKETS
-        mOpenedSubfolders.clear(); navigateExplorer2(internalStoragePath)
-    }
-
-    private var mExplorer2InProgress = false
-
-    private fun navigateExplorer2(path: String) {
-        if (mExplorer2InProgress) return
-        mExplorer2InProgress = true
-        mCurrentPathPrefix = path
-        if (mOpenedSubfolders.lastOrNull() != path) mOpenedSubfolders.add(path)
-        binding.directoriesGrid.adapter = null
-        runOnUiThread { binding.loadingIndicator.show() }
-        ensureBackgroundThread {
-            val dir = File(path); val entries = dir.listFiles() ?: emptyArray()
-            val folders = ArrayList<Directory>(); val files = ArrayList<Directory>(); var mc = 0
-            for (e in entries.sortedByDescending { it.lastModified() }) {
-                if (e.name?.startsWith(".") == true) continue
-                if (e.isDirectory) {
-                    if (path == internalStoragePath && e.name?.lowercase() == "android") continue
-                    if (config.isExplorer2Hidden(e.absolutePath)) continue
-                    val tmb = findQuickThumbnail(e) ?: ""
-                    val cnt = e.listFiles()?.count { !it.name!!.startsWith(".") } ?: 0
-                    folders.add(Directory().apply { this.path = e.absolutePath; this.name = e.name ?: ""; this.tmb = tmb; location = 1; mediaCnt = cnt; subfoldersCount = 1; subfoldersMediaCount = cnt; containsMediaFilesDirectly = tmb.isNotEmpty() })
-                } else if (e.isFile && mc < 200) {
-                    if ((e.extension?.lowercase() ?: "") in MEDIA_EXTENSIONS) { mc++; files.add(Directory().apply { this.path = e.absolutePath; this.name = e.name ?: ""; this.tmb = e.absolutePath; location = 1; mediaCnt = 0; subfoldersCount = 0; subfoldersMediaCount = 0; containsMediaFilesDirectly = true }) }
-                }
-            }
-            val combined = ArrayList<Directory>(); combined.addAll(folders); combined.addAll(files)
-            runOnUiThread {
-                binding.loadingIndicator.hide(); binding.directoriesEmptyPlaceholder.beGone(); binding.directoriesEmptyPlaceholder2.beGone()
-                binding.directoriesRefreshLayout.isEnabled = false; binding.directoriesRefreshLayout.isRefreshing = false
-                binding.directoriesFastscroller.beVisibleIf(combined.isNotEmpty())
-                if (combined.isEmpty()) { binding.directoriesEmptyPlaceholder.text = getString(org.fossify.commons.R.string.no_items_found); binding.directoriesEmptyPlaceholder.beVisible() }
-                else { binding.directoriesGrid.adapter = DirectoryAdapter(this@MainActivity, combined, this@MainActivity, binding.directoriesGrid, false, binding.directoriesRefreshLayout) { clicked -> val d = clicked as Directory; if (d.subfoldersCount == 0 && d.containsMediaFilesDirectly) { Intent(this@MainActivity, ViewPagerActivity::class.java).apply { putExtra(DIRECTORY, File(d.path).parent ?: d.path); putExtra(PATH, d.path); startActivity(this) } } else navigateExplorer2(d.path) } }
-                setupExplorer2Breadcrumbs(mCurrentPathPrefix)
-                mExplorer2InProgress = false
-            }
-        }
-    }
-
-    private fun setupExplorer2Breadcrumbs(pathPrefix: String) {
-        val c = binding.breadcrumbBar.breadcrumbContainer; c.removeAllViews()
-        if (pathPrefix == internalStoragePath) { binding.breadcrumbBar.breadcrumbScroll.beGone(); return }
-        binding.breadcrumbBar.breadcrumbScroll.beVisible()
-        val parts = pathPrefix.removePrefix(internalStoragePath).trimStart('/').split("/").filter { it.isNotEmpty() }
-        c.addView(TextView(this).apply { text = "\uD83D\uDCC1"; setTextColor(getProperPrimaryColor()); setPadding(8,0,4,0); setOnClickListener { navigateExplorer2(internalStoragePath) } })
-        var acc = internalStoragePath
-        for ((i, p) in parts.withIndex()) { c.addView(TextView(this).apply { text = " \u203A "; setTextColor(Color.GRAY) }); acc += "/$p"; val cp = acc; c.addView(TextView(this).apply { text = p; setTextColor(if (i == parts.lastIndex) Color.WHITE else getProperPrimaryColor()); setPadding(4,0,4,0); setOnClickListener { navigateExplorer2(cp) } }) }
-    }
-
-    private val MEDIA_EXTENSIONS = listOf("jpg","jpeg","png","gif","mp4","mkv","webp","heic","avif","bmp","svg","apng","jxl","mov","3gp","wmv","flv","avi")
-
-    private fun findQuickThumbnail(dir: File): String? { val files = dir.listFiles()?.sortedByDescending { it.lastModified() } ?: return null; for (f in files) { if (f.isFile && (f.extension?.lowercase() ?: "") in MEDIA_EXTENSIONS) return f.absolutePath }; return null }
-
-    private fun showFavoriteFolders() {
-        deactivateExplorer(); val favs = config.favoriteFolders.toList(); val dirs = ArrayList<Directory>()
-        for (fav in favs) dirs.add(Directory().apply { path = fav; name = File(fav).name.ifEmpty { fav }; location = 1; containsMediaFilesDirectly = true; tmb = ""; subfoldersCount = 0 })
-        runOnUiThread { binding.loadingIndicator.hide(); binding.directoriesRefreshLayout.isEnabled = false; binding.directoriesRefreshLayout.isRefreshing = false; binding.directoriesGrid.adapter = null
-            if (dirs.isEmpty()) { binding.directoriesEmptyPlaceholder.text = getString(R.string.no_favorite_folders); binding.directoriesEmptyPlaceholder.beVisible(); binding.directoriesEmptyPlaceholder2.beGone(); binding.directoriesFastscroller.beGone() }
-            else { binding.directoriesEmptyPlaceholder.beGone(); binding.directoriesEmptyPlaceholder2.beGone(); binding.directoriesFastscroller.beVisible()
-                binding.directoriesGrid.adapter = DirectoryAdapter(this, dirs, this, binding.directoriesGrid, false, binding.directoriesRefreshLayout) { clicked -> val d = clicked as Directory; activateExplorer2(); mOpenedSubfolders.clear(); navigateExplorer2(d.path) } } }
-    }
-
-    private fun openCollections() { deactivateExplorer(); hideKeyboard(); Intent(this, ManageCollectionsActivity::class.java).apply { addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION); startActivity(this) }; overridePendingTransition(0, 0); binding.tabLayout.getTabAt(1)?.select() }
 
     private fun setupLayoutManager() {
         if (config.viewTypeFolders == VIEW_TYPE_GRID) {
