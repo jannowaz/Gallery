@@ -936,13 +936,17 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                     if ((e.extension?.lowercase() ?: "") in MEDIA_EXTENSIONS) { mc++; files.add(Directory().apply { this.path = e.absolutePath; this.name = e.name ?: ""; this.tmb = e.absolutePath; location = 1; mediaCnt = 0; subfoldersCount = 0; subfoldersMediaCount = 0; containsMediaFilesDirectly = true }) }
                 }
             }
-            val combined = ArrayList<Directory>(); combined.addAll(folders); combined.addAll(files)
+            val combined = ArrayList<Directory>(); combined.addAll(folders)
+            if (folders.isNotEmpty() && files.isNotEmpty()) {
+                combined.add(Directory(null, "", "", "─── Dateien ───", 0, 0L, 0L, 0L, 1, 0, "", -1, 0, false))
+            }
+            combined.addAll(files)
             runOnUiThread {
                 hideLoading(); binding.directoriesEmptyPlaceholder.beGone(); binding.directoriesEmptyPlaceholder2.beGone()
                 binding.directoriesRefreshLayout.isEnabled = false; binding.directoriesRefreshLayout.isRefreshing = false
                 binding.directoriesFastscroller.beVisibleIf(combined.isNotEmpty())
                 if (combined.isEmpty()) { binding.directoriesEmptyPlaceholder.text = getString(org.fossify.commons.R.string.no_items_found); binding.directoriesEmptyPlaceholder.beVisible() }
-                else { binding.directoriesGrid.adapter = DirectoryAdapter(this@MainActivity, combined, this@MainActivity, binding.directoriesGrid, false, binding.directoriesRefreshLayout) { clicked -> val d = clicked as Directory; if (d.subfoldersCount == 0 && d.containsMediaFilesDirectly) { Intent(this@MainActivity, ViewPagerActivity::class.java).apply { putExtra(DIRECTORY, File(d.path).parent ?: d.path); putExtra(PATH, d.path); startActivity(this) } } else navigateExplorer2(d.path) } }
+                else { binding.directoriesGrid.adapter = DirectoryAdapter(this@MainActivity, combined, this@MainActivity, binding.directoriesGrid, false, binding.directoriesRefreshLayout) { clicked -> val d = clicked as Directory; if (d.subfoldersCount == -1) return@DirectoryAdapter; if (d.subfoldersCount == 0 && d.containsMediaFilesDirectly) { Intent(this@MainActivity, ViewPagerActivity::class.java).apply { putExtra(DIRECTORY, File(d.path).parent ?: d.path); putExtra(PATH, d.path); startActivity(this) } } else navigateExplorer2(d.path) } }
                 setupExplorer2Breadcrumbs(mCurrentPathPrefix)
                 fadeInContent()
                 mExplorer2InProgress = false
