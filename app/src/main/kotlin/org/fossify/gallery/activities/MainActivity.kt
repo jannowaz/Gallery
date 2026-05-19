@@ -894,8 +894,8 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     private fun fadeInContent() { binding.directoriesGrid.alpha = 0f; binding.directoriesGrid.animate().alpha(1f).setDuration(200).start() }
 
-    private fun showLoading() { binding.skeletonGrid.beVisible(); showLoading() }
-    private fun hideLoading() { binding.skeletonGrid.beGone(); hideLoading() }
+    private fun showLoading() { binding.skeletonGrid.beVisible(); binding.loadingIndicator.show() }
+    private fun hideLoading() { binding.skeletonGrid.beGone(); binding.loadingIndicator.hide() }
 
     private fun updateTabColors() {
         val bg = getProperBackgroundColor(); val tc = getProperTextColor(); val pc = getProperPrimaryColor()
