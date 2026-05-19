@@ -37,6 +37,7 @@ import org.fossify.commons.extensions.doesThisOrParentHaveNoMedia
 import org.fossify.commons.extensions.getContrastColor
 import org.fossify.commons.extensions.getFilenameFromPath
 import org.fossify.commons.extensions.getProperBackgroundColor
+import org.fossify.commons.extensions.getProperTextColor
 import org.fossify.commons.extensions.getTimeFormat
 import org.fossify.commons.extensions.handleDeletePasswordProtection
 import org.fossify.commons.extensions.handleLockedFolderOpening
@@ -106,6 +107,7 @@ import org.fossify.gallery.helpers.TYPE_VIDEOS
 import org.fossify.gallery.interfaces.DirectoryOperationsListener
 import org.fossify.gallery.models.AlbumCover
 import org.fossify.gallery.models.Directory
+import org.fossify.gallery.models.ThumbnailSection
 import java.io.File
 import java.util.Collections
 
@@ -145,9 +147,22 @@ class DirectoryAdapter(
         fillLockedFolders()
     }
 
+    private val ITEM_SECTION = 2
+
+    override fun getItemViewType(position: Int): Int {
+        val item = dirs.getOrNull(position)
+        if (item is ThumbnailSection) return ITEM_SECTION
+        if (item is Directory && item.subfoldersCount == -2) return ITEM_SECTION
+        return super.getItemViewType(position)
+    }
+
     override fun getActionMenuId() = R.menu.cab_directories
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+        if (viewType == ITEM_SECTION) {
+            val view = layoutInflater.inflate(R.layout.item_directory_section, parent, false)
+            return createViewHolder(view)
+        }
         val binding = when {
             isListViewType -> DirectoryItemListBinding.inflate(layoutInflater, parent, false)
             folderStyle == FOLDER_STYLE_SQUARE -> DirectoryItemGridSquareBinding.inflate(layoutInflater, parent, false)
@@ -158,7 +173,14 @@ class DirectoryAdapter(
     }
 
     override fun onBindViewHolder(holder: MyRecyclerViewAdapter.ViewHolder, position: Int) {
-        val dir = dirs.getOrNull(position) ?: return
+        val item = dirs.getOrNull(position) ?: return
+        if (item is ThumbnailSection || (item is Directory && item.subfoldersCount == -2)) {
+            val titleView = holder.itemView.findViewById<org.fossify.commons.views.MyTextView>(R.id.section_title)
+            titleView?.text = if (item is ThumbnailSection) item.title else item.name
+            titleView?.setTextColor(activity.getProperTextColor())
+            return
+        }
+        val dir = item as? Directory ?: return
         holder.bindView(dir, true, !isPickIntent) { itemView, adapterPosition ->
             setupView(itemView, dir, holder)
         }
