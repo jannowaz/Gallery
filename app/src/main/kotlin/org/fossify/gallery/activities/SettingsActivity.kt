@@ -53,7 +53,6 @@ class SettingsActivity : SimpleActivity() {
 
     private fun setupSettingItems() {
         setupCustomizeColors()
-        setupThemeMode()
         setupUseEnglish()
         setupLanguage()
         setupChangeDateTimeFormat()
@@ -148,17 +147,6 @@ class SettingsActivity : SimpleActivity() {
     private fun setupCustomizeColors() {
         binding.settingsColorCustomizationHolder.setOnClickListener {
             startCustomizationActivity()
-        }
-    }
-
-    private fun setupThemeMode() {
-        binding.settingsThemeModeValue.text = when (config.themeMode) { 1 -> "Light"; 2 -> "Dark"; else -> "System" }
-        binding.settingsThemeModeHolder.setOnClickListener {
-            val items = arrayListOf(RadioItem(0, "System"), RadioItem(1, "Light"), RadioItem(2, "Dark"))
-            RadioGroupDialog(this, items, config.themeMode) {
-                config.themeMode = it as Int
-                binding.settingsThemeModeValue.text = when (it) { 1 -> "Light"; 2 -> "Dark"; else -> "System" }
-            }
         }
     }
 

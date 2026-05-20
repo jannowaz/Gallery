@@ -13,10 +13,10 @@ import org.fossify.gallery.models.Favorite
 
 class SplashActivity : BaseSplashActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        when (config.themeMode) {
-            1 -> { AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO); delegate.localNightMode = AppCompatDelegate.MODE_NIGHT_NO }
-            2 -> { AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES); delegate.localNightMode = AppCompatDelegate.MODE_NIGHT_YES }
-            else -> AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+        if (config.forceDarkMode) {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
+        } else {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
         }
         super.onCreate(savedInstanceState)
     }
