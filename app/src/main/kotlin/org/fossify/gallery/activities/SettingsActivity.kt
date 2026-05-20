@@ -162,7 +162,6 @@ class SettingsActivity : SimpleActivity() {
                 if (config.forceDarkMode) AppCompatDelegate.MODE_NIGHT_YES
                 else AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
             )
-            // restart app to apply theme
             Handler(mainLooper).postDelayed({
                 startActivity(Intent(this, SplashActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK })
                 finish()

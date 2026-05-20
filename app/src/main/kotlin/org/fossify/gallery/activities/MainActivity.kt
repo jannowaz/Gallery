@@ -16,6 +16,7 @@ import android.widget.RelativeLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.google.android.material.tabs.TabLayout
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.recyclerview.widget.RecyclerView
 import org.fossify.commons.dialogs.CreateNewFolderDialog
 import org.fossify.commons.dialogs.FilePickerDialog
@@ -216,6 +217,9 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (config.forceDarkMode) {
+            delegate.localNightMode = AppCompatDelegate.MODE_NIGHT_YES
+        }
         setContentView(binding.root)
         appLaunched(BuildConfig.APPLICATION_ID)
 

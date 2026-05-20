@@ -19,6 +19,9 @@ class SplashActivity : BaseSplashActivity() {
             AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
         }
         super.onCreate(savedInstanceState)
+        if (config.forceDarkMode) {
+            delegate.localNightMode = AppCompatDelegate.MODE_NIGHT_YES
+        }
     }
 
     override fun initActivity() {
