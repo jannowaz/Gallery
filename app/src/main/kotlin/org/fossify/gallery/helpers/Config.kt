@@ -147,6 +147,10 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(FORCE_DARK_MODE, false)
         set(force) = prefs.edit().putBoolean(FORCE_DARK_MODE, force).apply()
 
+    var themeMode: Int
+        get() = prefs.getInt("theme_mode", 0)
+        set(mode) = prefs.edit().putInt("theme_mode", mode).apply()
+
     fun addExcludedFolder(path: String) {
         addExcludedFolders(HashSet<String>(Arrays.asList(path)))
     }

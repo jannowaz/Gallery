@@ -60,22 +60,22 @@
             </androidx.constraintlayout.widget.ConstraintLayout>
 
             <RelativeLayout
-                android:id="@+id/settings_force_dark_mode_holder"
-                style="@style/SettingsHolderTextViewOneLinerStyle"
+                android:id="@+id/settings_theme_mode_holder"
+                style="@style/SettingsHolderTextViewStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
 
                 <org.fossify.commons.views.MyTextView
-                    android:id="@+id/settings_force_dark_mode_label"
+                    android:id="@+id/settings_theme_mode_label"
                     style="@style/SettingsTextLabelStyle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_alignParentStart="true"
-                    android:layout_centerVertical="true"
-                    android:text="Force Dark Mode" />
+                    android:text="Theme" />
 
-                <org.fossify.commons.views.MyAppCompatCheckbox
-                    android:id="@+id/settings_force_dark_mode"
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_theme_mode_value"
+                    style="@style/SettingsTextValueStyle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_alignParentEnd="true"

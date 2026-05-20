@@ -53,7 +53,7 @@ class SettingsActivity : SimpleActivity() {
 
     private fun setupSettingItems() {
         setupCustomizeColors()
-        setupForceDarkMode()
+        setupThemeMode()
         setupUseEnglish()
         setupLanguage()
         setupChangeDateTimeFormat()
@@ -151,11 +151,14 @@ class SettingsActivity : SimpleActivity() {
         }
     }
 
-    private fun setupForceDarkMode() {
-        binding.settingsForceDarkMode.isChecked = config.forceDarkMode
-        binding.settingsForceDarkModeHolder.setOnClickListener {
-            config.forceDarkMode = !config.forceDarkMode
-            binding.settingsForceDarkMode.isChecked = config.forceDarkMode
+    private fun setupThemeMode() {
+        binding.settingsThemeModeValue.text = when (config.themeMode) { 1 -> "Light"; 2 -> "Dark"; else -> "System" }
+        binding.settingsThemeModeHolder.setOnClickListener {
+            val items = arrayListOf(RadioItem(0, "System"), RadioItem(1, "Light"), RadioItem(2, "Dark"))
+            RadioGroupDialog(this, items, config.themeMode) {
+                config.themeMode = it as Int
+                binding.settingsThemeModeValue.text = when (it) { 1 -> "Light"; 2 -> "Dark"; else -> "System" }
+            }
         }
     }
 
