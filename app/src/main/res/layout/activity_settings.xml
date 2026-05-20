@@ -59,10 +59,6 @@
 
             </androidx.constraintlayout.widget.ConstraintLayout>
 
-            <include
-                android:id="@+id/settings_color_customization_divider"
-                layout="@layout/divider" />
-
             <RelativeLayout
                 android:id="@+id/settings_force_dark_mode_holder"
                 style="@style/SettingsHolderTextViewOneLinerStyle"
@@ -85,6 +81,10 @@
                     android:layout_alignParentEnd="true"
                     android:layout_centerVertical="true" />
             </RelativeLayout>
+
+            <include
+                android:id="@+id/settings_color_customization_divider"
+                layout="@layout/divider" />
 
             <include layout="@layout/divider" />
 
