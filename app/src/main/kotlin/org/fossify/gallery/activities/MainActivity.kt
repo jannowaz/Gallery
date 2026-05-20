@@ -1701,7 +1701,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         binding.directoriesGrid.postDelayed({
             binding.directoriesGrid.scrollBy(0, 0)
         }, 500)
-        fadeInContent()
+        runOnUiThread { fadeInContent() }
     }
 
     private fun setupScrollDirection() {
