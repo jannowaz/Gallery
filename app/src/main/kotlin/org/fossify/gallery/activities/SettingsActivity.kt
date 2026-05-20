@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.text.TextUtils
+import android.view.View
 import androidx.appcompat.app.AppCompatDelegate
 import android.widget.Toast
 import com.google.gson.Gson
@@ -155,12 +156,14 @@ class SettingsActivity : SimpleActivity() {
     }
 
     private fun setupForceDarkMode() {
-        binding.settingsForceDarkMode.isChecked = config.forceDarkMode
+        val current = config.forceDarkMode
+        binding.settingsForceDarkMode.isChecked = current
         binding.settingsForceDarkModeHolder.setOnClickListener {
-            binding.settingsForceDarkMode.toggle()
-            config.forceDarkMode = binding.settingsForceDarkMode.isChecked
+            val newVal = !config.forceDarkMode
+            config.forceDarkMode = newVal
+            binding.settingsForceDarkMode.isChecked = newVal
             AppCompatDelegate.setDefaultNightMode(
-                if (config.forceDarkMode) AppCompatDelegate.MODE_NIGHT_YES
+                if (newVal) AppCompatDelegate.MODE_NIGHT_YES
                 else AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
             )
             Handler(mainLooper).postDelayed({
