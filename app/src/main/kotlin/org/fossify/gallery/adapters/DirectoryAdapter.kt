@@ -282,7 +282,7 @@ class DirectoryAdapter(
 
     override fun onViewRecycled(holder: ViewHolder) {
         super.onViewRecycled(holder)
-        if (!activity.isDestroyed) {
+        if (!activity.isDestroyed && holder.itemViewType != ITEM_SECTION) {
             Glide.with(activity).clear(bindItem(holder.itemView).dirThumbnail)
         }
     }
