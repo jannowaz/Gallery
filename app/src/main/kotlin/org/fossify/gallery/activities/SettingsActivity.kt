@@ -53,6 +53,7 @@ class SettingsActivity : SimpleActivity() {
 
     private fun setupSettingItems() {
         setupCustomizeColors()
+        setupForceDarkMode()
         setupUseEnglish()
         setupLanguage()
         setupChangeDateTimeFormat()
@@ -147,6 +148,14 @@ class SettingsActivity : SimpleActivity() {
     private fun setupCustomizeColors() {
         binding.settingsColorCustomizationHolder.setOnClickListener {
             startCustomizationActivity()
+        }
+    }
+
+    private fun setupForceDarkMode() {
+        binding.settingsForceDarkMode.isChecked = config.forceDarkMode
+        binding.settingsForceDarkModeHolder.setOnClickListener {
+            config.forceDarkMode = !config.forceDarkMode
+            binding.settingsForceDarkMode.isChecked = config.forceDarkMode
         }
     }
 
