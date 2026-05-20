@@ -910,11 +910,8 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         mOpenedSubfolders.clear(); navigateExplorer2(internalStoragePath)
     }
 
-    private var mExplorer2InProgress = false
-
     private fun navigateExplorer2(path: String) {
-        if (mExplorer2InProgress) return
-        mExplorer2InProgress = true
+        val gen = ++mExplorer2Generation
         mCurrentPathPrefix = path
         if (mOpenedSubfolders.lastOrNull() != path) mOpenedSubfolders.add(path)
         binding.directoriesGrid.adapter = null
@@ -951,7 +948,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 }
                 setupExplorer2Breadcrumbs(mCurrentPathPrefix)
                 fadeInContent()
-                mExplorer2InProgress = false
             }
         }
     }
