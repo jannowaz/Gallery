@@ -4,7 +4,9 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
 import android.text.TextUtils
+import androidx.appcompat.app.AppCompatDelegate
 import android.widget.Toast
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -156,6 +158,15 @@ class SettingsActivity : SimpleActivity() {
         binding.settingsForceDarkModeHolder.setOnClickListener {
             config.forceDarkMode = !config.forceDarkMode
             binding.settingsForceDarkMode.isChecked = config.forceDarkMode
+            AppCompatDelegate.setDefaultNightMode(
+                if (config.forceDarkMode) AppCompatDelegate.MODE_NIGHT_YES
+                else AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+            )
+            // restart app to apply theme
+            Handler(mainLooper).postDelayed({
+                startActivity(Intent(this, SplashActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK })
+                finish()
+            }, 300)
         }
     }
 
