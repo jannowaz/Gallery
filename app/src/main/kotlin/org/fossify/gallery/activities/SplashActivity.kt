@@ -1,5 +1,6 @@
 package org.fossify.gallery.activities
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatDelegate
@@ -9,17 +10,19 @@ import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.favoritesDB
 import org.fossify.gallery.extensions.getFavoriteFromPath
 import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.helpers.FORCE_DARK_MODE
 import org.fossify.gallery.models.Favorite
 
 class SplashActivity : BaseSplashActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        if (config.forceDarkMode) {
+        val forceDark = getSharedPreferences(packageName + "_preferences", MODE_PRIVATE).getBoolean(FORCE_DARK_MODE, false)
+        if (forceDark) {
             AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         } else {
             AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
         }
         super.onCreate(savedInstanceState)
-        if (config.forceDarkMode) {
+        if (forceDark) {
             delegate.localNightMode = AppCompatDelegate.MODE_NIGHT_YES
         }
     }

@@ -2,6 +2,7 @@ package org.fossify.gallery.activities
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -154,12 +155,14 @@ class SettingsActivity : SimpleActivity() {
     }
 
     private fun setupForceDarkMode() {
-        binding.settingsForceDarkMode.isChecked = config.forceDarkMode
+        val prefs = getSharedPreferences(packageName + "_preferences", Context.MODE_PRIVATE)
+        binding.settingsForceDarkMode.isChecked = prefs.getBoolean(FORCE_DARK_MODE, false)
         binding.settingsForceDarkModeHolder.setOnClickListener {
-            config.forceDarkMode = !config.forceDarkMode
-            binding.settingsForceDarkMode.isChecked = config.forceDarkMode
+            val newValue = !prefs.getBoolean(FORCE_DARK_MODE, false)
+            prefs.edit().putBoolean(FORCE_DARK_MODE, newValue).apply()
+            binding.settingsForceDarkMode.isChecked = newValue
             AppCompatDelegate.setDefaultNightMode(
-                if (config.forceDarkMode) AppCompatDelegate.MODE_NIGHT_YES
+                if (newValue) AppCompatDelegate.MODE_NIGHT_YES
                 else AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
             )
             Handler(mainLooper).postDelayed({
