@@ -942,8 +942,10 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 binding.directoriesFastscroller.beVisibleIf(combined.isNotEmpty())
                 if (combined.isEmpty()) { binding.directoriesEmptyPlaceholder.text = getString(org.fossify.commons.R.string.no_items_found); binding.directoriesEmptyPlaceholder.beVisible() }
                 else { binding.directoriesGrid.adapter = DirectoryAdapter(this@MainActivity, combined, this@MainActivity, binding.directoriesGrid, false, binding.directoriesRefreshLayout) { clicked -> val d = clicked as Directory; if (d.subfoldersCount == -2) return@DirectoryAdapter; if (d.subfoldersCount == 0 && d.containsMediaFilesDirectly) { Intent(this@MainActivity, ViewPagerActivity::class.java).apply { putExtra(DIRECTORY, File(d.path).parent ?: d.path); putExtra(PATH, d.path); startActivity(this) } } else navigateExplorer2(d.path) }
-                    (binding.directoriesGrid.layoutManager as? androidx.recyclerview.widget.GridLayoutManager)?.spanSizeLookup = object : androidx.recyclerview.widget.GridLayoutManager.SpanSizeLookup() {
-                        override fun getSpanSize(pos: Int) = if (combined.getOrNull(pos)?.subfoldersCount == -2) 3 else 1
+                    val lm = binding.directoriesGrid.layoutManager as? androidx.recyclerview.widget.GridLayoutManager
+                    lm?.spanCount = 3
+                    lm?.spanSizeLookup = object : androidx.recyclerview.widget.GridLayoutManager.SpanSizeLookup() {
+                        override fun getSpanSize(pos: Int) = if (combined.getOrNull(pos)?.subfoldersCount == -2) lm.spanCount else 1
                     }
                 }
                 setupExplorer2Breadcrumbs(mCurrentPathPrefix)
