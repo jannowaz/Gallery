@@ -155,14 +155,12 @@ class SettingsActivity : SimpleActivity() {
     }
 
     private fun setupForceDarkMode() {
-        val prefs = getSharedPreferences("Prefs", Context.MODE_PRIVATE)
-        binding.settingsForceDarkMode.isChecked = prefs.getBoolean(FORCE_DARK_MODE, false)
+        binding.settingsForceDarkMode.isChecked = config.forceDarkMode
         binding.settingsForceDarkModeHolder.setOnClickListener {
-            val newValue = !prefs.getBoolean(FORCE_DARK_MODE, false)
-            prefs.edit().putBoolean(FORCE_DARK_MODE, newValue).apply()
-            binding.settingsForceDarkMode.isChecked = newValue
+            binding.settingsForceDarkMode.toggle()
+            config.forceDarkMode = binding.settingsForceDarkMode.isChecked
             AppCompatDelegate.setDefaultNightMode(
-                if (newValue) AppCompatDelegate.MODE_NIGHT_YES
+                if (config.forceDarkMode) AppCompatDelegate.MODE_NIGHT_YES
                 else AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
             )
             Handler(mainLooper).postDelayed({
