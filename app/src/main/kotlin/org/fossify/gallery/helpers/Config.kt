@@ -145,7 +145,7 @@ class Config(context: Context) : BaseConfig(context) {
 
     var forceDarkMode: Boolean
         get() = prefs.getBoolean(FORCE_DARK_MODE, false)
-        set(force) = prefs.edit().putBoolean(FORCE_DARK_MODE, force).apply()
+        set(force) { prefs.edit().putBoolean(FORCE_DARK_MODE, force).commit() }
 
     var themeMode: Int
         get() = prefs.getInt("theme_mode", 0)
