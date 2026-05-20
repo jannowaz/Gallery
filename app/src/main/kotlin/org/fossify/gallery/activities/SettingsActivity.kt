@@ -155,7 +155,7 @@ class SettingsActivity : SimpleActivity() {
     }
 
     private fun setupForceDarkMode() {
-        val prefs = getSharedPreferences(packageName + "_preferences", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("Prefs", Context.MODE_PRIVATE)
         binding.settingsForceDarkMode.isChecked = prefs.getBoolean(FORCE_DARK_MODE, false)
         binding.settingsForceDarkModeHolder.setOnClickListener {
             val newValue = !prefs.getBoolean(FORCE_DARK_MODE, false)

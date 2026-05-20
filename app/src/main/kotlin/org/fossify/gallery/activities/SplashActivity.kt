@@ -15,7 +15,7 @@ import org.fossify.gallery.models.Favorite
 
 class SplashActivity : BaseSplashActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        val forceDark = getSharedPreferences(packageName + "_preferences", MODE_PRIVATE).getBoolean(FORCE_DARK_MODE, false)
+        val forceDark = getSharedPreferences("Prefs", MODE_PRIVATE).getBoolean(FORCE_DARK_MODE, false)
         if (forceDark) {
             AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         } else {
