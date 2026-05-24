@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/dir_holder"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="16dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:background="?attr/selectableItemBackground">
+
+    <ImageView
+        android:id="@+id/favorite_star"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_alignParentEnd="true"
+        android:layout_centerVertical="true"
+        android:src="@drawable/ic_star_vector"
+        android:alpha="0.6" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_toStartOf="@id/favorite_star"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/dir_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/white"
+            tools:text="Sommerurlaub" />
+
+        <TextView
+            android:id="@+id/dir_path"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="@android:color/white"
+            android:alpha="0.5"
+            android:paddingTop="2dp"
+            tools:text="/storage/emulated/0/Pictures/Holiday" />
+
+    </LinearLayout>
+
+    <!-- Hidden compatibility fields for DirectoryAdapter -->
+    <org.fossify.commons.views.MySquareImageView android:id="@+id/dir_thumbnail" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <ImageView android:id="@+id/dir_check" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <ImageView android:id="@+id/dir_lock" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <ImageView android:id="@+id/dir_pin" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <ImageView android:id="@+id/dir_location" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <ImageView android:id="@+id/dir_drag_handle" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <TextView android:id="@+id/photo_cnt" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+
+</RelativeLayout>

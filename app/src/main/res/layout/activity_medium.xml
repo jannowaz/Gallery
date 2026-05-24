@@ -19,6 +19,14 @@
         layout="@layout/rating_bar"
         android:layout_above="@id/bottom_actions" />
 
+    <include
+        android:id="@+id/info_panel"
+        layout="@layout/info_panel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:visibility="gone" />
+
     <ImageView
         android:id="@+id/top_shadow"
         android:layout_width="match_parent"

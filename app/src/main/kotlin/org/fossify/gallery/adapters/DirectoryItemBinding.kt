@@ -7,6 +7,7 @@ import org.fossify.commons.views.MySquareImageView
 import org.fossify.gallery.databinding.DirectoryItemGridRoundedCornersBinding
 import org.fossify.gallery.databinding.DirectoryItemGridSquareBinding
 import org.fossify.gallery.databinding.DirectoryItemListBinding
+import org.fossify.gallery.databinding.DirectoryItemStackBinding
 
 interface DirectoryItemBinding {
     val root: ViewGroup
@@ -73,3 +74,37 @@ class GridDirectoryItemRoundedCornersBinding(val binding: DirectoryItemGridRound
 }
 
 fun DirectoryItemGridRoundedCornersBinding.toItemBinding() = GridDirectoryItemRoundedCornersBinding(this)
+
+class StackDirectoryItemBinding(val binding: DirectoryItemStackBinding) : DirectoryItemBinding {
+    override val root: ViewGroup = binding.root
+    override val dirThumbnail: MySquareImageView = binding.dirThumbnail
+    override val dirPath: TextView? = null
+    override val dirCheck: ImageView = binding.dirCheck
+    override val dirHolder: ViewGroup = binding.dirHolder
+    override val photoCnt: TextView = binding.photoCnt
+    override val dirName: TextView = binding.dirName
+    override val dirLock: ImageView = binding.dirLock
+    override val dirPin: ImageView = binding.dirPin
+    override val dirLocation: ImageView = binding.dirLocation
+    override val dirDragHandle: ImageView = binding.dirDragHandle
+    override val dirDragHandleWrapper: ViewGroup? = null
+}
+
+fun DirectoryItemStackBinding.toItemBinding() = StackDirectoryItemBinding(this)
+
+class FavoriteTextDirectoryItemBinding(val binding: org.fossify.gallery.databinding.ItemFavoriteTextBinding) : DirectoryItemBinding {
+    override val root: ViewGroup = binding.root
+    override val dirThumbnail: MySquareImageView = binding.dirThumbnail
+    override val dirPath: TextView = binding.dirPath
+    override val dirCheck: ImageView = binding.dirCheck
+    override val dirHolder: ViewGroup = binding.dirHolder
+    override val photoCnt: TextView = binding.photoCnt
+    override val dirName: TextView = binding.dirName
+    override val dirLock: ImageView = binding.dirLock
+    override val dirPin: ImageView = binding.dirPin
+    override val dirLocation: ImageView = binding.dirLocation
+    override val dirDragHandle: ImageView = binding.dirDragHandle
+    override val dirDragHandleWrapper: ViewGroup? = null
+}
+
+fun org.fossify.gallery.databinding.ItemFavoriteTextBinding.toItemBinding() = FavoriteTextDirectoryItemBinding(this)

@@ -11,10 +11,10 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clipToPadding="false"
-        android:padding="4dp"
-        android:paddingBottom="52dp"
+        android:padding="12dp"
+        android:paddingBottom="100dp"
         app:layoutManager="org.fossify.commons.views.MyGridLayoutManager"
-        app:spanCount="2" />
+        app:spanCount="1" />
 
     <TextView
         android:id="@+id/collections_empty_placeholder"
@@ -33,18 +33,16 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
         android:layout_margin="16dp"
-        android:layout_marginBottom="80dp"
+        android:layout_marginBottom="128dp"
         android:src="@android:drawable/ic_input_add"
         app:fabSize="normal" />
 
-    <com.google.android.material.tabs.TabLayout
-        android:id="@+id/tab_layout"
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottom_navigation"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        app:tabIndicatorHeight="3dp"
-        app:tabIndicatorFullWidth="false"
-        app:tabMode="fixed"
-        app:tabGravity="fill" />
+        app:menu="@menu/bottom_nav_menu"
+        app:labelVisibilityMode="labeled" />
 
 </FrameLayout>

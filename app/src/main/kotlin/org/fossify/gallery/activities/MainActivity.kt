@@ -15,8 +15,14 @@ import android.widget.LinearLayout
 import android.widget.RelativeLayout
 import android.widget.TextView
 import android.widget.Toast
-import com.google.android.material.tabs.TabLayout
+import com.google.android.material.navigation.NavigationBarView
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.graphics.ColorUtils
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import org.fossify.gallery.viewmodels.MainViewModel
 import androidx.recyclerview.widget.RecyclerView
 import org.fossify.commons.dialogs.CreateNewFolderDialog
 import org.fossify.commons.dialogs.FilePickerDialog
@@ -214,10 +220,14 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     private var mSavedFolderStyle = FOLDER_STYLE_SQUARE
     private var mSavedFolderCount = FOLDER_MEDIA_CNT_NONE
     private val binding by viewBinding(ActivityMainBinding::inflate)
+    private lateinit var viewModel: MainViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        viewModel = ViewModelProvider(this)[MainViewModel::class.java]
+        setupUiStateObserver()
         if (config.forceDarkMode) {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
             delegate.localNightMode = AppCompatDelegate.MODE_NIGHT_YES
         }
         setContentView(binding.root)
@@ -251,7 +261,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         refreshMenuItems()
 
         setupEdgeToEdge(
-            padBottomImeAndSystem = listOf(binding.directoriesGrid, binding.tabLayout)
+            padBottomImeAndSystem = listOf(binding.directoriesGrid, binding.bottomNavigation)
         )
 
         binding.directoriesRefreshLayout.setOnRefreshListener { getDirectories() }
@@ -296,9 +306,47 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleTabIntent(intent) }
 
+    private fun setupUiStateObserver() {
+        lifecycleScope.launch {
+            viewModel.uiState.collectLatest { state ->
+                if (state.isLoading) {
+                    showLoading("Medien werden gescannt...")
+                } else {
+                    hideLoading()
+                }
+                
+                when (state.currentTab) {
+                    1 -> { // Folders/Alben
+                        if (state.directories.isNotEmpty() || mLoadedInitialPhotos) {
+                            mDirs = ArrayList(state.directories)
+                            checkPlaceholderVisibility(mDirs)
+                            setupAdapter(mDirs)
+                        }
+                    }
+                    4 -> { // Favorites
+                        showFavoriteFolders()
+                    }
+                }
+            }
+        }
+    }
+
     private fun handleTabIntent(intent: Intent) {
         val t = intent.getIntExtra("SELECTED_TAB", -1)
-        if (t in 0..4) { intent.removeExtra("SELECTED_TAB"); mFromTabIntent = true; binding.tabLayout.getTabAt(t)?.select(); mFromTabIntent = false }
+        if (t in 0..4) {
+            intent.removeExtra("SELECTED_TAB")
+            mFromTabIntent = true
+            val itemId = when (t) {
+                0 -> R.id.nav_media
+                1 -> R.id.nav_folders
+                2 -> R.id.nav_explorer
+                3 -> R.id.nav_collections
+                4 -> R.id.nav_favorites
+                else -> R.id.nav_folders
+            }
+            binding.bottomNavigation.selectedItemId = itemId
+            mFromTabIntent = false
+        }
     }
 
     private fun handleMediaPermissions(callback: (() -> Unit)? = null) {
@@ -654,14 +702,9 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     private fun getDirectories() {
         if (mIsGettingDirs) { return }
-        mShouldStopFetching = true
-        mIsGettingDirs = true
         val getImages = mIsPickImageIntent || mIsGetImageContentIntent
         val getVideos = mIsPickVideoIntent || mIsGetVideoContentIntent
-        if (!mLoadedInitialPhotos) runOnUiThread { showLoading("Medien werden gescannt...") }
-        getCachedDirectories(getVideos && !getImages, getImages && !getVideos) {
-            gotDirectories(addTempFolderIfNeeded(it))
-        }
+        viewModel.loadDirectories(getVideos && !getImages, getImages && !getVideos)
     }
 
     private fun launchSearchActivity() {
@@ -864,36 +907,52 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     }
 
     private fun setupTabs() {
-        val tabLayout = binding.tabLayout
-        tabLayout.removeAllTabs()
+        val bottomNav = binding.bottomNavigation
         val bgColor = getProperBackgroundColor()
         val textColor = getProperTextColor()
         val primaryColor = getProperPrimaryColor()
-        tabLayout.setBackgroundColor(bgColor)
-        tabLayout.setTabTextColors(textColor, textColor)
-        tabLayout.setSelectedTabIndicatorColor(primaryColor)
-        tabLayout.addTab(tabLayout.newTab().apply { setIcon(R.drawable.ic_files_vector); text = getString(R.string.media_tab) })
-        tabLayout.addTab(tabLayout.newTab().apply { setIcon(R.drawable.ic_folders_vector); text = getString(R.string.folders_tab) })
-        tabLayout.addTab(tabLayout.newTab().apply { setIcon(R.drawable.ic_explore2_vector); text = getString(R.string.explorer2) })
-        tabLayout.addTab(tabLayout.newTab().apply { setIcon(R.drawable.ic_collections_vector); text = getString(R.string.collections) })
-        tabLayout.addTab(tabLayout.newTab().apply { setIcon(R.drawable.ic_star_vector); text = getString(org.fossify.commons.R.string.favorites) })
-        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
-            override fun onTabSelected(tab: TabLayout.Tab) {
-                if (mFromTabIntent) return
-                tab.view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                if (isExplorer2Active()) restoreExplorer2Style()
-                binding.directoriesGrid.adapter = null
-                when (tab.position) { 0 -> showAllMedia(); 1 -> deactivateExplorer(); 2 -> activateExplorer2(); 3 -> openCollections(); 4 -> showFavoriteFolders() }
+
+        bottomNav.setBackgroundColor(bgColor)
+        val states = arrayOf(
+            intArrayOf(android.R.attr.state_selected),
+            intArrayOf(-android.R.attr.state_selected)
+        )
+        // For the pill background (Selection Indicator), Material 3 uses the primary color.
+        // To make the icon visible on that pill, the selected color should be the background color (or a high-contrast one).
+        val colors = intArrayOf(bgColor, textColor)
+        val colorList = android.content.res.ColorStateList(states, colors)
+        
+        bottomNav.itemIconTintList = colorList
+        bottomNav.itemTextColor = android.content.res.ColorStateList(states, intArrayOf(primaryColor, textColor))
+        
+        // Ensure the selection indicator (the "pill") uses the primary color
+        bottomNav.itemActiveIndicatorColor = android.content.res.ColorStateList.valueOf(primaryColor)
+
+        bottomNav.setOnItemSelectedListener { item ->
+            if (mFromTabIntent) return@setOnItemSelectedListener true
+            bottomNav.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            if (isExplorer2Active()) restoreExplorer2Style()
+            binding.directoriesGrid.adapter = null
+            when (item.itemId) {
+                R.id.nav_media -> { viewModel.setTab(0); showAllMedia() }
+                R.id.nav_folders -> { viewModel.setTab(1); deactivateExplorer() }
+                R.id.nav_explorer -> { viewModel.setTab(2); activateExplorer2() }
+                R.id.nav_collections -> { viewModel.setTab(3); openCollections() }
+                R.id.nav_favorites -> { viewModel.setTab(4); showFavoriteFolders() }
             }
-            override fun onTabUnselected(tab: TabLayout.Tab) {}
-            override fun onTabReselected(tab: TabLayout.Tab) { if (mFromTabIntent) return; if (tab.position == 2) activateExplorer2() }
-        })
-        tabLayout.getTabAt(1)?.select()
+            true
+        }
+
+        bottomNav.setOnItemReselectedListener { item ->
+            if (mFromTabIntent) return@setOnItemReselectedListener
+        }
+
+        bottomNav.selectedItemId = R.id.nav_folders
     }
 
     private fun deactivateExplorer(refreshAdapter: Boolean = true) { config.groupDirectSubfolders = false; mCurrentPathPrefix = ""; mOpenedSubfolders.clear(); mOpenedSubfolders.add(""); if (refreshAdapter) setupAdapter(mDirs) }
 
-    private fun isExplorer2Active() = binding.tabLayout.selectedTabPosition == 2
+    private fun isExplorer2Active() = binding.bottomNavigation.selectedItemId == R.id.nav_explorer
 
     private fun fadeInContent() { binding.directoriesGrid.animate().cancel(); binding.directoriesGrid.alpha = 0f; binding.directoriesGrid.animate().alpha(1f).setDuration(200).start() }
 
@@ -902,7 +961,13 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     private fun updateTabColors() {
         val bg = getProperBackgroundColor(); val tc = getProperTextColor(); val pc = getProperPrimaryColor()
-        binding.tabLayout.setBackgroundColor(bg); binding.tabLayout.setTabTextColors(tc, tc); binding.tabLayout.setSelectedTabIndicatorColor(pc)
+        binding.bottomNavigation.setBackgroundColor(bg)
+        val states = arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf(-android.R.attr.state_selected))
+        val colors = intArrayOf(bg, tc)
+        val colorList = android.content.res.ColorStateList(states, colors)
+        binding.bottomNavigation.itemIconTintList = colorList
+        binding.bottomNavigation.itemTextColor = android.content.res.ColorStateList(states, intArrayOf(pc, tc))
+        binding.bottomNavigation.itemActiveIndicatorColor = android.content.res.ColorStateList.valueOf(pc)
     }
 
     private fun restoreExplorer2Style() { config.folderStyle = mSavedFolderStyle; config.showFolderMediaCount = mSavedFolderCount }
@@ -928,9 +993,17 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 if (e.isDirectory) {
                     if (path == internalStoragePath && e.name?.lowercase() == "android") continue
                     if (config.isExplorer2Hidden(e.absolutePath)) continue
-                    val tmb = findQuickThumbnail(e) ?: ""
-                    val subDirs = e.listFiles()?.count { it.isDirectory && !it.name!!.startsWith(".") } ?: 0
-                    val directMedia = e.listFiles()?.count { it.isFile && (it.extension?.lowercase() ?: "") in MEDIA_EXTENSIONS } ?: 0
+                    
+                    var tmb = findQuickThumbnail(e) ?: ""
+                    val subFiles = e.listFiles() ?: emptyArray()
+                    val subDirs = subFiles.count { it.isDirectory && !it.name!!.startsWith(".") }
+                    
+                    // If no direct media, try to find a thumbnail in subfolders
+                    if (tmb.isEmpty() && subDirs > 0) {
+                        tmb = findThumbnailRecursive(e, 0) ?: ""
+                    }
+
+                    val directMedia = subFiles.count { it.isFile && (it.extension?.lowercase() ?: "") in MEDIA_EXTENSIONS }
                     val totalMedia = directMedia + countMediaRecursive(e)
                     folders.add(Directory().apply { this.path = e.absolutePath; this.name = e.name ?: ""; this.tmb = tmb; location = 1; mediaCnt = totalMedia; subfoldersCount = subDirs; subfoldersMediaCount = totalMedia; containsMediaFilesDirectly = tmb.isNotEmpty() })
                 } else if (e.isFile && mc < 200) {
@@ -938,18 +1011,28 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 }
             }
             val combined = ArrayList<Directory>()
-            if (folders.isNotEmpty()) { combined.add(Directory(null, "", "", "Alben", 0, 0L, 0L, 0L, 1, 0, "", -2, 0, false)); combined.addAll(folders) }
-            if (files.isNotEmpty()) { combined.add(Directory(null, "", "", "Medien", 0, 0L, 0L, 0L, 1, 0, "", -2, 0, false)); combined.addAll(files) }
+            if (folders.isNotEmpty()) {
+                combined.add(Directory(null, "section_albums", "", "ALBEN", 0, 0L, 0L, 0L, 1, 0, "", -2, 0, false))
+                combined.addAll(folders)
+            }
+            if (files.isNotEmpty()) {
+                combined.add(Directory(null, "section_media", "", "MEDIEN", 0, 0L, 0L, 0L, 1, 0, "", -2, 0, false))
+                combined.addAll(files)
+            }
             runOnUiThread {
                 hideLoading(); binding.directoriesEmptyPlaceholder.beGone(); binding.directoriesEmptyPlaceholder2.beGone()
                 binding.directoriesRefreshLayout.isEnabled = false; binding.directoriesRefreshLayout.isRefreshing = false
                 binding.directoriesFastscroller.beVisibleIf(combined.isNotEmpty())
                 if (combined.isEmpty()) { binding.directoriesEmptyPlaceholder.text = getString(org.fossify.commons.R.string.no_items_found); binding.directoriesEmptyPlaceholder.beVisible() }
-                else { binding.directoriesGrid.adapter = DirectoryAdapter(this@MainActivity, combined, this@MainActivity, binding.directoriesGrid, false, binding.directoriesRefreshLayout) { clicked -> val d = clicked as Directory; if (d.subfoldersCount == -2) return@DirectoryAdapter; if (d.subfoldersCount == 0 && d.containsMediaFilesDirectly) { Intent(this@MainActivity, ViewPagerActivity::class.java).apply { putExtra(DIRECTORY, File(d.path).parent ?: d.path); putExtra(PATH, d.path); startActivity(this) } } else navigateExplorer2(d.path) }
+                else { binding.directoriesGrid.adapter = DirectoryAdapter(this@MainActivity, combined, this@MainActivity, binding.directoriesGrid, false, false, binding.directoriesRefreshLayout) { clicked -> val d = clicked as Directory; if (d.subfoldersCount == -2) return@DirectoryAdapter; if (d.subfoldersCount == 0 && d.containsMediaFilesDirectly && !d.path.contains("section_")) { Intent(this@MainActivity, MediaActivity::class.java).apply { putExtra(DIRECTORY, d.path); startActivity(this) } } else if (d.subfoldersCount != -2) navigateExplorer2(d.path) }
                     val lm = binding.directoriesGrid.layoutManager as? androidx.recyclerview.widget.GridLayoutManager
-                    lm?.spanCount = 3
+                    val spanCount = config.dirColumnCnt
+                    lm?.spanCount = spanCount
                     lm?.spanSizeLookup = object : androidx.recyclerview.widget.GridLayoutManager.SpanSizeLookup() {
-                        override fun getSpanSize(pos: Int) = if (combined.getOrNull(pos)?.subfoldersCount == -2) lm.spanCount else 1
+                        override fun getSpanSize(pos: Int): Int {
+                            val item = (binding.directoriesGrid.adapter as? DirectoryAdapter)?.dirs?.getOrNull(pos)
+                            return if (item?.subfoldersCount == -2) spanCount else 1
+                        }
                     }
                 }
                 setupExplorer2Breadcrumbs(mCurrentPathPrefix)
@@ -959,13 +1042,61 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     }
 
     private fun setupExplorer2Breadcrumbs(pathPrefix: String) {
-        val c = binding.breadcrumbBarBottom.breadcrumbContainer; c.removeAllViews()
-        if (pathPrefix == internalStoragePath) { binding.breadcrumbBarBottom.breadcrumbScroll.beGone(); return }
+        val container = binding.breadcrumbBarBottom.breadcrumbContainer
+        container.removeAllViews()
+        if (pathPrefix == internalStoragePath) {
+            binding.breadcrumbBarBottom.breadcrumbScroll.beGone()
+            return
+        }
         binding.breadcrumbBarBottom.breadcrumbScroll.beVisible()
+        
         val parts = pathPrefix.removePrefix(internalStoragePath).trimStart('/').split("/").filter { it.isNotEmpty() }
-        c.addView(TextView(this).apply { text = "\uD83D\uDCC1"; setTextColor(getProperPrimaryColor()); setPadding(8,0,4,0); setOnClickListener { navigateExplorer2(internalStoragePath) } })
-        var acc = internalStoragePath
-        for ((i, p) in parts.withIndex()) { c.addView(TextView(this).apply { text = " \u203A "; setTextColor(Color.GRAY) }); acc += "/$p"; val cp = acc; c.addView(TextView(this).apply { text = p; setTextColor(if (i == parts.lastIndex) Color.WHITE else getProperPrimaryColor()); setPadding(4,0,4,0); setOnClickListener { navigateExplorer2(cp) } }) }
+        val primaryColor = getProperPrimaryColor()
+        val textColor = getProperTextColor()
+        
+        // Home Chip
+        val homeChip = com.google.android.material.chip.Chip(this).apply {
+            text = "Home"
+            chipIcon = resources.getDrawable(R.drawable.ic_folders_vector)
+            setOnClickListener { navigateExplorer2(internalStoragePath) }
+            chipBackgroundColor = android.content.res.ColorStateList.valueOf(ColorUtils.setAlphaComponent(primaryColor, 25))
+            setTextColor(primaryColor)
+            setChipStrokeColorResource(android.R.color.transparent)
+            rippleColor = android.content.res.ColorStateList.valueOf(ColorUtils.setAlphaComponent(primaryColor, 51))
+        }
+        container.addView(homeChip)
+        
+        var currentPath = internalStoragePath
+        for ((index, part) in parts.withIndex()) {
+            val separator = TextView(this).apply {
+                text = " / "
+                setTextColor(ColorUtils.setAlphaComponent(textColor, 127))
+                setPadding(8, 0, 8, 0)
+            }
+            container.addView(separator)
+            
+            currentPath += "/$part"
+            val thisPath = currentPath
+            val isLast = index == parts.lastIndex
+            
+            val chip = com.google.android.material.chip.Chip(this).apply {
+                text = part
+                setOnClickListener { navigateExplorer2(thisPath) }
+                if (isLast) {
+                    chipBackgroundColor = android.content.res.ColorStateList.valueOf(primaryColor)
+                    setTextColor(getProperBackgroundColor())
+                } else {
+                    chipBackgroundColor = android.content.res.ColorStateList.valueOf(ColorUtils.setAlphaComponent(primaryColor, 12))
+                    setTextColor(textColor)
+                }
+                setChipStrokeColorResource(android.R.color.transparent)
+            }
+            container.addView(chip)
+        }
+        
+        binding.breadcrumbBarBottom.breadcrumbScroll.post {
+            binding.breadcrumbBarBottom.breadcrumbScroll.fullScroll(android.view.View.FOCUS_RIGHT)
+        }
     }
 
     private val MEDIA_EXTENSIONS = listOf("jpg","jpeg","png","gif","mp4","mkv","webp","heic","avif","bmp","svg","apng","jxl","mov","3gp","wmv","flv","avi")
@@ -983,21 +1114,45 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     private fun findQuickThumbnail(dir: File): String? { val files = dir.listFiles()?.sortedByDescending { it.lastModified() } ?: return null; for (f in files) { if (f.isFile && (f.extension?.lowercase() ?: "") in MEDIA_EXTENSIONS) return f.absolutePath }; return null }
 
+    private fun findThumbnailRecursive(dir: File, depth: Int): String? {
+        if (depth > 3) return null
+        val subFiles = dir.listFiles()?.sortedByDescending { it.lastModified() } ?: return null
+        for (f in subFiles) {
+            if (f.isFile && (f.extension?.lowercase() ?: "") in MEDIA_EXTENSIONS) return f.absolutePath
+            if (f.isDirectory && !f.name!!.startsWith(".")) {
+                val tmb = findThumbnailRecursive(f, depth + 1)
+                if (tmb != null) return tmb
+            }
+        }
+        return null
+    }
+
     private fun showFavoriteFolders() {
-        deactivateExplorer(); val favs = config.favoriteFolders.toList(); val dirs = ArrayList<Directory>()
+        deactivateExplorer(false); val favs = config.favoriteFolders.toList(); val dirs = ArrayList<Directory>()
         for (fav in favs) dirs.add(Directory().apply { path = fav; name = File(fav).name.ifEmpty { fav }; location = 1; containsMediaFilesDirectly = true; tmb = ""; subfoldersCount = 0 })
         runOnUiThread { hideLoading(); binding.directoriesRefreshLayout.isEnabled = false; binding.directoriesRefreshLayout.isRefreshing = false; binding.directoriesGrid.adapter = null
             if (dirs.isEmpty()) { binding.directoriesEmptyPlaceholder.text = getString(R.string.no_favorite_folders); binding.directoriesEmptyPlaceholder.beVisible(); binding.directoriesEmptyPlaceholder2.beGone(); binding.directoriesFastscroller.beGone() }
             else { binding.directoriesEmptyPlaceholder.beGone(); binding.directoriesEmptyPlaceholder2.beGone(); binding.directoriesFastscroller.beVisible()
-                binding.directoriesGrid.adapter = DirectoryAdapter(this, dirs, this, binding.directoriesGrid, false, binding.directoriesRefreshLayout) { clicked -> val d = clicked as Directory
+                binding.directoriesGrid.adapter = DirectoryAdapter(this, dirs, this, binding.directoriesGrid, false, true, binding.directoriesRefreshLayout) { clicked -> val d = clicked as Directory
                     deactivateExplorer(false)
                     mSavedFolderStyle = config.folderStyle; mSavedFolderCount = config.showFolderMediaCount
                     config.folderStyle = FOLDER_STYLE_ROUNDED_CORNERS; config.showFolderMediaCount = FOLDER_MEDIA_CNT_BRACKETS
                     navigateExplorer2(d.path)
-                } } }
+                }
+                val lm = binding.directoriesGrid.layoutManager as? androidx.recyclerview.widget.GridLayoutManager
+                lm?.spanSizeLookup = androidx.recyclerview.widget.GridLayoutManager.DefaultSpanSizeLookup()
+            } }
     }
 
-    private fun openCollections() { deactivateExplorer(); hideKeyboard(); Intent(this, ManageCollectionsActivity::class.java).apply { addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION); startActivity(this) }; overridePendingTransition(0, 0); binding.tabLayout.getTabAt(1)?.select() }
+    private fun openCollections() {
+        deactivateExplorer()
+        hideKeyboard()
+        Intent(this, ManageCollectionsActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+            startActivity(this)
+        }
+        overridePendingTransition(0, 0)
+    }
 
     private fun setupLayoutManager() {
         if (config.viewTypeFolders == VIEW_TYPE_GRID) {
@@ -1661,6 +1816,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 this,
                 binding.directoriesGrid,
                 isPickIntent(intent) || isGetAnyContentIntent(intent),
+                false,
                 binding.directoriesRefreshLayout
             ) {
                 val clickedDir = it as Directory

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_media"
+        android:icon="@drawable/ic_files_vector"
+        android:title="Medien" />
+    <item
+        android:id="@+id/nav_folders"
+        android:icon="@drawable/ic_folders_vector"
+        android:title="Alben" />
+    <item
+        android:id="@+id/nav_explorer"
+        android:icon="@drawable/ic_explore_vector"
+        android:title="Pfad" />
+    <item
+        android:id="@+id/nav_collections"
+        android:icon="@drawable/ic_collections_vector"
+        android:title="Sammlung" />
+    <item
+        android:id="@+id/nav_favorites"
+        android:icon="@drawable/ic_star_vector"
+        android:title="Favoriten" />
+</menu>

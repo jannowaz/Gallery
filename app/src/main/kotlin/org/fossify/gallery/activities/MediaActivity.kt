@@ -5,9 +5,11 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.os.Handler
+import android.view.HapticFeedbackConstants
+import android.view.View
 import android.view.ViewGroup
 import android.widget.RelativeLayout
-import com.google.android.material.tabs.TabLayout
+import com.google.android.material.navigation.NavigationBarView
 import androidx.core.net.toUri
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -159,6 +161,10 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (config.forceDarkMode) {
+            androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES)
+            delegate.localNightMode = androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+        }
         setContentView(binding.root)
 
         intent.apply {
@@ -186,7 +192,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         storeStateVariables()
         setupEdgeToEdge(
             padTopSystem = listOf(binding.mediaMenu),
-            padBottomImeAndSystem = listOf(binding.mediaGrid, binding.tabLayout)
+            padBottomImeAndSystem = listOf(binding.mediaGrid, binding.bottomNavigation)
         )
 
         setupMediaTabs()
@@ -203,53 +209,50 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     }
 
     private fun setupMediaTabs() {
-        val tabLayout = binding.tabLayout
-        tabLayout.removeAllTabs()
+        val bottomNav = binding.bottomNavigation
         val bgColor = getProperBackgroundColor()
         val textColor = getProperTextColor()
         val primaryColor = getProperPrimaryColor()
-        tabLayout.setBackgroundColor(bgColor)
-        tabLayout.setTabTextColors(textColor, textColor)
-        tabLayout.setSelectedTabIndicatorColor(primaryColor)
 
-        tabLayout.addTab(tabLayout.newTab().apply {
-            setIcon(R.drawable.ic_files_vector)
-            text = getString(R.string.media_tab)
-        })
-        tabLayout.addTab(tabLayout.newTab().apply {
-            setIcon(R.drawable.ic_folders_vector)
-            text = getString(R.string.folders_tab)
-        })
-        tabLayout.addTab(tabLayout.newTab().apply {
-            setIcon(R.drawable.ic_explore2_vector)
-            text = getString(R.string.explorer2)
-        })
-        tabLayout.addTab(tabLayout.newTab().apply {
-            setIcon(R.drawable.ic_collections_vector)
-            text = getString(R.string.collections)
-        })
-        tabLayout.addTab(tabLayout.newTab().apply {
-            setIcon(R.drawable.ic_star_vector)
-            text = getString(org.fossify.commons.R.string.favorites)
-        })
+        bottomNav.setBackgroundColor(bgColor)
+        val states = arrayOf(
+            intArrayOf(android.R.attr.state_selected),
+            intArrayOf(-android.R.attr.state_selected)
+        )
+        // Icon color when selected should be background to contrast with the primary-colored pill
+        val iconColors = intArrayOf(bgColor, textColor)
+        bottomNav.itemIconTintList = android.content.res.ColorStateList(states, iconColors)
+        
+        // Text color when selected should be primary
+        bottomNav.itemTextColor = android.content.res.ColorStateList(states, intArrayOf(primaryColor, textColor))
+        
+        // Active indicator (pill) should be primary
+        bottomNav.itemActiveIndicatorColor = android.content.res.ColorStateList.valueOf(primaryColor)
 
-        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
-            override fun onTabSelected(tab: TabLayout.Tab) {
-                if (tab.position == 0) return
-                val intent = Intent(this@MediaActivity, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
-                    putExtra("SELECTED_TAB", tab.position)
-                }
-                startActivity(intent)
-                overridePendingTransition(0, 0)
-                finish()
+        bottomNav.setOnItemSelectedListener { item ->
+            if (item.itemId == R.id.nav_media) return@setOnItemSelectedListener true
+            bottomNav.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+
+            val t = when (item.itemId) {
+                R.id.nav_folders -> 1
+                R.id.nav_explorer -> 2
+                R.id.nav_collections -> 3
+                R.id.nav_favorites -> 4
+                else -> 1
             }
 
-            override fun onTabUnselected(tab: TabLayout.Tab) {}
-            override fun onTabReselected(tab: TabLayout.Tab) {}
-        })
-        tabLayout.getTabAt(0)?.select()
+            val intent = Intent(this@MediaActivity, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                putExtra("SELECTED_TAB", t)
+            }
+            startActivity(intent)
+            overridePendingTransition(0, 0)
+            finish()
+            true
+        }
+
+        bottomNav.selectedItemId = R.id.nav_media
     }
 
     override fun onStart() {
@@ -884,11 +887,16 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         val adapter = getMediaAdapter()
         layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
             override fun getSpanSize(position: Int): Int {
-                return if (adapter?.isASectionTitle(position) == true) {
-                    layoutManager.spanCount
-                } else {
-                    1
+                if (adapter?.isASectionTitle(position) == true) {
+                    return layoutManager.spanCount
                 }
+                
+                val item = adapter?.media?.getOrNull(position) as? Medium
+                if (item != null && item.rating >= 5) {
+                    return Math.min(2, layoutManager.spanCount)
+                }
+                
+                return 1
             }
         }
     }
@@ -1056,14 +1064,22 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     }
 
     private fun openInViewPager(path: String) {
-        Intent(this, ViewPagerActivity::class.java).apply {
+        val intent = Intent(this, ViewPagerActivity::class.java).apply {
             putExtra(SKIP_AUTHENTICATION, shouldSkipAuthentication())
             putExtra(PATH, path)
             putExtra(SHOW_ALL, mShowAll)
             putExtra(SHOW_FAVORITES, mPath == FAVORITES)
             putExtra(SHOW_RECYCLE_BIN, mPath == RECYCLE_BIN)
             putExtra(IS_FROM_GALLERY, true)
-            startActivity(this)
+        }
+        
+        val transitionName = "medium_$path"
+        val view = binding.mediaGrid.findViewWithTag<View>(path)
+        if (view != null) {
+            val options = androidx.core.app.ActivityOptionsCompat.makeSceneTransitionAnimation(this, view, transitionName)
+            startActivity(intent, options.toBundle())
+        } else {
+            startActivity(intent)
         }
     }
 
@@ -1081,16 +1097,24 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     private fun gotMedia(media: ArrayList<ThumbnailItem>, isFromCache: Boolean) {
         mIsGettingMedia = false
         checkLastMediaChanged()
-        mMedia = media
-        if (mShowAll && media.isNotEmpty()) {
-            sCachedAllMedia = ArrayList(media)
+
+        val sorting = config.getFolderSorting(mPath)
+        mMedia = if (sorting and org.fossify.commons.helpers.SORT_BY_DATE_MODIFIED != 0 || sorting and org.fossify.commons.helpers.SORT_BY_DATE_TAKEN != 0) {
+            val mediums = media.filterIsInstance<Medium>()
+            org.fossify.gallery.helpers.TimelineHelper.getGroupedMedia(mediums, this)
+        } else {
+            media
+        }
+
+        if (mShowAll && mMedia.isNotEmpty()) {
+            sCachedAllMedia = ArrayList(mMedia)
         }
 
         runOnUiThread {
             binding.loadingIndicator.hide()
             binding.mediaRefreshLayout.isRefreshing = false
-            binding.mediaEmptyTextPlaceholder.beVisibleIf(media.isEmpty() && !isFromCache)
-            binding.mediaEmptyTextPlaceholder2.beVisibleIf(media.isEmpty() && !isFromCache)
+            binding.mediaEmptyTextPlaceholder.beVisibleIf(mMedia.isEmpty() && !isFromCache)
+            binding.mediaEmptyTextPlaceholder2.beVisibleIf(mMedia.isEmpty() && !isFromCache)
 
             if (binding.mediaEmptyTextPlaceholder.isVisible()) {
                 binding.mediaEmptyTextPlaceholder.text = getString(R.string.no_media_with_filters)

@@ -738,6 +738,9 @@ class MediaAdapter(
                 }
             )
 
+            mediumThumbnail.tag = medium.path
+            mediumThumbnail.transitionName = "medium_${medium.path}"
+
             activity.loadImage(
                 type = medium.type,
                 path = path,
@@ -757,14 +760,21 @@ class MediaAdapter(
             if (isListViewType) {
                 mediumName.setTextColor(textColor)
                 playPortraitOutline?.applyColorFilter(textColor)
+                root.findViewById<android.widget.TextView>(R.id.medium_rating)?.setTextColor(textColor)
             }
+            
+            root.findViewById<android.widget.TextView>(R.id.medium_rating)?.beVisibleIf(medium.rating > 0)
+            root.findViewById<android.widget.TextView>(R.id.medium_rating)?.text = "★ ${medium.rating}"
         }
     }
 
     private fun setupSection(view: View, section: ThumbnailSection) {
-        ThumbnailSectionBinding.bind(view).apply {
+        org.fossify.gallery.databinding.ThumbnailSectionBinding.bind(view).apply {
             thumbnailSection.text = section.title
-            thumbnailSection.setTextColor(textColor)
+            thumbnailSection.setTextColor(properPrimaryColor)
+            thumbnailSection.textSize = 24f
+            thumbnailSection.setTypeface(null, android.graphics.Typeface.BOLD)
+            thumbnailSection.setPadding(16, 48, 0, 8)
         }
     }
 

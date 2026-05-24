@@ -117,6 +117,7 @@ class DirectoryAdapter(
     val listener: DirectoryOperationsListener?,
     recyclerView: MyRecyclerView,
     val isPickIntent: Boolean,
+    var isFavorites: Boolean = false,
     val swipeRefreshLayout: SwipeRefreshLayout? = null,
     itemClick: (Any) -> Unit
 ) :
@@ -148,11 +149,15 @@ class DirectoryAdapter(
     }
 
     private val ITEM_SECTION = 2
+    private val ITEM_STACK = 3
+    private val ITEM_FAVORITE_TEXT = 4
 
     override fun getItemViewType(position: Int): Int {
         val item = dirs.getOrNull(position)
         if (item is ThumbnailSection) return ITEM_SECTION
         if (item is Directory && item.subfoldersCount == -2) return ITEM_SECTION
+        if (isFavorites) return ITEM_FAVORITE_TEXT
+        if (item is Directory && item.path.startsWith("collection:")) return ITEM_STACK
         return super.getItemViewType(position)
     }
 
@@ -161,6 +166,14 @@ class DirectoryAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         if (viewType == ITEM_SECTION) {
             val view = layoutInflater.inflate(R.layout.item_directory_section, parent, false)
+            return createViewHolder(view)
+        }
+        if (viewType == ITEM_STACK) {
+            val view = layoutInflater.inflate(R.layout.directory_item_stack, parent, false)
+            return createViewHolder(view)
+        }
+        if (viewType == ITEM_FAVORITE_TEXT) {
+            val view = layoutInflater.inflate(R.layout.item_favorite_text, parent, false)
             return createViewHolder(view)
         }
         val binding = when {
@@ -176,8 +189,15 @@ class DirectoryAdapter(
         val item = dirs.getOrNull(position) ?: return
         if (item is ThumbnailSection || (item is Directory && item.subfoldersCount == -2)) {
             val titleView = holder.itemView.findViewById<org.fossify.commons.views.MyTextView>(R.id.section_title)
-            titleView?.text = if (item is ThumbnailSection) item.title else item.name
-            titleView?.setTextColor(activity.getProperTextColor())
+            val title = if (item is ThumbnailSection) item.title else (item as Directory).name
+            titleView?.apply {
+                text = title
+                setTextColor(properPrimaryColor)
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                textSize = 12f
+                letterSpacing = 0.1f
+                setPadding(16, 24, 0, 8)
+            }
             return
         }
         val dir = item as? Directory ?: return
@@ -941,6 +961,13 @@ class DirectoryAdapter(
                     }
                 )
 
+            if (directory.path.startsWith("collection:")) {
+                dirThumbnail.setImageResource(R.drawable.ic_collections_vector)
+                dirThumbnail.scaleType = ImageView.ScaleType.FIT_CENTER
+                dirThumbnail.setPadding(48, 48, 48, 48)
+                dirThumbnail.applyColorFilter(properPrimaryColor)
+                dirThumbnail.setBackgroundResource(R.drawable.placeholder_rounded_big)
+            } else {
                 activity.loadImage(
                     type = thumbnailType,
                     path = directory.tmb,
@@ -955,6 +982,7 @@ class DirectoryAdapter(
                         dirThumbnail.setImageDrawable(AppCompatResources.getDrawable(activity, R.drawable.ic_vector_warning_colored))
                     }
                 )
+            }
             }
 
             dirPin.beVisibleIf(pinnedFolders.contains(directory.path))
@@ -1036,8 +1064,12 @@ class DirectoryAdapter(
     override fun onChange(position: Int) = dirs.getOrNull(position)?.getBubbleText(directorySorting, activity, dateFormat, timeFormat) ?: ""
 
     private fun bindItem(view: View): DirectoryItemBinding {
+        val stackView = view.findViewById<View>(R.id.stack_container)
+        val favoriteTextRoot = view.findViewById<View>(R.id.favorite_star)
         return when {
             isListViewType -> DirectoryItemListBinding.bind(view).toItemBinding()
+            favoriteTextRoot != null -> org.fossify.gallery.databinding.ItemFavoriteTextBinding.bind(view).toItemBinding()
+            stackView != null -> org.fossify.gallery.databinding.DirectoryItemStackBinding.bind(view).toItemBinding()
             folderStyle == FOLDER_STYLE_SQUARE -> DirectoryItemGridSquareBinding.bind(view).toItemBinding()
             else -> DirectoryItemGridRoundedCornersBinding.bind(view).toItemBinding()
         }

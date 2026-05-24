@@ -30,6 +30,7 @@ import android.widget.ImageView
 import android.widget.Toast
 import androidx.core.graphics.drawable.toDrawable
 import androidx.exifinterface.media.ExifInterface
+import org.fossify.commons.extensions.*
 import androidx.print.PrintHelper
 import androidx.viewpager.widget.ViewPager
 import com.bumptech.glide.Glide
@@ -127,6 +128,7 @@ import org.fossify.gallery.extensions.tryDeleteFileDirItem
 import org.fossify.gallery.extensions.updateDBMediaPath
 import org.fossify.gallery.extensions.updateFavorite
 import org.fossify.gallery.extensions.updateFavoritePaths
+import org.fossify.commons.extensions.getProperPrimaryColor
 import org.fossify.gallery.extensions.updateRating
 import org.fossify.gallery.fragments.PhotoFragment
 import org.fossify.gallery.fragments.VideoFragment
@@ -236,6 +238,8 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
         window.decorView.setBackgroundColor(getProperBackgroundColor())
         (MediaActivity.mMedia.clone() as ArrayList<ThumbnailItem>).filterIsInstanceTo(mMediaFiles, Medium::class.java)
 
+        binding.viewPager.transitionName = "medium_$mPath"
+
         requestMediaPermissions {
             initViewPager(
                 savedPath = savedInstanceState?.getString(SAVED_PATH).orEmpty()
@@ -243,6 +247,143 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
         }
 
         initFavorites()
+        setupSwipeToDismiss()
+    }
+
+    private var isInfoHubVisible = false
+
+    private fun setupSwipeToDismiss() {
+        var startY = 0f
+        var isDragging = false
+        val threshold = 400f
+        val infoThreshold = -200f
+        val screenHeight = resources.displayMetrics.heightPixels.toFloat()
+        
+        binding.viewPager.setOnTouchListener { _, event ->
+            when (event.action) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    startY = event.rawY
+                    false
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val deltaY = event.rawY - startY
+                    if (!isDragging && Math.abs(deltaY) > 60) {
+                        isDragging = true
+                    }
+                    
+                    if (isDragging) {
+                        if (deltaY > 0) { // Dragging down to close
+                            binding.viewPager.translationY = deltaY
+                            val dragProgress = (Math.abs(deltaY) / screenHeight).coerceIn(0f, 1f)
+                            val alpha = 1f - dragProgress * 0.8f
+                            val scale = 1f - dragProgress * 0.4f
+                            binding.viewPager.scaleX = scale
+                            binding.viewPager.scaleY = scale
+                            window.decorView.alpha = alpha
+                        } else if (!isInfoHubVisible) { // Dragging up to show info
+                            binding.viewPager.translationY = deltaY * 0.5f
+                        }
+                        return@setOnTouchListener true
+                    }
+                    false
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    if (isDragging) {
+                        val deltaY = event.rawY - startY
+                        if (deltaY > threshold) { // Finish Activity
+                            val exitTranslation = screenHeight
+                            binding.viewPager.animate()
+                                .translationY(exitTranslation)
+                                .scaleX(0.4f)
+                                .scaleY(0.4f)
+                                .alpha(0f)
+                                .setDuration(300)
+                                .setInterpolator(android.view.animation.AccelerateInterpolator())
+                                .withEndAction {
+                                    finish()
+                                    overridePendingTransition(0, 0)
+                                }
+                                .start()
+                        } else if (deltaY < infoThreshold && !isInfoHubVisible) { // Show Info Hub
+                            showInfoHub()
+                        } else { // Snap back
+                            binding.viewPager.animate()
+                                .translationY(0f)
+                                .scaleX(1f)
+                                .scaleY(1f)
+                                .setDuration(250)
+                                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                                .start()
+                            window.decorView.animate().alpha(1f).setDuration(250).start()
+                        }
+                        isDragging = false
+                        true
+                    } else false
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun showInfoHub() {
+        val medium = getCurrentMedium() ?: return
+        isInfoHubVisible = true
+        loadExifData(medium)
+        
+        val panel = findViewById<View>(R.id.info_panel_card)
+        panel.beVisible()
+        panel.translationY = 1000f
+        panel.animate().translationY(0f).setDuration(300).setInterpolator(DecelerateInterpolator()).start()
+        
+        binding.viewPager.animate().translationY(-300f).scaleX(0.9f).scaleY(0.9f).setDuration(300).start()
+        
+        // Hide other UI
+        binding.mediumViewerAppbar.animate().alpha(0f).setDuration(200).start()
+        binding.bottomActions.bottomActionsWrapper.animate().alpha(0f).setDuration(200).start()
+        binding.ratingBar.ratingBarWrapper.animate().alpha(0f).setDuration(200).start()
+        
+        panel.setOnClickListener { hideInfoHub() }
+    }
+
+    private fun hideInfoHub() {
+        isInfoHubVisible = false
+        val panel = findViewById<View>(R.id.info_panel_card)
+        panel.animate().translationY(1000f).setDuration(300).withEndAction { panel.beGone() }.start()
+        
+        binding.viewPager.animate().translationY(0f).scaleX(1f).scaleY(1f).setDuration(300).start()
+        
+        // Restore UI
+        binding.mediumViewerAppbar.animate().alpha(1f).setDuration(200).start()
+        binding.bottomActions.bottomActionsWrapper.animate().alpha(1f).setDuration(200).start()
+        binding.ratingBar.ratingBarWrapper.animate().alpha(1f).setDuration(200).start()
+    }
+
+    private fun loadExifData(medium: Medium) {
+        try {
+            val exif = ExifInterface(medium.path)
+            findViewById<android.widget.TextView>(R.id.info_filename).text = medium.name
+            findViewById<android.widget.TextView>(R.id.info_path).text = medium.path
+            
+            val model = exif.getAttribute(ExifInterface.TAG_MODEL) ?: "Unbekannt"
+            val make = exif.getAttribute(ExifInterface.TAG_MAKE) ?: ""
+            findViewById<android.widget.TextView>(R.id.info_camera).text = if (make.isNotEmpty()) "$make $model" else model
+            
+            val iso = exif.getAttribute(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY) ?: "-"
+            findViewById<android.widget.TextView>(R.id.info_exif_iso).text = "ISO $iso"
+            
+            val exposure = exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME) ?: "-"
+            val fNumber = exif.getAttribute(ExifInterface.TAG_F_NUMBER) ?: "-"
+            findViewById<android.widget.TextView>(R.id.info_exposure).text = "$exposure s • f/$fNumber"
+            
+            val width = exif.getAttribute(ExifInterface.TAG_IMAGE_WIDTH) ?: "0"
+            val height = exif.getAttribute(ExifInterface.TAG_IMAGE_LENGTH) ?: "0"
+            val mp = (width.toLong() * height.toLong() / 1000000.0)
+            findViewById<android.widget.TextView>(R.id.info_resolution).text = String.format(java.util.Locale.getDefault(), "%.1f MP (%s x %s)", mp, width, height)
+            
+        } catch (e: Exception) {
+            findViewById<android.widget.TextView>(R.id.info_filename).text = medium.name
+            findViewById<android.widget.TextView>(R.id.info_camera).text = "Keine EXIF-Daten"
+        }
     }
 
     override fun onResume() {
@@ -259,6 +400,11 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
 
         val filename = getCurrentMedium()?.name ?: mPath.getFilenameFromPath()
         binding.mediumViewerToolbar.title = filename
+
+        if (config.showRatingBar) {
+            binding.ratingBar.ratingBarWrapper.beVisible()
+            setupRatingStars()
+        }
     }
 
     override fun onPause() {
@@ -1097,8 +1243,10 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
     private fun toggleRatingBar() {
         if (binding.ratingBar.ratingBarWrapper.visibility == View.VISIBLE) {
             binding.ratingBar.ratingBarWrapper.beGone()
+            config.showRatingBar = false
         } else {
             binding.ratingBar.ratingBarWrapper.beVisible()
+            config.showRatingBar = true
             setupRatingStars()
         }
     }
@@ -1106,13 +1254,45 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
     private fun setupRatingStars() {
         val currentRating = getCurrentMedium()?.rating ?: 0
         val starIds = intArrayOf(R.id.rating_star_1, R.id.rating_star_2, R.id.rating_star_3, R.id.rating_star_4, R.id.rating_star_5)
+        val primaryColor = getProperPrimaryColor()
+        
         for ((i, id) in starIds.withIndex()) {
             val starView = binding.ratingBar.root.findViewById<ImageView>(id)
-            starView?.setImageResource(if (i < currentRating) R.drawable.ic_rating_vector else R.drawable.ic_star_border_vector)
-            starView?.setOnClickListener {
-                setRating(i + 1)
+            val isFilled = i < currentRating
+            starView?.apply {
+                setImageResource(if (isFilled) R.drawable.ic_rating_vector else R.drawable.ic_star_border_vector)
+                if (isFilled) setColorFilter(primaryColor) else clearColorFilter()
+                
+                setOnClickListener {
+                    performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                    setRating(i + 1)
+                    animateStar(this)
+                }
             }
         }
+        
+        // Add swipe support
+        binding.ratingBar.ratingStarsHolder.setOnTouchListener { v, event ->
+            if (event.action == android.view.MotionEvent.ACTION_MOVE || event.action == android.view.MotionEvent.ACTION_UP) {
+                val x = event.x
+                val width = v.width
+                val starWidth = width / 5
+                val rating = ((x / starWidth).toInt() + 1).coerceIn(1, 5)
+                if (rating != currentRating && event.action == android.view.MotionEvent.ACTION_MOVE) {
+                    v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                    setRating(rating)
+                }
+                true
+            } else {
+                v.onTouchEvent(event)
+            }
+        }
+    }
+
+    private fun animateStar(view: View) {
+        view.animate().scaleX(1.3f).scaleY(1.3f).setDuration(100).withEndAction {
+            view.animate().scaleX(1.0f).scaleY(1.0f).setDuration(100).start()
+        }.start()
     }
 
     private fun setRating(rating: Int) {
@@ -1544,6 +1724,14 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
             }.withEndAction {
                 binding.mediumViewerAppbar.beVisibleIf(newAlpha == 1f)
             }.start()
+
+            val ratingBarParams = binding.ratingBar.ratingBarWrapper.layoutParams as android.widget.RelativeLayout.LayoutParams
+            if (mIsFullScreen) {
+                ratingBarParams.bottomMargin = (24 * resources.displayMetrics.density).toInt()
+            } else {
+                ratingBarParams.bottomMargin = (100 * resources.displayMetrics.density).toInt()
+            }
+            binding.ratingBar.ratingBarWrapper.layoutParams = ratingBarParams
         }
     }
 

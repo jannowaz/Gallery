@@ -721,6 +721,9 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
             if (forward) curr + FAST_FORWARD_VIDEO_MS else curr - FAST_FORWARD_VIDEO_MS
         newPosition = newPosition.coerceIn(0, maxOf(mExoPlayer!!.duration, 0))
         setPosition(newPosition)
+        mView.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+        showScrubbingFeedback(newPosition)
+        hideScrubbingFeedback()
     }
 
     override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
@@ -980,9 +983,15 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
         }
     }
 
+    private var mHorizontalDragStartX = 0f
+    private var mIsHorizontalDragging = false
+    private var mSeekPositionAtStart = 0L
+
     private fun handleTouchHoldEvent(event: MotionEvent) {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                mHorizontalDragStartX = event.rawX
+                mIsHorizontalDragging = false
                 if (mIsPlaying && event.pointerCount == 1) {
                     mInitialX = event.x
                     mInitialY = event.y
@@ -991,6 +1000,26 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
             }
 
             MotionEvent.ACTION_MOVE -> {
+                val diffX = event.rawX - mHorizontalDragStartX
+                if (!mIsHorizontalDragging && !mIsLongPressActive && Math.abs(diffX) > mTouchSlop * 2) {
+                    mIsHorizontalDragging = true
+                    mSeekPositionAtStart = mExoPlayer?.currentPosition ?: 0L
+                    mTimerHandler.removeCallbacks(mTouchHoldRunnable)
+                }
+                
+                if (mIsHorizontalDragging) {
+                    val screenWidth = resources.displayMetrics.widthPixels
+                    val seekDiff = (diffX / screenWidth) * mDuration
+                    val newPosition = (mSeekPositionAtStart + seekDiff.toLong()).coerceIn(0, mDuration)
+                    mExoPlayer?.seekTo(newPosition)
+                    showScrubbingFeedback(newPosition)
+                    
+                    // Haptic feedback for 2026 feel
+                    if (Math.abs(diffX).toInt() % 40 < 5) {
+                        mView.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                    }
+                }
+
                 val deltaX = abs(event.x - mInitialX)
                 val deltaY = abs(event.y - mInitialY)
                 if (!mIsLongPressActive && (deltaX > mTouchSlop || deltaY > mTouchSlop)) {
@@ -1005,10 +1034,27 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (mIsHorizontalDragging) {
+                    mIsHorizontalDragging = false
+                    hideScrubbingFeedback()
+                }
                 mTimerHandler.removeCallbacks(mTouchHoldRunnable)
                 stopHoldSpeedMultiplierGesture()
             }
         }
+    }
+
+    private fun showScrubbingFeedback(position: Long) {
+        mPlaybackSpeedPill.beVisible()
+        mPlaybackSpeedPill.text = position.getFormattedDuration()
+        mPlaybackSpeedPill.alpha = 1f
+    }
+
+    private fun hideScrubbingFeedback() {
+        mPlaybackSpeedPill.animate().alpha(0f).setDuration(500).withEndAction { 
+            mPlaybackSpeedPill.beGone()
+            mPlaybackSpeedPill.alpha = 1f
+        }.start()
     }
 
     private fun stopHoldSpeedMultiplierGesture() {

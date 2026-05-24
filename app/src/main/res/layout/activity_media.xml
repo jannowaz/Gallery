@@ -27,7 +27,7 @@
         android:id="@+id/media_holder"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:paddingBottom="52dp"
+        android:paddingBottom="80dp"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <org.fossify.commons.views.MyTextView
@@ -80,14 +80,12 @@
         </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
     </RelativeLayout>
 
-    <com.google.android.material.tabs.TabLayout
-        android:id="@+id/tab_layout"
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottom_navigation"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        app:tabIndicatorHeight="3dp"
-        app:tabIndicatorFullWidth="false"
-        app:tabMode="fixed"
-        app:tabGravity="fill" />
+        app:menu="@menu/bottom_nav_menu"
+        app:labelVisibilityMode="labeled" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

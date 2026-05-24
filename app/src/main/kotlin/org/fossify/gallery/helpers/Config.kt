@@ -643,6 +643,10 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(SEARCH_ALL_FILES_BY_DEFAULT, false)
         set(searchAllFilesByDefault) = prefs.edit().putBoolean(SEARCH_ALL_FILES_BY_DEFAULT, searchAllFilesByDefault).apply()
 
+    var showRatingBar: Boolean
+        get() = prefs.getBoolean("show_rating_bar", false)
+        set(show) = prefs.edit().putBoolean("show_rating_bar", show).apply()
+
     var lastExportedFavoritesFolder: String
         get() = prefs.getString(LAST_EXPORTED_FAVORITES_FOLDER, "")!!
         set(lastExportedFavoritesFolder) = prefs.edit().putString(LAST_EXPORTED_FAVORITES_FOLDER, lastExportedFavoritesFolder).apply()

@@ -1,62 +1,68 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/rating_bar_wrapper"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:layout_alignParentBottom="true"
     android:layout_centerHorizontal="true"
-    android:layout_marginBottom="48dp"
-    android:gravity="center"
-    android:orientation="vertical"
-    android:visibility="gone">
+    android:layout_marginBottom="100dp"
+    android:visibility="gone"
+    app:cardCornerRadius="28dp"
+    app:cardElevation="8dp"
+    app:cardBackgroundColor="#E6212121"
+    app:strokeWidth="0dp">
 
     <LinearLayout
+        android:id="@+id/rating_stars_holder"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:background="#CC000000"
         android:gravity="center"
         android:orientation="horizontal"
-        android:padding="8dp">
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
 
         <ImageView
             android:id="@+id/rating_star_1"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:contentDescription="1 star"
-            android:padding="4dp"
+            android:padding="8dp"
             android:src="@drawable/ic_star_border_vector" />
 
         <ImageView
             android:id="@+id/rating_star_2"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:contentDescription="2 stars"
-            android:padding="4dp"
+            android:padding="8dp"
             android:src="@drawable/ic_star_border_vector" />
 
         <ImageView
             android:id="@+id/rating_star_3"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:contentDescription="3 stars"
-            android:padding="4dp"
+            android:padding="8dp"
             android:src="@drawable/ic_star_border_vector" />
 
         <ImageView
             android:id="@+id/rating_star_4"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:contentDescription="4 stars"
-            android:padding="4dp"
+            android:padding="8dp"
             android:src="@drawable/ic_star_border_vector" />
 
         <ImageView
             android:id="@+id/rating_star_5"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:contentDescription="5 stars"
-            android:padding="4dp"
+            android:padding="8dp"
             android:src="@drawable/ic_star_border_vector" />
 
     </LinearLayout>
-</LinearLayout>
+</com.google.android.material.card.MaterialCardView>

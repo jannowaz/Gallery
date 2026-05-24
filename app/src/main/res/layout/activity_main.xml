@@ -10,24 +10,6 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
 
-    <com.google.android.material.progressindicator.CircularProgressIndicator
-        android:id="@+id/loading_indicator"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:indeterminate="true"
-        android:visibility="gone" />
-
-    <org.fossify.commons.views.MyTextView
-        android:id="@+id/loading_status"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:layout_marginTop="56dp"
-        android:textSize="14sp"
-        android:alpha="0.7"
-        android:visibility="gone" />
-
     <LinearLayout
         android:id="@+id/skeleton_grid"
         android:layout_width="match_parent"
@@ -61,7 +43,7 @@
         android:id="@+id/directories_holder"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:paddingBottom="52dp"
+        android:paddingBottom="80dp"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <org.fossify.commons.views.MyTextView
@@ -133,16 +115,34 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom"
-            android:layout_marginBottom="52dp" />
+            android:layout_marginBottom="80dp" />
 
-    <com.google.android.material.tabs.TabLayout
-        android:id="@+id/tab_layout"
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottom_navigation"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        app:tabIndicatorHeight="3dp"
-        app:tabIndicatorFullWidth="false"
-        app:tabMode="fixed"
-        app:tabGravity="fill" />
+        app:menu="@menu/bottom_nav_menu"
+        app:labelVisibilityMode="labeled" />
+
+    <com.google.android.material.progressindicator.CircularProgressIndicator
+        android:id="@+id/loading_indicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:indeterminate="true"
+        android:visibility="gone"
+        android:elevation="12dp" />
+
+    <org.fossify.commons.views.MyTextView
+        android:id="@+id/loading_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginTop="56dp"
+        android:textSize="14sp"
+        android:alpha="0.7"
+        android:visibility="gone"
+        android:elevation="12dp" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
