@@ -109,6 +109,7 @@ import org.fossify.gallery.interfaces.CollectionDao
 import org.fossify.gallery.interfaces.DateTakensDao
 import org.fossify.gallery.interfaces.DirectoryDao
 import org.fossify.gallery.interfaces.FavoritesDao
+import org.fossify.gallery.interfaces.MediaCacheDao
 import org.fossify.gallery.interfaces.MediumDao
 import org.fossify.gallery.interfaces.WidgetsDao
 import org.fossify.gallery.models.AlbumCover
@@ -138,6 +139,8 @@ val Context.widgetsDB: WidgetsDao
     get() = GalleryDatabase.getInstance(applicationContext).WidgetsDao()
 
 val Context.mediaDB: MediumDao get() = GalleryDatabase.getInstance(applicationContext).MediumDao()
+
+val Context.mediaCacheDB: MediaCacheDao get() = GalleryDatabase.getInstance(applicationContext).MediaCacheDao()
 
 val Context.directoryDB: DirectoryDao
     get() = GalleryDatabase.getInstance(applicationContext).DirectoryDao()

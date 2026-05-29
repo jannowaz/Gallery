@@ -59,6 +59,32 @@
             android:theme="@style/SplashTheme" />
 
         <activity
+            android:name=".activities.ComposeExplorerActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".activities.ComposeFolderActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".activities.ComposeViewerActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+
+        <activity
+            android:name=".activities.ComposeVideoPlayerActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+        <activity
+            android:name=".activities.ComposeSettingsActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+        <activity
+            android:name=".activities.ComposeAboutActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+
+        <activity
             android:name=".activities.MainActivity"
             android:configChanges="orientation"
             android:exported="true"

@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import org.fossify.gallery.interfaces.*
 import org.fossify.gallery.models.*
 
-@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class], version = 12)
+@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class], version = 13)
 abstract class GalleryDatabase : RoomDatabase() {
 
     abstract fun DirectoryDao(): DirectoryDao
@@ -23,6 +23,8 @@ abstract class GalleryDatabase : RoomDatabase() {
     abstract fun FavoritesDao(): FavoritesDao
 
     abstract fun CollectionDao(): CollectionDao
+
+    abstract fun MediaCacheDao(): MediaCacheDao
 
     companion object {
         private var db: GalleryDatabase? = null

@@ -54,7 +54,7 @@ class SplashActivity : BaseSplashActivity() {
     }
 
     private fun launchActivity() {
-        startActivity(Intent(this, MainActivity::class.java))
+        startActivity(Intent(this, ComposeExplorerActivity::class.java))
         finish()
     }
 }

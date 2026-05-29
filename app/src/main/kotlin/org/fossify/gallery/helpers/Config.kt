@@ -561,9 +561,6 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(GROUP_DIRECT_SUBFOLDERS, false)
         set(groupDirectSubfolders) = prefs.edit().putBoolean(GROUP_DIRECT_SUBFOLDERS, groupDirectSubfolders).apply()
 
-    var explorerMode: Boolean
-        get() = prefs.getBoolean(EXPLORER_MODE, false)
-        set(explorerMode) = prefs.edit().putBoolean(EXPLORER_MODE, explorerMode).apply()
 
     var showWidgetFolderName: Boolean
         get() = prefs.getBoolean(SHOW_WIDGET_FOLDER_NAME, true)
@@ -630,6 +627,34 @@ class Config(context: Context) : BaseConfig(context) {
     var fileRoundedCorners: Boolean
         get() = prefs.getBoolean(FILE_ROUNDED_CORNERS, true)
         set(fileRoundedCorners) = prefs.edit().putBoolean(FILE_ROUNDED_CORNERS, fileRoundedCorners).apply()
+
+    var showFolderThumbnails: Boolean
+        get() = prefs.getBoolean("show_folder_thumbnails", true)
+        set(value) = prefs.edit().putBoolean("show_folder_thumbnails", value).apply()
+
+    var mediaSortBy: Int
+        get() = prefs.getInt(MEDIA_SORT_BY, 1)
+        set(value) = prefs.edit().putInt(MEDIA_SORT_BY, value).apply()
+
+    var mediaSortDesc: Boolean
+        get() = prefs.getBoolean(MEDIA_SORT_DESC, true)
+        set(value) = prefs.edit().putBoolean(MEDIA_SORT_DESC, value).apply()
+
+    var folderSortBy: Int
+        get() = prefs.getInt(FOLDER_SORT_BY, 1)
+        set(value) = prefs.edit().putInt(FOLDER_SORT_BY, value).apply()
+
+    var folderSortDesc: Boolean
+        get() = prefs.getBoolean(FOLDER_SORT_DESC, true)
+        set(value) = prefs.edit().putBoolean(FOLDER_SORT_DESC, value).apply()
+
+    var folderDisplayMode: Int
+        get() = prefs.getInt(FOLDER_DISPLAY_MODE, 1)
+        set(value) = prefs.edit().putInt(FOLDER_DISPLAY_MODE, value).apply()
+
+    var mediaShowFileNames: Boolean
+        get() = prefs.getBoolean(MEDIA_SHOW_FILE_NAMES, true)
+        set(value) = prefs.edit().putBoolean(MEDIA_SHOW_FILE_NAMES, value).apply()
 
     var customFoldersOrder: String
         get() = prefs.getString(CUSTOM_FOLDERS_ORDER, "")!!
