@@ -652,33 +652,17 @@ private fun OmniSearchSheet(
     var isSearching by remember { mutableStateOf(false) }
     var textMatchPaths by remember { mutableStateOf<Set<String>?>(null) }
     var searchTrigger by remember { mutableIntStateOf(0) }
+    var showTags by remember { mutableStateOf(false) }
 
-    // Load tags from cache (MediaCache), lazy-scan if empty
-    LaunchedEffect(Unit) {
+    // Load tags on demand (only when user clicks "Tags laden")
+    LaunchedEffect(showTags) {
+        if (!showTags) return@LaunchedEffect
         withContext(Dispatchers.IO) {
             val tags = mutableMapOf<String, MutableSet<String>>()
             try {
-                val cached = ctx.mediaCacheDB.getAllTagged()
-                if (cached.isNotEmpty()) {
-                    cached.forEach { mc ->
-                        mc.tags.split(",").filter { it.isNotBlank() }.forEach { t ->
-                            tags.getOrPut(t.trim()) { mutableSetOf() }.add(mc.fullPath)
-                        }
-                    }
-                } else {
-                    // Fallback: scan via XMP (limit to reasonable subset)
-                    val uri = android.provider.MediaStore.Files.getContentUri("external")
-                    val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
-                    val sel = "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
-                    val args = arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
-                    ctx.contentResolver.query(uri, proj, sel, args, null)?.use { c ->
-                        val col = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
-                        var count = 0
-                        while (c.moveToNext() && count < 2000) {
-                            val p = c.getString(col) ?: continue
-                            try { XmpWriter.read(p).tags.forEach { t -> tags.getOrPut(t) { mutableSetOf() }.add(p) } } catch (_: Exception) { }
-                            count++
-                        }
+                ctx.mediaCacheDB.getAllTagged().forEach { mc ->
+                    mc.tags.split(",").filter { it.isNotBlank() }.forEach { t ->
+                        tags.getOrPut(t.trim()) { mutableSetOf() }.add(mc.fullPath)
                     }
                 }
             } catch (_: Exception) { }
@@ -772,7 +756,7 @@ private fun OmniSearchSheet(
             }
             Spacer(Modifier.height(4.dp))
 
-            // Tag chips
+            // Tag chips (lazy-loaded on demand)
             if (allTags.isNotEmpty()) {
                 Text("Tags:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
                 androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -782,7 +766,6 @@ private fun OmniSearchSheet(
                             onClick = { selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag },
                             shape = RoundedCornerShape(16.dp),
                             color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier
                         ) {
                             Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(tag, style = MaterialTheme.typography.labelSmall, color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
@@ -790,6 +773,15 @@ private fun OmniSearchSheet(
                                 Text("${paths.size}", style = MaterialTheme.typography.labelSmall, color = if (isSelected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+            } else {
+                Surface(onClick = { showTags = true }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
+                        Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Tags laden", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 Spacer(Modifier.height(4.dp))
