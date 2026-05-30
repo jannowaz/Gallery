@@ -193,49 +193,8 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
             }
         }
 
-        // Bottom overlays (aligned via AnimatedVisibility modifier, not inner Box)
-        // Persistent tags
-        AnimatedVisibility(visible = showPersistentTags, modifier = Modifier.align(Alignment.BottomCenter), enter = fadeIn(), exit = fadeOut()) {
-            val currentTags = remember(currentPath) { repo.getTags(currentPath) }
-            if (currentTags.isNotEmpty()) {
-                Column {
-                    if (showRatingOverlay) Spacer(Modifier.height(56.dp))
-                    Box(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 8.dp, vertical = 6.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                            currentTags.forEach { tag ->
-                                val shortTag = if (tag.length > 30) tag.take(30) + "…" else tag
-                                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)) {
-                                    Text(shortTag, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
-                                }
-                            }
-                        }
-                    }
-                    if (showQuickTags && quickTags.isNotEmpty()) Spacer(Modifier.height(48.dp))
-                }
-            }
-        }
-
-        // Rating overlay
-        AnimatedVisibility(visible = showRatingOverlay, modifier = Modifier.align(Alignment.BottomCenter), enter = fadeIn(), exit = fadeOut()) {
-            Column {
-                if (showQuickTags && quickTags.isNotEmpty()) Spacer(Modifier.height(48.dp))
-                Box(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.6f)).padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                    Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-                        for (i in 1..5) {
-                            IconButton(onClick = {
-                                val newRating = if (currentRating == i) 0 else i
-                                currentRating = newRating
-                                scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, newRating) }
-                            }, modifier = Modifier.size(44.dp)) {
-                                Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, "Bewertung $i", tint = if (i <= currentRating) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), modifier = Modifier.size(28.dp))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Quick tag bar (bottom-most)
+        // Bottom overlays: draw order = quick tags (bottom), rating (middle), persistent tags (top)
+        // Quick tag bar (bottom-most, drawn first)
         AnimatedVisibility(visible = showQuickTags && quickTags.isNotEmpty(), modifier = Modifier.align(Alignment.BottomCenter), enter = fadeIn(), exit = fadeOut()) {
             Box(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 8.dp, vertical = 10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
@@ -255,6 +214,44 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                                 val shortTag = if (tag.length > 30) tag.take(30) + "…" else tag
                                 Text(shortTag, style = MaterialTheme.typography.labelSmall, color = if (hasTag) MaterialTheme.colorScheme.onPrimary else Color.White.copy(alpha = 0.9f))
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Rating overlay (middle)
+        AnimatedVisibility(visible = showRatingOverlay, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = if (showQuickTags && quickTags.isNotEmpty()) 48.dp else 0.dp), enter = fadeIn(), exit = fadeOut()) {
+            Box(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.6f)).padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                    for (i in 1..5) {
+                        IconButton(onClick = {
+                            val newRating = if (currentRating == i) 0 else i
+                            currentRating = newRating
+                            scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, newRating) }
+                        }, modifier = Modifier.size(44.dp)) {
+                            Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, "Bewertung $i", tint = if (i <= currentRating) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), modifier = Modifier.size(28.dp))
+                        }
+                    }
+                }
+            }
+        }
+
+        // Persistent tags (topmost, drawn last)
+        var currentTags by remember { mutableStateOf<Set<String>>(emptySet()) }
+        LaunchedEffect(currentPath, showPersistentTags) {
+            if (showPersistentTags) {
+                currentTags = withContext(Dispatchers.IO) { repo.getTags(currentPath) }
+            }
+        }
+        val tagsBottomPad = (if (showRatingOverlay) 56 else 0) + (if (showQuickTags && quickTags.isNotEmpty()) 48 else 0)
+        AnimatedVisibility(visible = showPersistentTags && currentTags.isNotEmpty(), modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = tagsBottomPad.dp), enter = fadeIn(), exit = fadeOut()) {
+            Box(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 8.dp, vertical = 6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                    currentTags.forEach { tag ->
+                        val shortTag = if (tag.length > 30) tag.take(30) + "…" else tag
+                        Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)) {
+                            Text(shortTag, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
                         }
                     }
                 }
@@ -305,7 +302,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                     SelectionRow(Icons.Default.Edit, "Tags", modifier = Modifier.weight(1f)) { showTagsDialog = true; showActionSheet = false }
                     Spacer(Modifier.width(8.dp))
                     SelectionRow(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, if (isFavorite) "Favorit" else "Favorisieren", modifier = Modifier.weight(1f)) {
-                        scope.launch { isFavorite = !isFavorite; repo.toggleFavorite(currentPath, isFavorite) }; showActionSheet = false
+                        scope.launch(Dispatchers.IO) { isFavorite = !isFavorite; repo.toggleFavorite(currentPath, isFavorite) }; showActionSheet = false
                     }
                 }
                 Spacer(Modifier.height(8.dp))

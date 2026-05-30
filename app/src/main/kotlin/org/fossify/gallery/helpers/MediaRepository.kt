@@ -25,6 +25,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             } else {
                 context.favoritesDB.deleteFavoritePath(path)
             }
+            context.mediaDB.updateFavorite(path, isFav)
         } catch (_: Exception) { }
     }
 

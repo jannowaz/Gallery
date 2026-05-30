@@ -211,7 +211,7 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
                 SelectionRow(Icons.Default.Star, "Bewerten") { showRatingDialog = true; showActionSheet = false }
                 SelectionRow(Icons.Default.Edit, "Tags") { showTagsDialog = true; showActionSheet = false }
                 SelectionRow(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, if (isFavorite) "Von Favoriten entfernen" else "Favorisieren") {
-                    scope.launch { isFavorite = !isFavorite; repo.toggleFavorite(videoPath, isFavorite) }; showActionSheet = false
+                    scope.launch(Dispatchers.IO) { isFavorite = !isFavorite; repo.toggleFavorite(videoPath, isFavorite) }; showActionSheet = false
                 }
             }
         }
