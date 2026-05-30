@@ -155,8 +155,26 @@ fun MediaScreen(
             m = if (db != null && db.isNotEmpty()) db else m.filter { it.rating >= ratingFilter }
         }
         if (tagFilterPaths != null) {
-            val tagged = tagMedia ?: m.filter { it.path in tagFilterPaths }
-            m = m.filter { it.path in tagged.map { it.path }.toSet() }
+            val tagged = tagMedia
+            if (tagged != null && tagged.isNotEmpty()) {
+                m = m.filter { it.path in tagged.map { it.path }.toSet() }
+                if (m.isEmpty()) m = tagged // fallback: use DB results directly
+            } else {
+                m = m.filter { it.path in tagFilterPaths }
+                if (m.isEmpty()) {
+                    // Construct Medium objects from paths directly
+                    m = tagFilterPaths.mapNotNull { path ->
+                        val f = File(path)
+                        if (f.exists()) Medium(
+                            id = null, name = f.name, path = f.absolutePath,
+                            parentPath = f.parent ?: "", modified = f.lastModified(),
+                            taken = f.lastModified(), size = f.length(),
+                            type = if (VIDEO_EXTENSIONS.any { path.endsWith(it, ignoreCase = true) }) 2 else 1,
+                            videoDuration = 0, isFavorite = false, deletedTS = 0L, mediaStoreId = 0, rating = 0,
+                        ) else null
+                    }
+                }
+            }
         }
         if (pathFilter != null) {
             m = m.filter { it.path in pathFilter }
@@ -256,8 +274,9 @@ fun MediaScreen(
                                 }
                                 // Thumbnail overlays
                                 if (ctx.config.showRatingOnThumbnails && m.rating > 0) {
+                                    val stars = "★★★★★".take(m.rating)
                                     Box(Modifier.align(Alignment.TopStart).padding(4.dp).background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 1.dp)) {
-                                        Text("★", style = MaterialTheme.typography.labelSmall, color = Color(0xFFFFD700), fontSize = 10.sp)
+                                        Text(stars, style = MaterialTheme.typography.labelSmall, color = Color(0xFFFFD700), fontSize = 8.sp)
                                     }
                                 }
                                 if (isVideo && ctx.config.showVideoDurationOnThumbnails && m.videoDuration > 0) {
