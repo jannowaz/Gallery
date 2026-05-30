@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.models.Medium
 import java.io.File
@@ -50,7 +51,19 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private fun doLoad() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            val media = withContext(Dispatchers.IO) { scanDirectories() }
+            val media = withContext(Dispatchers.IO) {
+                try {
+                    // Use the Room DB (populated by MediaStore scan) instead of limited directory scan
+                    val ctx = getApplication<Application>()
+                    val fromDb = ctx.mediaDB.getNewestMedia(500)
+                    if (fromDb.isNotEmpty()) {
+                        fromDb.sortedByDescending { it.modified }
+                    } else {
+                        // Fallback: scan directories if DB is empty
+                        scanDirectories()
+                    }
+                } catch (_: Exception) { emptyList() }
+            }
             _state.update { it.copy(allMedia = media, isLoading = false, hasMore = false) }
         }
     }
@@ -65,18 +78,19 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         ).filter { it.isDirectory }
         val allMedia = mutableListOf<Medium>()
         val seen = mutableSetOf<String>()
+        val mediaExts = videoExts + imageExts
         for (dir in dirs) {
-            scanFile(dir, allMedia, seen, 0)
+            scanFile(dir, allMedia, seen, 0, mediaExts)
         }
         return allMedia.sortedByDescending { it.modified }.take(500)
     }
 
-    private fun scanFile(dir: File, result: MutableList<Medium>, seen: MutableSet<String>, depth: Int) {
+    private fun scanFile(dir: File, result: MutableList<Medium>, seen: MutableSet<String>, depth: Int, mediaExts: Set<String>) {
         if (depth > 3 || !dir.isDirectory) return
         val files = dir.listFiles() ?: return
         for (file in files) {
             if (file.isDirectory && !file.name.startsWith(".")) {
-                scanFile(file, result, seen, depth + 1)
+                scanFile(file, result, seen, depth + 1, mediaExts)
             } else if (file.isFile) {
                 val ext = file.extension.lowercase()
                 if (ext in mediaExts && file.path !in seen) {
