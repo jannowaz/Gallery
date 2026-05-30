@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Slider
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -164,11 +163,15 @@ fun ViewSettingsSheet(
             }
             // Spacing
             Spacer(Modifier.height(8.dp))
-            Text("Abstand: ${local.spacing}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("2", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Slider(value = local.spacing.toFloat(), onValueChange = { local = local.copy(spacing = it.toInt()); onSettingsChange(local) }, valueRange = 2f..20f, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
-                Text("20", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Abstand", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                IconButton(onClick = { val v = (local.spacing - 1).coerceAtLeast(2); local = local.copy(spacing = v); onSettingsChange(local) }, modifier = Modifier.size(32.dp)) {
+                    Text("-", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                }
+                Text("${local.spacing}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp))
+                IconButton(onClick = { val v = (local.spacing + 1).coerceAtMost(20); local = local.copy(spacing = v); onSettingsChange(local) }, modifier = Modifier.size(32.dp)) {
+                    Text("+", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                }
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Unten ankern", style = MaterialTheme.typography.bodyMedium)
