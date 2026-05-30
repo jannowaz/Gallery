@@ -28,10 +28,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -93,9 +96,10 @@ import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.directoryDB
+import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MediaRepository
-import org.fossify.gallery.helpers.TagWriter
+import org.fossify.gallery.helpers.XmpWriter
 import org.fossify.gallery.viewmodels.AlbumsViewModel
 import java.io.File
 
@@ -227,13 +231,10 @@ fun MainScreen(onFinish: () -> Unit) {
                     detectVerticalDragGestures(onVerticalDrag = { _, drag -> if (drag < -50f) showOmniSearch = true })
                 }) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(
-                            Modifier
-                                .width(32.dp)
-                                .height(4.dp)
-                                .padding(top = 6.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
+                        Icon(
+                            Icons.Default.KeyboardArrowUp, "Hochwischen",
+                            modifier = Modifier.size(18.dp).padding(top = 2.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
                         )
                         NavigationBar(
                             containerColor = MaterialTheme.colorScheme.surface,
@@ -344,7 +345,8 @@ fun MainScreen(onFinish: () -> Unit) {
         OmniSearchSheet(
             onDismiss = { showOmniSearch = false },
             storagePath = android.os.Environment.getExternalStorageDirectory().absolutePath,
-            onNavigate = { path -> explorerPath = path; showOmniSearch = false; selectedTab = 2 }
+            onNavigate = { path -> explorerPath = path; showOmniSearch = false; selectedTab = 2 },
+            onTagFilter = { tagName, paths -> activeTagFilter = paths; activeTagName = tagName; activeRatingFilter = 0; showOmniSearch = false; selectedTab = 0 },
         )
     }
 
@@ -395,7 +397,7 @@ fun MainScreen(onFinish: () -> Unit) {
                         val col = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
                         while (c.moveToNext()) {
                             val p = c.getString(col) ?: continue
-                            TagWriter.readTags(p).forEach { tag ->
+                            XmpWriter.read(p).tags.forEach { tag ->
                                 tags.getOrPut(tag) { mutableListOf() }.add(p)
                             }
                         }
@@ -460,7 +462,7 @@ private fun String.fuzzyScore(query: String): Int {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun OmniSearchSheet(onDismiss: () -> Unit, storagePath: String, onNavigate: (String) -> Unit) {
+private fun OmniSearchSheet(onDismiss: () -> Unit, storagePath: String, onNavigate: (String) -> Unit, onTagFilter: ((String, Set<String>) -> Unit)? = null) {
     val ctx = LocalContext.current
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<Map<String, List<ResultItem>>>(emptyMap()) }
@@ -474,7 +476,12 @@ private fun OmniSearchSheet(onDismiss: () -> Unit, storagePath: String, onNaviga
         if (query.isBlank()) { results = emptyMap(); isSearching = false; return@LaunchedEffect }
         val folders = mutableListOf<ResultItem>()
         val media = mutableListOf<ResultItem>()
+        val tagItems = mutableListOf<ResultItem>()
         try {
+            val q = query.lowercase()
+            if (q.length >= 2) {
+                try { ctx.mediaCacheDB.getAllTagged().filter { it.tags.lowercase().contains(q) }.forEach { tagItems.add(ResultItem(it.tags, it.fullPath, ResultType.TAG, 50)) } } catch (_: Exception) { }
+            }
             val root = File(storagePath)
             if (root.isDirectory) {
                 root.listFiles()?.forEach { dir ->
@@ -504,6 +511,7 @@ private fun OmniSearchSheet(onDismiss: () -> Unit, storagePath: String, onNaviga
         val allResults = mutableListOf<Pair<String, List<ResultItem>>>()
         if (folders.isNotEmpty()) allResults.add("Ordner" to folders.sortedByDescending { it.score })
         if (media.isNotEmpty()) allResults.add("Medien" to media.sortedByDescending { it.score })
+        if (tagItems.isNotEmpty()) allResults.add("Tags" to tagItems.distinctBy { it.label + it.path })
         results = allResults.associate { it.first to it.second }
         isSearching = false
     }
@@ -536,7 +544,9 @@ private fun OmniSearchSheet(onDismiss: () -> Unit, storagePath: String, onNaviga
                             val item = items[idx]
                             Surface(modifier = Modifier.fillMaxWidth().clickable {
                                 if (item.type == ResultType.FOLDER) onNavigate(item.path)
-                                else {
+                                else if (item.type == ResultType.TAG) {
+                                    onTagFilter?.invoke(item.label, setOf(item.path))
+                                } else {
                                     onDismiss()
                                     ctx.startActivity(android.content.Intent(ctx, ComposeViewerActivity::class.java).apply {
                                         putStringArrayListExtra("PATHS", arrayListOf(item.path))
@@ -546,7 +556,10 @@ private fun OmniSearchSheet(onDismiss: () -> Unit, storagePath: String, onNaviga
                                 }
                             }, color = Color.Transparent) {
                                 Row(Modifier.padding(vertical = 6.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(if (item.type == ResultType.FOLDER) Icons.Default.Folder else Icons.Default.Image, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Icon(
+                                        when (item.type) { ResultType.FOLDER -> Icons.Default.Folder; ResultType.TAG -> Icons.Default.Label; else -> Icons.Default.Image },
+                                        null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                     Spacer(Modifier.width(12.dp))
                                     Text(item.label, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                     Text(item.path.substringAfterLast('/'), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -565,7 +578,7 @@ private fun OmniSearchSheet(onDismiss: () -> Unit, storagePath: String, onNaviga
     }
 }
 
-private enum class ResultType { FOLDER, MEDIA }
+private enum class ResultType { FOLDER, MEDIA, TAG }
 private data class ResultItem(val label: String, val path: String, val type: ResultType, val score: Int = 0, val rating: Int = 0)
 
 private fun resolveContentUriToPath(uriString: String): String? {

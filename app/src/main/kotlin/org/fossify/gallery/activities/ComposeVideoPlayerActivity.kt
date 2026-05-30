@@ -240,6 +240,6 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
         }, onDismiss = { showRatingDialog = false })
     }
     if (showTagsDialog) {
-        TagInputDialog(initialTags = repo.getTags(videoPath), onSave = { repo.addTag(videoPath, it); context.toast("Tag gespeichert", Toast.LENGTH_SHORT) }, onDismiss = { showTagsDialog = false })
+        TagInputDialog(initialTags = repo.getTags(videoPath), onAddTag = { repo.addTag(videoPath, it) }, onRemoveTag = { repo.removeTag(videoPath, it) }, onDismiss = { showTagsDialog = false })
     }
 }

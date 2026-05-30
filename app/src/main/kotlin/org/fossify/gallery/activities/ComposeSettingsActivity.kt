@@ -129,8 +129,9 @@ private fun SettingsScreen(onBack: () -> Unit) {
                             while (c.moveToNext()) {
                                 total++; val p = c.getString(col) ?: continue
                                 try {
-                                    val tags = org.fossify.gallery.helpers.TagWriter.readTags(p)
-                                    val r = org.fossify.gallery.helpers.TagWriter.readRatingFromXmp(p)
+                                    val xmp = org.fossify.gallery.helpers.XmpWriter.read(p)
+                                    val tags = xmp.tags
+                                    val r = xmp.rating
                                     if (tags.isNotEmpty()) foundTags++
                                     if (r > 0) foundRatings++
                                     batch.add(MediaCache(fullPath = p, tags = tags.joinToString(","), rating = r, lastScanned = System.currentTimeMillis()))

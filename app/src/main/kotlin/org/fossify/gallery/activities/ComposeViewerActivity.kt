@@ -11,22 +11,33 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -37,16 +48,17 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -88,6 +100,7 @@ import org.fossify.gallery.compose.components.TagInputDialog
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.deleteMediumWithPath
 import org.fossify.gallery.extensions.openEditor
 import org.fossify.gallery.helpers.MediaRepository
@@ -126,6 +139,9 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     var showRatingDialog by remember { mutableStateOf(false) }
     var showTagsDialog by remember { mutableStateOf(false) }
     var showVideoSettings by remember { mutableStateOf(false) }
+    var showRatingOverlay by remember { mutableStateOf(false) }
+    var showQuickTags by remember { mutableStateOf(false) }
+    val quickTags = remember { (ctx.config.quickTags).toList() }
     var currentRating by remember { mutableIntStateOf(0) }
     var pendingCopyPath by remember { mutableStateOf<String?>(null) }
     var pendingIsMove by remember { mutableStateOf(false) }
@@ -179,7 +195,11 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                 )
             }
             .pointerInput(Unit) {
-                detectTapGestures(onTap = { showUI = !showUI })
+                detectTapGestures(onTap = {
+                    val p = paths.getOrNull(pagerState.currentPage) ?: ""
+                    if (isVideo(p)) showUI = !showUI
+                    else { showActionSheet = true; offsetY = 0f }
+                })
             }
         ) { page ->
             val path = paths.getOrNull(page) ?: ""
@@ -189,6 +209,47 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                 VideoPage(path = path, scalingMode = videoScalingMode)
             } else if (file.exists()) {
                 ImagePage(path = path, file = file)
+            }
+        }
+
+        // Quick tag bar (oben) + Star rating overlay (unten)
+        AnimatedVisibility(visible = showQuickTags && quickTags.isNotEmpty(), enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 8.dp, vertical = 10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                    quickTags.forEach { tag ->
+                        val hasTag = repo.getTags(currentPath).contains(tag)
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (hasTag) MaterialTheme.colorScheme.primary.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.15f),
+                            tonalElevation = if (hasTag) 2.dp else 0.dp,
+                            modifier = Modifier.clickable {
+                                scope.launch(Dispatchers.IO) {
+                                    if (hasTag) repo.removeTag(currentPath, tag) else repo.addTag(currentPath, tag)
+                                }
+                            }
+                        ) {
+                            Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(tag, style = MaterialTheme.typography.labelSmall, color = if (hasTag) MaterialTheme.colorScheme.onPrimary else Color.White.copy(alpha = 0.9f))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        AnimatedVisibility(visible = showRatingOverlay, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha = 0.6f)).padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                    for (i in 1..5) {
+                        IconButton(onClick = {
+                            val newRating = if (currentRating == i) 0 else i
+                            currentRating = newRating
+                            scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, newRating) }
+                        }, modifier = Modifier.size(48.dp)) {
+                            Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, "Bewertung $i", tint = if (i <= currentRating) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), modifier = Modifier.size(32.dp))
+                        }
+                    }
+                }
             }
         }
 
@@ -207,27 +268,49 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
 
     if (showActionSheet) {
         ModalBottomSheet(onDismissRequest = { showActionSheet = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-            Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                SelectionRow(Icons.Default.Share, "Teilen") {
-                    val uri = android.net.Uri.fromFile(File(currentPath))
-                    ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "*/*"; putExtra(Intent.EXTRA_STREAM, uri) }, "Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    showActionSheet = false
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Row(Modifier.fillMaxWidth()) {
+                    SelectionRow(Icons.Default.Share, "Teilen", modifier = Modifier.weight(1f)) {
+                        val uri = android.net.Uri.fromFile(File(currentPath))
+                        ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "*/*"; putExtra(Intent.EXTRA_STREAM, uri) }, "Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        showActionSheet = false
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    SelectionRow(Icons.Default.ContentCopy, "Kopieren", modifier = Modifier.weight(1f)) { pendingCopyPath = currentPath; pendingIsMove = false; safLauncher.launch(null); showActionSheet = false }
                 }
-                SelectionRow(Icons.Default.ContentCopy, "Kopieren") { pendingCopyPath = currentPath; pendingIsMove = false; safLauncher.launch(null); showActionSheet = false }
-                SelectionRow(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error) {
-                    File(currentPath).delete(); ctx.deleteMediumWithPath(currentPath); showActionSheet = false; onClose()
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth()) {
+                    SelectionRow(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f)) {
+                        File(currentPath).delete(); ctx.deleteMediumWithPath(currentPath); showActionSheet = false; onClose()
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    SelectionRow(Icons.Default.Info, "Info", modifier = Modifier.weight(1f)) { (ctx as? android.app.Activity)?.let { PropertiesDialog(it, currentPath, false) }; showActionSheet = false }
                 }
-                HorizontalDivider()
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth()) {
+                    SelectionRow(if (showRatingOverlay) Icons.Default.Star else Icons.Default.StarBorder, "Bewerten", modifier = Modifier.weight(1f)) { showRatingOverlay = !showRatingOverlay; showActionSheet = false }
+                    Spacer(Modifier.width(8.dp))
+                    SelectionRow(Icons.Default.Edit, "Tags", modifier = Modifier.weight(1f)) { showTagsDialog = true; showActionSheet = false }
+                }
+                if (quickTags.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    SelectionRow(if (showQuickTags) Icons.Default.Star else Icons.Default.StarBorder, "Tags-Leiste", modifier = Modifier.fillMaxWidth()) { showQuickTags = !showQuickTags; showActionSheet = false }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth()) {
+                    SelectionRow(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, if (isFavorite) "Favorit" else "Favorisieren", modifier = Modifier.weight(1f)) {
+                        scope.launch { isFavorite = !isFavorite; repo.toggleFavorite(currentPath, isFavorite) }; showActionSheet = false
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    SelectionRow(Icons.Default.Edit, "Bearbeiten", modifier = Modifier.weight(1f)) { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }
+                }
                 if (currentIsVideo) {
+                    Spacer(Modifier.height(8.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(8.dp))
                     SelectionRow(Icons.Default.Star, "Anzeigemodus") { showVideoSettings = true; showActionSheet = false }
                 }
-                SelectionRow(Icons.Default.Info, "Info") { (ctx as? android.app.Activity)?.let { PropertiesDialog(it, currentPath, false) }; showActionSheet = false }
-                SelectionRow(Icons.Default.Star, "Bewerten") { showRatingDialog = true; showActionSheet = false }
-                SelectionRow(Icons.Default.Edit, "Tags") { showTagsDialog = true; showActionSheet = false }
-                SelectionRow(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, if (isFavorite) "Von Favoriten entfernen" else "Favorisieren") {
-                    scope.launch { isFavorite = !isFavorite; repo.toggleFavorite(currentPath, isFavorite) }; showActionSheet = false
-                }
-                SelectionRow(Icons.Default.Edit, "Bearbeiten") { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }
+                Spacer(Modifier.height(16.dp))
             }
         }
     }
@@ -260,7 +343,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
         }, onDismiss = { showRatingDialog = false })
     }
     if (showTagsDialog) {
-        TagInputDialog(initialTags = repo.getTags(currentPath), onSave = { repo.addTag(currentPath, it); ctx.toast("Tag gespeichert", Toast.LENGTH_SHORT) }, onDismiss = { showTagsDialog = false })
+        TagInputDialog(initialTags = repo.getTags(currentPath), onAddTag = { repo.addTag(currentPath, it) }, onRemoveTag = { repo.removeTag(currentPath, it) }, onDismiss = { showTagsDialog = false })
     }
 }
 

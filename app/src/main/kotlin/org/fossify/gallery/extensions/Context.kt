@@ -91,7 +91,7 @@ import org.fossify.gallery.helpers.LOCATION_INTERNAL
 import org.fossify.gallery.helpers.LOCATION_OTG
 import org.fossify.gallery.helpers.LOCATION_SD
 import org.fossify.gallery.helpers.MediaFetcher
-import org.fossify.gallery.helpers.RatingWriter
+import org.fossify.gallery.helpers.XmpWriter
 import org.fossify.gallery.helpers.MyWidgetProvider
 import org.fossify.gallery.helpers.PicassoRoundedCornersTransformation
 import org.fossify.gallery.helpers.RECYCLE_BIN
@@ -1124,7 +1124,7 @@ fun Context.updateFavorite(path: String, isFavorite: Boolean) {
 fun Context.updateRating(path: String, rating: Int) {
     try {
         mediaDB.updateRating(path, rating)
-        RatingWriter.writeRating(path, rating)
+        XmpWriter.write(path, XmpWriter.read(path).tags, rating)
     } catch (_: Exception) { }
 }
 

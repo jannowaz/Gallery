@@ -125,6 +125,22 @@ class Config(context: Context) : BaseConfig(context) {
 
     fun isFavoriteFolder(path: String) = favoriteFolders.contains(path)
 
+    var quickTags: Set<String>
+        get() = prefs.getStringSet(QUICK_TAGS, HashSet<String>())!!
+        set(tags) = prefs.edit().putStringSet(QUICK_TAGS, tags).apply()
+
+    fun addQuickTag(tag: String) {
+        val curr = HashSet(quickTags)
+        curr.add(tag)
+        quickTags = curr
+    }
+
+    fun removeQuickTag(tag: String) {
+        val curr = HashSet(quickTags)
+        curr.remove(tag)
+        quickTags = curr
+    }
+
     var explorer2HiddenFolders: Set<String>
         get() = prefs.getStringSet(EXPLORER2_HIDDEN_FOLDERS, HashSet<String>())!!
         set(folders) = prefs.edit().putStringSet(EXPLORER2_HIDDEN_FOLDERS, folders).apply()

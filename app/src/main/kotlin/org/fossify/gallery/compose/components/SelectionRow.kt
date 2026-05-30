@@ -26,9 +26,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun SelectionRow(icon: ImageVector, label: String, tint: Color = Color.Unspecified, onClick: () -> Unit) {
+fun SelectionRow(icon: ImageVector, label: String, tint: Color = Color.Unspecified, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick),
+        modifier = modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick),
         color = Color.Transparent
     ) {
         Row(Modifier.padding(horizontal = 8.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {

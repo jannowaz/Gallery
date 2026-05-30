@@ -29,26 +29,28 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     }
 
     override fun getRating(path: String): Int {
-        return try { context.mediaDB.getMediaFromPath(path).firstOrNull()?.rating ?: 0 } catch (_: Exception) { 0 }
+        return XmpWriter.read(path).rating
     }
 
     override fun updateRating(path: String, rating: Int) {
-        try { context.mediaDB.updateRating(path, rating) } catch (_: Exception) { }
+        val current = XmpWriter.read(path)
+        XmpWriter.write(path, current.tags, rating)
     }
 
     override fun getTags(path: String): Set<String> {
-        return try { TagWriter.readTags(path).toSet() } catch (_: Exception) { emptySet() }
+        return XmpWriter.read(path).tags.toSet()
     }
 
     override fun addTag(path: String, tag: String) {
-        try { TagWriter.addTag(path, tag) } catch (_: Exception) { }
+        val current = XmpWriter.read(path)
+        val tags = if (tag in current.tags) current.tags else current.tags + tag
+        XmpWriter.write(path, tags, current.rating)
     }
 
     override fun removeTag(path: String, tag: String) {
-        try {
-            val current = TagWriter.readTags(path).toMutableList()
-            if (current.remove(tag)) TagWriter.writeTags(path, current)
-        } catch (_: Exception) { }
+        val current = XmpWriter.read(path)
+        val tags = current.tags.filter { it != tag }
+        XmpWriter.write(path, tags, current.rating)
     }
 
     override fun deleteMedium(path: String) {

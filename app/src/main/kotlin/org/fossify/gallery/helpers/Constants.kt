@@ -82,6 +82,7 @@ const val LAST_EDITOR_CROP_OTHER_ASPECT_RATIO_X = "last_editor_crop_other_aspect
 const val LAST_EDITOR_CROP_OTHER_ASPECT_RATIO_Y = "last_editor_crop_other_aspect_ratio_y_2"
 const val GROUP_DIRECT_SUBFOLDERS = "group_direct_subfolders"
 const val FAVORITE_FOLDERS = "favorite_folders"
+const val QUICK_TAGS = "quick_tags"
 const val EXPLORER2_HIDDEN_FOLDERS = "explorer2_hidden_folders"
 const val FORCE_DARK_MODE = "force_dark_mode"
 const val SHOW_WIDGET_FOLDER_NAME = "show_widget_folder_name"

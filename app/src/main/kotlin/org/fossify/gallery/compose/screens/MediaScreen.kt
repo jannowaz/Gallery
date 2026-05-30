@@ -99,7 +99,6 @@ fun MediaScreen(
     var showSelectionSheet by remember { mutableStateOf(false) }
     var showRatingDialog by remember { mutableStateOf(false) }
     var showTagsDialog by remember { mutableStateOf(false) }
-    var ratingPath by remember { mutableStateOf("") }
     var currentRating by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val columnCount = viewSettings.columnCount
@@ -331,27 +330,30 @@ fun MediaScreen(
                     viewModel.deletePaths(selectedPaths); selectedPaths = emptySet(); showSelectionSheet = false
                 }
                 SelectionRow(Icons.Default.Info, "Info") { selectedPaths.firstOrNull()?.let { (ctx as? android.app.Activity)?.let { a -> PropertiesDialog(a, it, false) } }; showSelectionSheet = false }
-                if (selectedPaths.size == 1) {
-                    SelectionRow(Icons.Default.Star, "Bewerten") { ratingPath = selectedPaths.first(); showRatingDialog = true; showSelectionSheet = false }
-                    SelectionRow(Icons.Default.Edit, "Tags") { ratingPath = selectedPaths.first(); showTagsDialog = true; showSelectionSheet = false }
-                }
+                SelectionRow(Icons.Default.Star, "Bewerten") { showRatingDialog = true; showSelectionSheet = false }
+                SelectionRow(Icons.Default.Edit, "Tags") { showTagsDialog = true; showSelectionSheet = false }
                 Spacer(Modifier.height(24.dp))
             }
         }
     }
 
     if (showRatingDialog) {
+        val batch = selectedPaths.toList()
         StarRatingDialog(currentRating = currentRating, onRate = { i ->
             currentRating = i
-            scope.launch(kotlinx.coroutines.Dispatchers.IO) { repo.updateRating(ratingPath, i) }
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) { batch.forEach { p -> repo.updateRating(p, i) } }
             showRatingDialog = false
         }, onDismiss = { showRatingDialog = false })
     }
     if (showTagsDialog) {
-        TagInputDialog(initialTags = repo.getTags(ratingPath), onSave = { tag ->
-            repo.addTag(ratingPath, tag)
-            Toast.makeText(ctx, "Tag gespeichert", Toast.LENGTH_SHORT).show()
-        }, onDismiss = { showTagsDialog = false })
+        val batch = selectedPaths.toList()
+        TagInputDialog(
+            initialTags = repo.getTags(batch.first()),
+            onAddTag = { batch.forEach { p -> repo.addTag(p, it) } },
+            onRemoveTag = { batch.forEach { p -> repo.removeTag(p, it) } },
+            onDismiss = { showTagsDialog = false },
+            batchCount = batch.size,
+        )
     }
 }
 
