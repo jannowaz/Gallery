@@ -365,13 +365,8 @@ fun MainScreen(onFinish: () -> Unit) {
             onFilterChanged = { textPaths, rating, tagPaths, tagName ->
                 activeRatingFilter = rating
                 activePathFilter = textPaths
-                if (tagName != null) {
-                    activeTagFilter = tagPaths
-                    activeTagName = tagName
-                } else {
-                    activeTagFilter = null
-                    activeTagName = null
-                }
+                activeTagFilter = tagPaths
+                activeTagName = tagName
                 selectedTab = 0
             },
         )
@@ -401,6 +396,7 @@ fun MainScreen(onFinish: () -> Unit) {
                     activeRatingFilter = ratingFilter
                     activeTagFilter = null
                     activeTagName = null
+                    activePathFilter = null
                     selectedTab = 0
                 }
             }) { Text("Filtern") } },
@@ -453,7 +449,7 @@ fun MainScreen(onFinish: () -> Unit) {
                         Text("Keine Tags gefunden", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
-                    LazyColumn(Modifier.heightIn(max = 480.dp)) {
+                    LazyColumn(Modifier.heightIn(max = 600.dp)) {
                         items(allTags.entries.toList(), key = { it.key }) { (tag, paths) ->
                             val thumbPath = paths.firstOrNull()
                             val isVideo = thumbPath?.let { it.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS } ?: false
@@ -463,6 +459,7 @@ fun MainScreen(onFinish: () -> Unit) {
                                     activeTagFilter = paths.toSet()
                                     activeTagName = tag
                                     activeRatingFilter = 0
+                                    activePathFilter = null
                                     selectedTab = 0
                                 },
                                 shape = RoundedCornerShape(12.dp),
@@ -658,7 +655,7 @@ private fun OmniSearchSheet(
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false), containerColor = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).heightIn(max = 520.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).heightIn(max = 640.dp)) {
             // Search text field (manual trigger via button)
             OutlinedTextField(value = query, onValueChange = { query = it; textMatchPaths = null },
                 placeholder = { Text("Ordner-/Dateiname") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
