@@ -431,6 +431,7 @@ fun MainScreen(onFinish: () -> Unit) {
         var showHierarchyConfig by remember { mutableStateOf(false) }
         var pendingParentAssign by remember { mutableStateOf<Set<String>?>(null) }
         var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
+        var tagSearchQuery by remember { mutableStateOf("") }
         var refreshTrigger by remember { mutableIntStateOf(0) }
         val scope = rememberCoroutineScope()
 
@@ -465,6 +466,19 @@ fun MainScreen(onFinish: () -> Unit) {
                     IconButton(onClick = { showHierarchyConfig = true }) { Icon(Icons.AutoMirrored.Filled.Label, "Hierarchie", modifier = Modifier.size(20.dp)) }
                     IconButton(onClick = { showTagBrowser = false }) { Icon(Icons.Default.Close, "Schließen") }
                 }
+                // Search
+                OutlinedTextField(
+                    value = tagSearchQuery,
+                    onValueChange = { tagSearchQuery = it },
+                    placeholder = { Text("Tag suchen") },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, "Suchen", modifier = Modifier.size(18.dp)) },
+                    trailingIcon = { if (tagSearchQuery.isNotEmpty()) IconButton(onClick = { tagSearchQuery = "" }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Close, "Leeren", modifier = Modifier.size(16.dp)) } },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
+                    shape = RoundedCornerShape(12.dp),
+                )
                 Spacer(Modifier.height(8.dp))
                 if (scanning) {
                     Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -473,8 +487,9 @@ fun MainScreen(onFinish: () -> Unit) {
                         Text("Keine Tags gefunden", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
-                    LazyColumn(Modifier.heightIn(max = 480.dp)) {
-                        items(allTags.entries.toList(), key = { it.key }) { (tag, paths) ->
+                    val filteredTags = if (tagSearchQuery.isBlank()) allTags.entries.toList() else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
+                    LazyColumn(Modifier.heightIn(max = if (tagSearchQuery.isNotBlank()) 600.dp else 480.dp)) {
+                        items(filteredTags, key = { it.key }) { (tag, paths) ->
                             val thumbPath = paths.firstOrNull()
                             val isVideo = thumbPath?.let { it.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS } ?: false
                             val isSelected = tag in selectedTags
