@@ -428,7 +428,6 @@ fun MainScreen(onFinish: () -> Unit) {
         var scanning by remember { mutableStateOf(false) }
         var deleteConfirmTags by remember { mutableStateOf<Set<String>>(emptySet()) }
         var mergeTargetTag by remember { mutableStateOf<String?>(null) }
-        var showHierarchyConfig by remember { mutableStateOf(false) }
         var pendingParentAssign by remember { mutableStateOf<Set<String>?>(null) }
         var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
         var tagSearchQuery by remember { mutableStateOf("") }
@@ -463,7 +462,7 @@ fun MainScreen(onFinish: () -> Unit) {
                     Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Tags (${allTags.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    IconButton(onClick = { showHierarchyConfig = true }) { Icon(Icons.AutoMirrored.Filled.Label, "Hierarchie", modifier = Modifier.size(20.dp)) }
+                    // Hierarchy removed – use selection menu (Parent button) instead
                     IconButton(onClick = { showTagBrowser = false }) { Icon(Icons.Default.Close, "Schließen") }
                 }
                 // Search
@@ -589,13 +588,13 @@ fun MainScreen(onFinish: () -> Unit) {
                             }
                             if (selectedTags.size >= 2) {
                                 Surface(
-                                    onClick = { mergeTargetTag = selectedTags.first() },
+                                    onClick = { mergeTargetTag = selectedTags.first() ?: "" },
                                     shape = RoundedCornerShape(12.dp),
                                     color = MaterialTheme.colorScheme.tertiaryContainer,
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
-                                        Text("Zusammenführen", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                                        Text("Merge", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onTertiaryContainer)
                                     }
                                 }
                             }
@@ -683,73 +682,39 @@ fun MainScreen(onFinish: () -> Unit) {
             )
         }
 
-        // Hierarchy config dialog
-        if (showHierarchyConfig) {
-            var hierarchy by remember { mutableStateOf(ctx.config.tagHierarchy) }
-            var editingTag by remember { mutableStateOf<String?>(null) }
+        // Merge dialog
+        if (mergeTargetTag != null) {
+            val defaultTarget = mergeTargetTag!!
+            var mergeTargetName by remember(mergeTargetTag) { mutableStateOf(defaultTarget) }
+            val existingTags = allTags.keys.filter { it != defaultTarget }.sorted()
             AlertDialog(
-                onDismissRequest = { showHierarchyConfig = false },
-                title = { Text("Tag-Hierarchie") },
+                onDismissRequest = { mergeTargetTag = null },
+                title = { Text("Merge Tags") },
                 text = {
-                    if (allTags.isEmpty()) Text("Keine Tags vorhanden")
-                    else if (editingTag != null) {
-                        val tag = editingTag!!
-                        val currentParent = hierarchy[tag] ?: ""
-                        val candidates = allTags.keys.filter { it != tag }.sorted()
-                        Column {
-                            Text("Eltern-Tag für \"$tag\":", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                            Spacer(Modifier.height(4.dp))
-                            Text(if (currentParent.isEmpty()) "Kein Eltern-Tag gesetzt" else "Aktuell: $currentParent", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column {
+                        Text("Quellen: ${selectedTags.joinToString(", ")}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(value = mergeTargetName, onValueChange = { mergeTargetName = it }, label = { Text("Ziel-Tag") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        if (existingTags.isNotEmpty()) {
                             Spacer(Modifier.height(8.dp))
-                            LazyColumn(Modifier.heightIn(max = 300.dp)) {
-                                item {
-                                    Surface(modifier = Modifier.fillMaxWidth().clickable { hierarchy = hierarchy.toMutableMap().apply { remove(tag) }; editingTag = null }, color = if (currentParent.isEmpty()) MaterialTheme.colorScheme.primaryContainer else Color.Transparent, shape = RoundedCornerShape(8.dp)) {
-                                        Text("Kein Eltern-Tag", modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium, fontWeight = if (currentParent.isEmpty()) FontWeight.Bold else FontWeight.Normal)
+                            Text("Vorhandene Tags:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(4.dp))
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                existingTags.forEach { t ->
+                                    Surface(onClick = { mergeTargetName = t }, shape = RoundedCornerShape(12.dp), color = if (t == mergeTargetName) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
+                                        Text(t, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = if (t == mergeTargetName) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
                                     }
-                                }
-                                items(candidates) { p ->
-                                    val isParent = p == currentParent
-                                    Surface(modifier = Modifier.fillMaxWidth().clickable { hierarchy = hierarchy.toMutableMap().apply { put(tag, p) }; editingTag = null }, color = if (isParent) MaterialTheme.colorScheme.primaryContainer else Color.Transparent, shape = RoundedCornerShape(8.dp)) {
-                                        Text(p, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium, fontWeight = if (isParent) FontWeight.Bold else FontWeight.Normal, color = if (isParent) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-                            Text("Tippe auf einen Tag, um den Eltern-Tag zu setzen:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
-                            allTags.keys.sorted().forEach { tag ->
-                                val parent = hierarchy[tag] ?: ""
-                                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { editingTag = tag }, verticalAlignment = Alignment.CenterVertically) {
-                                    Text(tag, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                                    Text(if (parent.isEmpty()) "—" else parent, style = MaterialTheme.typography.labelSmall, color = if (parent.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = {
-                        ctx.config.tagHierarchy = hierarchy
-                        ctx.toast("Hierarchie gespeichert", Toast.LENGTH_SHORT)
-                        showHierarchyConfig = false
-                    }) { Text(if (editingTag != null) "Fertig" else "Speichern") }
-                },
-                dismissButton = { TextButton(onClick = { if (editingTag != null) editingTag = null else showHierarchyConfig = false }) { Text("Abbrechen") } }
-            )
-        }
-
-        // Merge dialog
-        if (mergeTargetTag != null) {
-            val target = mergeTargetTag!!
-            val sources = selectedTags - target
-            AlertDialog(
-                onDismissRequest = { mergeTargetTag = null },
-                title = { Text("Tags zusammenführen") },
-                text = { Text("Alle Dateien aus \"${sources.joinToString("\", \"")}\" zum Tag \"$target\" hinzufügen und die Quell-Tags entfernen?") },
-                confirmButton = {
                     val repo = LocalMediaRepository.current
                     TextButton(onClick = {
+                        val target = mergeTargetName.trim()
+                        if (target.isBlank()) return@TextButton
+                        val sources = selectedTags - target
                         scope.launch(Dispatchers.IO) {
                             sources.forEach { srcTag ->
                                 val srcPaths = allTags[srcTag] ?: return@forEach
@@ -768,11 +733,11 @@ fun MainScreen(onFinish: () -> Unit) {
                                 }
                             } catch (_: Exception) { }
                             withContext(Dispatchers.Main) {
-                                ctx.toast("Tags zu \"$target\" zusammengeführt", Toast.LENGTH_SHORT)
+                                ctx.toast("Zu \"$target\" gemerged", Toast.LENGTH_SHORT)
                                 mergeTargetTag = null; refreshTrigger++; selectedTags = emptySet()
                             }
                         }
-                    }) { Text("Zusammenführen") }
+                    }) { Text("Merge") }
                 },
                 dismissButton = { TextButton(onClick = { mergeTargetTag = null }) { Text("Abbrechen") } }
             )
