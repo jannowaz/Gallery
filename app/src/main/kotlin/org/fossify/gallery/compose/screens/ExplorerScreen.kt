@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -43,6 +44,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,10 +59,12 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.activities.ComposeViewerActivity
 import org.fossify.gallery.compose.components.FolderTile
 import org.fossify.gallery.compose.components.SelectionRow
+import org.fossify.gallery.extensions.config
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import java.io.File
@@ -82,6 +86,7 @@ fun ExplorerScreen(
     mediaSettings: ViewSettings = ViewSettings(),
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val navStack = remember { mutableStateListOf(internalStoragePath) }
     var currentPath by remember { mutableStateOf(internalStoragePath) }
     var folderItems by remember { mutableStateOf<List<ExplorerItem>>(emptyList()) }
@@ -114,11 +119,13 @@ fun ExplorerScreen(
         val folders = mutableListOf<ExplorerItem>()
         val files = mutableListOf<ExplorerItem>()
         try {
+            val hidden = context.config.explorer2HiddenFolders
             Files.newDirectoryStream(dir).use { stream ->
                 for (entry in stream) {
                     val name = entry.fileName.toString()
                     if (name.startsWith(".")) continue
                     val fPath = entry.toString()
+                    if (hidden.contains(fPath)) continue
                     if (Files.isDirectory(entry)) {
                         val tmb = findThumbnailInFolder(fPath)
                         folders.add(ExplorerItem(name = name, path = fPath, isDirectory = true, lastModified = Files.getLastModifiedTime(entry).toMillis(), thumbnailPath = tmb))
@@ -320,6 +327,11 @@ fun ExplorerScreen(
                 }
                 Spacer(Modifier.height(12.dp))
                 SelectionRow(Icons.Default.Folder, "Öffnen") { selectedFolderPaths.firstOrNull()?.let { p -> navStack.add(p); currentPath = p }; showFolderSheet = false; selectedFolderPaths = emptySet() }
+                SelectionRow(Icons.Default.VisibilityOff, "Ausblenden") {
+                    selectedFolderPaths.forEach { p -> context.config.hideExplorer2Folder(p) }
+                    scope.launch { loadFolderContents(currentPath) }
+                    showFolderSheet = false; selectedFolderPaths = emptySet()
+                }
                 Spacer(Modifier.height(24.dp))
             }
         }
