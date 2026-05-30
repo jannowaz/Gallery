@@ -386,6 +386,7 @@ fun MainScreen(onFinish: () -> Unit) {
                 activePathFilter = textPaths
                 activeTagFilter = tagPaths
                 activeTagName = tagName
+                if (rating > 0 || tagPaths != null || textPaths != null) selectedTab = 0
             },
         )
     }
@@ -795,30 +796,43 @@ private fun OmniSearchSheet(
         searchTrigger++
     }
 
-    // Text search: fuzzy match on filename + full path (only on manual trigger)
+    // Text search: fuzzy match on filename + full path (manual trigger + live debounce)
     LaunchedEffect(searchTrigger) {
         if (query.length < 2) { textMatchPaths = null; return@LaunchedEffect }
         isSearching = true
+        // Yield so the spinner can render
+        kotlinx.coroutines.delay(50)
         val qParts = query.lowercase().split(" ").filter { it.isNotBlank() }
         if (qParts.isEmpty()) { textMatchPaths = null; isSearching = false; return@LaunchedEffect }
 
-        val matched = mutableSetOf<String>()
-        try {
-            val uri = android.provider.MediaStore.Files.getContentUri("external")
-            val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA, android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
-            ctx.contentResolver.query(uri, proj, null, null, null)?.use { c ->
-                val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
-                val nameCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
-                while (c.moveToNext()) {
-                    val path = c.getString(dataCol) ?: continue
-                    val name = c.getString(nameCol) ?: ""
-                    val lowerFull = "$name ${path.lowercase()}"
-                    if (qParts.all { it in lowerFull }) matched.add(path)
+        withContext(Dispatchers.IO) {
+            val matched = mutableSetOf<String>()
+            try {
+                val uri = android.provider.MediaStore.Files.getContentUri("external")
+                val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA, android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                val sel = "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
+                val args = arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
+                ctx.contentResolver.query(uri, proj, sel, args, null)?.use { c ->
+                    val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
+                    val nameCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                    while (c.moveToNext()) {
+                        val path = c.getString(dataCol) ?: continue
+                        val name = c.getString(nameCol) ?: ""
+                        val lowerFull = "$name ${path.lowercase()}"
+                        if (qParts.all { it in lowerFull }) matched.add(path)
+                    }
                 }
-            }
-        } catch (_: Exception) { }
-        textMatchPaths = matched
-        isSearching = false
+            } catch (_: Exception) { }
+            textMatchPaths = matched
+            isSearching = false
+        }
+    }
+
+    // Live debounced search (300ms after last keystroke)
+    LaunchedEffect(query) {
+        if (query.length < 2) { textMatchPaths = null; return@LaunchedEffect }
+        kotlinx.coroutines.delay(400)
+        triggerSearch()
     }
 
     var combinedPaths by remember { mutableStateOf<Set<String>?>(null) }
