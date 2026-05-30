@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -48,7 +49,6 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -166,6 +166,17 @@ fun MainScreen(onFinish: () -> Unit) {
     val tabSettings by viewSettingsVM.settings.collectAsState()
     val settingsMode by viewSettingsVM.settingsMode.collectAsState()
     val albumsViewModel: AlbumsViewModel = viewModel()
+
+    // Back: clear filters first, then close
+    BackHandler(enabled = activeRatingFilter > 0 || activeTagFilter != null || activePathFilter != null || selectedTab != 1) {
+        if (activeRatingFilter > 0 || activeTagFilter != null || activePathFilter != null) {
+            activeRatingFilter = 0; activeTagFilter = null; activeTagName = null; activePathFilter = null; selectedTab = 1
+        } else if (selectedTab != 1) {
+            selectedTab = 1
+        } else {
+            onFinish()
+        }
+    }
 
     // Populate Room DB from MediaStore on first launch
     LaunchedEffect(Unit) {
@@ -415,6 +426,7 @@ fun MainScreen(onFinish: () -> Unit) {
         var deleteConfirmTags by remember { mutableStateOf<Set<String>>(emptySet()) }
         var mergeTargetTag by remember { mutableStateOf<String?>(null) }
         var showHierarchyConfig by remember { mutableStateOf(false) }
+        var pendingParentAssign by remember { mutableStateOf<Set<String>?>(null) }
         var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
         var refreshTrigger by remember { mutableIntStateOf(0) }
         val scope = rememberCoroutineScope()
@@ -447,7 +459,7 @@ fun MainScreen(onFinish: () -> Unit) {
                     Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Tags (${allTags.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    IconButton(onClick = { showHierarchyConfig = true }) { Icon(Icons.Default.AccountTree, "Hierarchie", modifier = Modifier.size(20.dp)) }
+                    IconButton(onClick = { showHierarchyConfig = true }) { Icon(Icons.AutoMirrored.Filled.Label, "Hierarchie", modifier = Modifier.size(20.dp)) }
                     IconButton(onClick = { showTagBrowser = false }) { Icon(Icons.Default.Close, "Schließen") }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -548,15 +560,25 @@ fun MainScreen(onFinish: () -> Unit) {
                                     Text("Löschen", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer)
                                 }
                             }
+                            Surface(
+                                onClick = { pendingParentAssign = selectedTags },
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
+                                    Text("Parent", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                }
+                            }
                             if (selectedTags.size >= 2) {
                                 Surface(
                                     onClick = { mergeTargetTag = selectedTags.first() },
                                     shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    color = MaterialTheme.colorScheme.tertiaryContainer,
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
-                                        Text("Zusammenführen", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                        Text("Zusammenführen", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onTertiaryContainer)
                                     }
                                 }
                             }
@@ -602,6 +624,45 @@ fun MainScreen(onFinish: () -> Unit) {
                     }) { Text("Entfernen", color = MaterialTheme.colorScheme.error) }
                 },
                 dismissButton = { TextButton(onClick = { deleteConfirmTags = emptySet() }) { Text("Abbrechen") } }
+            )
+        }
+
+        // Parent assign dialog (multi-select tags)
+        if (pendingParentAssign != null) {
+            val tagsToAssign = pendingParentAssign!!
+            val candidates = allTags.keys.filter { it !in tagsToAssign }.sorted()
+            var selectedParent by remember { mutableStateOf(candidates.firstOrNull() ?: "") }
+            AlertDialog(
+                onDismissRequest = { pendingParentAssign = null },
+                title = { Text("Eltern-Tag zuweisen") },
+                text = {
+                    Column {
+                        Text("Setze Eltern-Tag für: ${tagsToAssign.joinToString(", ")}")
+                        Spacer(Modifier.height(8.dp))
+                        if (candidates.isEmpty()) Text("Keine anderen Tags vorhanden", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        else {
+                            androidx.compose.material3.OutlinedTextField(
+                                value = selectedParent,
+                                onValueChange = { selectedParent = it },
+                                label = { Text("Eltern-Tag") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (selectedParent.isNotBlank()) {
+                            val h = ctx.config.tagHierarchy.toMutableMap()
+                            tagsToAssign.forEach { h[it] = selectedParent }
+                            ctx.config.tagHierarchy = h
+                            ctx.toast("Eltern-Tag gesetzt", Toast.LENGTH_SHORT)
+                        }
+                        pendingParentAssign = null; selectedTags = emptySet()
+                    }) { Text("Speichern") }
+                },
+                dismissButton = { TextButton(onClick = { pendingParentAssign = null }) { Text("Abbrechen") } }
             )
         }
 

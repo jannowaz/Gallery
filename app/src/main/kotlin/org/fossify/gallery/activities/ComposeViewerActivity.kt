@@ -255,34 +255,36 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                     }
                     Spacer(Modifier.width(8.dp))
                     SelectionRow(Icons.Default.ContentCopy, "Kopieren", modifier = Modifier.weight(1f)) { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }
-                    Spacer(Modifier.width(8.dp))
-                    SelectionRow(Icons.AutoMirrored.Filled.DriveFileMove, "Verschieben", modifier = Modifier.weight(1f)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false }
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth()) {
+                    SelectionRow(Icons.AutoMirrored.Filled.DriveFileMove, "Verschieben", modifier = Modifier.weight(1f)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false }
+                    Spacer(Modifier.width(8.dp))
                     SelectionRow(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f)) {
                         File(currentPath).delete(); ctx.deleteMediumWithPath(currentPath); showActionSheet = false; onClose()
                     }
-                    Spacer(Modifier.width(8.dp))
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth()) {
                     SelectionRow(Icons.Default.Info, "Info", modifier = Modifier.weight(1f)) { (ctx as? android.app.Activity)?.let { PropertiesDialog(it, currentPath, false) }; showActionSheet = false }
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth()) {
-                    SelectionRow(if (showRatingOverlay) Icons.Default.Star else Icons.Default.StarBorder, "Bewerten", modifier = Modifier.weight(1f)) { showRatingOverlay = !showRatingOverlay; showActionSheet = false }
                     Spacer(Modifier.width(8.dp))
-                    SelectionRow(Icons.Default.Edit, "Tags", modifier = Modifier.weight(1f)) { showTagsDialog = true; showActionSheet = false }
-                }
-                if (quickTags.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    SelectionRow(if (showQuickTags) Icons.Default.Star else Icons.Default.StarBorder, "Tags-Leiste", modifier = Modifier.fillMaxWidth()) { showQuickTags = !showQuickTags; showActionSheet = false }
+                    SelectionRow(if (showRatingOverlay) Icons.Default.Star else Icons.Default.StarBorder, "Bewerten", modifier = Modifier.weight(1f)) { showRatingOverlay = !showRatingOverlay; showActionSheet = false }
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth()) {
+                    SelectionRow(Icons.Default.Edit, "Tags", modifier = Modifier.weight(1f)) { showTagsDialog = true; showActionSheet = false }
+                    Spacer(Modifier.width(8.dp))
                     SelectionRow(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, if (isFavorite) "Favorit" else "Favorisieren", modifier = Modifier.weight(1f)) {
                         scope.launch { isFavorite = !isFavorite; repo.toggleFavorite(currentPath, isFavorite) }; showActionSheet = false
                     }
-                    Spacer(Modifier.width(8.dp))
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth()) {
                     SelectionRow(Icons.Default.Edit, "Bearbeiten", modifier = Modifier.weight(1f)) { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }
+                    if (quickTags.isNotEmpty()) {
+                        Spacer(Modifier.width(8.dp))
+                        SelectionRow(if (showQuickTags) Icons.Default.Star else Icons.Default.StarBorder, "Tags-Leiste", modifier = Modifier.weight(1f)) { showQuickTags = !showQuickTags; showActionSheet = false }
+                    }
                 }
                 if (currentIsVideo) {
                     Spacer(Modifier.height(8.dp))
