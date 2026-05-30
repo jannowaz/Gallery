@@ -9,6 +9,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -53,10 +55,10 @@ import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -148,7 +150,7 @@ private val navTabs = listOf(
     NavTab(5, "Mehr", Icons.Default.MoreVert),
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun MainScreen(onFinish: () -> Unit) {
     val ctx = LocalContext.current
@@ -477,9 +479,21 @@ fun MainScreen(onFinish: () -> Unit) {
                             val isVideo = thumbPath?.let { it.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS } ?: false
                             val isSelected = tag in selectedTags
                             Card(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
-                                    selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag
-                                },
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(
+                                    onClick = {
+                                        if (selectedTags.isEmpty()) {
+                                            showTagBrowser = false
+                                            activeTagFilter = paths.toSet()
+                                            activeTagName = tag
+                                            activeRatingFilter = 0
+                                            activePathFilter = null
+                                            selectedTab = 0
+                                        } else {
+                                            selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag
+                                        }
+                                    },
+                                    onLongClick = { selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag }
+                                ),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.cardColors(
                                     containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
