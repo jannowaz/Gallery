@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Slider
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -133,7 +134,7 @@ fun ViewSettingsSheet(
                         selected = local.sortBy == sf,
                         onClick = { local = local.copy(sortBy = sf); onSettingsChange(local) },
                         shape = SegmentedButtonDefaults.itemShape(i, SortField.entries.size)
-                    ) { Text(when(sf) { SortField.NAME -> "Name"; SortField.DATE -> "Datum"; SortField.SIZE -> "Große"; SortField.RATING -> "Bewertung" }) }
+                    ) { Text(when(sf) { SortField.NAME -> "Name"; SortField.DATE -> "Datum"; SortField.SIZE -> "Größe"; SortField.RATING -> "Bewertung" }) }
                 }
             }
 
@@ -160,6 +161,19 @@ fun ViewSettingsSheet(
                     Spacer(Modifier.weight(1f))
                     Switch(checked = local.showFolderThumbnails, onCheckedChange = { local = local.copy(showFolderThumbnails = it); onSettingsChange(local) })
                 }
+            }
+            // Spacing
+            Spacer(Modifier.height(8.dp))
+            Text("Abstand: ${local.spacing}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("2", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Slider(value = local.spacing.toFloat(), onValueChange = { local = local.copy(spacing = it.toInt()); onSettingsChange(local) }, valueRange = 2f..20f, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
+                Text("20", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Unten ankern", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.weight(1f))
+                Switch(checked = local.anchorBottom, onCheckedChange = { local = local.copy(anchorBottom = it); onSettingsChange(local) })
             }
 
             Spacer(Modifier.height(24.dp))

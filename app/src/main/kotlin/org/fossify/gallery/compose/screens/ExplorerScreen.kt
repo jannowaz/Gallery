@@ -1,8 +1,10 @@
 package org.fossify.gallery.compose.screens
 
 import android.content.Intent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,20 +19,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,12 +60,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.activities.ComposeViewerActivity
 import org.fossify.gallery.compose.components.FolderTile
+import org.fossify.gallery.compose.components.SelectionRow
+import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
+import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
-
-private val mediaExts = setOf("jpg", "jpeg", "png", "gif", "mp4", "mkv", "webp", "heic", "avif", "bmp", "svg", "apng", "jxl", "mov", "3gp", "wmv", "flv", "avi")
-private val videoExts = setOf("mp4", "mkv", "mov", "3gp", "wmv", "flv", "avi")
 
 private data class ExplorerItem(
     val name: String, val path: String, val isDirectory: Boolean,
@@ -67,6 +73,7 @@ private data class ExplorerItem(
     val thumbnailPath: String = "",
 )
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ExplorerScreen(
     internalStoragePath: String,
@@ -80,17 +87,25 @@ fun ExplorerScreen(
     var folderItems by remember { mutableStateOf<List<ExplorerItem>>(emptyList()) }
     var fileItems by remember { mutableStateOf<List<ExplorerItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var selectedFolderPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showFolderSheet by remember { mutableStateOf(false) }
+    val hasFolderSelection = selectedFolderPaths.isNotEmpty()
 
     suspend fun findThumbnailInFolder(folderPath: String): String = withContext(Dispatchers.IO) {
         try {
             Files.newDirectoryStream(Paths.get(folderPath)).use { stream ->
                 for (entry in stream) {
                     val ext = entry.fileName.toString().substringAfterLast('.', "").lowercase()
-                    if (ext in mediaExts) return@withContext entry.toString()
+                    if (ext in MEDIA_EXTENSIONS) return@withContext entry.toString()
                 }
             }
         } catch (_: Exception) { }
         ""
+    }
+
+    val folderCardColor = when (folderSettings.displayMode) {
+        DisplayMode.COMPACT, DisplayMode.NORMAL -> MaterialTheme.colorScheme.surface
+        DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant
     }
 
     suspend fun loadFolderContents(path: String) = withContext(Dispatchers.IO) {
@@ -109,7 +124,7 @@ fun ExplorerScreen(
                         folders.add(ExplorerItem(name = name, path = fPath, isDirectory = true, lastModified = Files.getLastModifiedTime(entry).toMillis(), thumbnailPath = tmb))
                     } else {
                         val ext = name.substringAfterLast('.', "").lowercase()
-                        if (ext in mediaExts) {
+                        if (ext in MEDIA_EXTENSIONS) {
                             files.add(ExplorerItem(name = name, path = fPath, isDirectory = false, lastModified = Files.getLastModifiedTime(entry).toMillis(), size = Files.size(entry)))
                         }
                     }
@@ -119,7 +134,8 @@ fun ExplorerScreen(
         val sortedFolders = when (folderSettings.sortBy) {
             SortField.NAME -> folders.sortedBy { it.name.lowercase() }
             SortField.DATE -> folders.sortedBy { it.lastModified }
-            SortField.SIZE, SortField.RATING -> folders.sortedBy { it.name.lowercase() }
+            SortField.SIZE -> folders.sortedBy { it.size }
+            SortField.RATING -> folders.sortedBy { it.name.lowercase() }
         }.let { if (folderSettings.sortDesc) it.reversed() else it }
         val sortedFiles = when (mediaSettings.sortBy) {
             SortField.NAME -> files.sortedBy { it.name.lowercase() }
@@ -138,16 +154,26 @@ fun ExplorerScreen(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        if (isLoading) {
-            LazyColumn(contentPadding = PaddingValues(8.dp)) {
-                items(6) { ShimmerBox(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp, vertical = 4.dp).clip(RoundedCornerShape(12.dp))) }
+        // Breadcrumb navigation bar
+        Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)).padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (navStack.size > 1) {
+                IconButton(onClick = { navStack.removeLastOrNull(); currentPath = navStack.lastOrNull() ?: internalStoragePath }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zuruck", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                }
+            } else {
+                Spacer(Modifier.width(8.dp))
             }
+            Text(currentPath, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
+        }
+
+        if (isLoading) {
+            LoadingIndicator()
         } else if (folderItems.isEmpty() && fileItems.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Keine Elemente", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             }
         } else {
-            LazyColumn(contentPadding = PaddingValues(4.dp)) {
+            LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(4.dp)) {
                 if (folderItems.isNotEmpty()) {
                     item {
                         Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -161,13 +187,23 @@ fun ExplorerScreen(
                             item {
                                 Row(Modifier.fillMaxWidth().padding(folderSettings.spacing.dp / 2)) {
                                     chunk.forEach { item ->
-                                        Box(Modifier.weight(1f).padding(folderSettings.spacing.dp / 2).clickable { navStack.add(item.path); currentPath = item.path }) {
+                                        Box(Modifier.weight(1f).padding(folderSettings.spacing.dp / 2).combinedClickable(
+                                            onClick = { if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); currentPath = item.path } },
+                                            onLongClick = { selectedFolderPaths = selectedFolderPaths + item.path }
+                                        )) {
                                             FolderTile(
                                                 name = item.name,
                                                 thumbnailPath = item.thumbnailPath,
                                                 showThumbnail = folderSettings.showFolderThumbnails,
-                                                roundedCorners = folderSettings.roundedCorners
+                                                roundedCorners = folderSettings.roundedCorners,
+                                                containerColor = folderCardColor
                                             )
+                                            if (item.path in selectedFolderPaths) {
+                                                Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)))
+                                                Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp).background(MaterialTheme.colorScheme.primary, CircleShape), contentAlignment = Alignment.Center) {
+                                                    Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                                }
+                                            }
                                         }
                                     }
                                     repeat(folderSettings.columnCount - chunk.size) { Spacer(Modifier.weight(1f)) }
@@ -176,7 +212,10 @@ fun ExplorerScreen(
                         }
                     } else {
                         items(folderItems, key = { it.path }) { item ->
-                            Surface(Modifier.fillMaxWidth().clickable { navStack.add(item.path); currentPath = item.path }, color = Color.Transparent) {
+                            Surface(Modifier.fillMaxWidth().combinedClickable(
+                                onClick = { if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); currentPath = item.path } },
+                                onLongClick = { selectedFolderPaths = selectedFolderPaths + item.path }
+                            ), color = if (item.path in selectedFolderPaths) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else folderCardColor.copy(alpha = 0.3f)) {
                                 Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
                                         Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
@@ -206,8 +245,9 @@ fun ExplorerScreen(
                                 Row(Modifier.fillMaxWidth().padding(mediaSettings.spacing.dp / 2)) {
                                     chunk.forEach { item ->
                                         val file = File(item.path)
-                                        val isVideo = item.path.substringAfterLast('.', "").lowercase() in videoExts
-                                        Box(Modifier.weight(1f).padding(mediaSettings.spacing.dp / 2).clickable {
+                                        val isVideo = item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
+                                        val mediaBg = when (mediaSettings.displayMode) { DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant else -> MaterialTheme.colorScheme.surface }
+                                        Box(Modifier.weight(1f).padding(mediaSettings.spacing.dp / 2).background(mediaBg, cornerShape).clickable {
                                             context.startActivity(Intent(context, ComposeViewerActivity::class.java).apply { putStringArrayListExtra("PATHS", arrayListOf(item.path)); putExtra("START_INDEX", 0); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
                                         }) {
                                             Column {
@@ -232,7 +272,7 @@ fun ExplorerScreen(
                     } else {
                         items(fileItems, key = { it.path }) { item ->
                             val file = File(item.path)
-                            val isVideo = item.path.substringAfterLast('.', "").lowercase() in videoExts
+                                val isVideo = item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
                             Surface(Modifier.fillMaxWidth().clickable {
                                 context.startActivity(Intent(context, ComposeViewerActivity::class.java).apply { putStringArrayListExtra("PATHS", arrayListOf(item.path)); putExtra("START_INDEX", 0); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
                             }, color = Color.Transparent) {
@@ -258,6 +298,29 @@ fun ExplorerScreen(
                         }
                     }
                 }
+            }
+        }
+
+        if (hasFolderSelection) {
+            Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)).clickable { showFolderSheet = true }.padding(horizontal = 20.dp, vertical = 14.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${selectedFolderPaths.size} ausgewählt", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Icon(Icons.Default.Close, "Auswahl aufheben", Modifier.size(20.dp).clickable { selectedFolderPaths = emptySet() }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+
+    if (showFolderSheet) {
+        ModalBottomSheet(onDismissRequest = { showFolderSheet = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${selectedFolderPaths.size} ausgewählt", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    IconButton(onClick = { selectedFolderPaths = emptySet(); showFolderSheet = false }) { Icon(Icons.Default.Close, "Auswahl schließen", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+                Spacer(Modifier.height(12.dp))
+                SelectionRow(Icons.Default.Folder, "Öffnen") { selectedFolderPaths.firstOrNull()?.let { p -> navStack.add(p); currentPath = p }; showFolderSheet = false; selectedFolderPaths = emptySet() }
+                Spacer(Modifier.height(24.dp))
             }
         }
     }

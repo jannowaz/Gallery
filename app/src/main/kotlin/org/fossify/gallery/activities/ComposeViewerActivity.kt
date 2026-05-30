@@ -95,7 +95,6 @@ import kotlinx.coroutines.withContext
 import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.components.SelectionRow
-import org.fossify.gallery.compose.components.StarRatingDialog
 import org.fossify.gallery.compose.components.TagInputDialog
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
@@ -104,9 +103,8 @@ import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.deleteMediumWithPath
 import org.fossify.gallery.extensions.openEditor
 import org.fossify.gallery.helpers.MediaRepository
+import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import java.io.File
-
-private val videoExts = setOf("mp4", "mkv", "mov", "3gp", "wmv", "flv", "avi")
 
 class ComposeViewerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -122,7 +120,7 @@ class ComposeViewerActivity : ComponentActivity() {
     }
 }
 
-private fun isVideo(path: String) = path.substringAfterLast('.', "").lowercase() in videoExts
+private fun isVideo(path: String) = path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -136,7 +134,6 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     val currentIsVideo = isVideo(currentPath)
     val repo = LocalMediaRepository.current
     var isFavorite by remember { mutableStateOf(false) }
-    var showRatingDialog by remember { mutableStateOf(false) }
     var showTagsDialog by remember { mutableStateOf(false) }
     var showVideoSettings by remember { mutableStateOf(false) }
     var showRatingOverlay by remember { mutableStateOf(false) }
@@ -337,11 +334,6 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
         )
     }
 
-    if (showRatingDialog) {
-        StarRatingDialog(currentRating = currentRating, onRate = { i ->
-            currentRating = i; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, i) }; showRatingDialog = false
-        }, onDismiss = { showRatingDialog = false })
-    }
     if (showTagsDialog) {
         TagInputDialog(initialTags = repo.getTags(currentPath), onAddTag = { repo.addTag(currentPath, it) }, onRemoveTag = { repo.removeTag(currentPath, it) }, onDismiss = { showTagsDialog = false })
     }

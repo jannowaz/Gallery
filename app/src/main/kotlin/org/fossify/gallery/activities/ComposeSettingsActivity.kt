@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -59,7 +60,8 @@ class ComposeSettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { GalleryTheme { SettingsScreen(onBack = { finish() }) } }
+        val conf = this.config
+        setContent { GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme()) { SettingsScreen(onBack = { finish() }) } }
     }
 }
 
@@ -82,7 +84,7 @@ private fun SettingsScreen(onBack: () -> Unit) {
 
             SectionLabel("Allgemein")
             SettingsSwitch("Dunkelmodus erzwingen", conf.forceDarkMode) { conf.forceDarkMode = it }
-            SettingsSwitch("Versteckte Dateien anzeigen", conf.shouldShowHidden) { conf.shouldShowHidden = it }
+            SettingsSwitch("Versteckte Dateien anzeigen", conf.shouldShowHidden) { conf.showHiddenMedia = it }
             SettingsSwitch("Animierte GIFs abspielen", conf.animateGifs) { conf.animateGifs = it }
             SettingsSwitch("Maximale Helligkeit", conf.maxBrightness) { conf.maxBrightness = it }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
@@ -160,10 +162,10 @@ private fun SettingsScreen(onBack: () -> Unit) {
 
     if (showScanDialog) {
         androidx.compose.material3.AlertDialog(
-            onDismissRequest = { },
+            onDismissRequest = { showScanDialog = false },
             title = { Text("Scanne...") },
             text = { Text("Durchsuche Dateien nach Tags und Bewertungen") },
-            confirmButton = { }
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { showScanDialog = false }) { Text("Abbrechen") } }
         )
     }
 }

@@ -22,9 +22,8 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import org.fossify.gallery.compose.screens.VideoThumbnail
+import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import java.io.File
-
-private val videoExts = setOf("mp4", "mkv", "mov", "3gp", "wmv", "flv", "avi")
 
 @Composable
 fun FolderTile(
@@ -33,13 +32,14 @@ fun FolderTile(
     showThumbnail: Boolean,
     modifier: Modifier = Modifier,
     roundedCorners: Boolean = true,
+    containerColor: Color = MaterialTheme.colorScheme.surface,
 ) {
     val ctx = LocalContext.current
     val shape = if (roundedCorners) RoundedCornerShape(8.dp) else RoundedCornerShape(0.dp)
 
     Box(modifier.aspectRatio(1f).clip(shape)) {
         if (showThumbnail && thumbnailPath.isNotEmpty() && File(thumbnailPath).exists()) {
-            val isVideo = thumbnailPath.substringAfterLast('.', "").lowercase() in videoExts
+            val isVideo = thumbnailPath.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
             if (isVideo) {
                 VideoThumbnail(videoPath = thumbnailPath, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             } else {
@@ -54,8 +54,8 @@ fun FolderTile(
         } else {
             Box(Modifier.fillMaxSize().background(
                 Brush.linearGradient(listOf(
-                    MaterialTheme.colorScheme.surfaceVariant,
-                    MaterialTheme.colorScheme.surface
+                    containerColor,
+                    containerColor
                 ))
             ))
         }

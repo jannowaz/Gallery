@@ -38,7 +38,9 @@ import org.fossify.gallery.compose.screens.ViewSettingsSheet
 import org.fossify.gallery.compose.screens.ViewSettingsViewModel
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
+import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
 import org.fossify.gallery.helpers.MediaRepository
+import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import org.fossify.gallery.models.Medium
 import java.io.File
 import java.nio.file.Files
@@ -105,8 +107,6 @@ private fun FolderMediaScreen(folderPath: String, tabSettings: org.fossify.galle
 }
 
 private fun scanFolderMedia(path: String): List<Medium> {
-    val videoExts = setOf("mp4", "mkv", "mov", "3gp", "wmv", "flv", "avi")
-    val mediaExts = setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "avif", "bmp", "svg", "apng", "jxl") + videoExts
     val result = mutableListOf<Medium>()
     try {
         Files.newDirectoryStream(Paths.get(path)).use { stream ->
@@ -114,14 +114,14 @@ private fun scanFolderMedia(path: String): List<Medium> {
                 val name = entry.fileName.toString()
                 if (name.startsWith(".")) continue
                 val ext = name.substringAfterLast('.', "").lowercase()
-                if (ext in mediaExts) {
+                if (ext in MEDIA_EXTENSIONS) {
                     val fPath = entry.toString()
                     result.add(Medium(
                         id = null, name = name, path = fPath, parentPath = path,
                         modified = Files.getLastModifiedTime(entry).toMillis(),
                         taken = Files.getLastModifiedTime(entry).toMillis(),
                         size = Files.size(entry),
-                        type = if (ext in videoExts) 2 else 1,
+                        type = if (ext in VIDEO_EXTENSIONS) 2 else 1,
                         videoDuration = 0, isFavorite = false, deletedTS = 0L, mediaStoreId = 0, rating = 0,
                     ))
                 }

@@ -163,10 +163,6 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(FORCE_DARK_MODE, false)
         set(forceDarkMode) = prefs.edit().putBoolean(FORCE_DARK_MODE, forceDarkMode).apply()
 
-    var themeMode: Int
-        get() = prefs.getInt("theme_mode", 0)
-        set(mode) = prefs.edit().putInt("theme_mode", mode).apply()
-
     fun addExcludedFolder(path: String) {
         addExcludedFolders(HashSet<String>(Arrays.asList(path)))
     }
@@ -645,8 +641,8 @@ class Config(context: Context) : BaseConfig(context) {
         set(fileRoundedCorners) = prefs.edit().putBoolean(FILE_ROUNDED_CORNERS, fileRoundedCorners).apply()
 
     var showFolderThumbnails: Boolean
-        get() = prefs.getBoolean("show_folder_thumbnails", true)
-        set(value) = prefs.edit().putBoolean("show_folder_thumbnails", value).apply()
+        get() = prefs.getBoolean(SHOW_FOLDER_THUMBNAILS, true)
+        set(value) = prefs.edit().putBoolean(SHOW_FOLDER_THUMBNAILS, value).apply()
 
     var mediaSortBy: Int
         get() = prefs.getInt(MEDIA_SORT_BY, 1)

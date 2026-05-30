@@ -28,6 +28,7 @@ class ManageBottomActionsDialog(val activity: BaseSimpleActivity, val callback: 
             manageBottomActionsCopy.isChecked = actions and BOTTOM_ACTION_COPY != 0
             manageBottomActionsMove.isChecked = actions and BOTTOM_ACTION_MOVE != 0
             manageBottomActionsResize.isChecked = actions and BOTTOM_ACTION_RESIZE != 0
+            manageBottomActionsRating.isChecked = actions and BOTTOM_ACTION_RATING != 0
         }
 
         activity.getAlertDialogBuilder()
@@ -71,6 +72,8 @@ class ManageBottomActionsDialog(val activity: BaseSimpleActivity, val callback: 
                 result += BOTTOM_ACTION_MOVE
             if (manageBottomActionsResize.isChecked)
                 result += BOTTOM_ACTION_RESIZE
+            if (manageBottomActionsRating.isChecked)
+                result += BOTTOM_ACTION_RATING
         }
 
         activity.config.visibleBottomActions = result

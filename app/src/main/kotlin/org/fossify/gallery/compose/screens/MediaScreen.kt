@@ -76,6 +76,7 @@ import org.fossify.gallery.compose.components.StarRatingDialog
 import org.fossify.gallery.compose.components.TagInputDialog
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import org.fossify.gallery.models.Medium
 import org.fossify.gallery.viewmodels.MediaViewModel
 import java.io.File
@@ -102,7 +103,6 @@ fun MediaScreen(
     var currentRating by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val columnCount = viewSettings.columnCount
-    val videoExts = setOf("mp4", "mkv", "mov", "3gp", "wmv", "flv", "avi")
     val isGrid = viewSettings.viewType == ViewType.GRID
 
     val baseMedia = mediaOverride ?: state.allMedia
@@ -141,6 +141,10 @@ fun MediaScreen(
     val hasFilter = ratingFilter > 0 || tagFilterPaths != null
     val cornerShape = if (viewSettings.roundedCorners) RoundedCornerShape(8.dp) else RoundedCornerShape(0.dp)
     val itemSpacing = viewSettings.spacing.dp
+    val mediaCardColor = when (viewSettings.displayMode) {
+        DisplayMode.COMPACT, DisplayMode.NORMAL -> MaterialTheme.colorScheme.surface
+        DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant
+    }
 
     fun openViewer(index: Int) {
         val paths = displayMedia.map { it.path }
@@ -157,28 +161,7 @@ fun MediaScreen(
     Box(modifier = modifier.fillMaxSize()) {
         when {
             state.isLoading && !hasFilter && mediaOverride == null -> {
-                if (isGrid) {
-                    LazyVerticalGrid(columns = GridCells.Fixed(columnCount), contentPadding = PaddingValues(itemSpacing / 2)) {
-                        items(columnCount * 3) {
-                            Box(Modifier.padding(itemSpacing / 2).aspectRatio(1f).clip(RoundedCornerShape(8.dp))) { ShimmerBox(Modifier.fillMaxSize()) }
-                        }
-                    }
-                } else {
-                    LazyColumn(contentPadding = PaddingValues(4.dp)) {
-                        items(6) {
-                            Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                ShimmerBox(Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)))
-                                Spacer(Modifier.width(12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    ShimmerBox(Modifier.fillMaxWidth(0.6f).height(14.dp).clip(RoundedCornerShape(4.dp)))
-                                    Spacer(Modifier.height(6.dp))
-                                    ShimmerBox(Modifier.fillMaxWidth(0.3f).height(10.dp).clip(RoundedCornerShape(4.dp)))
-                                }
-                            }
-                            HorizontalDivider(Modifier.padding(start = 76.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                        }
-                    }
-                }
+                LoadingIndicator()
             }
             displayMedia.isEmpty() -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -212,12 +195,12 @@ fun MediaScreen(
                             Text("${displayMedia.size} Ergebnisse", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    LazyVerticalGrid(columns = GridCells.Fixed(columnCount), contentPadding = PaddingValues(itemSpacing / 2)) {
+                    LazyVerticalGrid(columns = GridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
                     items(displayMedia.size) { idx ->
                         val m = displayMedia[idx]
                         val file = File(m.path)
-                        val isVideo = m.path.substringAfterLast('.', "").lowercase() in videoExts
-                        Column(Modifier.padding(itemSpacing / 2)) {
+                        val isVideo = m.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
+                        Column(Modifier.padding(itemSpacing / 2).background(mediaCardColor, cornerShape)) {
                             Box(Modifier.aspectRatio(1f).combinedClickable(
                                 onClick = {
                                     if (hasSelection) selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path
@@ -252,12 +235,12 @@ fun MediaScreen(
                 }
             }
             else -> {
-                LazyColumn(contentPadding = PaddingValues(4.dp)) {
+                LazyColumn(reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
                     items(displayMedia.size) { idx ->
                         val m = displayMedia[idx]
                         val file = File(m.path)
-                        val isVideo = m.path.substringAfterLast('.', "").lowercase() in videoExts
-                        Surface(modifier = Modifier.fillMaxWidth().combinedClickable(
+                        val isVideo = m.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
+                        Surface(modifier = Modifier.fillMaxWidth().background(mediaCardColor, RoundedCornerShape(8.dp)).combinedClickable(
                             onClick = {
                                 if (hasSelection) selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path
                                 else openViewer(idx)

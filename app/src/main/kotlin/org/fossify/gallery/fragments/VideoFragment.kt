@@ -104,7 +104,6 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
 
     private var mIsFullscreen = false
     private var mWasFragmentInit = false
-    private var mIsPanorama = false
     private var mIsFragmentVisible = false
     private var mIsDragged = false
     private var mWasVideoStarted = false
@@ -171,7 +170,6 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
         mConfig = context.config
         mTouchSlop = (ViewConfiguration.get(context).scaledTouchSlop) / TOUCH_SLOP_DIVIDER
         binding = PagerVideoItemBinding.inflate(inflater, container, false).apply {
-            panoramaOutline.setOnClickListener { openPanorama() }
             bottomVideoTimeHolder.videoCurrTime.setOnClickListener { skip(false) }
             bottomVideoTimeHolder.videoDuration.setOnClickListener { skip(true) }
             videoHolder.setOnClickListener { toggleFullscreen() }
@@ -289,7 +287,6 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
 
         mIsFullscreen = listener?.isFullScreen() == true
         initTimeHolder()
-        // checkIfPanorama() TODO: Implement panorama using a FOSS library
 
         ensureBackgroundThread {
             activity.getVideoResolution(mMedium.path)?.apply {
@@ -298,60 +295,48 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
             }
         }
 
-        if (mIsPanorama) {
-            binding.apply {
-                panoramaOutline.beVisible()
-                videoPlayOutline.beGone()
-                mVolumeSideScroll.beGone()
-                mBrightnessSideScroll.beGone()
-                Glide.with(context).load(mMedium.path).into(videoPreview)
-            }
+        if (savedInstanceState != null) {
+            mCurrTime = savedInstanceState.getLong(PROGRESS, 0L)
         }
 
-        if (!mIsPanorama) {
-            if (savedInstanceState != null) {
-                mCurrTime = savedInstanceState.getLong(PROGRESS, 0L)
-            }
+        mWasFragmentInit = true
+        setVideoSize()
 
-            mWasFragmentInit = true
-            setVideoSize()
-
-            binding.apply {
-                mBrightnessSideScroll.initialize(
-                    activity,
-                    slideInfo,
-                    true,
-                    container,
-                    singleTap = { x, y ->
-                        if (mConfig.allowInstantChange) {
-                            listener?.goToPrevItem()
-                        } else {
-                            toggleFullscreen()
-                        }
-                    },
-                    doubleTap = { x, y ->
-                        doSkip(false)
-                    })
-                mVolumeSideScroll.initialize(
-                    activity,
-                    slideInfo,
-                    false,
-                    container,
-                    singleTap = { x, y ->
-                        if (mConfig.allowInstantChange) {
-                            listener?.goToNextItem()
-                        } else {
-                            toggleFullscreen()
-                        }
-                    },
-                    doubleTap = { x, y ->
-                        doSkip(true)
-                    })
-
-                videoSurface.onGlobalLayout {
-                    if (mIsFragmentVisible && mConfig.autoplayVideos && !mConfig.gestureVideoPlayer) {
-                        playVideo()
+        binding.apply {
+            mBrightnessSideScroll.initialize(
+                activity,
+                slideInfo,
+                true,
+                container,
+                singleTap = { x, y ->
+                    if (mConfig.allowInstantChange) {
+                        listener?.goToPrevItem()
+                    } else {
+                        toggleFullscreen()
                     }
+                },
+                doubleTap = { x, y ->
+                    doSkip(false)
+                })
+            mVolumeSideScroll.initialize(
+                activity,
+                slideInfo,
+                false,
+                container,
+                singleTap = { x, y ->
+                    if (mConfig.allowInstantChange) {
+                        listener?.goToNextItem()
+                    } else {
+                        toggleFullscreen()
+                    }
+                },
+                doubleTap = { x, y ->
+                    doSkip(true)
+                })
+
+            videoSurface.onGlobalLayout {
+                if (mIsFragmentVisible && mConfig.autoplayVideos && !mConfig.gestureVideoPlayer) {
+                    playVideo()
                 }
             }
         }
@@ -370,11 +355,11 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
             requireContext().config      // make sure we get a new config, in case the user changed something in the app settings
         requireActivity().updateTextColors(binding.videoHolder)
         val allowVideoGestures = mConfig.allowVideoGestures
-        mTextureView.beGoneIf(mConfig.gestureVideoPlayer || mIsPanorama)
+        mTextureView.beGoneIf(mConfig.gestureVideoPlayer)
         binding.videoSurfaceFrame.beGoneIf(mTextureView.isGone())
 
-        mVolumeSideScroll.beVisibleIf(allowVideoGestures && !mIsPanorama)
-        mBrightnessSideScroll.beVisibleIf(allowVideoGestures && !mIsPanorama)
+        mVolumeSideScroll.beVisibleIf(allowVideoGestures)
+        mBrightnessSideScroll.beVisibleIf(allowVideoGestures)
 
         checkExtendedDetails()
         initTimeHolder()
@@ -473,7 +458,7 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
     }
 
     private fun initExoPlayer() {
-        val shouldSkipInit = activity == null || mConfig.gestureVideoPlayer || mIsPanorama || mExoPlayer != null
+        val shouldSkipInit = activity == null || mConfig.gestureVideoPlayer || mExoPlayer != null
         if (shouldSkipInit) return
 
         val isContentUri = mMedium.path.startsWith("content://")
@@ -623,23 +608,6 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
         (activity as? BaseViewerActivity)?.applyProperHorizontalInsets(mTimeHolder)
     }
 
-    private fun checkIfPanorama() {
-        try {
-            val fis = FileInputStream(File(mMedium.path))
-            fis.use {
-                requireContext().parseFileChannel(mMedium.path, it.channel, 0, 0, 0) {
-                    mIsPanorama = true
-                }
-            }
-        } catch (ignored: Exception) {
-        } catch (ignored: OutOfMemoryError) {
-        }
-    }
-
-    private fun openPanorama() {
-        TODO("Panorama is not yet implemented.")
-    }
-
     override fun fullscreenToggled(isFullscreen: Boolean) {
         mIsFullscreen = isFullscreen
 
@@ -700,9 +668,7 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
     }
 
     private fun skip(forward: Boolean) {
-        if (mIsPanorama) {
-            return
-        } else if (mExoPlayer == null) {
+        if (mExoPlayer == null) {
             playVideo()
             return
         }
@@ -753,11 +719,6 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
     }
 
     override fun onStopTrackingTouch(seekBar: SeekBar) {
-        if (mIsPanorama) {
-            openPanorama()
-            return
-        }
-
         if (mExoPlayer == null) {
             return
         }

@@ -35,6 +35,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     override fun updateRating(path: String, rating: Int) {
         val current = XmpWriter.read(path)
         XmpWriter.write(path, current.tags, rating)
+        try { context.mediaDB.updateRating(path, rating) } catch (_: Exception) { }
     }
 
     override fun getTags(path: String): Set<String> {

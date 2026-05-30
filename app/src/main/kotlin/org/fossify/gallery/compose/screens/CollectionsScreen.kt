@@ -23,13 +23,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +57,7 @@ fun CollectionsScreen(onBack: () -> Unit = {}, onCollectionClick: (MediaCollecti
     var collections by remember { mutableStateOf(try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() }) }
     var showAddDialog by remember { mutableStateOf(false) }
     var editingName by remember { mutableStateOf("") }
+    var pendingCreateName by remember { mutableStateOf("") }
 
     val folderPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null && editingName.isNotBlank()) {
@@ -63,11 +67,37 @@ fun CollectionsScreen(onBack: () -> Unit = {}, onCollectionClick: (MediaCollecti
         }
     }
 
+    if (showAddDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = { Text("Sammlung erstellen") },
+            text = {
+                OutlinedTextField(
+                    value = pendingCreateName,
+                    onValueChange = { pendingCreateName = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (pendingCreateName.isNotBlank()) {
+                        editingName = pendingCreateName
+                        pendingCreateName = ""
+                        showAddDialog = false
+                        folderPickerLauncher.launch(null)
+                    }
+                }) { Text("Erstellen") }
+            },
+            dismissButton = { TextButton(onClick = { showAddDialog = false; pendingCreateName = "" }) { Text("Abbrechen") } }
+        )
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         // Header with add button
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Sammlungen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            IconButton(onClick = { editingName = "Sammlung ${collections.size + 1}"; folderPickerLauncher.launch(null) }) { Icon(Icons.Default.Add, "Neue Sammlung") }
+            IconButton(onClick = { pendingCreateName = "Sammlung ${collections.size + 1}"; showAddDialog = true }) { Icon(Icons.Default.Add, "Neue Sammlung") }
         }
 
         if (collections.isEmpty()) {

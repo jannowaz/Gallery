@@ -36,4 +36,5 @@ data class ViewSettings(
     val sortDesc: Boolean = true,
     val spacing: Int = 8,
     val showFolderThumbnails: Boolean = true,
+    val anchorBottom: Boolean = false,
 )

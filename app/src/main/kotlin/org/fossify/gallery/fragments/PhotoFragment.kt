@@ -52,8 +52,6 @@ import com.github.penfeizhou.animation.webp.WebPDrawable
 import com.squareup.picasso.Callback
 import com.squareup.picasso.Picasso
 import it.sephiroth.android.library.exif2.ExifInterface
-import org.apache.sanselan.common.byteSources.ByteSourceInputStream
-import org.apache.sanselan.formats.jpeg.JpegImageParser
 import org.fossify.commons.extensions.beGone
 import org.fossify.commons.extensions.beVisible
 import org.fossify.commons.extensions.beVisibleIf
@@ -117,7 +115,6 @@ class PhotoFragment : ViewPagerFragment() {
     private var mIsFragmentVisible = false
     private var mIsFullscreen = false
     private var mWasInit = false
-    private var mIsPanorama = false
     private var mIsSubsamplingVisible = false    // checking view.visibility is unreliable, use an extra variable for it
     private var mShouldResetImage = false
     private var mCurrentPortraitPhotoPath = ""
@@ -161,7 +158,6 @@ class PhotoFragment : ViewPagerFragment() {
             gifView.setOnClickListener { photoClicked() }
             instantPrevItem.setOnClickListener { listener?.goToPrevItem() }
             instantNextItem.setOnClickListener { listener?.goToNextItem() }
-            panoramaOutline.setOnClickListener { openPanorama() }
 
             instantPrevItem.parentView = container
             instantNextItem.parentView = container
@@ -251,11 +247,6 @@ class PhotoFragment : ViewPagerFragment() {
         initExtendedDetails()
         mWasInit = true
         updateInstantSwitchWidths()
-
-        // TODO: Implement panorama using a FOSS library
-        // ensureBackgroundThread {
-        //      checkIfPanorama()
-        // }
 
         return mView
     }
@@ -580,11 +571,9 @@ class PhotoFragment : ViewPagerFragment() {
                 override fun onError(e: Exception?) {
                     resetColorModeIfVisible()
                     if (mMedium.path != mOriginalPath) {
-                        mMedium.path = mOriginalPath
-                        loadImage()
-                        // TODO: Implement panorama using a FOSS library
-                        // checkIfPanorama()
-                    } else {
+            mMedium.path = mOriginalPath
+                    loadImage()
+                } else {
                         binding.errorMessageHolder.errorMessage.apply {
                             setTextColor(if (context.config.blackBackground) Color.WHITE else context.getProperTextColor())
                             fadeIn()
@@ -725,10 +714,6 @@ class PhotoFragment : ViewPagerFragment() {
 
     private fun getFilePathToShow() = if (mMedium.isPortrait()) mCurrentPortraitPhotoPath else getPathToLoad(mMedium)
 
-    private fun openPanorama() {
-        TODO("Panorama is not yet implemented.")
-    }
-
     private fun scheduleZoomableView() {
         mLoadZoomableViewHandler.removeCallbacksAndMessages(null)
         mLoadZoomableViewHandler.postDelayed({
@@ -822,33 +807,6 @@ class PhotoFragment : ViewPagerFragment() {
             averageDpi > 400 -> HIGH_TILE_DPI
             averageDpi > 300 -> NORMAL_TILE_DPI
             else -> LOW_TILE_DPI
-        }
-    }
-
-    private fun checkIfPanorama() {
-        mIsPanorama = try {
-            if (mMedium.path.startsWith("content:/")) {
-                requireContext().contentResolver.openInputStream(Uri.parse(mMedium.path))
-            } else {
-                File(mMedium.path).inputStream()
-            }.use {
-                val imageParser = JpegImageParser().getXmpXml(ByteSourceInputStream(it, mMedium.name), HashMap<String, Any>())
-                imageParser.contains("GPano:UsePanoramaViewer=\"True\"", true) ||
-                    imageParser.contains("<GPano:UsePanoramaViewer>True</GPano:UsePanoramaViewer>", true) ||
-                    imageParser.contains("GPano:FullPanoWidthPixels=") ||
-                    imageParser.contains("GPano:ProjectionType>Equirectangular")
-            }
-        } catch (e: Exception) {
-            false
-        } catch (e: OutOfMemoryError) {
-            false
-        }
-
-        activity?.runOnUiThread {
-            binding.panoramaOutline.beVisibleIf(mIsPanorama)
-            if (mIsFullscreen) {
-                binding.panoramaOutline.alpha = 0f
-            }
         }
     }
 
@@ -964,11 +922,6 @@ class PhotoFragment : ViewPagerFragment() {
                 bottomActionsDummy.fadeOut(DEFAULT_ANIMATION_DURATION)
             } else {
                 bottomActionsDummy.beVisible()
-            }
-
-            if (mIsPanorama) {
-                panoramaOutline.animate().alpha(if (isFullscreen) 0f else 1f).start()
-                panoramaOutline.isClickable = !isFullscreen
             }
 
             if (mWasInit && mMedium.isPortrait()) {

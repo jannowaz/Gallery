@@ -9,6 +9,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -109,7 +110,8 @@ class ComposeExplorerActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val repo = remember { MediaRepository(this@ComposeExplorerActivity) }
-            GalleryTheme {
+            val conf = this.config
+            GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme()) {
                 AppProviders(repo) { MainScreen(onFinish = { finish() }) }
             }
         }
