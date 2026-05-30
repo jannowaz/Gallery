@@ -91,6 +91,7 @@ fun MediaScreen(
     viewSettings: ViewSettings = ViewSettings(),
     ratingFilter: Int = 0,
     tagFilterPaths: Set<String>? = null,
+    pathFilter: Set<String>? = null,
     activeTagName: String? = null,
     onClearFilter: () -> Unit = {},
     mediaOverride: List<Medium>? = null,
@@ -127,10 +128,13 @@ fun MediaScreen(
     }
     val unsortedMedia = if (ratingFilter > 0) {
         val db = ratedMedia
-        if (db != null && db.isNotEmpty()) db
-        else baseMedia.filter { it.rating >= ratingFilter }
+        val rated = if (db != null && db.isNotEmpty()) db else baseMedia.filter { it.rating >= ratingFilter }
+        if (pathFilter != null) rated.filter { it.path in pathFilter } else rated
     } else if (tagFilterPaths != null) {
-        baseMedia.filter { it.path in tagFilterPaths }
+        val tagged = baseMedia.filter { it.path in tagFilterPaths }
+        if (pathFilter != null) tagged.filter { it.path in pathFilter } else tagged
+    } else if (pathFilter != null) {
+        baseMedia.filter { it.path in pathFilter }
     } else {
         baseMedia
     }
@@ -143,7 +147,7 @@ fun MediaScreen(
         }
         if (viewSettings.sortDesc) sorted.reversed() else sorted
     }
-    val hasFilter = ratingFilter > 0 || tagFilterPaths != null
+    val hasFilter = ratingFilter > 0 || tagFilterPaths != null || pathFilter != null
     val cornerShape = if (viewSettings.roundedCorners) RoundedCornerShape(8.dp) else RoundedCornerShape(0.dp)
     val itemSpacing = viewSettings.spacing.dp
     val mediaCardColor = when (viewSettings.displayMode) {
@@ -187,7 +191,13 @@ fun MediaScreen(
                 Column {
                     if (hasFilter) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            val label = if (ratingFilter > 0) "★ $ratingFilter+" else "Tag: $activeTagName"
+                            val label = when {
+                                activeTagName != null && ratingFilter > 0 -> "Tag: $activeTagName · ★ $ratingFilter+"
+                                activeTagName != null -> "Tag: $activeTagName"
+                                ratingFilter > 0 -> "★ $ratingFilter+"
+                                pathFilter != null -> "Suche: ${activeTagName ?: "aktiv"}"
+                                else -> "Gefiltert"
+                            }
                             Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(16.dp)) {
                                 Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)

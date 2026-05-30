@@ -7,6 +7,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -143,6 +145,7 @@ fun MainScreen(onFinish: () -> Unit) {
     var activeRatingFilter by remember { mutableIntStateOf(0) }
     var activeTagFilter by remember { mutableStateOf<Set<String>?>(null) }
     var activeTagName by remember { mutableStateOf<String?>(null) }
+    var activePathFilter by remember { mutableStateOf<Set<String>?>(null) }
     val viewSettingsVM: ViewSettingsViewModel = viewModel()
     val tabSettings by viewSettingsVM.settings.collectAsState()
     val settingsMode by viewSettingsVM.settingsMode.collectAsState()
@@ -267,7 +270,7 @@ fun MainScreen(onFinish: () -> Unit) {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (selectedTab) {
-                0 -> MediaScreen(viewSettings = tabSettings.media, ratingFilter = activeRatingFilter, tagFilterPaths = activeTagFilter, activeTagName = activeTagName, onClearFilter = { activeRatingFilter = 0; activeTagFilter = null; activeTagName = null })
+                0 -> MediaScreen(viewSettings = tabSettings.media, ratingFilter = activeRatingFilter, tagFilterPaths = activeTagFilter, pathFilter = activePathFilter, activeTagName = activeTagName, onClearFilter = { activeRatingFilter = 0; activeTagFilter = null; activeTagName = null; activePathFilter = null })
                 1 -> AlbumsScreen(viewModel = albumsViewModel, onFolderClick = { dir ->
                     ctx.startActivity(Intent(ctx, ComposeFolderActivity::class.java).apply {
                         putExtra("FOLDER_PATH", dir.path)
@@ -348,8 +351,18 @@ fun MainScreen(onFinish: () -> Unit) {
             onDismiss = { showOmniSearch = false },
             storagePath = android.os.Environment.getExternalStorageDirectory().absolutePath,
             onNavigate = { path -> explorerPath = path; showOmniSearch = false; selectedTab = 2 },
-            onTagFilter = { tagName, paths -> activeTagFilter = paths; activeTagName = tagName; activeRatingFilter = 0; showOmniSearch = false; selectedTab = 0 },
-            onRatingFilter = { r -> activeRatingFilter = r; activeTagFilter = null; activeTagName = null; selectedTab = 0 },
+            onFilterChanged = { textPaths, rating, tagPaths, tagName ->
+                activeRatingFilter = rating
+                activePathFilter = textPaths
+                if (tagName != null) {
+                    activeTagFilter = tagPaths
+                    activeTagName = tagName
+                } else {
+                    activeTagFilter = null
+                    activeTagName = null
+                }
+                selectedTab = 0
+            },
         )
     }
 
@@ -450,146 +463,162 @@ private fun MenuRow(icon: ImageVector, label: String, onClick: () -> Unit) {
     }
 }
 
-private fun String.fuzzyScore(query: String): Int {
-    val qParts = query.lowercase().split(" ").filter { it.isNotBlank() }
-    val target = this.lowercase()
-    if (qParts.isEmpty()) return 0
-    var score = 0
-    for (part in qParts) {
-        val idx = target.indexOf(part)
-        if (idx < 0) return 0
-        score += maxOf(0, 100 - idx * 2)
-    }
-    return score + (if (target.startsWith(qParts.first())) 50 else 0) + (if (target == qParts.first()) 100 else 0)
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun OmniSearchSheet(onDismiss: () -> Unit, storagePath: String, onNavigate: (String) -> Unit, onTagFilter: ((String, Set<String>) -> Unit)? = null, onRatingFilter: ((Int) -> Unit)? = null) {
+private fun OmniSearchSheet(
+    onDismiss: () -> Unit,
+    storagePath: String,
+    onNavigate: (String) -> Unit,
+    onFilterChanged: (filterPaths: Set<String>?, rating: Int, tagPaths: Set<String>?, tagName: String?) -> Unit,
+) {
     val ctx = LocalContext.current
     var query by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<Map<String, List<ResultItem>>>(emptyMap()) }
-    var isSearching by remember { mutableStateOf(false) }
     var ratingFilter by remember { mutableIntStateOf(0) }
+    var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var allTags by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
+    var isSearching by remember { mutableStateOf(false) }
+    var textMatchPaths by remember { mutableStateOf<Set<String>?>(null) }
 
-    LaunchedEffect(query, ratingFilter) {
-        if (query.length < 2 && ratingFilter == 0) { results = emptyMap(); return@LaunchedEffect }
-        isSearching = true
-        kotlinx.coroutines.delay(300)
-        val folders = mutableListOf<ResultItem>()
-        val media = mutableListOf<ResultItem>()
-        val tagItems = mutableListOf<ResultItem>()
-        try {
-            val q = query.lowercase()
-            if (q.length >= 2) {
-                try { ctx.mediaCacheDB.getAllTagged().filter { it.tags.lowercase().contains(q) }.forEach { tagItems.add(ResultItem(it.tags, it.fullPath, ResultType.TAG, 50)) } } catch (_: Exception) { }
-            }
-            val root = File(storagePath)
-            if (root.isDirectory) {
-                root.listFiles()?.forEach { dir ->
-                    if (dir.isDirectory && !dir.name.startsWith(".")) {
-                        val score = dir.name.fuzzyScore(query)
-                        if (score > 0) folders.add(ResultItem(dir.name, dir.absolutePath, ResultType.FOLDER, score))
-                    }
-                }
-            }
-            val uri = android.provider.MediaStore.Files.getContentUri("external")
-            val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA, android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
-            val sel = "${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? OR ${android.provider.MediaStore.MediaColumns.DATA} LIKE ?"
-            val selArgs = arrayOf("%$query%", "%$query%")
+    // Scan all tags on open
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val tags = mutableMapOf<String, MutableSet<String>>()
             try {
-                ctx.contentResolver.query(uri, proj, sel, selArgs, null)?.use { c ->
-                    val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
-                    val nameCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                val uri = android.provider.MediaStore.Files.getContentUri("external")
+                val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
+                val sel = "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
+                val args = arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
+                ctx.contentResolver.query(uri, proj, sel, args, null)?.use { c ->
+                    val col = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
                     while (c.moveToNext()) {
-                        val path = c.getString(dataCol) ?: continue
-                        val name = c.getString(nameCol) ?: ""
-                        val score = name.fuzzyScore(query)
-                        if (score > 0) media.add(ResultItem(name, path, ResultType.MEDIA, score))
+                        val p = c.getString(col) ?: continue
+                        try { XmpWriter.read(p).tags.forEach { t -> tags.getOrPut(t) { mutableSetOf() }.add(p) } } catch (_: Exception) { }
                     }
                 }
             } catch (_: Exception) { }
+            allTags = tags
+        }
+    }
+
+    // Text search: fuzzy match on filename + full path
+    LaunchedEffect(query) {
+        if (query.length < 2) { textMatchPaths = null; return@LaunchedEffect }
+        isSearching = true
+        kotlinx.coroutines.delay(200)
+        val qParts = query.lowercase().split(" ").filter { it.isNotBlank() }
+        if (qParts.isEmpty()) { textMatchPaths = null; isSearching = false; return@LaunchedEffect }
+
+        val matched = mutableSetOf<String>()
+        try {
+            val uri = android.provider.MediaStore.Files.getContentUri("external")
+            val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA, android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+            ctx.contentResolver.query(uri, proj, null, null, null)?.use { c ->
+                val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
+                val nameCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                while (c.moveToNext()) {
+                    val path = c.getString(dataCol) ?: continue
+                    val name = c.getString(nameCol) ?: ""
+                    val lowerFull = "$name ${path.lowercase()}"
+                    if (qParts.all { it in lowerFull }) matched.add(path)
+                }
+            }
         } catch (_: Exception) { }
-        // Filter media by rating if active
-        val ratedMedia = if (ratingFilter > 0) {
-            val minRating = ratingFilter
-            try {
-                val paths = ctx.mediaDB.getByMinRating(minRating).map { it.path }.toSet()
-                media.filter { it.path in paths }
-            } catch (_: Exception) { media }
-        } else { media }
-        val allResults = mutableListOf<Pair<String, List<ResultItem>>>()
-        if (folders.isNotEmpty()) allResults.add("Ordner" to folders.sortedByDescending { it.score })
-        if (ratedMedia.isNotEmpty()) allResults.add("Medien" to ratedMedia.sortedByDescending { it.score })
-        if (tagItems.isNotEmpty()) allResults.add("Tags" to tagItems.distinctBy { it.label + it.path })
-        results = allResults.associate { it.first to it.second }
+        textMatchPaths = matched
         isSearching = false
     }
 
+    // Compute combined path filter whenever any filter changes
+    val combinedPaths = remember(query, ratingFilter, selectedTags, textMatchPaths) {
+        val sets = mutableListOf<Set<String>>()
+        if (textMatchPaths != null) sets.add(textMatchPaths!!)
+        if (ratingFilter > 0) {
+            try { sets.add(ctx.mediaDB.getByMinRating(ratingFilter).map { it.path }.toSet()) } catch (_: Exception) { }
+        }
+        if (selectedTags.isNotEmpty()) {
+            val tagPaths = allTags.filterKeys { it in selectedTags }.values.flatten().toSet()
+            sets.add(tagPaths)
+        }
+        when {
+            sets.isEmpty() -> null
+            sets.size == 1 -> sets.first()
+            else -> sets.reduce { a, b -> a.intersect(b) }
+        }
+    }
+
+    // Live update media tab
+    LaunchedEffect(combinedPaths, ratingFilter, selectedTags) {
+        onFilterChanged(combinedPaths, ratingFilter, selectedTags.let { if (it.isEmpty()) null else allTags.filterKeys { t -> t in it }.values.flatten().toSet() }, selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", "))
+    }
+
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false), containerColor = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            OutlinedTextField(value = query, onValueChange = { query = it }, placeholder = { Text("Dateien, Ordner durchsuchen...") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).heightIn(max = 520.dp)) {
+            // Search text field
+            OutlinedTextField(value = query, onValueChange = { query = it }, placeholder = { Text("Dateiname oder Pfad (z.B. \"DCIM test\")") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                 leadingIcon = { Icon(Icons.Default.Search, "Suchen") },
                 trailingIcon = { if (isSearching) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, "Leeren") } },
                 colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
+
+            // Rating filter
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 Text("Bewertung:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 4.dp))
-                IconButton(onClick = { ratingFilter = 0; onRatingFilter?.invoke(0) }, modifier = Modifier.size(28.dp)) { Text("Alle", style = MaterialTheme.typography.labelSmall, color = if (ratingFilter == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                IconButton(onClick = { ratingFilter = 0 }, modifier = Modifier.size(28.dp)) { Text("Alle", style = MaterialTheme.typography.labelSmall, color = if (ratingFilter == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
                 for (i in 1..5) {
-                    IconButton(onClick = { val v = if (ratingFilter == i) 0 else i; ratingFilter = v; onRatingFilter?.invoke(v) }, modifier = Modifier.size(28.dp)) {
+                    IconButton(onClick = { ratingFilter = if (ratingFilter == i) 0 else i }, modifier = Modifier.size(28.dp)) {
                         Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, "$i", tint = if (i <= ratingFilter) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     }
                 }
             }
             Spacer(Modifier.height(4.dp))
-            if (results.isNotEmpty()) {
-                var totalItems = 0; results.values.forEach { totalItems += it.size }
-                Text("$totalItems Ergebnisse", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 4.dp))
-                LazyColumn(modifier = Modifier.height(320.dp)) {
-                    results.entries.forEach { (category, items) ->
-                        item { Text(category, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) }
-                        items(items.size) { idx ->
-                            val item = items[idx]
-                            Surface(modifier = Modifier.fillMaxWidth().clickable {
-                                if (item.type == ResultType.FOLDER) onNavigate(item.path)
-                                else if (item.type == ResultType.TAG) {
-                                    onTagFilter?.invoke(item.label, setOf(item.path))
-                                } else {
-                                    onDismiss()
-                                    ctx.startActivity(android.content.Intent(ctx, ComposeViewerActivity::class.java).apply {
-                                        putStringArrayListExtra("PATHS", arrayListOf(item.path))
-                                        putExtra("START_INDEX", 0)
-                                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    })
-                                }
-                            }, color = Color.Transparent) {
-                                Row(Modifier.padding(vertical = 6.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        when (item.type) { ResultType.FOLDER -> Icons.Default.Folder; ResultType.TAG -> Icons.Default.Label; else -> Icons.Default.Image },
-                                        null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(Modifier.width(12.dp))
-                                    Text(item.label, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                    Text(item.path.substringAfterLast('/'), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
+
+            // Tag chips
+            if (allTags.isNotEmpty()) {
+                Text("Tags:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+                androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    allTags.entries.sortedByDescending { it.value.size }.take(20).forEach { (tag, paths) ->
+                        val isSelected = tag in selectedTags
+                        Surface(
+                            onClick = { selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag },
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier
+                        ) {
+                            Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(tag, style = MaterialTheme.typography.labelSmall, color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
+                                Spacer(Modifier.width(4.dp))
+                                Text("${paths.size}", style = MaterialTheme.typography.labelSmall, color = if (isSelected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            if (idx < items.lastIndex) HorizontalDivider(modifier = Modifier.padding(start = 36.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         }
                     }
                 }
-            } else if (query.length >= 2 && ratingFilter == 0 && !isSearching) {
-                Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
-                    Text("Keine Ergebnisse fur \"$query\"", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+            }
+
+            // Filter summary
+            val activeCount = listOfNotNull(
+                textMatchPaths?.let { "Text" },
+                ratingFilter.takeIf { it > 0 }?.let { "★ $it+" },
+                selectedTags.takeIf { it.isNotEmpty() }?.let { "${it.size} Tag${if (it.size != 1) "s" else ""}" }
+            )
+            if (activeCount.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Filter: ${activeCount.joinToString(" + ")}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    val resultCount = combinedPaths?.size
+                    if (resultCount != null) {
+                        Text("$resultCount Ergebnisse", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    IconButton(onClick = { query = ""; ratingFilter = 0; selectedTags = emptySet() }, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, "Filter zurücksetzen", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
+                Spacer(Modifier.height(4.dp))
             }
         }
     }
 }
-
-private enum class ResultType { FOLDER, MEDIA, TAG }
-private data class ResultItem(val label: String, val path: String, val type: ResultType, val score: Int = 0, val rating: Int = 0)
 
 private fun resolveContentUriToPath(uriString: String): String? {
     if (uriString.startsWith("/")) return uriString
