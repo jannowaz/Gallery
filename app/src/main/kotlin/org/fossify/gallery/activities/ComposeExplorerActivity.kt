@@ -117,6 +117,8 @@ import org.fossify.gallery.helpers.XmpWriter
 import org.fossify.gallery.viewmodels.AlbumsViewModel
 import java.io.File
 
+private enum class ActiveSheet { MORE_MENU, VIEW_SETTINGS }
+
 class ComposeExplorerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -147,8 +149,7 @@ private val navTabs = listOf(
 fun MainScreen(onFinish: () -> Unit) {
     val ctx = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(1) }
-    var showMoreMenu by remember { mutableStateOf(false) }
-    var showViewSettings by remember { mutableStateOf(false) }
+    var activeSheet by remember { mutableStateOf<ActiveSheet?>(null) }
     var showOmniSearch by remember { mutableStateOf(false) }
     var showRatingBrowser by remember { mutableStateOf(false) }
     var showTagBrowser by remember { mutableStateOf(false) }
@@ -261,7 +262,7 @@ fun MainScreen(onFinish: () -> Unit) {
                                 NavigationBarItem(
                                     selected = selectedTab == tab.index,
                                     onClick = {
-                                        if (tab.index == 5) { showMoreMenu = true; return@NavigationBarItem }
+                                        if (tab.index == 5) { activeSheet = ActiveSheet.MORE_MENU; return@NavigationBarItem }
                                         selectedTab = tab.index
                                     },
                                     icon = { Icon(tab.icon, tab.label, modifier = Modifier.size(22.dp)) },
@@ -302,27 +303,27 @@ fun MainScreen(onFinish: () -> Unit) {
         }
     }
 
-    if (showMoreMenu) {
+    if (activeSheet == ActiveSheet.MORE_MENU) {
         ModalBottomSheet(
-            onDismissRequest = { showMoreMenu = false },
+            onDismissRequest = { activeSheet = null },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = MaterialTheme.colorScheme.surface,
         ) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Text("Mehr", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                 if (selectedTab in listOf(0, 1, 2, 4)) {
-                    MenuRow(Icons.Default.GridView, "Ansicht") { showMoreMenu = false; showViewSettings = true }
+                    MenuRow(Icons.Default.GridView, "Ansicht") { activeSheet = ActiveSheet.VIEW_SETTINGS }
                     HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 }
-                MenuRow(Icons.Default.Star, "Nach Bewertung") { showMoreMenu = false; showRatingBrowser = true }
-                MenuRow(Icons.AutoMirrored.Filled.Label, "Nach Tags") { showMoreMenu = false; showTagBrowser = true }
+                MenuRow(Icons.Default.Star, "Nach Bewertung") { activeSheet = null; showRatingBrowser = true }
+                MenuRow(Icons.AutoMirrored.Filled.Label, "Nach Tags") { activeSheet = null; showTagBrowser = true }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                MenuRow(Icons.Default.Settings, "Einstellungen") { showMoreMenu = false; ctx.startActivity(Intent(ctx, ComposeSettingsActivity::class.java)) }
+                MenuRow(Icons.Default.Settings, "Einstellungen") { activeSheet = null; ctx.startActivity(Intent(ctx, ComposeSettingsActivity::class.java)) }
             }
         }
     }
 
-    if (showViewSettings) {
+    if (activeSheet == ActiveSheet.VIEW_SETTINGS) {
         val isAlbumsTab = selectedTab == 1
         val isExplorerTab = selectedTab == 2
         val s = when (selectedTab) {
@@ -343,7 +344,7 @@ fun MainScreen(onFinish: () -> Unit) {
                     4 -> viewSettingsVM.updateFavorites(v)
                 }
             },
-            onDismiss = { showViewSettings = false },
+            onDismiss = { activeSheet = null },
             modeTitle = when {
                 selectedTab == 1 -> if (settingsMode == SettingsMode.ALBUMS) "Alben" else "Ordner-Inhalt"
                 selectedTab == 2 -> if (settingsMode == SettingsMode.ALBUMS) "Alben" else "Medien"
