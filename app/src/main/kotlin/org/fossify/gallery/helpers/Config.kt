@@ -716,6 +716,14 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getString(LAST_COPY_MOVE_DESTINATION, internalStoragePath)!!
         set(path) = prefs.edit().putString(LAST_COPY_MOVE_DESTINATION, path).apply()
 
+    var showRatingOnThumbnails: Boolean
+        get() = prefs.getBoolean(SHOW_RATING_ON_THUMBNAILS, false)
+        set(v) = prefs.edit().putBoolean(SHOW_RATING_ON_THUMBNAILS, v).apply()
+
+    var showVideoDurationOnThumbnails: Boolean
+        get() = prefs.getBoolean(SHOW_VIDEO_DURATION_ON_THUMBNAILS, true)
+        set(v) = prefs.edit().putBoolean(SHOW_VIDEO_DURATION_ON_THUMBNAILS, v).apply()
+
     var tagHierarchy: MutableMap<String, String>
         get() {
             val json = prefs.getString(TAG_HIERARCHY, "{}")!!

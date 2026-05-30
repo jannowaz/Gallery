@@ -33,8 +33,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import org.fossify.gallery.extensions.config
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -177,6 +179,23 @@ fun ViewSettingsSheet(
                 Text("Unten ankern", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.weight(1f))
                 Switch(checked = local.anchorBottom, onCheckedChange = { local = local.copy(anchorBottom = it); onSettingsChange(local) })
+            }
+
+            // Thumbnail overlays (global config)
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(4.dp))
+            Text("Overlays auf Thumbnails", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val ovCtx = LocalContext.current
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Bewertung anzeigen", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.weight(1f))
+                Switch(checked = ovCtx.config.showRatingOnThumbnails, onCheckedChange = { ovCtx.config.showRatingOnThumbnails = it })
+            }
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Videodauer anzeigen", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.weight(1f))
+                Switch(checked = ovCtx.config.showVideoDurationOnThumbnails, onCheckedChange = { ovCtx.config.showVideoDurationOnThumbnails = it })
             }
 
             Spacer(Modifier.height(24.dp))

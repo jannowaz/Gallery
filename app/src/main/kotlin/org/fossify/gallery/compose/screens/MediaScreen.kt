@@ -68,6 +68,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import org.fossify.commons.dialogs.PropertiesDialog
@@ -78,6 +79,7 @@ import org.fossify.gallery.compose.components.StarRatingDialog
 import org.fossify.gallery.compose.components.TagInputDialog
 import org.fossify.gallery.compose.screens.FolderPickerSheet
 import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import org.fossify.gallery.models.Medium
@@ -99,6 +101,10 @@ fun MediaScreen(
 ) {
     val ctx = LocalContext.current
     val viewModel: MediaViewModel = viewModel()
+
+    LaunchedEffect(refreshTrigger) {
+        if (refreshTrigger > 0) viewModel.refresh()
+    }
 
     LaunchedEffect(refreshTrigger) {
         if (refreshTrigger > 0) viewModel.refresh()
@@ -247,6 +253,18 @@ fun MediaScreen(
                                     else coil.compose.AsyncImage(model = coil.request.ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(file)).crossfade(true).build(), contentDescription = m.name, modifier = Modifier.fillMaxSize().clip(cornerShape), contentScale = ContentScale.Crop)
                                 } else {
                                     Box(Modifier.fillMaxSize().clip(cornerShape).background(MaterialTheme.colorScheme.surfaceVariant))
+                                }
+                                // Thumbnail overlays
+                                if (ctx.config.showRatingOnThumbnails && m.rating > 0) {
+                                    Box(Modifier.align(Alignment.TopStart).padding(4.dp).background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 1.dp)) {
+                                        Text("★", style = MaterialTheme.typography.labelSmall, color = Color(0xFFFFD700), fontSize = 10.sp)
+                                    }
+                                }
+                                if (isVideo && ctx.config.showVideoDurationOnThumbnails && m.videoDuration > 0) {
+                                    val durStr = "%02d:%02d".format(m.videoDuration / 60, m.videoDuration % 60)
+                                    Box(Modifier.align(Alignment.BottomEnd).padding(4.dp).background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 1.dp)) {
+                                        Text(durStr, style = MaterialTheme.typography.labelSmall, color = Color.White, fontSize = 10.sp)
+                                    }
                                 }
                                 if (m.path in selectedPaths) {
                                     Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)))

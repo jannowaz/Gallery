@@ -382,12 +382,12 @@ fun MainScreen(onFinish: () -> Unit) {
             onDismiss = { showOmniSearch = false },
             storagePath = android.os.Environment.getExternalStorageDirectory().absolutePath,
             onNavigate = { path -> explorerPath = path; showOmniSearch = false; selectedTab = 2 },
-            onFilterChanged = { textPaths, rating, tagPaths, tagName ->
+            onFilterChanged = { textPaths, rating, tagPaths, tagName, fileType, dateRange ->
                 activeRatingFilter = rating
                 activePathFilter = textPaths
                 activeTagFilter = tagPaths
                 activeTagName = tagName
-                if (rating > 0 || tagPaths != null || textPaths != null) selectedTab = 0
+                if (rating > 0 || tagPaths != null || textPaths != null || fileType > 0 || dateRange > 0) selectedTab = 0
             },
         )
     }
@@ -760,7 +760,7 @@ private fun OmniSearchSheet(
     onDismiss: () -> Unit,
     storagePath: String,
     onNavigate: (String) -> Unit,
-    onFilterChanged: (filterPaths: Set<String>?, rating: Int, tagPaths: Set<String>?, tagName: String?) -> Unit,
+    onFilterChanged: (filterPaths: Set<String>?, rating: Int, tagPaths: Set<String>?, tagName: String?, fileType: Int, dateRange: Int) -> Unit,
 ) {
     val ctx = LocalContext.current
     var query by remember { mutableStateOf("") }
@@ -773,6 +773,8 @@ private fun OmniSearchSheet(
     var showTags by remember { mutableStateOf(false) }
     var folderResults by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var tagResults by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
+    var fileTypeFilter by remember { mutableIntStateOf(0) } // 0=Alle, 1=Bilder, 2=Videos
+    var dateFilter by remember { mutableIntStateOf(0) }     // 0=Alle, 1=Heute, 2=7 Tage, 3=30 Tage
 
     // Load tags on demand (only when user clicks "Tags laden") - catch ALL errors
     LaunchedEffect(showTags) {
@@ -813,15 +815,26 @@ private fun OmniSearchSheet(
             val folders = mutableListOf<Pair<String, String>>()
             val tags = mutableListOf<Pair<String, Int>>()
 
-            // 1. Search media via MediaStore (images + videos only)
+            // 1. Search media via MediaStore (with file type + date filters)
             try {
                 val uri = android.provider.MediaStore.Files.getContentUri("external")
-                val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA, android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
-                val sel = "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
-                val args = arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
-                ctx.contentResolver.query(uri, proj, sel, args, null)?.use { c ->
+                val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA, android.provider.MediaStore.MediaColumns.DISPLAY_NAME, android.provider.MediaStore.MediaColumns.DATE_MODIFIED)
+                val selParts = mutableListOf<String>()
+                val argsList = mutableListOf<String>()
+                when (fileTypeFilter) {
+                    1 -> { selParts.add("${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"); argsList.add(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString()) }
+                    2 -> { selParts.add("${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"); argsList.add(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()) }
+                    else -> { selParts.add("(${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?)"); argsList.addAll(arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())) }
+                }
+                when (dateFilter) {
+                    1 -> { val t = System.currentTimeMillis() / 1000 - (System.currentTimeMillis() % 86400000) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) }
+                    2 -> { val t = (System.currentTimeMillis() - 7 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) }
+                    3 -> { val t = (System.currentTimeMillis() - 30 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) }
+                }
+                ctx.contentResolver.query(uri, proj, selParts.joinToString(" AND "), argsList.toTypedArray(), null)?.use { c ->
                     val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
                     val nameCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                    val dateCol = if (dateFilter > 0) c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATE_MODIFIED) else -1
                     while (c.moveToNext()) {
                         val path = c.getString(dataCol) ?: continue
                         val name = c.getString(nameCol) ?: ""
@@ -894,7 +907,7 @@ private fun OmniSearchSheet(
             }
             withContext(Dispatchers.Main) {
                 combinedPaths = result
-                onFilterChanged(result, ratingFilter, selectedTags.let { if (it.isEmpty()) null else allTags.filterKeys { t -> t in it }.values.flatten().toSet() }, selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", "))
+                onFilterChanged(result, ratingFilter, selectedTags.let { if (it.isEmpty()) null else allTags.filterKeys { t -> t in it }.values.flatten().toSet() }, selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", "), fileTypeFilter, dateFilter)
             }
         }
     }
@@ -924,6 +937,24 @@ private fun OmniSearchSheet(
                 for (i in 1..5) {
                     IconButton(onClick = { ratingFilter = if (ratingFilter == i) 0 else i }, modifier = Modifier.size(28.dp)) {
                         Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, "$i", tint = if (i <= ratingFilter) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+
+            // File type + Date filter chips
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Typ:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                listOf("Alle" to 0, "Bilder" to 1, "Videos" to 2).forEach { (label, v) ->
+                    Surface(onClick = { fileTypeFilter = v }, shape = RoundedCornerShape(12.dp), color = if (fileTypeFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
+                        Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp), color = if (fileTypeFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+                Spacer(Modifier.width(4.dp))
+                Text("Datum:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                listOf("Alle" to 0, "Heute" to 1, "7T" to 2, "30T" to 3).forEach { (label, v) ->
+                    Surface(onClick = { dateFilter = v }, shape = RoundedCornerShape(12.dp), color = if (dateFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
+                        Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp), color = if (dateFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -1014,7 +1045,7 @@ private fun OmniSearchSheet(
                         item { Text("Tags (${tagResults.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)) }
                         items(tagResults.take(10), key = { it.first }) { (tag, cnt) ->
                             Surface(modifier = Modifier.fillMaxWidth().clickable {
-                                onFilterChanged(null, 0, allTags[tag]?.toSet(), tag)
+                                onFilterChanged(null, 0, allTags[tag]?.toSet(), tag, 0, 0)
                                 onDismiss()
                             }, color = Color.Transparent, shape = RoundedCornerShape(8.dp)) {
                                 Row(Modifier.padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
