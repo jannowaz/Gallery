@@ -371,11 +371,11 @@ fun MediaScreen(
                 }
                 Spacer(Modifier.height(12.dp))
                 SelectionRow(Icons.Default.Share, "Teilen") {
-                    val uris = ArrayList(selectedPaths.map { android.net.Uri.fromFile(File(it)) })
+                    val uris = ArrayList(selectedPaths.map { p -> androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(p)) })
                     val shareIntent = if (uris.size == 1) {
-                        Intent(Intent.ACTION_SEND).apply { type = "*/*"; putExtra(Intent.EXTRA_STREAM, uris.first()) }
+                        Intent(Intent.ACTION_SEND).apply { type = "*/*"; putExtra(Intent.EXTRA_STREAM, uris.first()); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                     } else {
-                        Intent(Intent.ACTION_SEND_MULTIPLE).apply { type = "*/*"; putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris) }
+                        Intent(Intent.ACTION_SEND_MULTIPLE).apply { type = "*/*"; putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                     }
                     ctx.startActivity(Intent.createChooser(shareIntent, "Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     showSelectionSheet = false; selectedPaths = emptySet()

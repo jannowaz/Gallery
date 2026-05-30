@@ -276,8 +276,8 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Row(Modifier.fillMaxWidth()) {
                     SelectionRow(Icons.Default.Share, "Teilen", modifier = Modifier.weight(1f)) {
-                        val uri = android.net.Uri.fromFile(File(currentPath))
-                        ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "*/*"; putExtra(Intent.EXTRA_STREAM, uri) }, "Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath))
+                        ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "*/*"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                         showActionSheet = false
                     }
                     Spacer(Modifier.width(8.dp))

@@ -197,8 +197,8 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
         ModalBottomSheet(onDismissRequest = { showActionSheet = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 SelectionRow(Icons.Default.Share, "Teilen") {
-                    val uri = Uri.fromFile(File(videoPath))
-                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "video/*"; putExtra(Intent.EXTRA_STREAM, uri) }, "Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", File(videoPath))
+                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "video/*"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     showActionSheet = false
                 }
                 SelectionRow(Icons.Default.ContentCopy, "Kopieren") { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }
