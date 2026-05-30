@@ -408,6 +408,8 @@ fun MainScreen(onFinish: () -> Unit) {
         var allTags by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
         var scanning by remember { mutableStateOf(false) }
         var deleteConfirmTag by remember { mutableStateOf<String?>(null) }
+        var mergeTargetTag by remember { mutableStateOf<String?>(null) }
+        var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
         var refreshTrigger by remember { mutableIntStateOf(0) }
         val scope = rememberCoroutineScope()
 
@@ -449,24 +451,30 @@ fun MainScreen(onFinish: () -> Unit) {
                         Text("Keine Tags gefunden", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
-                    LazyColumn(Modifier.heightIn(max = 600.dp)) {
+                    LazyColumn(Modifier.heightIn(max = 480.dp)) {
                         items(allTags.entries.toList(), key = { it.key }) { (tag, paths) ->
                             val thumbPath = paths.firstOrNull()
                             val isVideo = thumbPath?.let { it.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS } ?: false
+                            val isSelected = tag in selectedTags
                             Card(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
-                                    showTagBrowser = false
-                                    activeTagFilter = paths.toSet()
-                                    activeTagName = tag
-                                    activeRatingFilter = 0
-                                    activePathFilter = null
-                                    selectedTab = 0
+                                    if (selectedTags.isEmpty()) {
+                                        showTagBrowser = false
+                                        activeTagFilter = paths.toSet()
+                                        activeTagName = tag
+                                        activeRatingFilter = 0
+                                        activePathFilter = null
+                                        selectedTab = 0
+                                    } else {
+                                        selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag
+                                    }
                                 },
                                 shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                )
                             ) {
                                 Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    // Thumbnail
                                     Box(Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surface)) {
                                         if (thumbPath != null && File(thumbPath).exists()) {
                                             if (isVideo) {
@@ -488,34 +496,75 @@ fun MainScreen(onFinish: () -> Unit) {
                                         Text(tag, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Text("${paths.size} Dateien", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
-                                    IconButton(onClick = { deleteConfirmTag = tag }, modifier = Modifier.size(36.dp)) {
-                                        Icon(Icons.Default.Delete, "Tag entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                                    if (isSelected) {
+                                        Icon(Icons.Default.Close, "Ausgewählt", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                    } else {
+                                        IconButton(onClick = { deleteConfirmTag = tag }, modifier = Modifier.size(36.dp)) {
+                                            Icon(Icons.Default.Delete, "Tag entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                    // Action bar when tags are selected
+                    if (selectedTags.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        HorizontalDivider()
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Surface(
+                                onClick = {
+                                    val tagPaths = selectedTags.flatMap { allTags[it] ?: emptyList() }.toSet()
+                                    showTagBrowser = false
+                                    activeTagFilter = tagPaths
+                                    activeTagName = selectedTags.joinToString(", ")
+                                    activeRatingFilter = 0
+                                    activePathFilter = null
+                                    selectedTab = 0
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
+                                    Text("${selectedTags.size} Tags filtern", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimary)
+                                }
+                            }
+                            if (selectedTags.size >= 2) {
+                                Surface(
+                                    onClick = {
+                                        mergeTargetTag = selectedTags.first()
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
+                                        Text("Zusammenführen", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
                 }
-                Spacer(Modifier.height(16.dp))
             }
         }
 
-        // Delete confirmation dialog
+        // Delete confirmation
         if (deleteConfirmTag != null) {
             val tagToDelete = deleteConfirmTag!!
             val pathsForTag = allTags[tagToDelete] ?: emptyList()
             AlertDialog(
                 onDismissRequest = { deleteConfirmTag = null },
                 title = { Text("Tag entfernen") },
-                text = {
-                    Text("Tag \"$tagToDelete\" aus ${pathsForTag.size} Dateien entfernen? Die Dateien bleiben erhalten.")
-                },
+                text = { Text("Tag \"$tagToDelete\" aus ${pathsForTag.size} Dateien entfernen? Die Dateien bleiben erhalten.") },
                 confirmButton = {
                     val repo = LocalMediaRepository.current
                     TextButton(onClick = {
                         scope.launch(Dispatchers.IO) {
                             pathsForTag.forEach { p -> repo.removeTag(p, tagToDelete) }
-                            // Update cache
                             try {
                                 val cached = ctx.mediaCacheDB.getAllTagged().filter { it.tags.contains(tagToDelete) }
                                 cached.forEach { mc ->
@@ -525,13 +574,51 @@ fun MainScreen(onFinish: () -> Unit) {
                             } catch (_: Exception) { }
                             withContext(Dispatchers.Main) {
                                 ctx.toast("Tag \"$tagToDelete\" aus ${pathsForTag.size} Dateien entfernt", Toast.LENGTH_SHORT)
-                                deleteConfirmTag = null
-                                refreshTrigger++
+                                deleteConfirmTag = null; refreshTrigger++; selectedTags = emptySet()
                             }
                         }
                     }) { Text("Entfernen", color = MaterialTheme.colorScheme.error) }
                 },
                 dismissButton = { TextButton(onClick = { deleteConfirmTag = null }) { Text("Abbrechen") } }
+            )
+        }
+
+        // Merge dialog
+        if (mergeTargetTag != null) {
+            val target = mergeTargetTag!!
+            val sources = selectedTags - target
+            AlertDialog(
+                onDismissRequest = { mergeTargetTag = null },
+                title = { Text("Tags zusammenführen") },
+                text = { Text("Alle Dateien aus \"${sources.joinToString("\", \"")}\" zum Tag \"$target\" hinzufügen und die Quell-Tags entfernen?") },
+                confirmButton = {
+                    val repo = LocalMediaRepository.current
+                    TextButton(onClick = {
+                        scope.launch(Dispatchers.IO) {
+                            sources.forEach { srcTag ->
+                                val srcPaths = allTags[srcTag] ?: return@forEach
+                                srcPaths.forEach { p ->
+                                    repo.addTag(p, target)
+                                    repo.removeTag(p, srcTag)
+                                }
+                            }
+                            try {
+                                val cached = ctx.mediaCacheDB.getAllTagged().filter { it.tags.let { t -> sources.any { s -> t.contains(s) } } }
+                                cached.forEach { mc ->
+                                    var newTags = mc.tags
+                                    sources.forEach { src -> newTags = newTags.split(",").filter { it.trim() != src }.joinToString(",") }
+                                    if (target !in newTags.split(",").map { it.trim() }) newTags = "$newTags,$target"
+                                    ctx.mediaCacheDB.upsertAll(listOf(mc.copy(tags = newTags)))
+                                }
+                            } catch (_: Exception) { }
+                            withContext(Dispatchers.Main) {
+                                ctx.toast("Tags zu \"$target\" zusammengeführt", Toast.LENGTH_SHORT)
+                                mergeTargetTag = null; refreshTrigger++; selectedTags = emptySet()
+                            }
+                        }
+                    }) { Text("Zusammenführen") }
+                },
+                dismissButton = { TextButton(onClick = { mergeTargetTag = null }) { Text("Abbrechen") } }
             )
         }
     }
