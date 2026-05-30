@@ -164,6 +164,7 @@ fun MainScreen(onFinish: () -> Unit) {
     var activeTagFilter by remember { mutableStateOf<Set<String>?>(null) }
     var activeTagName by remember { mutableStateOf<String?>(null) }
     var activePathFilter by remember { mutableStateOf<Set<String>?>(null) }
+    var mediaRefreshTrigger by remember { mutableIntStateOf(0) }
     val viewSettingsVM: ViewSettingsViewModel = viewModel()
     val tabSettings by viewSettingsVM.settings.collectAsState()
     val settingsMode by viewSettingsVM.settingsMode.collectAsState()
@@ -300,7 +301,7 @@ fun MainScreen(onFinish: () -> Unit) {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (selectedTab) {
-                0 -> MediaScreen(viewSettings = tabSettings.media, ratingFilter = activeRatingFilter, tagFilterPaths = activeTagFilter, pathFilter = activePathFilter, activeTagName = activeTagName, onClearFilter = { activeRatingFilter = 0; activeTagFilter = null; activeTagName = null; activePathFilter = null })
+                0 -> MediaScreen(viewSettings = tabSettings.media, ratingFilter = activeRatingFilter, tagFilterPaths = activeTagFilter, pathFilter = activePathFilter, activeTagName = activeTagName, refreshTrigger = mediaRefreshTrigger, onClearFilter = { activeRatingFilter = 0; activeTagFilter = null; activeTagName = null; activePathFilter = null })
                 1 -> AlbumsScreen(viewModel = albumsViewModel, onFolderClick = { dir ->
                     ctx.startActivity(Intent(ctx, ComposeFolderActivity::class.java).apply {
                         putExtra("FOLDER_PATH", dir.path)
@@ -770,6 +771,8 @@ private fun OmniSearchSheet(
     var textMatchPaths by remember { mutableStateOf<Set<String>?>(null) }
     var searchTrigger by remember { mutableIntStateOf(0) }
     var showTags by remember { mutableStateOf(false) }
+    var folderResults by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var tagResults by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
 
     // Load tags on demand (only when user clicks "Tags laden") - catch ALL errors
     LaunchedEffect(showTags) {
@@ -807,6 +810,10 @@ private fun OmniSearchSheet(
 
         withContext(Dispatchers.IO) {
             val matched = mutableSetOf<String>()
+            val folders = mutableListOf<Pair<String, String>>()
+            val tags = mutableListOf<Pair<String, Int>>()
+
+            // 1. Search media via MediaStore (images + videos only)
             try {
                 val uri = android.provider.MediaStore.Files.getContentUri("external")
                 val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA, android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
@@ -823,7 +830,38 @@ private fun OmniSearchSheet(
                     }
                 }
             } catch (_: Exception) { }
+
+            // 2. Search folders (scan known roots 1 level deep)
+            try {
+                val roots = listOf(
+                    storagePath, "/storage/emulated/0/DCIM", "/storage/emulated/0/Download",
+                    "/storage/emulated/0/Pictures", "/storage/emulated/0/Movies"
+                ).distinct().filter { java.io.File(it).isDirectory }
+                roots.forEach { root ->
+                    java.io.File(root).listFiles()?.forEach { f ->
+                        if (f.isDirectory && !f.name.startsWith(".")) {
+                            if (qParts.all { it in f.name.lowercase() }) {
+                                folders.add(f.name to f.absolutePath)
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) { }
+
+            // 3. Search tags (from already-loaded allTags)
+            if (allTags.isNotEmpty()) {
+                qParts.forEach { qp ->
+                    allTags.entries.forEach { (tag, paths) ->
+                        if (tag.lowercase().contains(qp) && tags.none { it.first == tag }) {
+                            tags.add(tag to paths.size)
+                        }
+                    }
+                }
+            }
+
             textMatchPaths = matched
+            folderResults = folders.sortedBy { it.first }.take(20)
+            tagResults = tags.sortedByDescending { it.second }.take(20)
             isSearching = false
         }
     }
@@ -942,6 +980,58 @@ private fun OmniSearchSheet(
                     }
                 }
                 Spacer(Modifier.height(4.dp))
+            }
+
+            // Search results (grouped)
+            val hasResults = (textMatchPaths != null) || folderResults.isNotEmpty() || tagResults.isNotEmpty()
+            if (hasResults && !isSearching) {
+                Spacer(Modifier.height(8.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(4.dp))
+                LazyColumn(Modifier.heightIn(max = 300.dp)) {
+                    if (folderResults.isNotEmpty()) {
+                        item { Text("Ordner (${folderResults.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)) }
+                        items(folderResults.take(5), key = { it.second }) { (name, path) ->
+                            Surface(modifier = Modifier.fillMaxWidth().clickable {
+                                onNavigate(path)
+                            }, color = Color.Transparent, shape = RoundedCornerShape(8.dp)) {
+                                Row(Modifier.padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Icon(Icons.Default.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                        if (folderResults.size > 5) {
+                            item { Text("+ ${folderResults.size - 5} weitere", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp)) }
+                        }
+                    }
+                    if (tagResults.isNotEmpty()) {
+                        item { Text("Tags (${tagResults.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)) }
+                        items(tagResults.take(10), key = { it.first }) { (tag, cnt) ->
+                            Surface(modifier = Modifier.fillMaxWidth().clickable {
+                                onFilterChanged(null, 0, allTags[tag]?.toSet(), tag)
+                                onDismiss()
+                            }, color = Color.Transparent, shape = RoundedCornerShape(8.dp)) {
+                                Row(Modifier.padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(tag, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                    Text("$cnt", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                    if (textMatchPaths != null) {
+                        val mc = textMatchPaths!!.size
+                        item { Text("Medien ($mc)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)) }
+                    }
+                    item { Spacer(Modifier.height(8.dp)) }
+                }
             }
         }
     }

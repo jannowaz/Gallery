@@ -95,9 +95,14 @@ fun MediaScreen(
     activeTagName: String? = null,
     onClearFilter: () -> Unit = {},
     mediaOverride: List<Medium>? = null,
+    refreshTrigger: Int = 0,
 ) {
     val ctx = LocalContext.current
     val viewModel: MediaViewModel = viewModel()
+
+    LaunchedEffect(refreshTrigger) {
+        if (refreshTrigger > 0) viewModel.refresh()
+    }
     val state by viewModel.state.collectAsState()
     val repo = LocalMediaRepository.current
     var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -152,6 +157,7 @@ fun MediaScreen(
         }
         m
     }
+    val hasFilter = ratingFilter > 0 || tagFilterPaths != null || pathFilter != null
     val displayMedia = remember(unsortedMedia, viewSettings.sortBy, viewSettings.sortDesc) {
         val sorted = when (viewSettings.sortBy) {
             SortField.NAME -> unsortedMedia.sortedBy { it.name.lowercase() }
@@ -161,7 +167,6 @@ fun MediaScreen(
         }
         if (viewSettings.sortDesc) sorted.reversed() else sorted
     }
-    val hasFilter = ratingFilter > 0 || tagFilterPaths != null || pathFilter != null
     val cornerShape = if (viewSettings.roundedCorners) RoundedCornerShape(8.dp) else RoundedCornerShape(0.dp)
     val itemSpacing = viewSettings.spacing.dp
     val mediaCardColor = when (viewSettings.displayMode) {

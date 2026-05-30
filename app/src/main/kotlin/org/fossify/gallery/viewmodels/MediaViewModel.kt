@@ -34,9 +34,20 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private val imageExts = setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "avif", "bmp", "svg", "apng", "jxl")
     private val mediaExts = videoExts + imageExts
 
-    init { load() }
+    private var loaded = false
 
     fun load() {
+        if (loaded) return
+        loaded = true
+        doLoad()
+    }
+
+    fun refresh() {
+        loaded = false
+        doLoad()
+    }
+
+    private fun doLoad() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             val media = withContext(Dispatchers.IO) { scanDirectories() }
