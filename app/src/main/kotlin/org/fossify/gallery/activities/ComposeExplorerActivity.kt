@@ -167,14 +167,15 @@ fun MainScreen(onFinish: () -> Unit) {
     val settingsMode by viewSettingsVM.settingsMode.collectAsState()
     val albumsViewModel: AlbumsViewModel = viewModel()
 
-    // Back: clear filters first, then close
-    BackHandler(enabled = activeRatingFilter > 0 || activeTagFilter != null || activePathFilter != null || selectedTab != 1) {
-        if (activeRatingFilter > 0 || activeTagFilter != null || activePathFilter != null) {
-            activeRatingFilter = 0; activeTagFilter = null; activeTagName = null; activePathFilter = null; selectedTab = 1
-        } else if (selectedTab != 1) {
-            selectedTab = 1
-        } else {
-            onFinish()
+    // Back: reopen tag browser or clear filters, then close
+    BackHandler(enabled = activeRatingFilter > 0 || activeTagFilter != null || activePathFilter != null || showTagBrowser || showOmniSearch || selectedTab != 1) {
+        when {
+            showTagBrowser -> showTagBrowser = false
+            showOmniSearch -> showOmniSearch = false
+            activeTagFilter != null -> { showTagBrowser = true; selectedTab = 1 }
+            activeRatingFilter > 0 || activePathFilter != null -> { activeRatingFilter = 0; activeTagFilter = null; activeTagName = null; activePathFilter = null; selectedTab = 1 }
+            selectedTab != 1 -> selectedTab = 1
+            else -> onFinish()
         }
     }
 
@@ -477,16 +478,7 @@ fun MainScreen(onFinish: () -> Unit) {
                             val isSelected = tag in selectedTags
                             Card(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
-                                    if (selectedTags.isEmpty()) {
-                                        showTagBrowser = false
-                                        activeTagFilter = paths.toSet()
-                                        activeTagName = tag
-                                        activeRatingFilter = 0
-                                        activePathFilter = null
-                                        selectedTab = 0
-                                    } else {
-                                        selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag
-                                    }
+                                    selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag
                                 },
                                 shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.cardColors(
@@ -517,10 +509,6 @@ fun MainScreen(onFinish: () -> Unit) {
                                     }
                                     if (isSelected) {
                                         Icon(Icons.Default.Close, "Ausgewählt", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                                    } else if (selectedTags.isEmpty()) {
-                                        IconButton(onClick = { deleteConfirmTags = setOf(tag) }, modifier = Modifier.size(36.dp)) {
-                                            Icon(Icons.Default.Delete, "Tag entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
-                                        }
                                     }
                                 }
                             }
@@ -669,31 +657,43 @@ fun MainScreen(onFinish: () -> Unit) {
         // Hierarchy config dialog
         if (showHierarchyConfig) {
             var hierarchy by remember { mutableStateOf(ctx.config.tagHierarchy) }
-            var expandedTag by remember { mutableStateOf<String?>(null) }
+            var editingTag by remember { mutableStateOf<String?>(null) }
             AlertDialog(
                 onDismissRequest = { showHierarchyConfig = false },
                 title = { Text("Tag-Hierarchie") },
                 text = {
                     if (allTags.isEmpty()) Text("Keine Tags vorhanden")
-                    else {
+                    else if (editingTag != null) {
+                        val tag = editingTag!!
+                        val currentParent = hierarchy[tag] ?: ""
+                        val candidates = allTags.keys.filter { it != tag }.sorted()
+                        Column {
+                            Text("Eltern-Tag für \"$tag\":", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.height(4.dp))
+                            Text(if (currentParent.isEmpty()) "Kein Eltern-Tag gesetzt" else "Aktuell: $currentParent", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(8.dp))
+                            LazyColumn(Modifier.heightIn(max = 300.dp)) {
+                                item {
+                                    Surface(modifier = Modifier.fillMaxWidth().clickable { hierarchy = hierarchy.toMutableMap().apply { remove(tag) }; editingTag = null }, color = if (currentParent.isEmpty()) MaterialTheme.colorScheme.primaryContainer else Color.Transparent, shape = RoundedCornerShape(8.dp)) {
+                                        Text("Kein Eltern-Tag", modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium, fontWeight = if (currentParent.isEmpty()) FontWeight.Bold else FontWeight.Normal)
+                                    }
+                                }
+                                items(candidates) { p ->
+                                    val isParent = p == currentParent
+                                    Surface(modifier = Modifier.fillMaxWidth().clickable { hierarchy = hierarchy.toMutableMap().apply { put(tag, p) }; editingTag = null }, color = if (isParent) MaterialTheme.colorScheme.primaryContainer else Color.Transparent, shape = RoundedCornerShape(8.dp)) {
+                                        Text(p, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium, fontWeight = if (isParent) FontWeight.Bold else FontWeight.Normal, color = if (isParent) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
                         Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-                            Text("Setze Eltern-Tag für jeden Tag:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+                            Text("Tippe auf einen Tag, um den Eltern-Tag zu setzen:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
                             allTags.keys.sorted().forEach { tag ->
                                 val parent = hierarchy[tag] ?: ""
-                                val parents = allTags.keys.filter { it != tag }.sorted()
-                                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { editingTag = tag }, verticalAlignment = Alignment.CenterVertically) {
                                     Text(tag, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                                    Box {
-                                        Surface(onClick = { expandedTag = if (expandedTag == tag) null else tag }, shape = RoundedCornerShape(8.dp), color = if (parent.isNotEmpty()) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
-                                            Text(if (parent.isEmpty()) "Kein Eltern-Tag" else parent, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = if (parent.isNotEmpty()) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                        DropdownMenu(expanded = expandedTag == tag, onDismissRequest = { expandedTag = null }) {
-                                            DropdownMenuItem(text = { Text("Kein Eltern-Tag", style = MaterialTheme.typography.labelSmall) }, onClick = { hierarchy = hierarchy.toMutableMap().apply { remove(tag) }; expandedTag = null })
-                                            parents.forEach { p ->
-                                                DropdownMenuItem(text = { Text(p, style = MaterialTheme.typography.labelSmall) }, onClick = { hierarchy = hierarchy.toMutableMap().apply { put(tag, p) }; expandedTag = null })
-                                            }
-                                        }
-                                    }
+                                    Text(if (parent.isEmpty()) "—" else parent, style = MaterialTheme.typography.labelSmall, color = if (parent.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
@@ -704,9 +704,9 @@ fun MainScreen(onFinish: () -> Unit) {
                         ctx.config.tagHierarchy = hierarchy
                         ctx.toast("Hierarchie gespeichert", Toast.LENGTH_SHORT)
                         showHierarchyConfig = false
-                    }) { Text("Speichern") }
+                    }) { Text(if (editingTag != null) "Fertig" else "Speichern") }
                 },
-                dismissButton = { TextButton(onClick = { showHierarchyConfig = false }) { Text("Abbrechen") } }
+                dismissButton = { TextButton(onClick = { if (editingTag != null) editingTag = null else showHierarchyConfig = false }) { Text("Abbrechen") } }
             )
         }
 

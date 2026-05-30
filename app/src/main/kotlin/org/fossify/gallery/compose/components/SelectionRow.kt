@@ -40,7 +40,7 @@ fun SelectionRow(icon: ImageVector, label: String, tint: Color = Color.Unspecifi
                 Icon(icon, label, tint = if (tint != Color.Unspecified) tint else MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
             }
             Spacer(Modifier.width(12.dp))
-            Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
+            Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f), color = if (tint != Color.Unspecified) tint else MaterialTheme.colorScheme.onSurface)
             Icon(Icons.Default.KeyboardArrowRight, label, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), modifier = Modifier.size(20.dp))
         }
