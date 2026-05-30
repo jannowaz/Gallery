@@ -654,19 +654,24 @@ private fun OmniSearchSheet(
     var searchTrigger by remember { mutableIntStateOf(0) }
     var showTags by remember { mutableStateOf(false) }
 
-    // Load tags on demand (only when user clicks "Tags laden")
+    // Load tags on demand (only when user clicks "Tags laden") - catch ALL errors
     LaunchedEffect(showTags) {
         if (!showTags) return@LaunchedEffect
-        withContext(Dispatchers.IO) {
+        try {
+            val cached = withContext(Dispatchers.IO) {
+                try { ctx.mediaCacheDB.getAllTagged() } catch (e: Exception) { emptyList() }
+            }
             val tags = mutableMapOf<String, MutableSet<String>>()
-            try {
-                ctx.mediaCacheDB.getAllTagged().forEach { mc ->
+            cached.forEach { mc ->
+                kotlin.runCatching {
                     mc.tags.split(",").filter { it.isNotBlank() }.forEach { t ->
                         tags.getOrPut(t.trim()) { mutableSetOf() }.add(mc.fullPath)
                     }
                 }
-            } catch (_: Exception) { }
-            allTags = tags
+            }
+            allTags = if (tags.isEmpty()) emptyMap() else tags
+        } catch (e: Throwable) {
+            android.util.Log.e("OmniSearch", "Tag load failed", e)
         }
     }
 
