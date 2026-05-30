@@ -7,10 +7,8 @@ import android.os.Bundle
 import android.view.SurfaceView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -28,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -75,6 +74,7 @@ import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.compose.components.StarRatingDialog
 import org.fossify.gallery.compose.components.TagInputDialog
+import org.fossify.gallery.compose.screens.FolderPickerSheet
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.compose.theme.LocalMediaRepository
@@ -116,26 +116,8 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
     var showRatingDialog by remember { mutableStateOf(false) }
     var showTagsDialog by remember { mutableStateOf(false) }
     var currentRating by remember { mutableIntStateOf(0) }
-    var pendingCopyPath by remember { mutableStateOf<String?>(null) }
-    var pendingIsMove by remember { mutableStateOf(false) }
-
-    val safLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        val srcPath = pendingCopyPath ?: return@rememberLauncherForActivityResult
-        if (uri != null) {
-            scope.launch(Dispatchers.IO) {
-                try {
-                    val src = File(srcPath)
-                    val mime = when (src.extension.lowercase()) { "mp4" -> "video/mp4"; "mkv" -> "video/x-matroska"; "mov" -> "video/quicktime"; else -> "video/*" }
-                    val destDir = DocumentFile.fromTreeUri(context, uri)
-                    val destFile = destDir?.createFile(mime, src.nameWithoutExtension) ?: return@launch
-                    context.contentResolver.openOutputStream(destFile.uri)?.use { out -> src.inputStream().use { it.copyTo(out) } }
-                    if (pendingIsMove) { src.delete(); context.deleteMediumWithPath(srcPath) }
-                    withContext(Dispatchers.Main) { context.toast(if (pendingIsMove) "Verschoben" else "Kopiert", Toast.LENGTH_SHORT) }
-                } catch (e: Exception) { withContext(Dispatchers.Main) { context.toast("Fehler: ${e.message}", Toast.LENGTH_SHORT) } }
-            }
-        }
-        pendingCopyPath = null
-    }
+    var showFolderPicker by remember { mutableStateOf(false) }
+    var pendingFolderPickerIsMove by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -219,7 +201,8 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
                     context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "video/*"; putExtra(Intent.EXTRA_STREAM, uri) }, "Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     showActionSheet = false
                 }
-                SelectionRow(Icons.Default.ContentCopy, "Kopieren") { pendingCopyPath = videoPath; pendingIsMove = false; safLauncher.launch(null); showActionSheet = false }
+                SelectionRow(Icons.Default.ContentCopy, "Kopieren") { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }
+                SelectionRow(Icons.AutoMirrored.Filled.DriveFileMove, "Verschieben") { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false }
                 SelectionRow(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error) {
                     File(videoPath).delete(); context.deleteMediumWithPath(videoPath); showActionSheet = false; onClose()
                 }
@@ -241,5 +224,13 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
     }
     if (showTagsDialog) {
         TagInputDialog(initialTags = repo.getTags(videoPath), onAddTag = { repo.addTag(videoPath, it) }, onRemoveTag = { repo.removeTag(videoPath, it) }, onDismiss = { showTagsDialog = false })
+    }
+
+    if (showFolderPicker) {
+        FolderPickerSheet(
+            isMoveOperation = pendingFolderPickerIsMove,
+            sourcePaths = listOf(videoPath),
+            onDismiss = { showFolderPicker = false }
+        )
     }
 }

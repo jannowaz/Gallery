@@ -711,4 +711,8 @@ class Config(context: Context) : BaseConfig(context) {
     var showPermissionRationale: Boolean
         get() = prefs.getBoolean(SHOW_PERMISSION_RATIONALE, false)
         set(showPermissionRationale) = prefs.edit().putBoolean(SHOW_PERMISSION_RATIONALE, showPermissionRationale).apply()
+
+    var lastCopyMoveDestination: String
+        get() = prefs.getString(LAST_COPY_MOVE_DESTINATION, internalStoragePath)!!
+        set(path) = prefs.edit().putString(LAST_COPY_MOVE_DESTINATION, path).apply()
 }

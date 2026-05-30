@@ -6,10 +6,8 @@ import android.os.Bundle
 import android.view.TextureView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -42,6 +40,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -96,6 +95,7 @@ import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.compose.components.TagInputDialog
+import org.fossify.gallery.compose.screens.FolderPickerSheet
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.compose.theme.LocalMediaRepository
@@ -140,28 +140,9 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     var showQuickTags by remember { mutableStateOf(false) }
     val quickTags = remember { (ctx.config.quickTags).toList() }
     var currentRating by remember { mutableIntStateOf(0) }
-    var pendingCopyPath by remember { mutableStateOf<String?>(null) }
-    var pendingIsMove by remember { mutableStateOf(false) }
+    var showFolderPicker by remember { mutableStateOf(false) }
+    var pendingFolderPickerIsMove by remember { mutableStateOf(false) }
     var videoScalingMode by remember { mutableIntStateOf(0) } // 0=Passend(FIT), 2=Fullscreen(ZOOM), 3=Breite(FIXED_WIDTH)
-
-    val safLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        val srcPath = pendingCopyPath ?: return@rememberLauncherForActivityResult
-        if (uri != null) {
-            scope.launch(Dispatchers.IO) {
-                try {
-                    val src = File(srcPath)
-                    val ext = src.extension.ifEmpty { "jpg" }
-                    val mime = when (ext) { "jpg","jpeg" -> "image/jpeg"; "png" -> "image/png"; "gif" -> "image/gif"; "mp4" -> "video/mp4"; else -> "*/*" }
-                    val destDir = androidx.documentfile.provider.DocumentFile.fromTreeUri(ctx, uri)
-                    val destFile = destDir?.createFile(mime, src.nameWithoutExtension) ?: return@launch
-                    ctx.contentResolver.openOutputStream(destFile.uri)?.use { out -> src.inputStream().use { inp -> inp.copyTo(out) } }
-                    if (pendingIsMove) { src.delete(); ctx.deleteMediumWithPath(srcPath) }
-                    withContext(Dispatchers.Main) { ctx.toast(if (pendingIsMove) "Verschoben" else "Kopiert", Toast.LENGTH_SHORT) }
-                } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", Toast.LENGTH_SHORT) } }
-            }
-        }
-        pendingCopyPath = null
-    }
     var offsetY by remember { mutableFloatStateOf(0f) }
     val heroAnim = remember { Animatable(1f) }
 
@@ -273,7 +254,9 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                         showActionSheet = false
                     }
                     Spacer(Modifier.width(8.dp))
-                    SelectionRow(Icons.Default.ContentCopy, "Kopieren", modifier = Modifier.weight(1f)) { pendingCopyPath = currentPath; pendingIsMove = false; safLauncher.launch(null); showActionSheet = false }
+                    SelectionRow(Icons.Default.ContentCopy, "Kopieren", modifier = Modifier.weight(1f)) { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }
+                    Spacer(Modifier.width(8.dp))
+                    SelectionRow(Icons.AutoMirrored.Filled.DriveFileMove, "Verschieben", modifier = Modifier.weight(1f)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false }
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth()) {
@@ -336,6 +319,14 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
 
     if (showTagsDialog) {
         TagInputDialog(initialTags = repo.getTags(currentPath), onAddTag = { repo.addTag(currentPath, it) }, onRemoveTag = { repo.removeTag(currentPath, it) }, onDismiss = { showTagsDialog = false })
+    }
+
+    if (showFolderPicker) {
+        FolderPickerSheet(
+            isMoveOperation = pendingFolderPickerIsMove,
+            sourcePaths = listOf(currentPath),
+            onDismiss = { showFolderPicker = false }
+        )
     }
 }
 

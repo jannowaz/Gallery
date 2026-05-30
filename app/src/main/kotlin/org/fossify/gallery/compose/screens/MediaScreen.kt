@@ -31,7 +31,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
@@ -74,6 +76,7 @@ import org.fossify.gallery.activities.ComposeViewerActivity
 import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.compose.components.StarRatingDialog
 import org.fossify.gallery.compose.components.TagInputDialog
+import org.fossify.gallery.compose.screens.FolderPickerSheet
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
@@ -100,6 +103,8 @@ fun MediaScreen(
     var showSelectionSheet by remember { mutableStateOf(false) }
     var showRatingDialog by remember { mutableStateOf(false) }
     var showTagsDialog by remember { mutableStateOf(false) }
+    var showFolderPicker by remember { mutableStateOf(false) }
+    var folderPickerIsMove by remember { mutableStateOf(false) }
     var currentRating by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val columnCount = viewSettings.columnCount
@@ -313,6 +318,8 @@ fun MediaScreen(
                     viewModel.deletePaths(selectedPaths); selectedPaths = emptySet(); showSelectionSheet = false
                 }
                 SelectionRow(Icons.Default.Info, "Info") { selectedPaths.firstOrNull()?.let { (ctx as? android.app.Activity)?.let { a -> PropertiesDialog(a, it, false) } }; showSelectionSheet = false }
+                SelectionRow(Icons.Default.ContentCopy, "Kopieren") { folderPickerIsMove = false; showFolderPicker = true; showSelectionSheet = false }
+                SelectionRow(Icons.AutoMirrored.Filled.DriveFileMove, "Verschieben") { folderPickerIsMove = true; showFolderPicker = true; showSelectionSheet = false }
                 SelectionRow(Icons.Default.Star, "Bewerten") { showRatingDialog = true; showSelectionSheet = false }
                 SelectionRow(Icons.Default.Edit, "Tags") { showTagsDialog = true; showSelectionSheet = false }
                 Spacer(Modifier.height(24.dp))
@@ -336,6 +343,15 @@ fun MediaScreen(
             onRemoveTag = { batch.forEach { p -> repo.removeTag(p, it) } },
             onDismiss = { showTagsDialog = false },
             batchCount = batch.size,
+        )
+    }
+
+    if (showFolderPicker) {
+        val batch = selectedPaths.toList()
+        FolderPickerSheet(
+            isMoveOperation = folderPickerIsMove,
+            sourcePaths = batch,
+            onDismiss = { showFolderPicker = false; selectedPaths = emptySet() }
         )
     }
 }
