@@ -32,8 +32,14 @@ object XmpWriter {
 
     private fun parseXmp(raw: String): XmpData {
         val tags = mutableListOf<String>()
-        val tagRegex = Regex("<rdf:li>([^<]+)</rdf:li>")
-        tagRegex.findAll(raw).forEach { tags.add(it.groupValues[1]) }
+        // Only extract <rdf:li> values that are inside <dc:subject> (actual tags, not other XMP list data)
+        val subjectMatch = Regex("<dc:subject>\\s*<rdf:Bag>\\s*(.*?)\\s*</rdf:Bag>\\s*</dc:subject>", RegexOption.DOT_MATCHES_ALL)
+            .find(raw)
+        if (subjectMatch != null) {
+            val bagContent = subjectMatch.groupValues[1]
+            val tagRegex = Regex("<rdf:li>([^<]+)</rdf:li>")
+            tagRegex.findAll(bagContent).forEach { tags.add(it.groupValues[1]) }
+        }
         val rating = Regex("<xmp:Rating>(\\d+)</xmp:Rating>").find(raw)?.groupValues?.get(1)?.toIntOrNull() ?: 0
         return XmpData(tags = tags, rating = rating)
     }
