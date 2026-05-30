@@ -349,6 +349,7 @@ fun MainScreen(onFinish: () -> Unit) {
             storagePath = android.os.Environment.getExternalStorageDirectory().absolutePath,
             onNavigate = { path -> explorerPath = path; showOmniSearch = false; selectedTab = 2 },
             onTagFilter = { tagName, paths -> activeTagFilter = paths; activeTagName = tagName; activeRatingFilter = 0; showOmniSearch = false; selectedTab = 0 },
+            onRatingFilter = { r -> activeRatingFilter = r; activeTagFilter = null; activeTagName = null; selectedTab = 0 },
         )
     }
 
@@ -464,7 +465,7 @@ private fun String.fuzzyScore(query: String): Int {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun OmniSearchSheet(onDismiss: () -> Unit, storagePath: String, onNavigate: (String) -> Unit, onTagFilter: ((String, Set<String>) -> Unit)? = null) {
+private fun OmniSearchSheet(onDismiss: () -> Unit, storagePath: String, onNavigate: (String) -> Unit, onTagFilter: ((String, Set<String>) -> Unit)? = null, onRatingFilter: ((Int) -> Unit)? = null) {
     val ctx = LocalContext.current
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<Map<String, List<ResultItem>>>(emptyMap()) }
@@ -472,10 +473,9 @@ private fun OmniSearchSheet(onDismiss: () -> Unit, storagePath: String, onNaviga
     var ratingFilter by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(query, ratingFilter) {
-        if (query.length < 2) { results = emptyMap(); return@LaunchedEffect }
+        if (query.length < 2 && ratingFilter == 0) { results = emptyMap(); return@LaunchedEffect }
         isSearching = true
         kotlinx.coroutines.delay(300)
-        if (query.isBlank()) { results = emptyMap(); isSearching = false; return@LaunchedEffect }
         val folders = mutableListOf<ResultItem>()
         val media = mutableListOf<ResultItem>()
         val tagItems = mutableListOf<ResultItem>()
@@ -510,9 +510,17 @@ private fun OmniSearchSheet(onDismiss: () -> Unit, storagePath: String, onNaviga
                 }
             } catch (_: Exception) { }
         } catch (_: Exception) { }
+        // Filter media by rating if active
+        val ratedMedia = if (ratingFilter > 0) {
+            val minRating = ratingFilter
+            try {
+                val paths = ctx.mediaDB.getByMinRating(minRating).map { it.path }.toSet()
+                media.filter { it.path in paths }
+            } catch (_: Exception) { media }
+        } else { media }
         val allResults = mutableListOf<Pair<String, List<ResultItem>>>()
         if (folders.isNotEmpty()) allResults.add("Ordner" to folders.sortedByDescending { it.score })
-        if (media.isNotEmpty()) allResults.add("Medien" to media.sortedByDescending { it.score })
+        if (ratedMedia.isNotEmpty()) allResults.add("Medien" to ratedMedia.sortedByDescending { it.score })
         if (tagItems.isNotEmpty()) allResults.add("Tags" to tagItems.distinctBy { it.label + it.path })
         results = allResults.associate { it.first to it.second }
         isSearching = false
@@ -528,9 +536,9 @@ private fun OmniSearchSheet(onDismiss: () -> Unit, storagePath: String, onNaviga
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 Text("Bewertung:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 4.dp))
-                IconButton(onClick = { ratingFilter = 0 }, modifier = Modifier.size(28.dp)) { Text("Alle", style = MaterialTheme.typography.labelSmall, color = if (ratingFilter == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                IconButton(onClick = { ratingFilter = 0; onRatingFilter?.invoke(0) }, modifier = Modifier.size(28.dp)) { Text("Alle", style = MaterialTheme.typography.labelSmall, color = if (ratingFilter == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
                 for (i in 1..5) {
-                    IconButton(onClick = { ratingFilter = if (ratingFilter == i) 0 else i }, modifier = Modifier.size(28.dp)) {
+                    IconButton(onClick = { val v = if (ratingFilter == i) 0 else i; ratingFilter = v; onRatingFilter?.invoke(v) }, modifier = Modifier.size(28.dp)) {
                         Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, "$i", tint = if (i <= ratingFilter) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     }
                 }
@@ -571,7 +579,7 @@ private fun OmniSearchSheet(onDismiss: () -> Unit, storagePath: String, onNaviga
                         }
                     }
                 }
-            } else if (query.length >= 2 && !isSearching) {
+            } else if (query.length >= 2 && ratingFilter == 0 && !isSearching) {
                 Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
                     Text("Keine Ergebnisse fur \"$query\"", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
