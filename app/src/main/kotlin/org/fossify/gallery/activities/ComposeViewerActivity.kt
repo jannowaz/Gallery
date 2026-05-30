@@ -48,6 +48,8 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -138,6 +140,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     var showVideoSettings by remember { mutableStateOf(false) }
     var showRatingOverlay by remember { mutableStateOf(false) }
     var showQuickTags by remember { mutableStateOf(false) }
+    var showPersistentTags by remember { mutableStateOf(true) }
     val quickTags = remember { (ctx.config.quickTags).toList() }
     var currentRating by remember { mutableIntStateOf(0) }
     var showFolderPicker by remember { mutableStateOf(false) }
@@ -190,7 +193,41 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
             }
         }
 
-        // Quick tag bar (oben) + Star rating overlay (unten)
+        // Bottom overlays: Persistent tags (top), Rating (middle), Quick tags (bottom)
+        // Persistent tags (always visible when toggled, shows current file's tags)
+        AnimatedVisibility(visible = showPersistentTags, enter = fadeIn(), exit = fadeOut()) {
+            val currentTags = remember(currentPath) { repo.getTags(currentPath) }
+            if (currentTags.isNotEmpty()) {
+                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = if (showRatingOverlay) 72.dp else 0.dp).background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 8.dp, vertical = 6.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                        currentTags.forEach { tag ->
+                            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)) {
+                                Text(tag, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Rating overlay
+        AnimatedVisibility(visible = showRatingOverlay, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = if (showQuickTags && quickTags.isNotEmpty()) 52.dp else 0.dp).background(Color.Black.copy(alpha = 0.6f)).padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                    for (i in 1..5) {
+                        IconButton(onClick = {
+                            val newRating = if (currentRating == i) 0 else i
+                            currentRating = newRating
+                            scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, newRating) }
+                        }, modifier = Modifier.size(44.dp)) {
+                            Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, "Bewertung $i", tint = if (i <= currentRating) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), modifier = Modifier.size(28.dp))
+                        }
+                    }
+                }
+            }
+        }
+
+        // Quick tag bar (bottom-most)
         AnimatedVisibility(visible = showQuickTags && quickTags.isNotEmpty(), enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 8.dp, vertical = 10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
@@ -209,22 +246,6 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                             Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(tag, style = MaterialTheme.typography.labelSmall, color = if (hasTag) MaterialTheme.colorScheme.onPrimary else Color.White.copy(alpha = 0.9f))
                             }
-                        }
-                    }
-                }
-            }
-        }
-
-        AnimatedVisibility(visible = showRatingOverlay, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
-            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha = 0.6f)).padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-                Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-                    for (i in 1..5) {
-                        IconButton(onClick = {
-                            val newRating = if (currentRating == i) 0 else i
-                            currentRating = newRating
-                            scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, newRating) }
-                        }, modifier = Modifier.size(48.dp)) {
-                            Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, "Bewertung $i", tint = if (i <= currentRating) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), modifier = Modifier.size(32.dp))
                         }
                     }
                 }
@@ -283,8 +304,15 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                     SelectionRow(Icons.Default.Edit, "Bearbeiten", modifier = Modifier.weight(1f)) { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }
                     if (quickTags.isNotEmpty()) {
                         Spacer(Modifier.width(8.dp))
-                        SelectionRow(if (showQuickTags) Icons.Default.Star else Icons.Default.StarBorder, "Tags-Leiste", modifier = Modifier.weight(1f)) { showQuickTags = !showQuickTags; showActionSheet = false }
+                        SelectionRow(if (showQuickTags) Icons.Default.Star else Icons.Default.StarBorder, "Schnell-Tags", modifier = Modifier.weight(1f)) { showQuickTags = !showQuickTags; showActionSheet = false }
+                    } else {
+                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.weight(1f))
                     }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth()) {
+                    SelectionRow(if (showPersistentTags) Icons.Default.Visibility else Icons.Default.VisibilityOff, "Tags anzeigen", modifier = Modifier.weight(1f)) { showPersistentTags = !showPersistentTags; showActionSheet = false }
                 }
                 if (currentIsVideo) {
                     Spacer(Modifier.height(8.dp))
@@ -394,6 +422,10 @@ private fun ImagePage(path: String, file: File) {
 @Composable
 private fun VideoPage(path: String, scalingMode: Int) {
     val ctx = LocalContext.current
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offsetX by remember { mutableFloatStateOf(0f) }
+    var offsetY by remember { mutableFloatStateOf(0f) }
+
     val player = remember(path) {
         ExoPlayer.Builder(ctx).build().apply {
             setMediaItem(MediaItem.fromUri(android.net.Uri.fromFile(File(path))))
@@ -407,5 +439,51 @@ private fun VideoPage(path: String, scalingMode: Int) {
     LaunchedEffect(player) { spv.player = player }
     LaunchedEffect(scalingMode) { spv.resizeMode = scalingMode }
 
-    AndroidView(factory = { spv }, modifier = Modifier.fillMaxSize().background(Color.Black))
+    Box(Modifier.fillMaxSize().clipToBounds().background(Color.Black)) {
+        AndroidView(
+            factory = { spv },
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                scaleX = scale; scaleY = scale
+                translationX = offsetX; translationY = offsetY
+            }.pointerInput(Unit) {
+                val viewSize = this.size
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val changes = event.changes.filter { it.pressed }
+                        if (changes.size > 1) {
+                            val pts = changes.map { it.position }
+                            val prevPts = changes.map { it.previousPosition }
+                            val cent = androidx.compose.ui.geometry.Offset(pts.sumOf { it.x.toDouble() }.toFloat() / pts.size, pts.sumOf { it.y.toDouble() }.toFloat() / pts.size)
+                            val prevCent = androidx.compose.ui.geometry.Offset(prevPts.sumOf { it.x.toDouble() }.toFloat() / prevPts.size, prevPts.sumOf { it.y.toDouble() }.toFloat() / prevPts.size)
+                            val curDist = pts.sumOf { (it - cent).getDistance().toDouble() }.toFloat()
+                            val prevDist = prevPts.sumOf { (it - prevCent).getDistance().toDouble() }.toFloat()
+                            val zoom = if (prevDist > 0f) (curDist / prevDist).coerceIn(0.5f, 3f) else 1f
+                            scale = (scale * zoom).coerceIn(1f, 5f)
+                            val pan = cent - prevCent
+                            val maxX = (scale - 1f) * viewSize.width / 2f
+                            val maxY = (scale - 1f) * viewSize.height / 2f
+                            offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX)
+                            offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
+                            changes.forEach { it.consume() }
+                        } else if (changes.size == 1 && scale > 1f) {
+                            val c = changes.first()
+                            val pan = c.position - c.previousPosition
+                            val maxX = (scale - 1f) * viewSize.width / 2f
+                            val maxY = (scale - 1f) * viewSize.height / 2f
+                            offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX)
+                            offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
+                            changes.forEach { it.consume() }
+                        }
+                    }
+                }
+            }
+        )
+        Box(Modifier.fillMaxSize().pointerInput(Unit) {
+            detectTapGestures(onDoubleTap = {
+                scale = if (scale > 1f) 1f else 2.5f
+                if (scale == 1f) { offsetX = 0f; offsetY = 0f }
+            })
+        })
+    }
 }
