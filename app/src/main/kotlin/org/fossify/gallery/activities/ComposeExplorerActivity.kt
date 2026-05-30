@@ -7,10 +7,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +46,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.CollectionsBookmark
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -79,6 +82,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -478,6 +482,7 @@ private fun OmniSearchSheet(
     var allTags by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
     var isSearching by remember { mutableStateOf(false) }
     var textMatchPaths by remember { mutableStateOf<Set<String>?>(null) }
+    var searchTrigger by remember { mutableIntStateOf(0) }
 
     // Scan all tags on open
     LaunchedEffect(Unit) {
@@ -500,11 +505,14 @@ private fun OmniSearchSheet(
         }
     }
 
-    // Text search: fuzzy match on filename + full path
-    LaunchedEffect(query) {
+    fun triggerSearch() {
+        searchTrigger++
+    }
+
+    // Text search: fuzzy match on filename + full path (only on manual trigger)
+    LaunchedEffect(searchTrigger) {
         if (query.length < 2) { textMatchPaths = null; return@LaunchedEffect }
         isSearching = true
-        kotlinx.coroutines.delay(200)
         val qParts = query.lowercase().split(" ").filter { it.isNotBlank() }
         if (qParts.isEmpty()) { textMatchPaths = null; isSearching = false; return@LaunchedEffect }
 
@@ -552,10 +560,18 @@ private fun OmniSearchSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false), containerColor = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).heightIn(max = 520.dp)) {
-            // Search text field
-            OutlinedTextField(value = query, onValueChange = { query = it }, placeholder = { Text("Dateiname oder Pfad (z.B. \"DCIM test\")") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+            // Search text field (manual trigger via button)
+            OutlinedTextField(value = query, onValueChange = { query = it; textMatchPaths = null },
+                placeholder = { Text("Ordner-/Dateiname") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                 leadingIcon = { Icon(Icons.Default.Search, "Suchen") },
-                trailingIcon = { if (isSearching) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, "Leeren") } },
+                trailingIcon = {
+                    if (isSearching) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    else if (query.length >= 2) IconButton(onClick = { triggerSearch() }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.KeyboardArrowRight, "Suchen starten", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                    }
+                },
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { triggerSearch() }),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
                 colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
             )
             Spacer(Modifier.height(6.dp))
