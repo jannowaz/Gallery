@@ -386,7 +386,6 @@ fun MainScreen(onFinish: () -> Unit) {
                 activePathFilter = textPaths
                 activeTagFilter = tagPaths
                 activeTagName = tagName
-                selectedTab = 0
             },
         )
     }
