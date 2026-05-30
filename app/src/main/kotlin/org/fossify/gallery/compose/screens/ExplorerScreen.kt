@@ -1,5 +1,6 @@
 package org.fossify.gallery.compose.screens
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,6 +52,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.fossify.gallery.activities.ComposeViewerActivity
 import org.fossify.gallery.compose.components.FolderTile
 import java.io.File
 import java.nio.file.Files
@@ -136,109 +138,123 @@ fun ExplorerScreen(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        Text(File(currentPath).name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-
         if (isLoading) {
             LazyColumn(contentPadding = PaddingValues(8.dp)) {
-                items(6) { ShimmerBox(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp, vertical = 4.dp)) }
+                items(6) { ShimmerBox(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp, vertical = 4.dp).clip(RoundedCornerShape(12.dp))) }
             }
         } else if (folderItems.isEmpty() && fileItems.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Keine Elemente", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             }
         } else {
-            Column(Modifier.fillMaxSize()) {
+            LazyColumn(contentPadding = PaddingValues(4.dp)) {
                 if (folderItems.isNotEmpty()) {
-                    Text("Alben", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                    item {
+                        Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Alben", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.weight(1f))
+                            Text("${folderItems.size}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                        }
+                    }
                     if (folderSettings.viewType == ViewType.GRID) {
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(folderSettings.columnCount),
-                            contentPadding = PaddingValues(folderSettings.spacing.dp / 2),
-                            modifier = Modifier.weight(if (fileItems.isEmpty()) 1f else 0.4f)
-                        ) {
-                            items(folderItems, key = { it.path }) { item ->
-                                Box(Modifier.padding(folderSettings.spacing.dp / 2).clickable { navStack.add(item.path); currentPath = item.path }) {
-                                    FolderTile(
-                                        name = item.name,
-                                        thumbnailPath = item.thumbnailPath,
-                                        showThumbnail = folderSettings.showFolderThumbnails,
-                                        roundedCorners = folderSettings.roundedCorners
-                                    )
+                        folderItems.chunked(folderSettings.columnCount).forEach { chunk ->
+                            item {
+                                Row(Modifier.fillMaxWidth().padding(folderSettings.spacing.dp / 2)) {
+                                    chunk.forEach { item ->
+                                        Box(Modifier.weight(1f).padding(folderSettings.spacing.dp / 2).clickable { navStack.add(item.path); currentPath = item.path }) {
+                                            FolderTile(
+                                                name = item.name,
+                                                thumbnailPath = item.thumbnailPath,
+                                                showThumbnail = folderSettings.showFolderThumbnails,
+                                                roundedCorners = folderSettings.roundedCorners
+                                            )
+                                        }
+                                    }
+                                    repeat(folderSettings.columnCount - chunk.size) { Spacer(Modifier.weight(1f)) }
                                 }
                             }
                         }
                     } else {
-                        LazyColumn(modifier = Modifier.weight(if (fileItems.isEmpty()) 1f else 0.4f)) {
-                            items(folderItems, key = { it.path }) { item ->
-                                Surface(Modifier.fillMaxWidth().clickable { navStack.add(item.path); currentPath = item.path }, color = Color.Transparent) {
-                                    Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                                            Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
-                                        }
-                                        Spacer(Modifier.width(12.dp))
-                                        Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Icon(Icons.Default.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                        items(folderItems, key = { it.path }) { item ->
+                            Surface(Modifier.fillMaxWidth().clickable { navStack.add(item.path); currentPath = item.path }, color = Color.Transparent) {
+                                Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
                                     }
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Icon(Icons.Default.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
                                 }
-                                HorizontalDivider(Modifier.padding(start = 68.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                             }
+                            HorizontalDivider(Modifier.padding(start = 68.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         }
                     }
                 }
 
                 if (fileItems.isNotEmpty()) {
-                    Text("Medien", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                    item {
+                        Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Medien", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.weight(1f))
+                            Text("${fileItems.size}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                        }
+                    }
+                    val cornerShape = if (mediaSettings.roundedCorners) RoundedCornerShape(8.dp) else RoundedCornerShape(0.dp)
                     if (mediaSettings.viewType == ViewType.GRID) {
-                        val cornerShape = if (mediaSettings.roundedCorners) RoundedCornerShape(8.dp) else RoundedCornerShape(0.dp)
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(mediaSettings.columnCount),
-                            contentPadding = PaddingValues(mediaSettings.spacing.dp / 2),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            items(fileItems, key = { it.path }) { item ->
-                                val file = File(item.path)
-                                val isVideo = item.path.substringAfterLast('.', "").lowercase() in videoExts
-                                Column(Modifier.padding(mediaSettings.spacing.dp / 2)) {
-                                    Box(Modifier.aspectRatio(1f).clip(cornerShape)) {
-                                        if (file.exists()) {
-                                            if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                            else AsyncImage(model = ImageRequest.Builder(context).data(android.net.Uri.fromFile(file)).crossfade(true).build(), contentDescription = item.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                        } else {
-                                            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant))
+                        fileItems.chunked(mediaSettings.columnCount).forEach { chunk ->
+                            item {
+                                Row(Modifier.fillMaxWidth().padding(mediaSettings.spacing.dp / 2)) {
+                                    chunk.forEach { item ->
+                                        val file = File(item.path)
+                                        val isVideo = item.path.substringAfterLast('.', "").lowercase() in videoExts
+                                        Box(Modifier.weight(1f).padding(mediaSettings.spacing.dp / 2).clickable {
+                                            context.startActivity(Intent(context, ComposeViewerActivity::class.java).apply { putStringArrayListExtra("PATHS", arrayListOf(item.path)); putExtra("START_INDEX", 0); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                        }) {
+                                            Column {
+                                                Box(Modifier.aspectRatio(1f).clip(cornerShape)) {
+                                                    if (file.exists()) {
+                                                        if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                                        else AsyncImage(model = ImageRequest.Builder(context).data(android.net.Uri.fromFile(file)).crossfade(true).build(), contentDescription = item.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                                    } else {
+                                                        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant))
+                                                    }
+                                                }
+                                                if (mediaSettings.showFileNames) {
+                                                    Text(item.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                                                }
+                                            }
                                         }
                                     }
-                                    if (mediaSettings.showFileNames) {
-                                        Text(item.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-                                    }
+                                    repeat(mediaSettings.columnCount - chunk.size) { Spacer(Modifier.weight(1f)) }
                                 }
                             }
                         }
                     } else {
-                        LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(4.dp)) {
-                            items(fileItems, key = { it.path }) { item ->
-                                val file = File(item.path)
-                                val isVideo = item.path.substringAfterLast('.', "").lowercase() in videoExts
-                                Surface(Modifier.fillMaxWidth(), color = Color.Transparent) {
-                                    Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))) {
-                                            if (file.exists()) {
-                                                if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                                else AsyncImage(model = ImageRequest.Builder(context).data(android.net.Uri.fromFile(file)).crossfade(true).build(), contentDescription = item.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                            } else {
-                                                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                                                    Icon(Icons.Default.Image, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
-                                                }
+                        items(fileItems, key = { it.path }) { item ->
+                            val file = File(item.path)
+                            val isVideo = item.path.substringAfterLast('.', "").lowercase() in videoExts
+                            Surface(Modifier.fillMaxWidth().clickable {
+                                context.startActivity(Intent(context, ComposeViewerActivity::class.java).apply { putStringArrayListExtra("PATHS", arrayListOf(item.path)); putExtra("START_INDEX", 0); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                            }, color = Color.Transparent) {
+                                Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))) {
+                                        if (file.exists()) {
+                                            if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                            else AsyncImage(model = ImageRequest.Builder(context).data(android.net.Uri.fromFile(file)).crossfade(true).build(), contentDescription = item.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                        } else {
+                                            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                                                Icon(Icons.Default.Image, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
                                             }
                                         }
-                                        Spacer(Modifier.width(12.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            Text(formatFileSize(item.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(formatFileSize(item.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
-                                HorizontalDivider(Modifier.padding(start = 68.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                             }
+                            HorizontalDivider(Modifier.padding(start = 68.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         }
                     }
                 }

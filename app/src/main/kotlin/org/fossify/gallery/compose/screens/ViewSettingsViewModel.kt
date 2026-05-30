@@ -14,6 +14,7 @@ data class TabViewSettings(
     val albums: ViewSettings = ViewSettings(columnCount = 3, displayMode = DisplayMode.NORMAL),
     val explorerAlbums: ViewSettings = ViewSettings(columnCount = 3, displayMode = DisplayMode.NORMAL),
     val explorerMedia: ViewSettings = ViewSettings(),
+    val folderMedia: ViewSettings = ViewSettings(),
     val favorites: ViewSettings = ViewSettings(columnCount = 3, displayMode = DisplayMode.NORMAL),
 )
 
@@ -52,6 +53,11 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
     fun updateFavorites(s: ViewSettings) {
         _settings.value = _settings.value.copy(favorites = s)
         persistFavorites(s)
+    }
+
+    fun updateFolderMedia(s: ViewSettings) {
+        _settings.value = _settings.value.copy(folderMedia = s)
+        persistFolderMedia(s)
     }
 
     private fun loadFromConfig() {
@@ -96,6 +102,15 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
                 roundedCorners = c.fileRoundedCorners,
                 sortBy = SortField.from(c.mediaSortBy),
                 sortDesc = c.mediaSortDesc,
+                spacing = c.thumbnailSpacing,
+            ),
+            folderMedia = ViewSettings(
+                viewType = ViewType.from(c.folderMediaViewType),
+                columnCount = c.folderMediaColumnCnt.coerceIn(2, 6),
+                showFileNames = c.folderMediaShowFileNames,
+                roundedCorners = c.fileRoundedCorners,
+                sortBy = SortField.from(c.folderMediaSortBy),
+                sortDesc = c.folderMediaSortDesc,
                 spacing = c.thumbnailSpacing,
             ),
             favorites = ViewSettings(
@@ -171,5 +186,16 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
         ctx.config.folderSortDesc = s.sortDesc
         ctx.config.thumbnailSpacing = s.spacing
         ctx.config.showFolderThumbnails = s.showFolderThumbnails
+    }
+
+    private fun persistFolderMedia(s: ViewSettings) {
+        val ctx = getApplication<Application>().applicationContext
+        ctx.config.folderMediaViewType = s.viewType.value
+        ctx.config.folderMediaColumnCnt = s.columnCount
+        ctx.config.folderMediaShowFileNames = s.showFileNames
+        ctx.config.fileRoundedCorners = s.roundedCorners
+        ctx.config.folderMediaSortBy = s.sortBy.value
+        ctx.config.folderMediaSortDesc = s.sortDesc
+        ctx.config.thumbnailSpacing = s.spacing
     }
 }

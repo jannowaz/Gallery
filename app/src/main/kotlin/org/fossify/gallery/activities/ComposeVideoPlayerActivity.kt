@@ -1,9 +1,10 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package org.fossify.gallery.activities
 
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.view.TextureView
+import android.view.SurfaceView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -64,6 +65,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.documentfile.provider.DocumentFile
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -101,7 +103,6 @@ class ComposeVideoPlayerActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
     val context = LocalContext.current
@@ -177,7 +178,10 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
-            factory = { ctx -> TextureView(ctx).also { exoPlayer.setVideoTextureView(it) } },
+            factory = { ctx -> SurfaceView(ctx).also {
+                exoPlayer.setVideoSurfaceView(it)
+                exoPlayer.setVideoScalingMode(androidx.media3.common.C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+            } },
             modifier = Modifier.fillMaxSize()
         )
 
@@ -232,7 +236,7 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
 
     if (showRatingDialog) {
         StarRatingDialog(currentRating = currentRating, onRate = { i ->
-            currentRating = i; repo.updateRating(videoPath, i); showRatingDialog = false
+            currentRating = i; scope.launch(Dispatchers.IO) { repo.updateRating(videoPath, i) }; showRatingDialog = false
         }, onDismiss = { showRatingDialog = false })
     }
     if (showTagsDialog) {

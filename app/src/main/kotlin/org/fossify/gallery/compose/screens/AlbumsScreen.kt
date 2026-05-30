@@ -1,12 +1,12 @@
 package org.fossify.gallery.compose.screens
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,8 +31,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -63,18 +61,14 @@ fun AlbumsScreen(
 ) {
     val ctx = LocalContext.current
     val state by viewModel.state.collectAsState()
-    var isSearchActive by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
     var favorites by remember { mutableStateOf(ctx.config.favoriteFolders) }
 
-    val filteredDirs = run {
-        val base = if (searchQuery.isBlank()) state.directories
-        else state.directories.filter { it.name.contains(searchQuery, ignoreCase = true) }
+    val sortedDirs = remember(state.directories, viewSettings.sortBy, viewSettings.sortDesc) {
         val sorted = when (viewSettings.sortBy) {
-            SortField.NAME -> base.sortedBy { it.name.lowercase() }
-            SortField.DATE -> base.sortedBy { it.modified }
-            SortField.SIZE -> base.sortedBy { it.size }
-            SortField.RATING -> base.sortedBy { it.mediaCnt }
+            SortField.NAME -> state.directories.sortedBy { it.name.lowercase() }
+            SortField.DATE -> state.directories.sortedBy { it.modified }
+            SortField.SIZE -> state.directories.sortedBy { it.size }
+            SortField.RATING -> state.directories.sortedBy { it.mediaCnt }
         }
         if (viewSettings.sortDesc) sorted.reversed() else sorted
     }
@@ -83,26 +77,17 @@ fun AlbumsScreen(
     val itemSpacing = viewSettings.spacing.dp
 
     Column(modifier = modifier.fillMaxSize()) {
-        if (isSearchActive) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = searchQuery, onValueChange = { searchQuery = it },
-                    placeholder = { Text("Suchen...") }, singleLine = true,
-                    modifier = Modifier.weight(1f),
-                    colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
-                    leadingIcon = { Icon(Icons.Default.Search, "Suchen") },
-                    trailingIcon = { IconButton(onClick = { isSearchActive = false; searchQuery = "" }) { Icon(Icons.Default.Close, "Schließen") } }
-                )
-            }
-        } else {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
-                IconButton(onClick = { isSearchActive = true }) { Icon(Icons.Default.Search, "Suchen") }
-            }
-        }
-
         if (state.isLoading) {
             Box(Modifier.weight(1f)) {
-                LazyColumn { items(6) { ShimmerBox(Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 12.dp, vertical = 4.dp)) } }
+                if (isGrid) {
+                    LazyVerticalGrid(columns = GridCells.Fixed(viewSettings.columnCount), contentPadding = PaddingValues(itemSpacing / 2)) {
+                        items(viewSettings.columnCount * 3) {
+                            Box(Modifier.padding(itemSpacing / 2).aspectRatio(1f).clip(RoundedCornerShape(8.dp))) { ShimmerBox(Modifier.fillMaxSize()) }
+                        }
+                    }
+                } else {
+                    LazyColumn { items(6) { ShimmerBox(Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 12.dp, vertical = 4.dp).clip(RoundedCornerShape(12.dp))) } }
+                }
             }
         } else if (state.directories.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -118,7 +103,7 @@ fun AlbumsScreen(
                 contentPadding = PaddingValues(itemSpacing / 2),
                 modifier = Modifier.weight(1f)
             ) {
-                items(filteredDirs, key = { it.path }) { dir ->
+                items(sortedDirs, key = { it.path }) { dir ->
                     Box(Modifier.padding(itemSpacing / 2).clickable { onFolderClick(dir) }) {
                         FolderTile(
                             name = dir.name,
@@ -131,7 +116,7 @@ fun AlbumsScreen(
             }
         } else {
             LazyColumn(modifier = Modifier.weight(1f)) {
-                items(filteredDirs, key = { it.path }) { dir ->
+                items(sortedDirs, key = { it.path }) { dir ->
                     val isFav = dir.path in favorites
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clickable { onFolderClick(dir) },

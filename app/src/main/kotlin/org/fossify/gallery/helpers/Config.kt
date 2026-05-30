@@ -656,6 +656,26 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(MEDIA_SHOW_FILE_NAMES, true)
         set(value) = prefs.edit().putBoolean(MEDIA_SHOW_FILE_NAMES, value).apply()
 
+    var folderMediaViewType: Int
+        get() = prefs.getInt(FOLDER_MEDIA_VIEW_TYPE, viewTypeFiles)
+        set(value) = prefs.edit().putInt(FOLDER_MEDIA_VIEW_TYPE, value).apply()
+
+    var folderMediaColumnCnt: Int
+        get() = prefs.getInt(FOLDER_MEDIA_COLUMN_CNT, mediaColumnCnt)
+        set(value) = prefs.edit().putInt(FOLDER_MEDIA_COLUMN_CNT, value).apply()
+
+    var folderMediaSortBy: Int
+        get() = prefs.getInt(FOLDER_MEDIA_SORT_BY, mediaSortBy)
+        set(value) = prefs.edit().putInt(FOLDER_MEDIA_SORT_BY, value).apply()
+
+    var folderMediaSortDesc: Boolean
+        get() = prefs.getBoolean(FOLDER_MEDIA_SORT_DESC, mediaSortDesc)
+        set(value) = prefs.edit().putBoolean(FOLDER_MEDIA_SORT_DESC, value).apply()
+
+    var folderMediaShowFileNames: Boolean
+        get() = prefs.getBoolean(FOLDER_MEDIA_SHOW_FILE_NAMES, mediaShowFileNames)
+        set(value) = prefs.edit().putBoolean(FOLDER_MEDIA_SHOW_FILE_NAMES, value).apply()
+
     var customFoldersOrder: String
         get() = prefs.getString(CUSTOM_FOLDERS_ORDER, "")!!
         set(customFoldersOrder) = prefs.edit().putString(CUSTOM_FOLDERS_ORDER, customFoldersOrder).apply()

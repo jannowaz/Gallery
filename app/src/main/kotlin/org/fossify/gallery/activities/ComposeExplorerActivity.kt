@@ -147,6 +147,7 @@ fun MainScreen(onFinish: () -> Unit) {
         withContext(Dispatchers.IO) {
             try {
                 val existing = ctx.mediaDB.getNewestMedia(1)
+                android.util.Log.e("DBInit", "existing.isEmpty=${existing.isEmpty()}")
                 if (existing.isEmpty()) {
                     val mediums = mutableListOf<org.fossify.gallery.models.Medium>()
                     val uri = android.provider.MediaStore.Files.getContentUri("external")
@@ -166,6 +167,7 @@ fun MainScreen(onFinish: () -> Unit) {
                         android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
                     )
                     ctx.contentResolver.query(uri, projection, selection, selectionArgs, "${android.provider.MediaStore.Files.FileColumns.DATE_MODIFIED} DESC")?.use { cursor ->
+                        android.util.Log.e("DBInit", "MediaStore cursor count=${cursor.count}")
                         val dataCol = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.DATA)
                         val dateCol = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.DATE_MODIFIED)
                         val takenCol = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.DATE_TAKEN)
@@ -189,8 +191,10 @@ fun MainScreen(onFinish: () -> Unit) {
                             ))
                         }
                     }
+                    android.util.Log.e("DBInit", "Scanned ${mediums.size} media from MediaStore")
                     if (mediums.isNotEmpty()) {
                         ctx.mediaDB.insertAll(mediums)
+                        android.util.Log.e("DBInit", "Inserted ${mediums.size} media into DB")
                         // Also populate directories
                         val dirs = mediums.map { it.parentPath }.distinct()
                         dirs.forEach { dirPath ->
@@ -302,28 +306,38 @@ fun MainScreen(onFinish: () -> Unit) {
     }
 
     if (showViewSettings) {
+        val isAlbumsTab = selectedTab == 1
         val isExplorerTab = selectedTab == 2
         val s = when (selectedTab) {
             0 -> tabSettings.media
-            1 -> tabSettings.albums
+            1 -> if (settingsMode == SettingsMode.ALBUMS) tabSettings.albums else tabSettings.folderMedia
             2 -> if (settingsMode == SettingsMode.ALBUMS) tabSettings.explorerAlbums else tabSettings.explorerMedia
             4 -> tabSettings.favorites
             else -> ViewSettings()
         }
         ViewSettingsSheet(
             settings = s,
-            showDisplayMode = (selectedTab == 1 || selectedTab == 4 || (selectedTab == 2 && settingsMode == SettingsMode.ALBUMS)),
+            showDisplayMode = ((selectedTab == 1 || selectedTab == 4) && settingsMode == SettingsMode.ALBUMS) || (selectedTab == 2 && settingsMode == SettingsMode.ALBUMS),
             onSettingsChange = { v ->
                 when (selectedTab) {
                     0 -> viewSettingsVM.updateMedia(v)
-                    1 -> viewSettingsVM.updateAlbums(v)
+                    1 -> if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateAlbums(v) else viewSettingsVM.updateFolderMedia(v)
                     2 -> if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateExplorerAlbums(v) else viewSettingsVM.updateExplorerMedia(v)
                     4 -> viewSettingsVM.updateFavorites(v)
                 }
             },
             onDismiss = { showViewSettings = false },
-            modeTitle = if (selectedTab == 2) (if (settingsMode == SettingsMode.ALBUMS) "Alben" else "Medien") else null,
-            onToggleMode = if (isExplorerTab) {{ viewSettingsVM.setSettingsMode(if (settingsMode == SettingsMode.ALBUMS) SettingsMode.MEDIA else SettingsMode.ALBUMS) }} else null,
+            modeTitle = when {
+                selectedTab == 1 -> if (settingsMode == SettingsMode.ALBUMS) "Alben" else "Ordner-Inhalt"
+                selectedTab == 2 -> if (settingsMode == SettingsMode.ALBUMS) "Alben" else "Medien"
+                else -> null
+            },
+            modeOptions = when (selectedTab) {
+                1 -> listOf("Alben", "Ordner-Inhalt")
+                2 -> listOf("Alben", "Medien")
+                else -> null
+            },
+            onToggleMode = if (isAlbumsTab || isExplorerTab) {{ viewSettingsVM.setSettingsMode(if (settingsMode == SettingsMode.ALBUMS) SettingsMode.MEDIA else SettingsMode.ALBUMS) }} else null,
         )
     }
     if (showOmniSearch) {

@@ -2,6 +2,7 @@ package org.fossify.gallery.compose.screens
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -53,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,6 +67,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.gallery.activities.ComposeVideoPlayerActivity
 import org.fossify.gallery.activities.ComposeViewerActivity
@@ -98,26 +101,34 @@ fun MediaScreen(
     var showTagsDialog by remember { mutableStateOf(false) }
     var ratingPath by remember { mutableStateOf("") }
     var currentRating by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
     val columnCount = viewSettings.columnCount
     val videoExts = setOf("mp4", "mkv", "mov", "3gp", "wmv", "flv", "avi")
     val isGrid = viewSettings.viewType == ViewType.GRID
 
+    val baseMedia = mediaOverride ?: state.allMedia
     var ratedMedia by remember { mutableStateOf<List<Medium>?>(null) }
     LaunchedEffect(ratingFilter) {
         if (ratingFilter > 0) {
-            ratedMedia = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                ctx.mediaDB.getByMinRating(ratingFilter)
+            val fromDb = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val result = ctx.mediaDB.getByMinRating(ratingFilter)
+                android.util.Log.e("RatingFilter", "DB returned ${result.size} items for minRating=$ratingFilter")
+                result.forEach { android.util.Log.e("RatingFilter", "  path=${it.path} rating=${it.rating}") }
+                result
             }
+            ratedMedia = fromDb
         } else {
             ratedMedia = null
         }
     }
-
-    val baseMedia = mediaOverride ?: state.allMedia
-    val unsortedMedia = when {
-        ratingFilter > 0 && ratedMedia != null -> ratedMedia!!
-        tagFilterPaths != null -> baseMedia.filter { it.path in tagFilterPaths }
-        else -> baseMedia
+    val unsortedMedia = if (ratingFilter > 0) {
+        val db = ratedMedia
+        if (db != null && db.isNotEmpty()) db
+        else baseMedia.filter { it.rating >= ratingFilter }
+    } else if (tagFilterPaths != null) {
+        baseMedia.filter { it.path in tagFilterPaths }
+    } else {
+        baseMedia
     }
     val displayMedia = remember(unsortedMedia, viewSettings.sortBy, viewSettings.sortDesc) {
         val sorted = when (viewSettings.sortBy) {
@@ -134,28 +145,40 @@ fun MediaScreen(
 
     fun openViewer(index: Int) {
         val paths = displayMedia.map { it.path }
-        val isVideo = displayMedia.getOrNull(index)?.path?.substringAfterLast('.', "")?.lowercase() in videoExts
-        if (isVideo) {
-            ctx.startActivity(Intent(ctx, ComposeVideoPlayerActivity::class.java).apply {
-                putExtra("VIDEO_PATH", displayMedia[index].path)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            })
-        } else {
-            ctx.startActivity(Intent(ctx, ComposeViewerActivity::class.java).apply {
-                putStringArrayListExtra("PATHS", ArrayList(paths))
-                putExtra("START_INDEX", index)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            })
-        }
+        ctx.startActivity(Intent(ctx, ComposeViewerActivity::class.java).apply {
+            putStringArrayListExtra("PATHS", ArrayList(paths))
+            putExtra("START_INDEX", index)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        })
     }
 
     val hasSelection = selectedPaths.isNotEmpty()
+    BackHandler(enabled = hasSelection) { selectedPaths = emptySet() }
 
     Box(modifier = modifier.fillMaxSize()) {
         when {
             state.isLoading && !hasFilter && mediaOverride == null -> {
-                LazyVerticalGrid(columns = GridCells.Adaptive(120.dp), contentPadding = PaddingValues(8.dp)) {
-                    items(12) { ShimmerBox(Modifier.aspectRatio(1f).clip(RoundedCornerShape(8.dp))) }
+                if (isGrid) {
+                    LazyVerticalGrid(columns = GridCells.Fixed(columnCount), contentPadding = PaddingValues(itemSpacing / 2)) {
+                        items(columnCount * 3) {
+                            Box(Modifier.padding(itemSpacing / 2).aspectRatio(1f).clip(RoundedCornerShape(8.dp))) { ShimmerBox(Modifier.fillMaxSize()) }
+                        }
+                    }
+                } else {
+                    LazyColumn(contentPadding = PaddingValues(4.dp)) {
+                        items(6) {
+                            Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                ShimmerBox(Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)))
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    ShimmerBox(Modifier.fillMaxWidth(0.6f).height(14.dp).clip(RoundedCornerShape(4.dp)))
+                                    Spacer(Modifier.height(6.dp))
+                                    ShimmerBox(Modifier.fillMaxWidth(0.3f).height(10.dp).clip(RoundedCornerShape(4.dp)))
+                                }
+                            }
+                            HorizontalDivider(Modifier.padding(start = 76.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        }
+                    }
                 }
             }
             displayMedia.isEmpty() -> {
@@ -319,7 +342,9 @@ fun MediaScreen(
 
     if (showRatingDialog) {
         StarRatingDialog(currentRating = currentRating, onRate = { i ->
-            currentRating = i; repo.updateRating(ratingPath, i); showRatingDialog = false
+            currentRating = i
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) { repo.updateRating(ratingPath, i) }
+            showRatingDialog = false
         }, onDismiss = { showRatingDialog = false })
     }
     if (showTagsDialog) {

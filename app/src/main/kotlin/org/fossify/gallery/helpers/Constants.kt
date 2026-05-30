@@ -114,6 +114,11 @@ const val FOLDER_SORT_BY = "folder_sort_by"
 const val FOLDER_SORT_DESC = "folder_sort_desc"
 const val FOLDER_DISPLAY_MODE = "folder_display_mode"
 const val MEDIA_SHOW_FILE_NAMES = "media_show_file_names"
+const val FOLDER_MEDIA_VIEW_TYPE = "folder_media_view_type"
+const val FOLDER_MEDIA_COLUMN_CNT = "folder_media_column_cnt"
+const val FOLDER_MEDIA_SORT_BY = "folder_media_sort_by"
+const val FOLDER_MEDIA_SORT_DESC = "folder_media_sort_desc"
+const val FOLDER_MEDIA_SHOW_FILE_NAMES = "folder_media_show_file_names"
 
 // slideshow
 const val SLIDESHOW_INTERVAL = "slideshow_interval"

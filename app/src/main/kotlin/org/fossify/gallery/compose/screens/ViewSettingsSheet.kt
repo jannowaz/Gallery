@@ -45,6 +45,7 @@ fun ViewSettingsSheet(
     onDismiss: () -> Unit,
     modeTitle: String? = null,
     onToggleMode: (() -> Unit)? = null,
+    modeOptions: List<String>? = null,
 ) {
     var local by remember(settings) { mutableStateOf(settings) }
 
@@ -56,13 +57,21 @@ fun ViewSettingsSheet(
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).verticalScroll(rememberScrollState())) {
             // Header
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                if (modeTitle != null && onToggleMode != null) {
-                    TextButton(onClick = onToggleMode) {
-                        Text(modeTitle, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    }
-                }
                 Text("Ansicht", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Schließen") }
+            }
+            if (modeOptions != null && onToggleMode != null) {
+                Spacer(Modifier.height(4.dp))
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    modeOptions.forEachIndexed { i, label ->
+                        SegmentedButton(
+                            selected = label == modeTitle,
+                            onClick = { if (label != modeTitle) onToggleMode() },
+                            shape = SegmentedButtonDefaults.itemShape(i, modeOptions.size)
+                        ) { Text(label, fontWeight = FontWeight.SemiBold) }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
             }
             Spacer(Modifier.height(8.dp))
 
