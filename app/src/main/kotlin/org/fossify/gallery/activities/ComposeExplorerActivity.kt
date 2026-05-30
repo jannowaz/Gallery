@@ -46,8 +46,11 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.CollectionsBookmark
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -77,6 +80,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -88,6 +92,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.screens.AlbumsScreen
@@ -99,7 +104,9 @@ import org.fossify.gallery.compose.screens.SettingsMode
 import org.fossify.gallery.compose.screens.ViewSettings
 import org.fossify.gallery.compose.screens.ViewSettingsSheet
 import org.fossify.gallery.compose.screens.ViewSettingsViewModel
+import org.fossify.gallery.compose.screens.VideoThumbnail
 import org.fossify.gallery.compose.theme.AppProviders
+import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.directoryDB
@@ -404,7 +411,11 @@ fun MainScreen(onFinish: () -> Unit) {
      if (showTagBrowser) {
         var allTags by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
         var scanning by remember { mutableStateOf(false) }
-        LaunchedEffect(Unit) {
+        var deleteConfirmTag by remember { mutableStateOf<String?>(null) }
+        var refreshTrigger by remember { mutableIntStateOf(0) }
+        val scope = rememberCoroutineScope()
+
+        LaunchedEffect(refreshTrigger) {
             scanning = true
             withContext(Dispatchers.IO) {
                 val tags = mutableMapOf<String, MutableList<String>>()
@@ -421,33 +432,111 @@ fun MainScreen(onFinish: () -> Unit) {
                 withContext(Dispatchers.Main) { allTags = tags.entries.sortedByDescending { it.value.size }.associate { it.key to it.value }; scanning = false }
             }
         }
-        AlertDialog(
+
+        ModalBottomSheet(
             onDismissRequest = { showTagBrowser = false },
-            title = { Text(if (scanning) "Scanne..." else "Tags (${allTags.size})") },
-            text = {
-                if (scanning) { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.padding(16.dp)) } }
-                else if (allTags.isEmpty()) { Text("Keine Tags gefunden") }
-                else {
-                    LazyColumn(Modifier.height(300.dp)) {
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
+            containerColor = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Tags (${allTags.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { showTagBrowser = false }) { Icon(Icons.Default.Close, "Schließen") }
+                }
+                Spacer(Modifier.height(8.dp))
+                if (scanning) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                } else if (allTags.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                        Text("Keine Tags gefunden", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else {
+                    LazyColumn(Modifier.heightIn(max = 480.dp)) {
                         items(allTags.entries.toList(), key = { it.key }) { (tag, paths) ->
-                            Surface(Modifier.fillMaxWidth().clickable {
-                                showTagBrowser = false
-                                activeTagFilter = paths.toSet()
-                                activeTagName = tag
-                                activeRatingFilter = 0
-                                selectedTab = 0
-                            }, color = Color.Transparent) {
-                                Row(Modifier.padding(vertical = 8.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(tag, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                                    Text("${paths.size}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                            val thumbPath = paths.firstOrNull()
+                            val isVideo = thumbPath?.let { it.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS } ?: false
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+                                    showTagBrowser = false
+                                    activeTagFilter = paths.toSet()
+                                    activeTagName = tag
+                                    activeRatingFilter = 0
+                                    selectedTab = 0
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            ) {
+                                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    // Thumbnail
+                                    Box(Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surface)) {
+                                        if (thumbPath != null && File(thumbPath).exists()) {
+                                            if (isVideo) {
+                                                VideoThumbnail(videoPath = thumbPath, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                            } else {
+                                                coil.compose.AsyncImage(
+                                                    model = coil.request.ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(File(thumbPath))).crossfade(true).build(),
+                                                    contentDescription = tag, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
+                                                )
+                                            }
+                                        } else {
+                                            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                                                Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+                                            }
+                                        }
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(tag, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("${paths.size} Dateien", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    IconButton(onClick = { deleteConfirmTag = tag }, modifier = Modifier.size(36.dp)) {
+                                        Icon(Icons.Default.Delete, "Tag entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            },
-            confirmButton = { TextButton(onClick = { showTagBrowser = false }) { Text("Schließen") } }
-        )
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+
+        // Delete confirmation dialog
+        if (deleteConfirmTag != null) {
+            val tagToDelete = deleteConfirmTag!!
+            val pathsForTag = allTags[tagToDelete] ?: emptyList()
+            AlertDialog(
+                onDismissRequest = { deleteConfirmTag = null },
+                title = { Text("Tag entfernen") },
+                text = {
+                    Text("Tag \"$tagToDelete\" aus ${pathsForTag.size} Dateien entfernen? Die Dateien bleiben erhalten.")
+                },
+                confirmButton = {
+                    val repo = LocalMediaRepository.current
+                    TextButton(onClick = {
+                        scope.launch(Dispatchers.IO) {
+                            pathsForTag.forEach { p -> repo.removeTag(p, tagToDelete) }
+                            // Update cache
+                            try {
+                                val cached = ctx.mediaCacheDB.getAllTagged().filter { it.tags.contains(tagToDelete) }
+                                cached.forEach { mc ->
+                                    val newTags = mc.tags.split(",").filter { it.trim() != tagToDelete }.joinToString(",")
+                                    ctx.mediaCacheDB.upsertAll(listOf(mc.copy(tags = newTags)))
+                                }
+                            } catch (_: Exception) { }
+                            withContext(Dispatchers.Main) {
+                                ctx.toast("Tag \"$tagToDelete\" aus ${pathsForTag.size} Dateien entfernt", Toast.LENGTH_SHORT)
+                                deleteConfirmTag = null
+                                refreshTrigger++
+                            }
+                        }
+                    }) { Text("Entfernen", color = MaterialTheme.colorScheme.error) }
+                },
+                dismissButton = { TextButton(onClick = { deleteConfirmTag = null }) { Text("Abbrechen") } }
+            )
+        }
     }
 }
 
