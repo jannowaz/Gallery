@@ -113,25 +113,36 @@ fun MediaScreen(
 
     val baseMedia = mediaOverride ?: state.allMedia
     var ratedMedia by remember { mutableStateOf<List<Medium>?>(null) }
+    var tagMedia by remember { mutableStateOf<List<Medium>?>(null) }
+
     LaunchedEffect(ratingFilter) {
         if (ratingFilter > 0) {
             val fromDb = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                val result = ctx.mediaDB.getByMinRating(ratingFilter)
-                android.util.Log.e("RatingFilter", "DB returned ${result.size} items for minRating=$ratingFilter")
-                result.forEach { android.util.Log.e("RatingFilter", "  path=${it.path} rating=${it.rating}") }
-                result
+                ctx.mediaDB.getByMinRating(ratingFilter)
             }
             ratedMedia = fromDb
         } else {
             ratedMedia = null
         }
     }
+
+    LaunchedEffect(tagFilterPaths) {
+        if (tagFilterPaths != null) {
+            val fromDb = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                ctx.mediaDB.getMediaByPaths(tagFilterPaths.toList())
+            }
+            tagMedia = fromDb
+        } else {
+            tagMedia = null
+        }
+    }
+
     val unsortedMedia = if (ratingFilter > 0) {
         val db = ratedMedia
         val rated = if (db != null && db.isNotEmpty()) db else baseMedia.filter { it.rating >= ratingFilter }
         if (pathFilter != null) rated.filter { it.path in pathFilter } else rated
     } else if (tagFilterPaths != null) {
-        val tagged = baseMedia.filter { it.path in tagFilterPaths }
+        val tagged = tagMedia ?: baseMedia.filter { it.path in tagFilterPaths }
         if (pathFilter != null) tagged.filter { it.path in pathFilter } else tagged
     } else if (pathFilter != null) {
         baseMedia.filter { it.path in pathFilter }
