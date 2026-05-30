@@ -542,27 +542,30 @@ private fun OmniSearchSheet(
         isSearching = false
     }
 
-    // Compute combined path filter whenever any filter changes
-    val combinedPaths = remember(query, ratingFilter, selectedTags, textMatchPaths) {
-        val sets = mutableListOf<Set<String>>()
-        if (textMatchPaths != null) sets.add(textMatchPaths!!)
-        if (ratingFilter > 0) {
-            try { sets.add(ctx.mediaDB.getByMinRating(ratingFilter).map { it.path }.toSet()) } catch (_: Exception) { }
-        }
-        if (selectedTags.isNotEmpty()) {
-            val tagPaths = allTags.filterKeys { it in selectedTags }.values.flatten().toSet()
-            sets.add(tagPaths)
-        }
-        when {
-            sets.isEmpty() -> null
-            sets.size == 1 -> sets.first()
-            else -> sets.reduce { a, b -> a.intersect(b) }
-        }
-    }
+    var combinedPaths by remember { mutableStateOf<Set<String>?>(null) }
 
-    // Live update media tab
-    LaunchedEffect(combinedPaths, ratingFilter, selectedTags) {
-        onFilterChanged(combinedPaths, ratingFilter, selectedTags.let { if (it.isEmpty()) null else allTags.filterKeys { t -> t in it }.values.flatten().toSet() }, selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", "))
+    // Compute combined filter + live update on IO
+    LaunchedEffect(query, ratingFilter, selectedTags, textMatchPaths) {
+        withContext(Dispatchers.IO) {
+            val sets = mutableListOf<Set<String>>()
+            if (textMatchPaths != null) sets.add(textMatchPaths!!)
+            if (ratingFilter > 0) {
+                try { sets.add(ctx.mediaDB.getByMinRating(ratingFilter).map { it.path }.toSet()) } catch (_: Exception) { }
+            }
+            if (selectedTags.isNotEmpty()) {
+                val tagPaths = allTags.filterKeys { it in selectedTags }.values.flatten().toSet()
+                sets.add(tagPaths)
+            }
+            val result = when {
+                sets.isEmpty() -> null
+                sets.size == 1 -> sets.first()
+                else -> sets.reduce { a, b -> a.intersect(b) }
+            }
+            withContext(Dispatchers.Main) {
+                combinedPaths = result
+                onFilterChanged(result, ratingFilter, selectedTags.let { if (it.isEmpty()) null else allTags.filterKeys { t -> t in it }.values.flatten().toSet() }, selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", "))
+            }
+        }
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false), containerColor = MaterialTheme.colorScheme.surface) {
