@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -47,11 +48,14 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -408,8 +412,9 @@ fun MainScreen(onFinish: () -> Unit) {
      if (showTagBrowser) {
         var allTags by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
         var scanning by remember { mutableStateOf(false) }
-        var deleteConfirmTag by remember { mutableStateOf<String?>(null) }
+        var deleteConfirmTags by remember { mutableStateOf<Set<String>>(emptySet()) }
         var mergeTargetTag by remember { mutableStateOf<String?>(null) }
+        var showHierarchyConfig by remember { mutableStateOf(false) }
         var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
         var refreshTrigger by remember { mutableIntStateOf(0) }
         val scope = rememberCoroutineScope()
@@ -442,6 +447,7 @@ fun MainScreen(onFinish: () -> Unit) {
                     Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Tags (${allTags.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { showHierarchyConfig = true }) { Icon(Icons.Default.AccountTree, "Hierarchie", modifier = Modifier.size(20.dp)) }
                     IconButton(onClick = { showTagBrowser = false }) { Icon(Icons.Default.Close, "Schließen") }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -499,8 +505,8 @@ fun MainScreen(onFinish: () -> Unit) {
                                     }
                                     if (isSelected) {
                                         Icon(Icons.Default.Close, "Ausgewählt", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                                    } else {
-                                        IconButton(onClick = { deleteConfirmTag = tag }, modifier = Modifier.size(36.dp)) {
+                                    } else if (selectedTags.isEmpty()) {
+                                        IconButton(onClick = { deleteConfirmTags = setOf(tag) }, modifier = Modifier.size(36.dp)) {
                                             Icon(Icons.Default.Delete, "Tag entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                                         }
                                     }
@@ -513,7 +519,7 @@ fun MainScreen(onFinish: () -> Unit) {
                         Spacer(Modifier.height(8.dp))
                         HorizontalDivider()
                         Spacer(Modifier.height(8.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Surface(
                                 onClick = {
                                     val tagPaths = selectedTags.flatMap { allTags[it] ?: emptyList() }.toSet()
@@ -529,14 +535,22 @@ fun MainScreen(onFinish: () -> Unit) {
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
-                                    Text("${selectedTags.size} Tags filtern", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimary)
+                                    Text("Filtern", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimary)
+                                }
+                            }
+                            Surface(
+                                onClick = { deleteConfirmTags = selectedTags },
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
+                                    Text("Löschen", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer)
                                 }
                             }
                             if (selectedTags.size >= 2) {
                                 Surface(
-                                    onClick = {
-                                        mergeTargetTag = selectedTags.first()
-                                    },
+                                    onClick = { mergeTargetTag = selectedTags.first() },
                                     shape = RoundedCornerShape(12.dp),
                                     color = MaterialTheme.colorScheme.secondaryContainer,
                                     modifier = Modifier.weight(1f)
@@ -553,34 +567,85 @@ fun MainScreen(onFinish: () -> Unit) {
             }
         }
 
-        // Delete confirmation
-        if (deleteConfirmTag != null) {
-            val tagToDelete = deleteConfirmTag!!
-            val pathsForTag = allTags[tagToDelete] ?: emptyList()
+        // Delete confirmation (single or batch)
+        if (deleteConfirmTags.isNotEmpty()) {
+            val tagsToDelete = deleteConfirmTags
+            val totalFiles = tagsToDelete.flatMap { allTags[it] ?: emptyList() }.distinct().size
             AlertDialog(
-                onDismissRequest = { deleteConfirmTag = null },
-                title = { Text("Tag entfernen") },
-                text = { Text("Tag \"$tagToDelete\" aus ${pathsForTag.size} Dateien entfernen? Die Dateien bleiben erhalten.") },
+                onDismissRequest = { deleteConfirmTags = emptySet() },
+                title = { Text(if (tagsToDelete.size == 1) "Tag entfernen" else "Tags entfernen") },
+                text = {
+                    if (tagsToDelete.size == 1) Text("Tag \"${tagsToDelete.first()}\" aus $totalFiles Dateien entfernen? Die Dateien bleiben erhalten.")
+                    else Text("${tagsToDelete.size} Tags (${tagsToDelete.joinToString(", ")}) aus $totalFiles Dateien entfernen? Die Dateien bleiben erhalten.")
+                },
                 confirmButton = {
                     val repo = LocalMediaRepository.current
                     TextButton(onClick = {
                         scope.launch(Dispatchers.IO) {
-                            pathsForTag.forEach { p -> repo.removeTag(p, tagToDelete) }
+                            tagsToDelete.forEach { tag ->
+                                val pathsForTag = allTags[tag] ?: return@forEach
+                                pathsForTag.forEach { p -> repo.removeTag(p, tag) }
+                            }
                             try {
-                                val cached = ctx.mediaCacheDB.getAllTagged().filter { it.tags.contains(tagToDelete) }
+                                val cached = ctx.mediaCacheDB.getAllTagged().filter { mc -> tagsToDelete.any { mc.tags.contains(it) } }
                                 cached.forEach { mc ->
-                                    val newTags = mc.tags.split(",").filter { it.trim() != tagToDelete }.joinToString(",")
+                                    var newTags = mc.tags
+                                    tagsToDelete.forEach { tag -> newTags = newTags.split(",").filter { it.trim() != tag }.joinToString(",") }
                                     ctx.mediaCacheDB.upsertAll(listOf(mc.copy(tags = newTags)))
                                 }
                             } catch (_: Exception) { }
                             withContext(Dispatchers.Main) {
-                                ctx.toast("Tag \"$tagToDelete\" aus ${pathsForTag.size} Dateien entfernt", Toast.LENGTH_SHORT)
-                                deleteConfirmTag = null; refreshTrigger++; selectedTags = emptySet()
+                                ctx.toast("${tagsToDelete.size} Tag${if (tagsToDelete.size != 1) "s" else ""} aus $totalFiles Dateien entfernt", Toast.LENGTH_SHORT)
+                                deleteConfirmTags = emptySet(); refreshTrigger++; selectedTags = emptySet()
                             }
                         }
                     }) { Text("Entfernen", color = MaterialTheme.colorScheme.error) }
                 },
-                dismissButton = { TextButton(onClick = { deleteConfirmTag = null }) { Text("Abbrechen") } }
+                dismissButton = { TextButton(onClick = { deleteConfirmTags = emptySet() }) { Text("Abbrechen") } }
+            )
+        }
+
+        // Hierarchy config dialog
+        if (showHierarchyConfig) {
+            var hierarchy by remember { mutableStateOf(ctx.config.tagHierarchy) }
+            var expandedTag by remember { mutableStateOf<String?>(null) }
+            AlertDialog(
+                onDismissRequest = { showHierarchyConfig = false },
+                title = { Text("Tag-Hierarchie") },
+                text = {
+                    if (allTags.isEmpty()) Text("Keine Tags vorhanden")
+                    else {
+                        Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                            Text("Setze Eltern-Tag für jeden Tag:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+                            allTags.keys.sorted().forEach { tag ->
+                                val parent = hierarchy[tag] ?: ""
+                                val parents = allTags.keys.filter { it != tag }.sorted()
+                                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(tag, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                    Box {
+                                        Surface(onClick = { expandedTag = if (expandedTag == tag) null else tag }, shape = RoundedCornerShape(8.dp), color = if (parent.isNotEmpty()) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
+                                            Text(if (parent.isEmpty()) "Kein Eltern-Tag" else parent, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = if (parent.isNotEmpty()) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        DropdownMenu(expanded = expandedTag == tag, onDismissRequest = { expandedTag = null }) {
+                                            DropdownMenuItem(text = { Text("Kein Eltern-Tag", style = MaterialTheme.typography.labelSmall) }, onClick = { hierarchy = hierarchy.toMutableMap().apply { remove(tag) }; expandedTag = null })
+                                            parents.forEach { p ->
+                                                DropdownMenuItem(text = { Text(p, style = MaterialTheme.typography.labelSmall) }, onClick = { hierarchy = hierarchy.toMutableMap().apply { put(tag, p) }; expandedTag = null })
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        ctx.config.tagHierarchy = hierarchy
+                        ctx.toast("Hierarchie gespeichert", Toast.LENGTH_SHORT)
+                        showHierarchyConfig = false
+                    }) { Text("Speichern") }
+                },
+                dismissButton = { TextButton(onClick = { showHierarchyConfig = false }) { Text("Abbrechen") } }
             )
         }
 

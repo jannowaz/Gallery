@@ -715,4 +715,11 @@ class Config(context: Context) : BaseConfig(context) {
     var lastCopyMoveDestination: String
         get() = prefs.getString(LAST_COPY_MOVE_DESTINATION, internalStoragePath)!!
         set(path) = prefs.edit().putString(LAST_COPY_MOVE_DESTINATION, path).apply()
+
+    var tagHierarchy: MutableMap<String, String>
+        get() {
+            val json = prefs.getString(TAG_HIERARCHY, "{}")!!
+            return try { com.google.gson.Gson().fromJson(json, object : com.google.gson.reflect.TypeToken<MutableMap<String, String>>() {}.type) } catch (_: Exception) { mutableMapOf() }
+        }
+        set(map) = prefs.edit().putString(TAG_HIERARCHY, com.google.gson.Gson().toJson(map)).apply()
 }
