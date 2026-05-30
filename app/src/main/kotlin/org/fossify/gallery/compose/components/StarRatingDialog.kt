@@ -30,7 +30,7 @@ fun StarRatingDialog(
         text = {
             Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
                 for (i in 1..5) {
-                    IconButton(onClick = { onRate(i) }, modifier = Modifier.size(48.dp)) {
+                    IconButton(onClick = { onRate(if (currentRating == i) 0 else i) }, modifier = Modifier.size(48.dp)) {
                         Icon(
                             imageVector = if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder,
                             contentDescription = "Bewertung $i",

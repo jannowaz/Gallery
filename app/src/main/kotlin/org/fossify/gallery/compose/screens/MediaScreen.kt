@@ -137,17 +137,20 @@ fun MediaScreen(
         }
     }
 
-    val unsortedMedia = if (ratingFilter > 0) {
-        val db = ratedMedia
-        val rated = if (db != null && db.isNotEmpty()) db else baseMedia.filter { it.rating >= ratingFilter }
-        if (pathFilter != null) rated.filter { it.path in pathFilter } else rated
-    } else if (tagFilterPaths != null) {
-        val tagged = tagMedia ?: baseMedia.filter { it.path in tagFilterPaths }
-        if (pathFilter != null) tagged.filter { it.path in pathFilter } else tagged
-    } else if (pathFilter != null) {
-        baseMedia.filter { it.path in pathFilter }
-    } else {
-        baseMedia
+    val unsortedMedia = run {
+        var m = baseMedia
+        if (ratingFilter > 0) {
+            val db = ratedMedia
+            m = if (db != null && db.isNotEmpty()) db else m.filter { it.rating >= ratingFilter }
+        }
+        if (tagFilterPaths != null) {
+            val tagged = tagMedia ?: m.filter { it.path in tagFilterPaths }
+            m = m.filter { it.path in tagged.map { it.path }.toSet() }
+        }
+        if (pathFilter != null) {
+            m = m.filter { it.path in pathFilter }
+        }
+        m
     }
     val displayMedia = remember(unsortedMedia, viewSettings.sortBy, viewSettings.sortDesc) {
         val sorted = when (viewSettings.sortBy) {

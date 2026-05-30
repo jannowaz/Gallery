@@ -170,15 +170,26 @@ fun FolderPickerSheet(
     fun performCopyMove(destPath: String) {
         conf.lastCopyMoveDestination = destPath
         scope.launch(Dispatchers.IO) {
+            var copied = 0; var skipped = 0
             for (srcPath in sourcePaths) {
                 try {
                     val src = File(srcPath)
                     val destFile = File(destPath, src.name)
+                    if (destFile.exists()) { skipped++; continue }
                     src.copyTo(destFile, overwrite = false)
                     if (isMoveOperation) { src.delete(); ctx.deleteMediumWithPath(srcPath) }
-                } catch (_: Exception) { }
+                    copied++
+                } catch (_: Exception) { skipped++ }
             }
-            withContext(Dispatchers.Main) { ctx.toast(if (isMoveOperation) "Verschoben" else "Kopiert", Toast.LENGTH_SHORT) }
+            val total = sourcePaths.size
+            withContext(Dispatchers.Main) {
+                val msg = when {
+                    copied == total -> if (isMoveOperation) "Verschoben" else "Kopiert"
+                    copied > 0 -> "$copied/${total} ${if (isMoveOperation) "verschoben" else "kopiert"}, $skipped übersprungen"
+                    else -> "Keine Dateien ${if (isMoveOperation) "verschoben" else "kopiert"} ($skipped existieren bereits)"
+                }
+                ctx.toast(msg, Toast.LENGTH_LONG)
+            }
         }
     }
 
