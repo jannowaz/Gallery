@@ -33,7 +33,6 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     private val videoExts = setOf("mp4", "mkv", "mov", "3gp", "wmv", "flv", "avi")
     private val imageExts = setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "avif", "bmp", "svg", "apng", "jxl")
-    private val mediaExts = videoExts + imageExts
 
     private var loaded = false
 
@@ -51,57 +50,44 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private fun doLoad() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            val media = withContext(Dispatchers.IO) {
-                try {
-                    // Use the Room DB (populated by MediaStore scan) instead of limited directory scan
-                    val ctx = getApplication<Application>()
-                    val fromDb = ctx.mediaDB.getNewestMedia(500)
-                    if (fromDb.isNotEmpty()) {
-                        fromDb.sortedByDescending { it.modified }
-                    } else {
-                        // Fallback: scan directories if DB is empty
-                        scanDirectories()
-                    }
-                } catch (_: Exception) { emptyList() }
-            }
+            val media = withContext(Dispatchers.IO) { scanAllMedia() }
             _state.update { it.copy(allMedia = media, isLoading = false, hasMore = false) }
         }
     }
 
-    private fun scanDirectories(): List<Medium> {
+    private fun scanAllMedia(): List<Medium> {
         val ctx = getApplication<Application>()
+        // Use Room DB if populated (MediaStore scan), otherwise fallback to broad directory scan
+        try {
+            val fromDb = ctx.mediaDB.getNewestMedia(1)
+            if (fromDb.isNotEmpty()) return ctx.mediaDB.getNewestMedia(2000).sortedByDescending { it.modified }
+        } catch (_: Exception) { }
+        // Fallback: scan common media directories broadly
+        val root = Environment.getExternalStorageDirectory()
         val dirs = listOfNotNull(
-            Environment.getExternalStorageDirectory(),
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            root, File(root, "DCIM"), File(root, "Pictures"), File(root, "Download"),
+            File(root, "Movies"), File(root, "Documents"), File(root, "WhatsApp"),
+            File(root, "Android/media/com.whatsapp/WhatsApp/Media"),
         ).filter { it.isDirectory }
         val allMedia = mutableListOf<Medium>()
         val seen = mutableSetOf<String>()
-        val mediaExts = videoExts + imageExts
-        for (dir in dirs) {
-            scanFile(dir, allMedia, seen, 0, mediaExts)
-        }
-        return allMedia.sortedByDescending { it.modified }.take(500)
+        val exts = videoExts + imageExts
+        for (dir in dirs) scanFile(dir, allMedia, seen, 0, exts)
+        return allMedia.sortedByDescending { it.modified }.take(2000)
     }
 
-    private fun scanFile(dir: File, result: MutableList<Medium>, seen: MutableSet<String>, depth: Int, mediaExts: Set<String>) {
-        if (depth > 3 || !dir.isDirectory) return
+    private fun scanFile(dir: File, result: MutableList<Medium>, seen: MutableSet<String>, depth: Int, exts: Set<String>) {
+        if (depth > 4 || !dir.isDirectory) return
         val files = dir.listFiles() ?: return
         for (file in files) {
             if (file.isDirectory && !file.name.startsWith(".")) {
-                scanFile(file, result, seen, depth + 1, mediaExts)
+                scanFile(file, result, seen, depth + 1, exts)
             } else if (file.isFile) {
                 val ext = file.extension.lowercase()
-                if (ext in mediaExts && file.path !in seen) {
+                if (ext in exts && file.path !in seen) {
                     seen.add(file.path)
-                    val type = if (ext in videoExts) 2 else 1
-                    result.add(Medium(
-                        id = null, name = file.name, path = file.absolutePath,
-                        parentPath = file.parent ?: "", modified = file.lastModified(),
-                        taken = file.lastModified(), size = file.length(), type = type,
-                        videoDuration = 0, isFavorite = false, deletedTS = 0L, mediaStoreId = 0, rating = 0,
-                    ))
+                    result.add(Medium(null, file.name, file.absolutePath, file.parent ?: "", file.lastModified(),
+                        file.lastModified(), file.length(), if (ext in videoExts) 2 else 1, 0, false, 0L, 0L, 0))
                 }
             }
         }
