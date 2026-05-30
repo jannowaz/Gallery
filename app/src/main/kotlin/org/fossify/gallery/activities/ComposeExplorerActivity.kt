@@ -401,7 +401,7 @@ fun MainScreen(onFinish: () -> Unit) {
         )
     }
 
-    if (showTagBrowser) {
+     if (showTagBrowser) {
         var allTags by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
         var scanning by remember { mutableStateOf(false) }
         LaunchedEffect(Unit) {
@@ -409,16 +409,11 @@ fun MainScreen(onFinish: () -> Unit) {
             withContext(Dispatchers.IO) {
                 val tags = mutableMapOf<String, MutableList<String>>()
                 try {
-                    val uri = android.provider.MediaStore.Files.getContentUri("external")
-                    val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
-                    val sel = "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
-                    val args = arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
-                    ctx.contentResolver.query(uri, proj, sel, args, null)?.use { c ->
-                        val col = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
-                        while (c.moveToNext()) {
-                            val p = c.getString(col) ?: continue
-                            XmpWriter.read(p).tags.forEach { tag ->
-                                tags.getOrPut(tag) { mutableListOf() }.add(p)
+                    val cached = ctx.mediaCacheDB.getAllTagged()
+                    if (cached.isNotEmpty()) {
+                        cached.forEach { mc ->
+                            mc.tags.split(",").filter { it.isNotBlank() }.forEach { t ->
+                                tags.getOrPut(t.trim()) { mutableListOf() }.add(mc.fullPath)
                             }
                         }
                     }
@@ -484,20 +479,32 @@ private fun OmniSearchSheet(
     var textMatchPaths by remember { mutableStateOf<Set<String>?>(null) }
     var searchTrigger by remember { mutableIntStateOf(0) }
 
-    // Scan all tags on open
+    // Load tags from cache (MediaCache), lazy-scan if empty
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val tags = mutableMapOf<String, MutableSet<String>>()
             try {
-                val uri = android.provider.MediaStore.Files.getContentUri("external")
-                val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
-                val sel = "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
-                val args = arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
-                ctx.contentResolver.query(uri, proj, sel, args, null)?.use { c ->
-                    val col = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
-                    while (c.moveToNext()) {
-                        val p = c.getString(col) ?: continue
-                        try { XmpWriter.read(p).tags.forEach { t -> tags.getOrPut(t) { mutableSetOf() }.add(p) } } catch (_: Exception) { }
+                val cached = ctx.mediaCacheDB.getAllTagged()
+                if (cached.isNotEmpty()) {
+                    cached.forEach { mc ->
+                        mc.tags.split(",").filter { it.isNotBlank() }.forEach { t ->
+                            tags.getOrPut(t.trim()) { mutableSetOf() }.add(mc.fullPath)
+                        }
+                    }
+                } else {
+                    // Fallback: scan via XMP (limit to reasonable subset)
+                    val uri = android.provider.MediaStore.Files.getContentUri("external")
+                    val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
+                    val sel = "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
+                    val args = arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
+                    ctx.contentResolver.query(uri, proj, sel, args, null)?.use { c ->
+                        val col = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
+                        var count = 0
+                        while (c.moveToNext() && count < 2000) {
+                            val p = c.getString(col) ?: continue
+                            try { XmpWriter.read(p).tags.forEach { t -> tags.getOrPut(t) { mutableSetOf() }.add(p) } } catch (_: Exception) { }
+                            count++
+                        }
                     }
                 }
             } catch (_: Exception) { }
