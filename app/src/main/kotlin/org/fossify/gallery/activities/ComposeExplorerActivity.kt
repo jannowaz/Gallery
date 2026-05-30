@@ -492,18 +492,15 @@ fun MainScreen(onFinish: () -> Unit) {
                             val isVideo = thumbPath?.let { it.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS } ?: false
                             val isSelected = tag in selectedTags
                             Card(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(
+                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(
                                     onClick = {
-                                        if (selectedTags.isEmpty()) {
-                                            showTagBrowser = false
-                                            activeTagFilter = paths.toSet()
-                                            activeTagName = tag
-                                            activeRatingFilter = 0
-                                            activePathFilter = null
-                                            selectedTab = 0
-                                        } else {
-                                            selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag
-                                        }
+                                        // Always filter on tap
+                                        showTagBrowser = false
+                                        activeTagFilter = paths.toSet()
+                                        activeTagName = tag
+                                        activeRatingFilter = 0
+                                        activePathFilter = null
+                                        selectedTab = 0
                                     },
                                     onLongClick = { selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag }
                                 ),
