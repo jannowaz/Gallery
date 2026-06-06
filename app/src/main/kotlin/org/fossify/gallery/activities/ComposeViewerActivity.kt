@@ -103,6 +103,7 @@ import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.deleteMediumWithPath
+import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.openEditor
 import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
@@ -141,6 +142,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     var showRatingOverlay by remember { mutableStateOf(false) }
     var showQuickTags by remember { mutableStateOf(false) }
     var showPersistentTags by remember { mutableStateOf(true) }
+    var tagRefreshTrigger by remember { mutableIntStateOf(0) }
     val quickTags = remember { (ctx.config.quickTags).toList() }
     var currentRating by remember { mutableIntStateOf(0) }
     var showFolderPicker by remember { mutableStateOf(false) }
@@ -207,6 +209,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                             modifier = Modifier.clickable {
                                 scope.launch(Dispatchers.IO) {
                                     if (hasTag) repo.removeTag(currentPath, tag) else repo.addTag(currentPath, tag)
+                                    tagRefreshTrigger++
                                 }
                             }
                         ) {
@@ -239,7 +242,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
 
         // Persistent tags (topmost, drawn last)
         var currentTags by remember { mutableStateOf<Set<String>>(emptySet()) }
-        LaunchedEffect(currentPath, showPersistentTags) {
+        LaunchedEffect(currentPath, showPersistentTags, tagRefreshTrigger) {
             if (showPersistentTags) {
                 currentTags = withContext(Dispatchers.IO) { repo.getTags(currentPath) }
             }
@@ -354,7 +357,11 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     }
 
     if (showTagsDialog) {
-        TagInputDialog(initialTags = repo.getTags(currentPath), onAddTag = { repo.addTag(currentPath, it) }, onRemoveTag = { repo.removeTag(currentPath, it) }, onDismiss = { showTagsDialog = false })
+        var allTags by remember { mutableStateOf<List<String>>(emptyList()) }
+        LaunchedEffect(Unit) { withContext(Dispatchers.IO) {
+            try { allTags = ctx.mediaCacheDB.getAllTagged().flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct() } catch (_: Exception) { }
+        } }
+        TagInputDialog(initialTags = repo.getTags(currentPath), suggestedTags = allTags, onAddTag = { repo.addTag(currentPath, it) }, onRemoveTag = { repo.removeTag(currentPath, it) }, onDismiss = { showTagsDialog = false })
     }
 
     if (showFolderPicker) {

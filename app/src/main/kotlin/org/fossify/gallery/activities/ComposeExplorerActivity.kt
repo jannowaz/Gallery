@@ -980,6 +980,11 @@ private fun OmniSearchSheet(
                     }
                 }
                 Spacer(Modifier.height(4.dp))
+            } else if (showTags && allTags.isEmpty()) {
+                Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                }
+                Spacer(Modifier.height(4.dp))
             } else {
                 Surface(onClick = { showTags = true }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
                     Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {

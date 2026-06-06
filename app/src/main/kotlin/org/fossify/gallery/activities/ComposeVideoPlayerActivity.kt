@@ -69,6 +69,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withContext
 import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.components.SelectionRow
@@ -79,6 +80,7 @@ import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.deleteMediumWithPath
+import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.helpers.MediaRepository
 import java.io.File
 
@@ -223,7 +225,11 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
         }, onDismiss = { showRatingDialog = false })
     }
     if (showTagsDialog) {
-        TagInputDialog(initialTags = repo.getTags(videoPath), onAddTag = { repo.addTag(videoPath, it) }, onRemoveTag = { repo.removeTag(videoPath, it) }, onDismiss = { showTagsDialog = false })
+        var allTags by remember { mutableStateOf<List<String>>(emptyList()) }
+        LaunchedEffect(Unit) { withContext(Dispatchers.IO) {
+            try { allTags = context.mediaCacheDB.getAllTagged().flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct() } catch (_: Exception) { }
+        } }
+        TagInputDialog(initialTags = repo.getTags(videoPath), suggestedTags = allTags, onAddTag = { repo.addTag(videoPath, it) }, onRemoveTag = { repo.removeTag(videoPath, it) }, onDismiss = { showTagsDialog = false })
     }
 
     if (showFolderPicker) {

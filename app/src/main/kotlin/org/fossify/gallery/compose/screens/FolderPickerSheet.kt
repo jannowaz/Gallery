@@ -20,9 +20,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -30,8 +32,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -53,6 +57,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
+
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.deleteMediumWithPath
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
@@ -85,6 +90,8 @@ fun FolderPickerSheet(
     var searchResults by remember { mutableStateOf<List<FolderItem>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
     var confirmTarget by remember { mutableStateOf<String?>(null) }
+    var pendingCreateFolder by remember { mutableStateOf(false) }
+    var newFolderName by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
     suspend fun loadFolders(path: String): List<FolderItem> = withContext(Dispatchers.IO) {
@@ -275,6 +282,9 @@ fun FolderPickerSheet(
                         Spacer(Modifier.width(36.dp))
                     }
                     Text(currentPath, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { pendingCreateFolder = true }, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.CreateNewFolder, "Neuer Ordner", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                    }
                 }
                 Spacer(Modifier.height(4.dp))
                 LazyColumn(modifier = Modifier.weight(1f)) {
@@ -334,6 +344,26 @@ fun FolderPickerSheet(
                 Spacer(Modifier.height(8.dp))
             }
         }
+    }
+
+    if (pendingCreateFolder) {
+        AlertDialog(
+            onDismissRequest = { pendingCreateFolder = false; newFolderName = "" },
+            title = { Text("Neuen Ordner erstellen") },
+            text = {
+                OutlinedTextField(value = newFolderName, onValueChange = { newFolderName = it }, label = { Text("Ordnername") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (newFolderName.isNotBlank()) {
+                        val newDir = File(currentPath, newFolderName)
+                        try { newDir.mkdirs(); navStack.add(newDir.path); currentPath = newDir.path } catch (_: Exception) { ctx.toast("Fehler beim Erstellen") }
+                        pendingCreateFolder = false; newFolderName = ""
+                    }
+                }) { Text("Erstellen") }
+            },
+            dismissButton = { TextButton(onClick = { pendingCreateFolder = false; newFolderName = "" }) { Text("Abbrechen") } }
+        )
     }
 
     if (confirmTarget != null) {

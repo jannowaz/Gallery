@@ -80,6 +80,7 @@ import org.fossify.gallery.compose.components.TagInputDialog
 import org.fossify.gallery.compose.screens.FolderPickerSheet
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import org.fossify.gallery.models.Medium
@@ -101,6 +102,10 @@ fun MediaScreen(
 ) {
     val ctx = LocalContext.current
     val viewModel: MediaViewModel = viewModel()
+
+    LaunchedEffect(refreshTrigger) {
+        if (refreshTrigger > 0) viewModel.refresh()
+    }
 
     LaunchedEffect(refreshTrigger) {
         if (refreshTrigger > 0) viewModel.refresh()
@@ -355,6 +360,9 @@ fun MediaScreen(
             ) {
                 Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("${selectedPaths.size} ausgewählt", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Text("Alle", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 8.dp).clickable {
+                        selectedPaths = displayMedia.map { it.path }.toSet()
+                    })
                     Icon(Icons.Default.Close, "Auswahl aufheben", Modifier.size(20.dp).clickable { selectedPaths = emptySet() }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -403,8 +411,13 @@ fun MediaScreen(
     }
     if (showTagsDialog) {
         val batch = selectedPaths.toList()
+        var allTags by remember { mutableStateOf<List<String>>(emptyList()) }
+        LaunchedEffect(Unit) { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try { allTags = ctx.mediaCacheDB.getAllTagged().flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct() } catch (_: Exception) { }
+        } }
         TagInputDialog(
             initialTags = repo.getTags(batch.first()),
+            suggestedTags = allTags,
             onAddTag = { batch.forEach { p -> repo.addTag(p, it) } },
             onRemoveTag = { batch.forEach { p -> repo.removeTag(p, it) } },
             onDismiss = { showTagsDialog = false },

@@ -37,6 +37,8 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     private var loaded = false
 
+    init { load() }
+
     fun load() {
         if (loaded) return
         loaded = true
