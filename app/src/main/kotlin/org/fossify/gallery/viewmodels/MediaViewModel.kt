@@ -1,7 +1,9 @@
 package org.fossify.gallery.viewmodels
 
 import android.app.Application
+import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -55,15 +57,52 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun scanDirectories(): List<Medium> {
+        val ctx = getApplication<Application>()
         val allMedia = mutableListOf<Medium>()
         val seen = mutableSetOf<String>()
         val exts = videoExts + imageExts
-        val root = Environment.getExternalStorageDirectory()
-        val dirs = listOf(
-            root, File(root, "DCIM"), File(root, "Pictures"), File(root, "Download"),
-            File(root, "Movies"), File(root, "Documents"),
-        ).filter { it.isDirectory }
-        for (dir in dirs) scanFile(dir, allMedia, seen, 0, exts)
+
+        // Use MediaStore query (works without MANAGE_EXTERNAL_STORAGE)
+        try {
+            val uri = MediaStore.Files.getContentUri("external")
+            val proj = arrayOf(
+                MediaStore.MediaColumns.DATA, MediaStore.MediaColumns.DISPLAY_NAME,
+                MediaStore.MediaColumns.DATE_MODIFIED, MediaStore.MediaColumns.SIZE,
+                MediaStore.MediaColumns.MIME_TYPE, MediaStore.Files.FileColumns.MEDIA_TYPE,
+                MediaStore.Files.FileColumns.DURATION,
+            )
+            val sel = "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
+            val args = arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
+            ctx.contentResolver.query(uri, proj, sel, args, "${MediaStore.MediaColumns.DATE_MODIFIED} DESC")?.use { c ->
+                val dataCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
+                val nameCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val dateCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
+                val sizeCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                val typeCol = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MEDIA_TYPE)
+                val durCol = try { c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DURATION) } catch (_: Exception) { -1 }
+                while (c.moveToNext() && allMedia.size < 2000) {
+                    val path = c.getString(dataCol) ?: continue
+                    if (path in seen) continue
+                    seen.add(path)
+                    val name = c.getString(nameCol) ?: ""
+                    val modified = c.getLong(dateCol) * 1000L
+                    val size = c.getLong(sizeCol)
+                    val mediaType = c.getInt(typeCol)
+                    val type = if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) 2 else 1
+                    val duration = if (durCol >= 0) (c.getInt(durCol) / 1000) else 0
+                    allMedia.add(Medium(null, name, path, File(path).parent ?: "", modified, modified, size, type, duration, false, 0L, 0L, 0))
+                }
+            }
+        } catch (_: Exception) { }
+
+        // Fallback: file-based scan for accessible dirs (if above failed)
+        if (allMedia.isEmpty()) {
+            val root = Environment.getExternalStorageDirectory()
+            val dirs = listOf(root, File(root, "DCIM"), File(root, "Pictures"), File(root, "Download"), File(root, "Movies"))
+                .filter { it.isDirectory }
+            for (dir in dirs) scanFile(dir, allMedia, seen, 0, exts)
+        }
+
         return allMedia.sortedByDescending { it.modified }.take(2000)
     }
 
