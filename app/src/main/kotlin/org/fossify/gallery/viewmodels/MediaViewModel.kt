@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.models.Medium
 import java.io.File
@@ -50,28 +49,20 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private fun doLoad() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            val media = withContext(Dispatchers.IO) { scanAllMedia() }
+            val media = withContext(Dispatchers.IO) { scanDirectories() }
             _state.update { it.copy(allMedia = media, isLoading = false, hasMore = false) }
         }
     }
 
-    private fun scanAllMedia(): List<Medium> {
-        val ctx = getApplication<Application>()
-        // Use Room DB if populated (MediaStore scan), otherwise fallback to broad directory scan
-        try {
-            val fromDb = ctx.mediaDB.getNewestMedia(1)
-            if (fromDb.isNotEmpty()) return ctx.mediaDB.getNewestMedia(2000).sortedByDescending { it.modified }
-        } catch (_: Exception) { }
-        // Fallback: scan common media directories broadly
-        val root = Environment.getExternalStorageDirectory()
-        val dirs = listOfNotNull(
-            root, File(root, "DCIM"), File(root, "Pictures"), File(root, "Download"),
-            File(root, "Movies"), File(root, "Documents"), File(root, "WhatsApp"),
-            File(root, "Android/media/com.whatsapp/WhatsApp/Media"),
-        ).filter { it.isDirectory }
+    private fun scanDirectories(): List<Medium> {
         val allMedia = mutableListOf<Medium>()
         val seen = mutableSetOf<String>()
         val exts = videoExts + imageExts
+        val root = Environment.getExternalStorageDirectory()
+        val dirs = listOf(
+            root, File(root, "DCIM"), File(root, "Pictures"), File(root, "Download"),
+            File(root, "Movies"), File(root, "Documents"),
+        ).filter { it.isDirectory }
         for (dir in dirs) scanFile(dir, allMedia, seen, 0, exts)
         return allMedia.sortedByDescending { it.modified }.take(2000)
     }
