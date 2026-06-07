@@ -169,6 +169,7 @@ fun MainScreen(onFinish: () -> Unit) {
     val tabSettings by viewSettingsVM.settings.collectAsState()
     val settingsMode by viewSettingsVM.settingsMode.collectAsState()
     val albumsViewModel: AlbumsViewModel = viewModel()
+    val scope = rememberCoroutineScope()
 
     // Back: reopen tag browser or clear filters, then close
     BackHandler(enabled = activeRatingFilter > 0 || activeTagFilter != null || activePathFilter != null || showTagBrowser || showOmniSearch || selectedTab != 1) {
@@ -309,13 +310,24 @@ fun MainScreen(onFinish: () -> Unit) {
                 }, viewSettings = tabSettings.albums)
                 2 -> ExplorerScreen(internalStoragePath = explorerPath, folderSettings = tabSettings.explorerAlbums, mediaSettings = tabSettings.explorerMedia)
                 3 -> CollectionsScreen(onCollectionClick = { coll ->
-                    val paths = coll.getIncludedPaths()
-                    val fsPath = paths.firstOrNull()?.let { resolveContentUriToPath(it) }
-                    if (fsPath != null) {
-                        ctx.startActivity(Intent(ctx, ComposeFolderActivity::class.java).apply {
-                            putExtra("FOLDER_PATH", fsPath)
-                        })
-                    }
+                    activeRatingFilter = coll.ratingFilter
+                    activeTagName = coll.tagFilter.takeIf { it.isNotBlank() }
+                    if (coll.tagFilter.isNotBlank()) {
+                        scope.launch(Dispatchers.IO) {
+                            val tagNames = coll.tagFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                            val tagPaths = mutableSetOf<String>()
+                            try { ctx.mediaCacheDB.getAllTagged().filter { mc -> tagNames.any { mc.tags.contains(it) } }.forEach { tagPaths.add(it.fullPath) } } catch (_: Exception) { }
+                            withContext(Dispatchers.Main) { activeTagFilter = if (tagPaths.isNotEmpty()) tagPaths else null }
+                        }
+                    } else { activeTagFilter = null }
+                    val included = coll.getIncludedPaths()
+                    val excluded = coll.getExcludedPaths()
+                    if (included.isNotEmpty()) {
+                        val fsPaths = included.mapNotNull { resolveContentUriToPath(it) }.toSet()
+                        val exPaths = excluded.mapNotNull { resolveContentUriToPath(it) }.toSet()
+                        activePathFilter = if (exPaths.isNotEmpty()) fsPaths - exPaths else fsPaths
+                    } else { activePathFilter = null }
+                    selectedTab = 0
                 })
                 4 -> FavoritesScreen(onNavigateToPath = { path -> explorerPath = path; selectedTab = 2 }, viewSettings = tabSettings.favorites)
             }
