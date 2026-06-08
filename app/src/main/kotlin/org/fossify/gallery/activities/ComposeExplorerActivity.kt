@@ -322,11 +322,23 @@ fun MainScreen(onFinish: () -> Unit) {
                     } else { activeTagFilter = null }
                     val included = coll.getIncludedPaths()
                     val excluded = coll.getExcludedPaths()
-                    if (included.isNotEmpty()) {
-                        val fsPaths = included.mapNotNull { resolveContentUriToPath(it) }.toSet()
-                        val exPaths = excluded.mapNotNull { resolveContentUriToPath(it) }.toSet()
-                        activePathFilter = if (exPaths.isNotEmpty()) fsPaths - exPaths else fsPaths
-                    } else { activePathFilter = null }
+                    val incPaths = included.mapNotNull { resolveContentUriToPath(it) }.filter { it.isNotEmpty() }.toSet()
+                    val excPaths = excluded.mapNotNull { resolveContentUriToPath(it) }.filter { it.isNotEmpty() }.toSet()
+                    activePathFilter = when {
+                        incPaths.isNotEmpty() && excPaths.isNotEmpty() -> incPaths - excPaths
+                        incPaths.isNotEmpty() -> incPaths
+                        excPaths.isNotEmpty() -> {
+                            // All media except excluded: compute from DB
+                            scope.launch(Dispatchers.IO) {
+                                try {
+                                    val allPaths = ctx.mediaDB.getNewestMedia(5000).map { it.path }.filter { it.isNotEmpty() }.toSet()
+                                    withContext(Dispatchers.Main) { activePathFilter = allPaths - excPaths }
+                                } catch (_: Exception) { }
+                            }
+                            null
+                        }
+                        else -> null
+                    }
                     selectedTab = 0
                 })
                 4 -> FavoritesScreen(onNavigateToPath = { path -> explorerPath = path; selectedTab = 2 }, viewSettings = tabSettings.favorites)
