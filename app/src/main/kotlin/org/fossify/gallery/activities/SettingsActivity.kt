@@ -22,6 +22,7 @@ import org.fossify.gallery.dialogs.*
 import org.fossify.gallery.extensions.*
 import org.fossify.gallery.helpers.*
 import org.fossify.gallery.models.AlbumCover
+import org.fossify.gallery.models.MediaCollection
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -1179,6 +1180,22 @@ class SettingsActivity : SimpleActivity() {
                     }
 
                     config.albumCovers = Gson().toJson(existingCovers)
+                }
+                // Neue Feature-Importe
+                EXPLORER2_HIDDEN_FOLDERS -> { value.toStringSet().forEach { config.hideExplorer2Folder(it) } }
+                TAG_HIERARCHY -> { try { config.tagHierarchy = Gson().fromJson(value.toString(), object : TypeToken<MutableMap<String, String>>() {}.type) } catch (_: Exception) { } }
+                SHOW_RATING_ON_THUMBNAILS -> config.showRatingOnThumbnails = value.toBoolean()
+                SHOW_VIDEO_DURATION_ON_THUMBNAILS -> config.showVideoDurationOnThumbnails = value.toBoolean()
+                LAST_COPY_MOVE_DESTINATION -> config.lastCopyMoveDestination = value.toString()
+                FORCE_DARK_MODE -> config.forceDarkMode = value.toBoolean()
+                FAVORITE_FOLDERS -> { value.toStringSet().forEach { config.addFavoriteFolder(it) } }
+                MUTE_VIDEOS -> config.muteVideos = value.toBoolean()
+                "collections_export" -> {
+                    try {
+                        val listType = object : TypeToken<List<MediaCollection>>() {}.type
+                        val collections: List<MediaCollection> = Gson().fromJson(value.toString(), listType) ?: emptyList()
+                        collections.forEach { collectionDB.insert(it.copy(id = 0)) }
+                    } catch (_: Exception) { }
                 }
             }
         }
