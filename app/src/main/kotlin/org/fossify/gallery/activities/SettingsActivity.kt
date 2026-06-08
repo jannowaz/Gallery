@@ -1011,6 +1011,18 @@ class SettingsActivity : SimpleActivity() {
                 put(THUMBNAIL_SPACING, config.thumbnailSpacing)
                 put(FILE_ROUNDED_CORNERS, config.fileRoundedCorners)
                 put(SEARCH_ALL_FILES_BY_DEFAULT, config.searchAllFilesByDefault)
+                // Neue Features
+                put(EXPLORER2_HIDDEN_FOLDERS, TextUtils.join(",", config.explorer2HiddenFolders))
+                put(TAG_HIERARCHY, config.tagHierarchy.let { Gson().toJson(it) })
+                put(SHOW_RATING_ON_THUMBNAILS, config.showRatingOnThumbnails)
+                put(SHOW_VIDEO_DURATION_ON_THUMBNAILS, config.showVideoDurationOnThumbnails)
+                put(LAST_COPY_MOVE_DESTINATION, config.lastCopyMoveDestination)
+                put(FORCE_DARK_MODE, config.forceDarkMode)
+                put(FAVORITE_FOLDERS, TextUtils.join(",", config.favoriteFolders))
+                put(MUTE_VIDEOS, config.muteVideos)
+                // Collections als JSON
+                val collJson = try { Gson().toJson(collectionDB.getAll()) } catch (_: Exception) { "[]" }
+                put("collections_export", collJson)
             }
 
             exportSettings(configItems)
