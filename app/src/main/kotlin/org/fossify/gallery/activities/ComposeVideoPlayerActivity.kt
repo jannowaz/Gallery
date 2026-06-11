@@ -66,6 +66,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.dialogs.PropertiesDialog
@@ -112,6 +113,7 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
     var showControls by remember { mutableStateOf(true) }
     var progress by remember { mutableFloatStateOf(0f) }
     var showActionSheet by remember { mutableStateOf(false) }
+    LaunchedEffect(showControls) { if (showControls) { delay(4000); showControls = false } }
     var isFavorite by remember { mutableStateOf(false) }
     var showRatingDialog by remember { mutableStateOf(false) }
     var showTagsDialog by remember { mutableStateOf(false) }
@@ -167,12 +169,17 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
             modifier = Modifier.fillMaxSize()
         )
 
-        Box(Modifier.fillMaxSize()
-            .pointerInput(Unit) {
-                detectVerticalDragGestures(onDragEnd = {}, onVerticalDrag = { _, drag -> if (drag < -20) showActionSheet = true })
-            }
-            .clickable { showControls = !showControls }
-        )
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = { },
+                        onVerticalDrag = { _, drag -> if (drag < -20) showActionSheet = true }
+                    )
+                }
+        ) {
+            Box(Modifier.fillMaxSize().clickable { showControls = !showControls })
+        }
 
         AnimatedVisibility(visible = showControls, enter = fadeIn(), exit = fadeOut()) {
             Box(Modifier.fillMaxSize()) {
