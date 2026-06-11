@@ -194,7 +194,14 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                         searchQuery = searchQuery,
                     )
                     scope.launch(Dispatchers.IO) {
-                        try { ctx.collectionDB.insert(col); withContext(Dispatchers.Main) { refresh(); showEditDialog = false } } catch (e: Exception) { android.util.Log.e("Collections", "Save failed", e); withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", Toast.LENGTH_LONG) } }
+                        try {
+                            ctx.collectionDB.insert(col)
+                            collections = try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() }
+                            withContext(Dispatchers.Main) { showEditDialog = false }
+                        } catch (e: Exception) {
+                            android.util.Log.e("Collections", "Save failed", e)
+                            withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", Toast.LENGTH_LONG) }
+                        }
                     }
                 }) { Text("Speichern") }
             },
