@@ -1,6 +1,9 @@
 package org.fossify.gallery.compose.screens
 
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -81,8 +84,12 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
         var tagFilter by remember(editingColl) { mutableStateOf(editingColl?.tagFilter ?: "") }
         var ratingFilter by remember(editingColl) { mutableIntStateOf(editingColl?.ratingFilter ?: 0) }
         var searchQuery by remember(editingColl) { mutableStateOf(editingColl?.searchQuery ?: "") }
-        var showFolderPickerIncl by remember { mutableStateOf(false) }
-        var showFolderPickerExcl by remember { mutableStateOf(false) }
+        val inclPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) { val p = uri.toString(); if (p !in includedUris) includedUris = includedUris + p }
+        }
+        val exclPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) { val p = uri.toString(); if (p !in excludedUris) excludedUris = excludedUris + p }
+        }
 
         var allCachedTags by remember { mutableStateOf<List<String>>(emptyList()) }
         androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -104,10 +111,18 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                             IconButton(onClick = { includedUris = includedUris - uri }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, "Entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
                         }
                     }
-                    Row(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(onClick = { inclPicker.launch(null) }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                            Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Auswählen", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                        Spacer(Modifier.width(8.dp))
                         var manualIncl by remember(editingColl) { mutableStateOf("") }
-                        OutlinedTextField(value = manualIncl, onValueChange = { manualIncl = it }, placeholder = { Text("Pfad eingeben (z.B. /storage/emulated/0/Download)") }, singleLine = true, modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.labelSmall)
-                        TextButton(onClick = { if (manualIncl.isNotBlank() && !includedUris.contains(manualIncl)) { includedUris = includedUris + manualIncl; manualIncl = "" } }, modifier = Modifier.padding(start = 4.dp)) { Text("+") }
+                        OutlinedTextField(value = manualIncl, onValueChange = { manualIncl = it }, placeholder = { Text("oder Pfad tippen") }, singleLine = true, modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.labelSmall)
+                        TextButton(onClick = { if (manualIncl.isNotBlank() && !includedUris.contains(manualIncl)) { includedUris = includedUris + manualIncl; manualIncl = "" } }) { Text("+") }
                     }
                     Spacer(Modifier.height(8.dp))
                     // Excluded folders
@@ -118,10 +133,18 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                             IconButton(onClick = { excludedUris = excludedUris - uri }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, "Entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
                         }
                     }
-                    Row(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(onClick = { exclPicker.launch(null) }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                            Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Auswählen", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                        Spacer(Modifier.width(8.dp))
                         var manualExcl by remember(editingColl) { mutableStateOf("") }
-                        OutlinedTextField(value = manualExcl, onValueChange = { manualExcl = it }, placeholder = { Text("Pfad eingeben") }, singleLine = true, modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.labelSmall)
-                        TextButton(onClick = { if (manualExcl.isNotBlank() && !excludedUris.contains(manualExcl)) { excludedUris = excludedUris + manualExcl; manualExcl = "" } }, modifier = Modifier.padding(start = 4.dp)) { Text("+") }
+                        OutlinedTextField(value = manualExcl, onValueChange = { manualExcl = it }, placeholder = { Text("oder Pfad tippen") }, singleLine = true, modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.labelSmall)
+                        TextButton(onClick = { if (manualExcl.isNotBlank() && !excludedUris.contains(manualExcl)) { excludedUris = excludedUris + manualExcl; manualExcl = "" } }) { Text("+") }
                     }
                     Spacer(Modifier.height(8.dp))
                     HorizontalDivider()
