@@ -131,6 +131,7 @@ fun MediaScreen(
     val baseMedia = mediaOverride ?: state.allMedia
     var ratedMedia by remember { mutableStateOf<List<Medium>?>(null) }
     var tagMedia by remember { mutableStateOf<List<Medium>?>(null) }
+    var pathFallbackMedia by remember { mutableStateOf<List<Medium>?>(null) }
 
     LaunchedEffect(ratingFilter) {
         if (ratingFilter > 0) {
@@ -152,6 +153,20 @@ fun MediaScreen(
         } else {
             tagMedia = null
         }
+    }
+
+    // Load from Room DB when pathFilter yields no results (e.g. protected dirs like Download)
+    LaunchedEffect(pathFilter) {
+        if (pathFilter != null) {
+            val dirs = pathFilter.filter { java.io.File(it).isDirectory }.toSet()
+            val allPaths = (pathFilter + dirs).toList()
+            pathFallbackMedia = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val db = ctx.mediaDB.getNewestMedia(5000)
+                    db.filter { p -> allPaths.any { p.path.startsWith("$it/") || p.path == it } }.take(2000)
+                } catch (_: Exception) { null }
+            }
+        } else { pathFallbackMedia = null }
     }
 
     val unsortedMedia = run {
@@ -185,6 +200,7 @@ fun MediaScreen(
         if (pathFilter != null) {
             val dirs = pathFilter.filter { File(it).isDirectory }.toSet()
             m = m.filter { p -> p.path in pathFilter || dirs.any { p.path.startsWith("$it/") } }
+            if (m.isEmpty() && pathFallbackMedia != null) m = pathFallbackMedia!!
         }
         m
     }
