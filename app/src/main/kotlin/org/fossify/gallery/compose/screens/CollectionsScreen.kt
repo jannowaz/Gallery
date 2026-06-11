@@ -48,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -59,6 +60,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.extensions.collectionDB
@@ -72,7 +74,8 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
     val ctx = LocalContext.current
     var collections by remember { mutableStateOf(try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() }) }
     var editingColl by remember { mutableStateOf<MediaCollection?>(null) }
-    var showEditDialog by remember { mutableStateOf(false) }
+            var showEditDialog by remember { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
 
     fun refresh() { collections = try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() } }
 
@@ -190,8 +193,9 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                         ratingFilter = ratingFilter,
                         searchQuery = searchQuery,
                     )
-                    try { ctx.collectionDB.insert(col); refresh() } catch (e: Exception) { android.util.Log.e("Collections", "Save failed", e); ctx.toast("Fehler: ${e.message}", Toast.LENGTH_LONG) }
-                    showEditDialog = false
+                    scope.launch(Dispatchers.IO) {
+                        try { ctx.collectionDB.insert(col); withContext(Dispatchers.Main) { refresh(); showEditDialog = false } } catch (e: Exception) { android.util.Log.e("Collections", "Save failed", e); withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", Toast.LENGTH_LONG) } }
+                    }
                 }) { Text("Speichern") }
             },
             dismissButton = { TextButton(onClick = { showEditDialog = false }) { Text("Abbrechen") } }
