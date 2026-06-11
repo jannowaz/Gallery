@@ -209,7 +209,7 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
                     File(videoPath).delete(); context.deleteMediumWithPath(videoPath); showActionSheet = false; onClose()
                 }
                 HorizontalDivider()
-                SelectionRow(Icons.Default.Info, "Info") { (context as? android.app.Activity)?.let { PropertiesDialog(it, videoPath, false) }; showActionSheet = false }
+                SelectionRow(Icons.Default.Info, "Info") { try { (context as? android.app.Activity)?.let { PropertiesDialog(it, videoPath, false) } } catch (e: Exception) { context.toast("Info-Fehler: ${e.message}", Toast.LENGTH_SHORT) }; showActionSheet = false }
                 SelectionRow(Icons.Default.Star, "Bewerten") { showRatingDialog = true; showActionSheet = false }
                 SelectionRow(Icons.Default.Edit, "Tags") { showTagsDialog = true; showActionSheet = false }
                 SelectionRow(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, if (isFavorite) "Von Favoriten entfernen" else "Favorisieren") {
