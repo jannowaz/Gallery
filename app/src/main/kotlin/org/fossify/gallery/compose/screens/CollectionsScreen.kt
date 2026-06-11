@@ -1,8 +1,6 @@
 package org.fossify.gallery.compose.screens
 
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -83,15 +81,8 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
         var tagFilter by remember(editingColl) { mutableStateOf(editingColl?.tagFilter ?: "") }
         var ratingFilter by remember(editingColl) { mutableIntStateOf(editingColl?.ratingFilter ?: 0) }
         var searchQuery by remember(editingColl) { mutableStateOf(editingColl?.searchQuery ?: "") }
-        var showAddIncluded by remember { mutableStateOf(false) }
-        var showAddExcluded by remember { mutableStateOf(false) }
-
-        val inclPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-            if (uri != null) includedUris = includedUris + uri.toString()
-        }
-        val exclPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-            if (uri != null) excludedUris = excludedUris + uri.toString()
-        }
+        var showFolderPickerIncl by remember { mutableStateOf(false) }
+        var showFolderPickerExcl by remember { mutableStateOf(false) }
 
         var allCachedTags by remember { mutableStateOf<List<String>>(emptyList()) }
         androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -113,24 +104,10 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                             IconButton(onClick = { includedUris = includedUris - uri }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, "Entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
                         }
                     }
-                    Surface(onClick = { inclPicker.launch(null) }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-                        Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Ordner auswählen", style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                    // Manual path entry for included folders (fallback when SAF fails)
-                    var manualIncl by remember(editingColl) { mutableStateOf("") }
-                    if (manualIncl.isNotEmpty()) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(manualIncl, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { includedUris = includedUris - manualIncl; manualIncl = "" }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, "Entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(value = manualIncl, onValueChange = { manualIncl = it }, placeholder = { Text("oder Pfad eingeben (z.B. /storage/emulated/0/Download)") }, singleLine = true, modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.labelSmall)
-                        TextButton(onClick = { if (manualIncl.isNotBlank() && !includedUris.contains(manualIncl)) { includedUris = includedUris + manualIncl; manualIncl = "" } }) { Text("+") }
+                    Row(Modifier.fillMaxWidth()) {
+                        var manualIncl by remember(editingColl) { mutableStateOf("") }
+                        OutlinedTextField(value = manualIncl, onValueChange = { manualIncl = it }, placeholder = { Text("Pfad eingeben (z.B. /storage/emulated/0/Download)") }, singleLine = true, modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.labelSmall)
+                        TextButton(onClick = { if (manualIncl.isNotBlank() && !includedUris.contains(manualIncl)) { includedUris = includedUris + manualIncl; manualIncl = "" } }, modifier = Modifier.padding(start = 4.dp)) { Text("+") }
                     }
                     Spacer(Modifier.height(8.dp))
                     // Excluded folders
@@ -141,23 +118,10 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                             IconButton(onClick = { excludedUris = excludedUris - uri }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, "Entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
                         }
                     }
-                    Surface(onClick = { exclPicker.launch(null) }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-                        Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Ordner ausschließen", style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                    var manualExcl by remember(editingColl) { mutableStateOf("") }
-                    if (manualExcl.isNotEmpty()) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(manualExcl, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { excludedUris = excludedUris - manualExcl; manualExcl = "" }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, "Entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(value = manualExcl, onValueChange = { manualExcl = it }, placeholder = { Text("oder Pfad eingeben") }, singleLine = true, modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.labelSmall)
-                        TextButton(onClick = { if (manualExcl.isNotBlank() && !excludedUris.contains(manualExcl)) { excludedUris = excludedUris + manualExcl; manualExcl = "" } }) { Text("+") }
+                    Row(Modifier.fillMaxWidth()) {
+                        var manualExcl by remember(editingColl) { mutableStateOf("") }
+                        OutlinedTextField(value = manualExcl, onValueChange = { manualExcl = it }, placeholder = { Text("Pfad eingeben") }, singleLine = true, modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.labelSmall)
+                        TextButton(onClick = { if (manualExcl.isNotBlank() && !excludedUris.contains(manualExcl)) { excludedUris = excludedUris + manualExcl; manualExcl = "" } }, modifier = Modifier.padding(start = 4.dp)) { Text("+") }
                     }
                     Spacer(Modifier.height(8.dp))
                     HorizontalDivider()
@@ -203,7 +167,7 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                         ratingFilter = ratingFilter,
                         searchQuery = searchQuery,
                     )
-                    try { ctx.collectionDB.insert(col); refresh() } catch (_: Exception) { ctx.toast("Fehler beim Speichern", Toast.LENGTH_SHORT) }
+                    try { ctx.collectionDB.insert(col); refresh() } catch (e: Exception) { android.util.Log.e("Collections", "Save failed", e); ctx.toast("Fehler: ${e.message}", Toast.LENGTH_LONG) }
                     showEditDialog = false
                 }) { Text("Speichern") }
             },
