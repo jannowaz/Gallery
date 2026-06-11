@@ -46,6 +46,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -73,11 +74,16 @@ import org.fossify.gallery.models.MediaCollection
 fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var collections by remember { mutableStateOf(try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() }) }
+    var collections by remember { mutableStateOf<List<MediaCollection>>(emptyList()) }
     var editingColl by remember { mutableStateOf<MediaCollection?>(null) }
     var showEditDialog by remember { mutableStateOf(false) }
 
-    fun refresh() { collections = try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() } }
+    // Load collections on IO (Room verbietet Main-Thread)
+    var loadTrigger by remember { mutableIntStateOf(0) }
+    LaunchedEffect(loadTrigger) {
+        collections = withContext(Dispatchers.IO) { try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() } }
+    }
+    fun refresh() { loadTrigger++ }
 
     // Edit dialog
     if (showEditDialog) {
