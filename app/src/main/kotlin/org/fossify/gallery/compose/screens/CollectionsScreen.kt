@@ -253,7 +253,7 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                             }
                             IconButton(onClick = { editingColl = coll; showEditDialog = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Edit, "Bearbeiten", modifier = Modifier.size(18.dp)) }
                             IconButton(onClick = {
-                                try { ctx.collectionDB.delete(coll); refresh() } catch (_: Exception) { }
+                                scope.launch(Dispatchers.IO) { try { ctx.collectionDB.delete(coll); withContext(Dispatchers.Main) { refresh() } } catch (_: Exception) { } }
                             }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp)) }
                         }
                     }
