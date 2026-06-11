@@ -296,7 +296,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth()) {
-                    SelectionRow(Icons.Default.Info, "Info", modifier = Modifier.weight(1f)) { (ctx as? android.app.Activity)?.let { PropertiesDialog(it, currentPath, false) }; showActionSheet = false }
+                    SelectionRow(Icons.Default.Info, "Info", modifier = Modifier.weight(1f)) { try { (ctx as? android.app.Activity)?.let { PropertiesDialog(it, currentPath, false) } } catch (e: Exception) { ctx.toast("Info-Fehler: ${e.message}", Toast.LENGTH_SHORT) }; showActionSheet = false }
                     Spacer(Modifier.width(8.dp))
                     SelectionRow(if (showRatingOverlay) Icons.Default.Star else Icons.Default.StarBorder, "Bewerten", modifier = Modifier.weight(1f)) { showRatingOverlay = !showRatingOverlay; showActionSheet = false }
                 }

@@ -68,6 +68,19 @@ import org.fossify.gallery.extensions.collectionDB
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.models.MediaCollection
+import java.io.File
+
+private fun pathDisplayName(uri: String): String {
+    // content:// URI → extract readable path
+    val idx = uri.lastIndexOf("%3A")
+    if (idx >= 0) return java.net.URLDecoder.decode(uri.substring(idx + 3), "UTF-8").replace("/", " › ")
+    // filesystem path
+    val f = File(uri)
+    if (f.exists()) return f.name
+    // fallback
+    val last = uri.substringAfterLast('/')
+    return last.take(60)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -116,21 +129,30 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                     Text("Eingeschlossene Ordner:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
                     includedUris.forEach { uri ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(uri, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text(pathDisplayName(uri), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             IconButton(onClick = { includedUris = includedUris - uri }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, "Entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
                         }
                     }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(onClick = { val p = "/storage/emulated/0/Download"; if (p !in includedUris) includedUris = includedUris + p }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                            Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Download", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+                        }
+                        Spacer(Modifier.width(4.dp))
                         Surface(onClick = { inclPicker.launch(null) }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
                             Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
+                                Spacer(Modifier.width(4.dp))
                                 Text("Auswählen", style = MaterialTheme.typography.labelSmall)
                             }
                         }
-                        Spacer(Modifier.width(8.dp))
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         var manualIncl by remember(editingColl) { mutableStateOf("") }
-                        OutlinedTextField(value = manualIncl, onValueChange = { manualIncl = it }, placeholder = { Text("oder Pfad tippen") }, singleLine = true, modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.labelSmall)
+                        OutlinedTextField(value = manualIncl, onValueChange = { manualIncl = it }, placeholder = { Text("Pfad tippen (z.B. /storage/emulated/0/DCIM)") }, singleLine = true, modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.labelSmall)
                         TextButton(onClick = { if (manualIncl.isNotBlank() && !includedUris.contains(manualIncl)) { includedUris = includedUris + manualIncl; manualIncl = "" } }) { Text("+") }
                     }
                     Spacer(Modifier.height(8.dp))
@@ -138,7 +160,7 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                     Text("Ausgeschlossene Ordner:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
                     excludedUris.forEach { uri ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(uri, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text(pathDisplayName(uri), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             IconButton(onClick = { excludedUris = excludedUris - uri }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, "Entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
                         }
                     }
