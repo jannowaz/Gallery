@@ -165,6 +165,7 @@ fun MainScreen(onFinish: () -> Unit) {
     var activeTagName by remember { mutableStateOf<String?>(null) }
     var activePathFilter by remember { mutableStateOf<Set<String>?>(null) }
     var mediaRefreshTrigger by remember { mutableIntStateOf(0) }
+    var preFilterTab by remember { mutableIntStateOf(-1) }
     val viewSettingsVM: ViewSettingsViewModel = viewModel()
     val tabSettings by viewSettingsVM.settings.collectAsState()
     val settingsMode by viewSettingsVM.settingsMode.collectAsState()
@@ -177,7 +178,12 @@ fun MainScreen(onFinish: () -> Unit) {
             showTagBrowser -> showTagBrowser = false
             showOmniSearch -> showOmniSearch = false
             activeTagFilter != null -> { showTagBrowser = true; selectedTab = 1 }
-            activeRatingFilter > 0 || activePathFilter != null -> { activeRatingFilter = 0; activeTagFilter = null; activeTagName = null; activePathFilter = null; selectedTab = 1 }
+            activePathFilter != null -> {
+                val backTab = if (preFilterTab >= 0) preFilterTab else 1
+                activeRatingFilter = 0; activeTagFilter = null; activeTagName = null; activePathFilter = null; preFilterTab = -1
+                selectedTab = backTab
+            }
+            activeRatingFilter > 0 -> { activeRatingFilter = 0; selectedTab = 1 }
             selectedTab != 1 -> selectedTab = 1
             else -> onFinish()
         }
@@ -310,6 +316,7 @@ fun MainScreen(onFinish: () -> Unit) {
                 }, viewSettings = tabSettings.albums)
                 2 -> ExplorerScreen(internalStoragePath = explorerPath, folderSettings = tabSettings.explorerAlbums, mediaSettings = tabSettings.explorerMedia)
                 3 -> CollectionsScreen(onCollectionClick = { coll ->
+                    preFilterTab = 3
                     activeRatingFilter = coll.ratingFilter
                     activeTagName = coll.tagFilter.takeIf { it.isNotBlank() }
                     if (coll.tagFilter.isNotBlank()) {
@@ -437,6 +444,7 @@ fun MainScreen(onFinish: () -> Unit) {
             confirmButton = { TextButton(onClick = {
                 showRatingBrowser = false
                 if (ratingFilter > 0) {
+                    preFilterTab = 1
                     activeRatingFilter = ratingFilter
                     activeTagFilter = null
                     activeTagName = null
@@ -522,6 +530,7 @@ fun MainScreen(onFinish: () -> Unit) {
                                     onClick = {
                                         // Always filter on tap
                                         showTagBrowser = false
+                                        preFilterTab = 1
                                         activeTagFilter = paths.toSet()
                                         activeTagName = tag
                                         activeRatingFilter = 0

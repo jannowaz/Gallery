@@ -253,7 +253,7 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                 }
             }
         } else {
-            LazyColumn(contentPadding = PaddingValues(8.dp)) {
+            LazyColumn(reverseLayout = true, contentPadding = PaddingValues(8.dp)) {
                 items(collections, key = { it.id }) { coll ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clickable { onCollectionClick(coll) },
