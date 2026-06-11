@@ -51,10 +51,13 @@ import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
@@ -79,7 +82,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -96,6 +101,7 @@ import coil.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withContext
 import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.commons.extensions.toast
@@ -442,9 +448,8 @@ private fun VideoPage(path: String, scalingMode: Int) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
-    var showVideoControls by remember { mutableStateOf(true) }
+    var showVidCtrls by remember { mutableStateOf(true) }
     var isPlaying by remember { mutableStateOf(true) }
-    var progress by remember { mutableFloatStateOf(0f) }
 
     val player = remember(path) {
         ExoPlayer.Builder(ctx).build().apply {
@@ -456,78 +461,41 @@ private fun VideoPage(path: String, scalingMode: Int) {
     }
     DisposableEffect(player) { onDispose { player.release() } }
 
-    LaunchedEffect(player) {
-        player.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(state: Int) { }
-            override fun onIsPlayingChanged(isNowPlaying: Boolean) { isPlaying = isNowPlaying }
-        })
-    }
+    LaunchedEffect(player) { player.addListener(object : Player.Listener { override fun onIsPlayingChanged(p: Boolean) { isPlaying = p } }) }
 
-    LaunchedEffect(isPlaying) {
-        if (!isPlaying) return@LaunchedEffect
-        while (true) {
-            delay(250)
-            if (player.duration > 0) progress = (player.currentPosition.toFloat() / player.duration)
-        }
-    }
-
-    val spv = remember { androidx.media3.ui.PlayerView(ctx) }
+    val spv = remember { androidx.media3.ui.PlayerView(ctx).apply { useController = false } }
     LaunchedEffect(player) { spv.player = player }
     LaunchedEffect(scalingMode) { spv.resizeMode = scalingMode }
+
+    // Auto-hide controls after 3s
+    LaunchedEffect(showVidCtrls) { if (showVidCtrls) { delay(3000); showVidCtrls = false } }
 
     Box(Modifier.fillMaxSize().clipToBounds().background(Color.Black)) {
         AndroidView(factory = { spv }, modifier = Modifier.fillMaxSize().graphicsLayer {
             scaleX = scale; scaleY = scale
             translationX = offsetX; translationY = offsetY
+        }.pointerInput(Unit) {
+            val sz = this.size
+            awaitPointerEventScope { while (true) { val e = awaitPointerEvent(); val c = e.changes.filter { it.pressed }
+                if (c.size > 1) { val pts = c.map { it.position }; val pp = c.map { it.previousPosition }; val cent = Offset(pts.sumOf { it.x.toDouble() }.toFloat()/pts.size, pts.sumOf { it.y.toDouble() }.toFloat()/pts.size); val pcent = Offset(pp.sumOf { it.x.toDouble() }.toFloat()/pp.size, pp.sumOf { it.y.toDouble() }.toFloat()/pp.size); val d = pts.sumOf { (it-cent).getDistance().toDouble() }.toFloat(); val pd = pp.sumOf { (it-pcent).getDistance().toDouble() }.toFloat(); val z = if(pd>0f)(d/pd).coerceIn(0.5f,3f)else 1f; scale=(scale*z).coerceIn(1f,5f); val pan = cent-pcent; val mx=(scale-1f)*sz.width/2f; val my=(scale-1f)*sz.height/2f; offsetX=(offsetX+pan.x).coerceIn(-mx,mx); offsetY=(offsetY+pan.y).coerceIn(-my,my); c.forEach{it.consume()} }
+                else if(c.size==1&&scale>1f) { val ch=c.first(); val pan=ch.position-ch.previousPosition; val mx=(scale-1f)*sz.width/2f; val my=(scale-1f)*sz.height/2f; offsetX=(offsetX+pan.x).coerceIn(-mx,mx); offsetY=(offsetY+pan.y).coerceIn(-my,my); c.forEach{it.consume()} }
+            } }
         })
+        Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap={showVidCtrls=!showVidCtrls}, onDoubleTap={scale=if(scale>1f)1f else 2.5f;if(scale==1f){offsetX=0f;offsetY=0f}}) })
 
-        // Zoom & pan gestures
-        Box(Modifier.fillMaxSize().pointerInput(Unit) {
-            val viewSize = this.size
-            awaitPointerEventScope {
-                while (true) {
-                    val event = awaitPointerEvent()
-                    val changes = event.changes.filter { it.pressed }
-                    if (changes.size > 1) {
-                        val pts = changes.map { it.position }
-                        val prevPts = changes.map { it.previousPosition }
-                        val cent = androidx.compose.ui.geometry.Offset(pts.sumOf { it.x.toDouble() }.toFloat() / pts.size, pts.sumOf { it.y.toDouble() }.toFloat() / pts.size)
-                        val prevCent = androidx.compose.ui.geometry.Offset(prevPts.sumOf { it.x.toDouble() }.toFloat() / prevPts.size, prevPts.sumOf { it.y.toDouble() }.toFloat() / prevPts.size)
-                        val curDist = pts.sumOf { (it - cent).getDistance().toDouble() }.toFloat()
-                        val prevDist = prevPts.sumOf { (it - prevCent).getDistance().toDouble() }.toFloat()
-                        val zoom = if (prevDist > 0f) (curDist / prevDist).coerceIn(0.5f, 3f) else 1f
-                        scale = (scale * zoom).coerceIn(1f, 5f)
-                        val pan = cent - prevCent
-                        val maxX = (scale - 1f) * viewSize.width / 2f; val maxY = (scale - 1f) * viewSize.height / 2f
-                        offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX); offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
-                        changes.forEach { it.consume() }
-                    } else if (changes.size == 1 && scale > 1f) {
-                        val c = changes.first()
-                        val pan = c.position - c.previousPosition
-                        val maxX = (scale - 1f) * viewSize.width / 2f; val maxY = (scale - 1f) * viewSize.height / 2f
-                        offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX); offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
-                        changes.forEach { it.consume() }
+        AnimatedVisibility(visible=showVidCtrls, enter=fadeIn(), exit=fadeOut()) {
+            Box(Modifier.fillMaxSize()) {
+                IconButton(onClick={if(isPlaying)player.pause() else player.play()}, modifier=Modifier.align(Alignment.Center).size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha=0.5f))) {
+                    Icon(if(isPlaying)Icons.Default.Pause else Icons.Default.PlayArrow, "Play/Pause", tint=Color.White, modifier=Modifier.size(28.dp))
+                }
+                if(player.duration>0) {
+                    Row(Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Color.Black.copy(alpha=0.4f)).padding(horizontal=12.dp, vertical=6.dp), verticalAlignment=Alignment.CenterVertically) {
+                        Text("%02d:%02d".format((player.currentPosition/1000)/60, (player.currentPosition/1000)%60), style=MaterialTheme.typography.labelSmall, color=Color.White)
+                        val pct = if(player.duration>0) player.currentPosition.toFloat()/player.duration else 0f
+                        LinearProgressIndicator(progress={pct}, modifier=Modifier.weight(1f).padding(horizontal=8.dp), color=Color.White, trackColor=Color.White.copy(alpha=0.3f))
+                        Text("%02d:%02d".format((player.duration/1000)/60, (player.duration/1000)%60), style=MaterialTheme.typography.labelSmall, color=Color.White)
                     }
                 }
-            }
-        })
-
-        // Tap to toggle controls + double-tap to reset zoom
-        Box(Modifier.fillMaxSize().pointerInput(Unit) {
-            detectTapGestures(onTap = { showVideoControls = !showVideoControls }, onDoubleTap = { scale = if (scale > 1f) 1f else 2.5f; if (scale == 1f) { offsetX = 0f; offsetY = 0f } })
-        })
-
-        // Video controls overlay
-        AnimatedVisibility(visible = showVideoControls, enter = fadeIn(), exit = fadeOut()) {
-            Box(Modifier.fillMaxSize()) {
-                // Centered play/pause
-                IconButton(onClick = { if (isPlaying) player.pause() else player.play() },
-                    modifier = Modifier.align(Alignment.Center).size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f))) {
-                    Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play/Pause", tint = Color.White, modifier = Modifier.size(28.dp))
-                }
-                // Bottom progress bar
-                LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(4.dp).align(Alignment.BottomCenter), color = Color.White, trackColor = Color.White.copy(alpha = 0.3f))
-                // Top close / counter are handled by the parent ViewerScreen overlay
             }
         }
     }
