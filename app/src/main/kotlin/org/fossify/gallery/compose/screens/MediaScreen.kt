@@ -182,7 +182,8 @@ fun MediaScreen(
             }
         }
         if (pathFilter != null) {
-            m = m.filter { it.path in pathFilter }
+            val dirs = pathFilter.filter { File(it).isDirectory }.toSet()
+            m = m.filter { p -> p.path in pathFilter || dirs.any { p.path.startsWith("$it/") } }
         }
         m
     }

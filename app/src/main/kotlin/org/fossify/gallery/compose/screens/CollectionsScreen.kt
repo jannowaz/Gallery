@@ -117,8 +117,20 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                         Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Ordner hinzufügen", style = MaterialTheme.typography.labelSmall)
+                            Text("Ordner auswählen", style = MaterialTheme.typography.labelSmall)
                         }
+                    }
+                    // Manual path entry for included folders (fallback when SAF fails)
+                    var manualIncl by remember(editingColl) { mutableStateOf("") }
+                    if (manualIncl.isNotEmpty()) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(manualIncl, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { includedUris = includedUris - manualIncl; manualIncl = "" }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, "Entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(value = manualIncl, onValueChange = { manualIncl = it }, placeholder = { Text("oder Pfad eingeben (z.B. /storage/emulated/0/Download)") }, singleLine = true, modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.labelSmall)
+                        TextButton(onClick = { if (manualIncl.isNotBlank() && !includedUris.contains(manualIncl)) { includedUris = includedUris + manualIncl; manualIncl = "" } }) { Text("+") }
                     }
                     Spacer(Modifier.height(8.dp))
                     // Excluded folders
@@ -135,6 +147,17 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                             Spacer(Modifier.width(6.dp))
                             Text("Ordner ausschließen", style = MaterialTheme.typography.labelSmall)
                         }
+                    }
+                    var manualExcl by remember(editingColl) { mutableStateOf("") }
+                    if (manualExcl.isNotEmpty()) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(manualExcl, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { excludedUris = excludedUris - manualExcl; manualExcl = "" }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, "Entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(value = manualExcl, onValueChange = { manualExcl = it }, placeholder = { Text("oder Pfad eingeben") }, singleLine = true, modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.labelSmall)
+                        TextButton(onClick = { if (manualExcl.isNotBlank() && !excludedUris.contains(manualExcl)) { excludedUris = excludedUris + manualExcl; manualExcl = "" } }) { Text("+") }
                     }
                     Spacer(Modifier.height(8.dp))
                     HorizontalDivider()
