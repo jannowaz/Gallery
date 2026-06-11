@@ -20,6 +20,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -88,6 +89,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -450,6 +453,8 @@ private fun VideoPage(path: String, scalingMode: Int) {
     var offsetY by remember { mutableFloatStateOf(0f) }
     var showVidCtrls by remember { mutableStateOf(true) }
     var isPlaying by remember { mutableStateOf(true) }
+    var playbackSpeed by remember { mutableFloatStateOf(1f) }
+    val speeds = listOf(0.5f, 1f, 1.5f, 2f, 3f)
 
     val player = remember(path) {
         ExoPlayer.Builder(ctx).build().apply {
@@ -488,8 +493,14 @@ private fun VideoPage(path: String, scalingMode: Int) {
                 IconButton(onClick={if(isPlaying)player.pause() else player.play()}, modifier=Modifier.align(Alignment.Center).size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha=0.5f))) {
                     Icon(if(isPlaying)Icons.Default.Pause else Icons.Default.PlayArrow, "Play/Pause", tint=Color.White, modifier=Modifier.size(28.dp))
                 }
+                // Playback speed control (middle-right)
+                val speedIdx = speeds.indexOf(playbackSpeed)
+                val nextSpeed = speeds[(speedIdx + 1) % speeds.size]
+                TextButton(onClick={ playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed) }, modifier=Modifier.align(Alignment.CenterEnd).padding(end=16.dp)) {
+                    Text("${playbackSpeed}x", color=Color.White, fontWeight=FontWeight.Bold)
+                }
                 if(player.duration>0) {
-                    Row(Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Color.Black.copy(alpha=0.4f)).padding(horizontal=12.dp, vertical=6.dp), verticalAlignment=Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Color.Black.copy(alpha=0.4f)).padding(horizontal=12.dp, vertical=6.dp).navigationBarsPadding(), verticalAlignment=Alignment.CenterVertically) {
                         Text("%02d:%02d".format((player.currentPosition/1000)/60, (player.currentPosition/1000)%60), style=MaterialTheme.typography.labelSmall, color=Color.White)
                         val pct = if(player.duration>0) player.currentPosition.toFloat()/player.duration else 0f
                         LinearProgressIndicator(progress={pct}, modifier=Modifier.weight(1f).padding(horizontal=8.dp), color=Color.White, trackColor=Color.White.copy(alpha=0.3f))
