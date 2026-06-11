@@ -500,7 +500,7 @@ private fun VideoPage(path: String, scalingMode: Int) {
                     Text("${playbackSpeed}x", color=Color.White, fontWeight=FontWeight.Bold)
                 }
                 if(player.duration>0) {
-                    Row(Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Color.Black.copy(alpha=0.4f)).padding(horizontal=12.dp, vertical=6.dp).navigationBarsPadding(), verticalAlignment=Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Color.Black.copy(alpha=0.6f)).padding(horizontal=12.dp, vertical=10.dp).navigationBarsPadding(), verticalAlignment=Alignment.CenterVertically) {
                         Text("%02d:%02d".format((player.currentPosition/1000)/60, (player.currentPosition/1000)%60), style=MaterialTheme.typography.labelSmall, color=Color.White)
                         val pct = if(player.duration>0) player.currentPosition.toFloat()/player.duration else 0f
                         LinearProgressIndicator(progress={pct}, modifier=Modifier.weight(1f).padding(horizontal=8.dp), color=Color.White, trackColor=Color.White.copy(alpha=0.3f))
