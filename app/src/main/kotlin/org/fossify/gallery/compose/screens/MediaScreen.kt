@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import org.fossify.commons.dialogs.PropertiesDialog
+import org.fossify.commons.extensions.toast
 import org.fossify.gallery.activities.ComposeVideoPlayerActivity
 import org.fossify.gallery.activities.ComposeViewerActivity
 import org.fossify.gallery.compose.components.SelectionRow
@@ -392,7 +393,7 @@ fun MediaScreen(
                 SelectionRow(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error) {
                     viewModel.deletePaths(selectedPaths); selectedPaths = emptySet(); showSelectionSheet = false
                 }
-                SelectionRow(Icons.Default.Info, "Info") { selectedPaths.firstOrNull()?.let { (ctx as? android.app.Activity)?.let { a -> PropertiesDialog(a, it, false) } }; showSelectionSheet = false }
+                SelectionRow(Icons.Default.Info, "Info") { try { selectedPaths.firstOrNull()?.let { (ctx as? android.app.Activity)?.let { a -> PropertiesDialog(a, it, false) } } } catch (e: Exception) { ctx.toast("Info-Fehler: ${e.message}", Toast.LENGTH_LONG) }; showSelectionSheet = false }
                 SelectionRow(Icons.Default.ContentCopy, "Kopieren") { folderPickerIsMove = false; showFolderPicker = true; showSelectionSheet = false }
                 SelectionRow(Icons.AutoMirrored.Filled.DriveFileMove, "Verschieben") { folderPickerIsMove = true; showFolderPicker = true; showSelectionSheet = false }
                 SelectionRow(Icons.Default.Star, "Bewerten") { showRatingDialog = true; showSelectionSheet = false }

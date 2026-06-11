@@ -61,14 +61,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.documentfile.provider.DocumentFile
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withContext
 import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.commons.extensions.toast
@@ -206,14 +204,14 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
                 SelectionRow(Icons.Default.ContentCopy, "Kopieren") { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }
                 SelectionRow(Icons.AutoMirrored.Filled.DriveFileMove, "Verschieben") { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false }
                 SelectionRow(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error) {
-                    File(videoPath).delete(); context.deleteMediumWithPath(videoPath); showActionSheet = false; onClose()
+                    scope.launch(Dispatchers.IO) { File(videoPath).delete(); context.deleteMediumWithPath(videoPath) }; showActionSheet = false; onClose()
                 }
                 HorizontalDivider()
                 SelectionRow(Icons.Default.Info, "Info") { try { (context as? android.app.Activity)?.let { PropertiesDialog(it, videoPath, false) } } catch (e: Exception) { context.toast("Info-Fehler: ${e.message}", Toast.LENGTH_SHORT) }; showActionSheet = false }
                 SelectionRow(Icons.Default.Star, "Bewerten") { showRatingDialog = true; showActionSheet = false }
                 SelectionRow(Icons.Default.Edit, "Tags") { showTagsDialog = true; showActionSheet = false }
                 SelectionRow(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, if (isFavorite) "Von Favoriten entfernen" else "Favorisieren") {
-                    scope.launch(Dispatchers.IO) { isFavorite = !isFavorite; repo.toggleFavorite(videoPath, isFavorite) }; showActionSheet = false
+                    val newFav = !isFavorite; isFavorite = newFav; scope.launch(Dispatchers.IO) { repo.toggleFavorite(videoPath, newFav) }; showActionSheet = false
                 }
             }
         }

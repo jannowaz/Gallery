@@ -291,7 +291,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                     SelectionRow(Icons.AutoMirrored.Filled.DriveFileMove, "Verschieben", modifier = Modifier.weight(1f)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false }
                     Spacer(Modifier.width(8.dp))
                     SelectionRow(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f)) {
-                        File(currentPath).delete(); ctx.deleteMediumWithPath(currentPath); showActionSheet = false; onClose()
+                        scope.launch(Dispatchers.IO) { File(currentPath).delete(); ctx.deleteMediumWithPath(currentPath) }; showActionSheet = false; onClose()
                     }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -305,7 +305,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                     SelectionRow(Icons.Default.Edit, "Tags", modifier = Modifier.weight(1f)) { showTagsDialog = true; showActionSheet = false }
                     Spacer(Modifier.width(8.dp))
                     SelectionRow(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, if (isFavorite) "Favorit" else "Favorisieren", modifier = Modifier.weight(1f)) {
-                        scope.launch(Dispatchers.IO) { isFavorite = !isFavorite; repo.toggleFavorite(currentPath, isFavorite) }; showActionSheet = false
+                        val newFav = !isFavorite; isFavorite = newFav; scope.launch(Dispatchers.IO) { repo.toggleFavorite(currentPath, newFav) }; showActionSheet = false
                     }
                 }
                 Spacer(Modifier.height(8.dp))
