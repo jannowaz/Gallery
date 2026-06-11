@@ -72,10 +72,10 @@ import org.fossify.gallery.models.MediaCollection
 @Composable
 fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     var collections by remember { mutableStateOf(try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() }) }
     var editingColl by remember { mutableStateOf<MediaCollection?>(null) }
-            var showEditDialog by remember { mutableStateOf(false) }
-        val scope = rememberCoroutineScope()
+    var showEditDialog by remember { mutableStateOf(false) }
 
     fun refresh() { collections = try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() } }
 
