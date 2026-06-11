@@ -14,8 +14,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -58,9 +58,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.changedToDown
-import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -70,6 +67,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -135,6 +133,7 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(Uri.fromFile(File(videoPath))))
+            repeatMode = Player.REPEAT_MODE_ONE
             prepare()
             playWhenReady = true
         }
@@ -174,18 +173,9 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
         )
 
         Box(Modifier.fillMaxSize().pointerInput(Unit) {
-            var totalDrag = 0f
-            awaitEachGesture {
-                val down = awaitFirstDown(requireUnconsumed = false)
-                totalDrag = 0f
-                do {
-                    val event = awaitPointerEvent(PointerEventPass.Main)
-                    val change = event.changes.firstOrNull() ?: break
-                    if (change.pressed) totalDrag += change.position.y - change.previousPosition.y
-                    change.consume()
-                } while (event.changes.any { it.pressed })
-                if (totalDrag < -30f) showActionSheet = true
-                else if (kotlin.math.abs(totalDrag) < 15f) showControls = !showControls
+            kotlinx.coroutines.coroutineScope {
+                launch { detectTapGestures(onTap = { showControls = !showControls }, onDoubleTap = { }) }
+                launch { detectVerticalDragGestures(onDragEnd = { }, onVerticalDrag = { _, drag -> if (drag < -20) showActionSheet = true }) }
             }
         })
 
