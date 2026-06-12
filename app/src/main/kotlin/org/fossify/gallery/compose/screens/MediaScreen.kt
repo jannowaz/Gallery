@@ -401,7 +401,7 @@ fun MediaScreen(
                 Spacer(Modifier.height(12.dp))
                 SelectionRow(Icons.Default.Share, "Teilen") {
                     val uris = ArrayList(selectedPaths.map { p -> androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(p)) })
-                    val allVideo = selectedPaths.all { it.substringAfterLast('.').lowercase() in setOf("mp4", "mkv", "mov", "3gp", "wmv", "flv", "avi") }
+                    val allVideo = selectedPaths.all { it.substringAfterLast('.').lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS }
                     val shareIntent = if (uris.size == 1) {
                         Intent(Intent.ACTION_SEND).apply { type = if (allVideo) "video/*" else "image/*"; putExtra(Intent.EXTRA_STREAM, uris.first()); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                     } else {
