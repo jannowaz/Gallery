@@ -232,7 +232,7 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
         LaunchedEffect(Unit) { withContext(Dispatchers.IO) {
             try { allTags = context.mediaCacheDB.getAllTagged().flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct() } catch (_: Exception) { }
         } }
-        TagInputDialog(initialTags = repo.getTags(videoPath), suggestedTags = allTags, onAddTag = { repo.addTag(videoPath, it) }, onRemoveTag = { repo.removeTag(videoPath, it) }, onDismiss = { showTagsDialog = false })
+        TagInputDialog(initialTags = repo.getTags(videoPath), suggestedTags = allTags, onAddTag = { scope.launch(Dispatchers.IO) { repo.addTag(videoPath, it) } }, onRemoveTag = { scope.launch(Dispatchers.IO) { repo.removeTag(videoPath, it) } }, onDismiss = { showTagsDialog = false })
     }
 
     if (showFolderPicker) {

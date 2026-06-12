@@ -805,6 +805,7 @@ private fun OmniSearchSheet(
     var searchTrigger by remember { mutableIntStateOf(0) }
     var showTags by remember { mutableStateOf(false) }
     var folderResults by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    val searchCache = remember { mutableMapOf<String, Set<String>>() }
     var tagResults by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
     var fileTypeFilter by remember { mutableIntStateOf(0) } // 0=Alle, 1=Bilder, 2=Videos
     var dateFilter by remember { mutableIntStateOf(0) }     // 0=Alle, 1=Heute, 2=7 Tage, 3=30 Tage
@@ -844,6 +845,9 @@ private fun OmniSearchSheet(
         if (qParts.isEmpty()) { textMatchPaths = null; isSearching = false; return@LaunchedEffect }
 
         withContext(Dispatchers.IO) {
+            val cacheKey = "${query}_${fileTypeFilter}_${dateFilter}"
+            searchCache[cacheKey]?.let { textMatchPaths = it; return@withContext }
+
             val matched = mutableSetOf<String>()
             val folders = mutableListOf<Pair<String, String>>()
             val tags = mutableListOf<Pair<String, Int>>()
@@ -863,6 +867,7 @@ private fun OmniSearchSheet(
                     1 -> { val t = System.currentTimeMillis() / 1000 - (System.currentTimeMillis() % 86400000) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) }
                     2 -> { val t = (System.currentTimeMillis() - 7 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) }
                     3 -> { val t = (System.currentTimeMillis() - 30 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) }
+                    4 -> { val t = (System.currentTimeMillis() - 365 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) }
                 }
                 ctx.contentResolver.query(uri, proj, selParts.joinToString(" AND "), argsList.toTypedArray(), null)?.use { c ->
                     val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
@@ -906,6 +911,7 @@ private fun OmniSearchSheet(
             }
 
             textMatchPaths = matched
+            if (matched.isNotEmpty()) searchCache[cacheKey] = matched
             folderResults = folders.sortedBy { it.first }.take(20)
             tagResults = tags.sortedByDescending { it.second }.take(20)
             isSearching = false
@@ -985,7 +991,7 @@ private fun OmniSearchSheet(
                 }
                 Spacer(Modifier.width(4.dp))
                 Text("Datum:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                listOf("Alle" to 0, "Heute" to 1, "7T" to 2, "30T" to 3).forEach { (label, v) ->
+                listOf("Alle" to 0, "Heute" to 1, "7 Tage" to 2, "30 Tage" to 3, "Dieses Jahr" to 4).forEach { (label, v) ->
                     Surface(onClick = { dateFilter = v }, shape = RoundedCornerShape(12.dp), color = if (dateFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
                         Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp), color = if (dateFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
                     }

@@ -374,7 +374,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
         LaunchedEffect(Unit) { withContext(Dispatchers.IO) {
             try { allTags = ctx.mediaCacheDB.getAllTagged().flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct() } catch (_: Exception) { }
         } }
-        TagInputDialog(initialTags = repo.getTags(currentPath), suggestedTags = allTags, onAddTag = { repo.addTag(currentPath, it) }, onRemoveTag = { repo.removeTag(currentPath, it) }, onDismiss = { showTagsDialog = false })
+        TagInputDialog(initialTags = repo.getTags(currentPath), suggestedTags = allTags, onAddTag = { scope.launch(Dispatchers.IO) { repo.addTag(currentPath, it) } }, onRemoveTag = { scope.launch(Dispatchers.IO) { repo.removeTag(currentPath, it) } }, onDismiss = { showTagsDialog = false })
     }
 
     if (showFolderPicker) {

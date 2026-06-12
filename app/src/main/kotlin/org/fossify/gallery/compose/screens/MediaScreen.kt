@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -233,7 +234,9 @@ fun MediaScreen(
     val hasSelection = selectedPaths.isNotEmpty()
     BackHandler(enabled = hasSelection) { selectedPaths = emptySet() }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    var isRefreshing by remember { mutableStateOf(false) }
+    PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = { isRefreshing = true; viewModel.refresh(); kotlinx.coroutines.MainScope().launch { kotlinx.coroutines.delay(800); isRefreshing = false } }, modifier = Modifier.fillMaxSize()) {
+        Box(modifier = modifier.fillMaxSize()) {
         when {
             state.isLoading && !hasFilter && mediaOverride == null -> {
                 LoadingIndicator()
@@ -385,6 +388,7 @@ fun MediaScreen(
                 }
             }
         }
+        }
     }
     if (showSelectionSheet) {
         ModalBottomSheet(onDismissRequest = { showSelectionSheet = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false), containerColor = MaterialTheme.colorScheme.surface) {
@@ -436,8 +440,8 @@ fun MediaScreen(
         TagInputDialog(
             initialTags = repo.getTags(batch.first()),
             suggestedTags = allTags,
-            onAddTag = { batch.forEach { p -> repo.addTag(p, it) } },
-            onRemoveTag = { batch.forEach { p -> repo.removeTag(p, it) } },
+            onAddTag = { scope.launch(kotlinx.coroutines.Dispatchers.IO) { batch.forEach { p -> repo.addTag(p, it) } } },
+            onRemoveTag = { scope.launch(kotlinx.coroutines.Dispatchers.IO) { batch.forEach { p -> repo.removeTag(p, it) } } },
             onDismiss = { showTagsDialog = false },
             batchCount = batch.size,
         )
