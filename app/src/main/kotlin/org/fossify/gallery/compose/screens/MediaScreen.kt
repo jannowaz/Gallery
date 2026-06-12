@@ -211,9 +211,12 @@ fun MediaScreen(
             SortField.NAME -> unsortedMedia.sortedBy { it.name.lowercase() }
             SortField.DATE -> unsortedMedia.sortedBy { it.modified }
             SortField.SIZE -> unsortedMedia.sortedBy { it.size }
-            SortField.RATING -> unsortedMedia.sortedBy { it.rating }
+            SortField.RATING -> {
+                if (viewSettings.sortDesc) unsortedMedia.sortedWith(compareByDescending<Medium> { it.rating }.thenByDescending { it.modified })
+                else unsortedMedia.sortedWith(compareBy<Medium> { it.rating }.thenBy { it.modified })
+            }
         }
-        if (viewSettings.sortDesc) sorted.reversed() else sorted
+        if (viewSettings.sortDesc && viewSettings.sortBy != SortField.RATING) sorted.reversed() else sorted
     }
     val cornerShape = if (viewSettings.roundedCorners) RoundedCornerShape(8.dp) else RoundedCornerShape(0.dp)
     val itemSpacing = viewSettings.spacing.dp
