@@ -381,9 +381,8 @@ fun MediaScreen(
             ) {
                 Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("${selectedPaths.size} ausgewählt", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    Text("Alle", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 8.dp).clickable {
-                        selectedPaths = displayMedia.map { it.path }.toSet()
-                    })
+                    Text("Alle", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 4.dp).clickable { selectedPaths = displayMedia.map { it.path }.toSet() })
+                    Text("Inv.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 8.dp).clickable { val s = displayMedia.map { it.path }.toSet(); selectedPaths = s - selectedPaths })
                     Icon(Icons.Default.Close, "Auswahl aufheben", Modifier.size(20.dp).clickable { selectedPaths = emptySet() }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -402,8 +401,9 @@ fun MediaScreen(
                 Spacer(Modifier.height(12.dp))
                 SelectionRow(Icons.Default.Share, "Teilen") {
                     val uris = ArrayList(selectedPaths.map { p -> androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(p)) })
+                    val allVideo = selectedPaths.all { it.substringAfterLast('.').lowercase() in setOf("mp4", "mkv", "mov", "3gp", "wmv", "flv", "avi") }
                     val shareIntent = if (uris.size == 1) {
-                        Intent(Intent.ACTION_SEND).apply { type = "*/*"; putExtra(Intent.EXTRA_STREAM, uris.first()); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                        Intent(Intent.ACTION_SEND).apply { type = if (allVideo) "video/*" else "image/*"; putExtra(Intent.EXTRA_STREAM, uris.first()); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                     } else {
                         Intent(Intent.ACTION_SEND_MULTIPLE).apply { type = "*/*"; putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                     }

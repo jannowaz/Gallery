@@ -58,11 +58,11 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -293,7 +293,8 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                 Row(Modifier.fillMaxWidth()) {
                     SelectionRow(Icons.Default.Share, "Teilen", modifier = Modifier.weight(1f)) {
                         val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath))
-                        ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "*/*"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        val mime = if (isVideo(currentPath)) "video/*" else "image/*"
+                        ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = mime; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                         showActionSheet = false
                     }
                     Spacer(Modifier.width(8.dp))
@@ -304,6 +305,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                     SelectionRow(Icons.AutoMirrored.Filled.DriveFileMove, "Verschieben", modifier = Modifier.weight(1f)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false }
                     Spacer(Modifier.width(8.dp))
                     SelectionRow(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f)) {
+                        (ctx as? android.app.Activity)?.window?.decorView?.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                         scope.launch(Dispatchers.IO) { File(currentPath).delete(); ctx.deleteMediumWithPath(currentPath) }; showActionSheet = false; onClose()
                     }
                 }
@@ -500,10 +502,11 @@ private fun VideoPage(path: String, scalingMode: Int) {
                     Text("${playbackSpeed}x", color=Color.White, fontWeight=FontWeight.Bold)
                 }
                 if(player.duration>0) {
-                    Row(Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Color.Black.copy(alpha=0.6f)).padding(horizontal=12.dp, vertical=10.dp).navigationBarsPadding(), verticalAlignment=Alignment.CenterVertically) {
-                        Text("%02d:%02d".format((player.currentPosition/1000)/60, (player.currentPosition/1000)%60), style=MaterialTheme.typography.labelSmall, color=Color.White)
-                        val pct = if(player.duration>0) player.currentPosition.toFloat()/player.duration else 0f
-                        LinearProgressIndicator(progress={pct}, modifier=Modifier.weight(1f).padding(horizontal=8.dp), color=Color.White, trackColor=Color.White.copy(alpha=0.3f))
+                    var seekPos by remember { mutableFloatStateOf(-1f) }
+                    Row(Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Color.Black.copy(alpha=0.6f)).padding(horizontal=12.dp, vertical=8.dp).navigationBarsPadding(), verticalAlignment=Alignment.CenterVertically) {
+                        val pos = if (seekPos >= 0) seekPos else player.currentPosition.toFloat()
+                        Text("%02d:%02d".format((pos/1000).toInt()/60, (pos/1000).toInt()%60), style=MaterialTheme.typography.labelSmall, color=Color.White)
+                        Slider(value = if(player.duration>0) pos/player.duration else 0f, onValueChange = { seekPos = it * player.duration; player.seekTo((it * player.duration).toLong()) }, onValueChangeFinished = { seekPos = -1f }, modifier=Modifier.weight(1f).padding(horizontal=8.dp), colors = SliderDefaults.colors(thumbColor=Color.White, activeTrackColor=Color.White, inactiveTrackColor=Color.White.copy(alpha=0.3f)))
                         Text("%02d:%02d".format((player.duration/1000)/60, (player.duration/1000)%60), style=MaterialTheme.typography.labelSmall, color=Color.White)
                     }
                 }
