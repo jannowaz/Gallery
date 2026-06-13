@@ -229,9 +229,12 @@ private fun VideoPlayerScreen(videoPath: String, onClose: () -> Unit) {
     }
     if (showTagsDialog) {
         var allTags by remember { mutableStateOf<List<String>>(emptyList()) }
-        LaunchedEffect(Unit) { withContext(Dispatchers.IO) {
-            try { allTags = context.mediaCacheDB.getAllTagged().flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct() } catch (_: Exception) { }
-        } }
+        LaunchedEffect(Unit) {
+            val loaded = withContext(Dispatchers.IO) {
+                try { context.mediaCacheDB.getAllTagged().flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct() } catch (_: Exception) { emptyList() }
+            }
+            allTags = loaded
+        }
         TagInputDialog(initialTags = repo.getTags(videoPath), suggestedTags = allTags, onAddTag = { scope.launch(Dispatchers.IO) { repo.addTag(videoPath, it) } }, onRemoveTag = { scope.launch(Dispatchers.IO) { repo.removeTag(videoPath, it) } }, onDismiss = { showTagsDialog = false })
     }
 

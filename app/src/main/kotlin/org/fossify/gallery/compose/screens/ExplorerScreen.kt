@@ -113,43 +113,46 @@ fun ExplorerScreen(
         DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant
     }
 
-    suspend fun loadFolderContents(path: String) = withContext(Dispatchers.IO) {
-        val dir = Paths.get(path)
-        if (!Files.isDirectory(dir)) return@withContext
-        val folders = mutableListOf<ExplorerItem>()
-        val files = mutableListOf<ExplorerItem>()
-        try {
-            val hidden = context.config.explorer2HiddenFolders
-            Files.newDirectoryStream(dir).use { stream ->
-                for (entry in stream) {
-                    val name = entry.fileName.toString()
-                    if (name.startsWith(".")) continue
-                    val fPath = entry.toString()
-                    if (hidden.contains(fPath)) continue
-                    if (Files.isDirectory(entry)) {
-                        val tmb = findThumbnailInFolder(fPath)
-                        folders.add(ExplorerItem(name = name, path = fPath, isDirectory = true, lastModified = Files.getLastModifiedTime(entry).toMillis(), thumbnailPath = tmb))
-                    } else {
-                        val ext = name.substringAfterLast('.', "").lowercase()
-                        if (ext in MEDIA_EXTENSIONS) {
-                            files.add(ExplorerItem(name = name, path = fPath, isDirectory = false, lastModified = Files.getLastModifiedTime(entry).toMillis(), size = Files.size(entry)))
+    suspend fun loadFolderContents(path: String) {
+        val (sortedFolders, sortedFiles) = withContext(Dispatchers.IO) {
+            val dir = Paths.get(path)
+            if (!Files.isDirectory(dir)) return@withContext Pair(emptyList<ExplorerItem>(), emptyList<ExplorerItem>())
+            val folders = mutableListOf<ExplorerItem>()
+            val files = mutableListOf<ExplorerItem>()
+            try {
+                val hidden = context.config.explorer2HiddenFolders
+                Files.newDirectoryStream(dir).use { stream ->
+                    for (entry in stream) {
+                        val name = entry.fileName.toString()
+                        if (name.startsWith(".")) continue
+                        val fPath = entry.toString()
+                        if (hidden.contains(fPath)) continue
+                        if (Files.isDirectory(entry)) {
+                            val tmb = findThumbnailInFolder(fPath)
+                            folders.add(ExplorerItem(name = name, path = fPath, isDirectory = true, lastModified = Files.getLastModifiedTime(entry).toMillis(), thumbnailPath = tmb))
+                        } else {
+                            val ext = name.substringAfterLast('.', "").lowercase()
+                            if (ext in MEDIA_EXTENSIONS) {
+                                files.add(ExplorerItem(name = name, path = fPath, isDirectory = false, lastModified = Files.getLastModifiedTime(entry).toMillis(), size = Files.size(entry)))
+                            }
                         }
                     }
                 }
-            }
-        } catch (_: Exception) { }
-        val sortedFolders = when (folderSettings.sortBy) {
-            SortField.NAME -> folders.sortedBy { it.name.lowercase() }
-            SortField.DATE -> folders.sortedBy { it.lastModified }
-            SortField.SIZE -> folders.sortedBy { it.size }
-            SortField.RATING -> folders.sortedBy { it.name.lowercase() }
-        }.let { if (folderSettings.sortDesc) it.reversed() else it }
-        val sortedFiles = when (mediaSettings.sortBy) {
-            SortField.NAME -> files.sortedBy { it.name.lowercase() }
-            SortField.DATE -> files.sortedBy { it.lastModified }
-            SortField.SIZE -> files.sortedBy { it.size }
-            SortField.RATING -> files.sortedBy { it.name.lowercase() }
-        }.let { if (mediaSettings.sortDesc) it.reversed() else it }
+            } catch (_: Exception) { }
+            val sf = when (folderSettings.sortBy) {
+                SortField.NAME -> folders.sortedBy { it.name.lowercase() }
+                SortField.DATE -> folders.sortedBy { it.lastModified }
+                SortField.SIZE -> folders.sortedBy { it.size }
+                SortField.RATING -> folders.sortedBy { it.name.lowercase() }
+            }.let { if (folderSettings.sortDesc) it.reversed() else it }
+            val sfi = when (mediaSettings.sortBy) {
+                SortField.NAME -> files.sortedBy { it.name.lowercase() }
+                SortField.DATE -> files.sortedBy { it.lastModified }
+                SortField.SIZE -> files.sortedBy { it.size }
+                SortField.RATING -> files.sortedBy { it.name.lowercase() }
+            }.let { if (mediaSettings.sortDesc) it.reversed() else it }
+            Pair(sf, sfi)
+        }
         folderItems = sortedFolders
         fileItems = sortedFiles
     }

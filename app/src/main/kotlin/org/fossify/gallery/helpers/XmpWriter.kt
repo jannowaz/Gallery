@@ -94,27 +94,27 @@ $tagXml
 
     private fun writeXmpToJpeg(file: File, xmpData: ByteArray) {
         try {
-            val raf = RandomAccessFile(file, "rw")
-            val buffer = ByteArray(raf.length().toInt())
-            raf.readFully(buffer)
-            raf.seek(0)
-            val xmpHeader = "http://ns.adobe.com/xap/1.0/\u0000".toByteArray()
-            val existingIndex = findSequence(buffer, xmpHeader)
-            val newData = if (existingIndex >= 0) {
-                val start = existingIndex - 29
-                if (start >= 0 && buffer[start] == 0xFF.toByte() && buffer[start + 1] == 0xE1.toByte()) {
-                    val oldLen = ((buffer[start + 2].toInt() and 0xFF) shl 8) or (buffer[start + 3].toInt() and 0xFF)
-                    val newApp1 = buildApp1Segment(xmpData)
-                    buffer.copyOf(start) + newApp1 + buffer.copyOfRange(start + 2 + oldLen, buffer.size)
+            RandomAccessFile(file, "rw").use { raf ->
+                val buffer = ByteArray(raf.length().toInt())
+                raf.readFully(buffer)
+                raf.seek(0)
+                val xmpHeader = "http://ns.adobe.com/xap/1.0/\u0000".toByteArray()
+                val existingIndex = findSequence(buffer, xmpHeader)
+                val newData = if (existingIndex >= 0) {
+                    val start = existingIndex - 29
+                    if (start >= 0 && buffer[start] == 0xFF.toByte() && buffer[start + 1] == 0xE1.toByte()) {
+                        val oldLen = ((buffer[start + 2].toInt() and 0xFF) shl 8) or (buffer[start + 3].toInt() and 0xFF)
+                        val newApp1 = buildApp1Segment(xmpData)
+                        buffer.copyOf(start) + newApp1 + buffer.copyOfRange(start + 2 + oldLen, buffer.size)
+                    } else {
+                        insertAfterHeader(buffer, xmpData)
+                    }
                 } else {
                     insertAfterHeader(buffer, xmpData)
                 }
-            } else {
-                insertAfterHeader(buffer, xmpData)
+                raf.setLength(newData.size.toLong())
+                raf.write(newData)
             }
-            raf.setLength(newData.size.toLong())
-            raf.write(newData)
-            raf.close()
         } catch (_: Exception) { }
     }
 

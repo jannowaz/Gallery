@@ -373,9 +373,12 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
 
     if (showTagsDialog) {
         var allTags by remember { mutableStateOf<List<String>>(emptyList()) }
-        LaunchedEffect(Unit) { withContext(Dispatchers.IO) {
-            try { allTags = ctx.mediaCacheDB.getAllTagged().flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct() } catch (_: Exception) { }
-        } }
+        LaunchedEffect(Unit) {
+            val loaded = withContext(Dispatchers.IO) {
+                try { ctx.mediaCacheDB.getAllTagged().flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct() } catch (_: Exception) { emptyList() }
+            }
+            allTags = loaded
+        }
         TagInputDialog(initialTags = repo.getTags(currentPath), suggestedTags = allTags, onAddTag = { scope.launch(Dispatchers.IO) { repo.addTag(currentPath, it) } }, onRemoveTag = { scope.launch(Dispatchers.IO) { repo.removeTag(currentPath, it) } }, onDismiss = { showTagsDialog = false })
     }
 

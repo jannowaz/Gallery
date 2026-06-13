@@ -108,14 +108,6 @@ fun MediaScreen(
     LaunchedEffect(refreshTrigger) {
         if (refreshTrigger > 0) viewModel.refresh()
     }
-
-    LaunchedEffect(refreshTrigger) {
-        if (refreshTrigger > 0) viewModel.refresh()
-    }
-
-    LaunchedEffect(refreshTrigger) {
-        if (refreshTrigger > 0) viewModel.refresh()
-    }
     val state by viewModel.state.collectAsState()
     val repo = LocalMediaRepository.current
     var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -437,9 +429,12 @@ fun MediaScreen(
     if (showTagsDialog) {
         val batch = selectedPaths.toList()
         var allTags by remember { mutableStateOf<List<String>>(emptyList()) }
-        LaunchedEffect(Unit) { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            try { allTags = ctx.mediaCacheDB.getAllTagged().flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct() } catch (_: Exception) { }
-        } }
+        LaunchedEffect(Unit) {
+            val loaded = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try { ctx.mediaCacheDB.getAllTagged().flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct() } catch (_: Exception) { emptyList() }
+            }
+            allTags = loaded
+        }
         TagInputDialog(
             initialTags = repo.getTags(batch.first()),
             suggestedTags = allTags,
