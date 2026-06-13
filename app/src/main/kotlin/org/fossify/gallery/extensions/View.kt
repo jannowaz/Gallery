@@ -3,6 +3,7 @@ package org.fossify.gallery.extensions
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
+import androidx.core.graphics.ColorUtils
 import org.fossify.commons.extensions.toast
 
 fun View.sendFakeClick(x: Float, y: Float) {
@@ -21,4 +22,8 @@ fun View.showContentDescriptionOnLongClick() {
         }
         true
     }
+}
+
+fun View.applyGlassmorphism(bgColor: Int) {
+    setBackgroundColor(ColorUtils.setAlphaComponent(bgColor, 200))
 }

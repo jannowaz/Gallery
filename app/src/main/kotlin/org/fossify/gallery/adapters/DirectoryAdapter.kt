@@ -119,6 +119,8 @@ class DirectoryAdapter(
     val isPickIntent: Boolean,
     var isFavorites: Boolean = false,
     val swipeRefreshLayout: SwipeRefreshLayout? = null,
+    private val optionalShowMediaCount: Int? = null,
+    private val optionalFolderStyle: Int? = null,
     itemClick: (Any) -> Unit
 ) :
     MyRecyclerViewAdapter(activity, recyclerView, itemClick), ItemTouchHelperContract,
@@ -136,8 +138,8 @@ class DirectoryAdapter(
     private var isDragAndDropping = false
     private var startReorderDragListener: StartReorderDragListener? = null
 
-    private var showMediaCount = config.showFolderMediaCount
-    private var folderStyle = config.folderStyle
+    private var showMediaCount = optionalShowMediaCount ?: config.showFolderMediaCount
+    private var folderStyle = optionalFolderStyle ?: config.folderStyle
     private var limitFolderTitle = config.limitFolderTitle
     var directorySorting = config.directorySorting
     var dateFormat = config.dateFormat
@@ -186,6 +188,11 @@ class DirectoryAdapter(
     }
 
     override fun onBindViewHolder(holder: MyRecyclerViewAdapter.ViewHolder, position: Int) {
+        onBindViewHolder(holder, position, mutableListOf())
+    }
+
+    override fun onBindViewHolder(holder: MyRecyclerViewAdapter.ViewHolder, position: Int, payloads: MutableList<Any>) {
+        if (payloads.isNotEmpty() && payloads.contains("column_count_changed")) return
         val item = dirs.getOrNull(position) ?: return
         if (item is ThumbnailSection || (item is Directory && item.subfoldersCount == -2)) {
             val titleView = holder.itemView.findViewById<org.fossify.commons.views.MyTextView>(R.id.section_title)
@@ -968,6 +975,9 @@ class DirectoryAdapter(
                 dirThumbnail.applyColorFilter(properPrimaryColor)
                 dirThumbnail.setBackgroundResource(R.drawable.placeholder_rounded_big)
             } else {
+                dirThumbnail.tag = directory.path
+                dirThumbnail.transitionName = "folder_${directory.path}"
+
                 activity.loadImage(
                     type = thumbnailType,
                     path = directory.tmb,

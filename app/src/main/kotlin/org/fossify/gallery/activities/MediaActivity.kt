@@ -11,8 +11,8 @@ import android.view.ViewGroup
 import android.widget.RelativeLayout
 import com.google.android.material.navigation.NavigationBarView
 import androidx.core.net.toUri
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.request.target.SimpleTarget
@@ -56,7 +56,6 @@ import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.commons.helpers.isRPlus
 import org.fossify.commons.models.FileDirItem
 import org.fossify.commons.models.RadioItem
-import org.fossify.commons.views.MyGridLayoutManager
 import org.fossify.commons.views.MyRecyclerView
 import org.fossify.gallery.R
 import org.fossify.gallery.adapters.MediaAdapter
@@ -69,7 +68,9 @@ import org.fossify.gallery.dialogs.ChangeViewTypeDialog
 import org.fossify.gallery.dialogs.FilterMediaDialog
 import org.fossify.gallery.dialogs.GrantAllFilesDialog
 import org.fossify.gallery.extensions.addTempFolderIfNeeded
+import org.fossify.gallery.extensions.applyGlassmorphism
 import org.fossify.gallery.extensions.collectionDB
+
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.deleteDBPath
 import org.fossify.gallery.extensions.directoryDB
@@ -167,6 +168,10 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         }
         setContentView(binding.root)
 
+        if (intent.getBooleanExtra("shared_element_transition", false)) {
+            postponeEnterTransition()
+        }
+
         intent.apply {
             mIsGetImageIntent = getBooleanExtra(GET_IMAGE_INTENT, false)
             mIsGetVideoIntent = getBooleanExtra(GET_VIDEO_INTENT, false)
@@ -214,7 +219,8 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         val textColor = getProperTextColor()
         val primaryColor = getProperPrimaryColor()
 
-        bottomNav.setBackgroundColor(bgColor)
+        bottomNav.applyGlassmorphism(bgColor)
+        binding.mediaMenu.applyGlassmorphism(bgColor)
         val states = arrayOf(
             intArrayOf(android.R.attr.state_selected),
             intArrayOf(-android.R.attr.state_selected)
@@ -590,6 +596,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
 
             setupLayoutManager()
             handleGridSpacing()
+            startPostponedEnterTransition()
         } else if (mLastSearchedText.isEmpty()) {
             (currAdapter as MediaAdapter).updateMedia(mMedia)
             handleGridSpacing()
@@ -868,43 +875,27 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     }
 
     private fun setupGridLayoutManager() {
-        val layoutManager = binding.mediaGrid.layoutManager as MyGridLayoutManager
+        val layoutManager = StaggeredGridLayoutManager(
+            config.mediaColumnCnt,
+            if (config.scrollHorizontally) StaggeredGridLayoutManager.HORIZONTAL else StaggeredGridLayoutManager.VERTICAL
+        )
+        binding.mediaGrid.layoutManager = layoutManager
+
         if (config.scrollHorizontally) {
-            layoutManager.orientation = RecyclerView.HORIZONTAL
             binding.mediaRefreshLayout.layoutParams = RelativeLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         } else {
-            layoutManager.orientation = RecyclerView.VERTICAL
             binding.mediaRefreshLayout.layoutParams = RelativeLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
-
-        layoutManager.spanCount = config.mediaColumnCnt
-        val adapter = getMediaAdapter()
-        layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-            override fun getSpanSize(position: Int): Int {
-                if (adapter?.isASectionTitle(position) == true) {
-                    return layoutManager.spanCount
-                }
-                
-                val item = adapter?.media?.getOrNull(position) as? Medium
-                if (item != null && item.rating >= 5) {
-                    return Math.min(2, layoutManager.spanCount)
-                }
-                
-                return 1
-            }
-        }
     }
 
     private fun setupListLayoutManager() {
-        val layoutManager = binding.mediaGrid.layoutManager as MyGridLayoutManager
-        layoutManager.spanCount = 1
-        layoutManager.orientation = RecyclerView.VERTICAL
+        binding.mediaGrid.layoutManager = StaggeredGridLayoutManager(1, StaggeredGridLayoutManager.VERTICAL)
         binding.mediaRefreshLayout.layoutParams = RelativeLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -932,7 +923,8 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                 isScrollingHorizontally = config.scrollHorizontally,
                 addSideSpacing = config.fileRoundedCorners,
                 items = media,
-                useGridPosition = useGridPosition
+                useGridPosition = useGridPosition,
+                isStaggered = true
             )
             if (currentGridDecoration.toString() != newGridDecoration.toString()) {
                 if (currentGridDecoration != null) {
@@ -946,7 +938,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     private fun initZoomListener() {
         val viewType = config.getFolderViewType(if (mShowAll) SHOW_ALL else mPath)
         if (viewType == VIEW_TYPE_GRID) {
-            val layoutManager = binding.mediaGrid.layoutManager as MyGridLayoutManager
+            val layoutManager = binding.mediaGrid.layoutManager as StaggeredGridLayoutManager
             mZoomListener = object : MyRecyclerView.MyZoomListener {
                 override fun zoomIn() {
                     if (layoutManager.spanCount > 1) {
@@ -980,7 +972,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             )
         }
 
-        val currentColumnCount = (binding.mediaGrid.layoutManager as MyGridLayoutManager).spanCount
+        val currentColumnCount = (binding.mediaGrid.layoutManager as StaggeredGridLayoutManager).spanCount
         RadioGroupDialog(this, items, currentColumnCount) {
             val newColumnCount = it as Int
             if (currentColumnCount != newColumnCount) {
@@ -1001,11 +993,11 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     }
 
     private fun columnCountChanged() {
-        (binding.mediaGrid.layoutManager as MyGridLayoutManager).spanCount = config.mediaColumnCnt
+        (binding.mediaGrid.layoutManager as StaggeredGridLayoutManager).spanCount = config.mediaColumnCnt
         handleGridSpacing()
         refreshMenuItems()
         getMediaAdapter()?.apply {
-            notifyItemRangeChanged(0, media.size)
+            notifyItemRangeChanged(0, media.size, "column_count_changed")
         }
     }
 

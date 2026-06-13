@@ -11,6 +11,7 @@ import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.view.allViews
+import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import com.bumptech.glide.Glide
 import com.qtalk.recyclerviewfastscroller.RecyclerViewFastScroller
 import org.fossify.commons.activities.BaseSimpleActivity
@@ -154,6 +155,11 @@ class MediaAdapter(
     }
 
     override fun onBindViewHolder(holder: MyRecyclerViewAdapter.ViewHolder, position: Int) {
+        onBindViewHolder(holder, position, mutableListOf())
+    }
+
+    override fun onBindViewHolder(holder: MyRecyclerViewAdapter.ViewHolder, position: Int, payloads: MutableList<Any>) {
+        if (payloads.isNotEmpty() && payloads.contains("column_count_changed")) return
         val tmbItem = media.getOrNull(position) ?: return
         val allowLongPress = (!isAGetIntent || allowMultiplePicks) && tmbItem is Medium
         holder.bindView(tmbItem, tmbItem is Medium, allowLongPress) { itemView, adapterPosition ->
@@ -769,6 +775,10 @@ class MediaAdapter(
     }
 
     private fun setupSection(view: View, section: ThumbnailSection) {
+        val layoutParams = view.layoutParams
+        if (layoutParams is StaggeredGridLayoutManager.LayoutParams) {
+            layoutParams.isFullSpan = true
+        }
         org.fossify.gallery.databinding.ThumbnailSectionBinding.bind(view).apply {
             thumbnailSection.text = section.title
             thumbnailSection.setTextColor(properPrimaryColor)

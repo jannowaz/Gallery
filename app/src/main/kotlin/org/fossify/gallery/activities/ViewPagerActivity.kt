@@ -23,6 +23,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.provider.MediaStore
 import android.view.MenuItem
+import android.view.VelocityTracker
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
@@ -218,6 +219,13 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
     private var mOriginalBrightness: Float? = null
 
     private val binding by viewBinding(ActivityMediumBinding::inflate)
+    private var mVelocityTracker: VelocityTracker? = null
+
+    override fun onStop() {
+        super.onStop()
+        mVelocityTracker?.recycle()
+        mVelocityTracker = null
+    }
 
     override val contentHolder: View
         get() = binding.fragmentHolder
@@ -256,21 +264,27 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
         var startY = 0f
         var isDragging = false
         val threshold = 400f
+        val velocityThreshold = 1200f
         val infoThreshold = -200f
+        val touchSlop = android.view.ViewConfiguration.get(this).scaledTouchSlop.toFloat()
         val screenHeight = resources.displayMetrics.heightPixels.toFloat()
-        
+
         binding.viewPager.setOnTouchListener { _, event ->
             when (event.action) {
                 android.view.MotionEvent.ACTION_DOWN -> {
                     startY = event.rawY
+                    mVelocityTracker?.recycle()
+                    mVelocityTracker = VelocityTracker.obtain()
+                    mVelocityTracker?.addMovement(event)
                     false
                 }
                 android.view.MotionEvent.ACTION_MOVE -> {
                     val deltaY = event.rawY - startY
-                    if (!isDragging && Math.abs(deltaY) > 60) {
+                    mVelocityTracker?.addMovement(event)
+                    if (!isDragging && Math.abs(deltaY) > touchSlop) {
                         isDragging = true
                     }
-                    
+
                     if (isDragging) {
                         if (deltaY > 0) { // Dragging down to close
                             binding.viewPager.translationY = deltaY
@@ -290,14 +304,22 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
                 android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
                     if (isDragging) {
                         val deltaY = event.rawY - startY
-                        if (deltaY > threshold) { // Finish Activity
+                        mVelocityTracker?.addMovement(event)
+                        mVelocityTracker?.computeCurrentVelocity(1000)
+                        val velocityY = mVelocityTracker?.yVelocity ?: 0f
+                        mVelocityTracker?.recycle()
+                        mVelocityTracker = null
+
+                        val isFastSwipeDown = velocityY > velocityThreshold && deltaY > touchSlop * 3
+
+                        if (deltaY > threshold || isFastSwipeDown) { // Finish Activity
                             val exitTranslation = screenHeight
                             binding.viewPager.animate()
                                 .translationY(exitTranslation)
                                 .scaleX(0.4f)
                                 .scaleY(0.4f)
                                 .alpha(0f)
-                                .setDuration(300)
+                                .setDuration(250)
                                 .setInterpolator(android.view.animation.AccelerateInterpolator())
                                 .withEndAction {
                                     finish()
@@ -318,7 +340,11 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
                         }
                         isDragging = false
                         true
-                    } else false
+                    } else {
+                        mVelocityTracker?.recycle()
+                        mVelocityTracker = null
+                        false
+                    }
                 }
                 else -> false
             }
