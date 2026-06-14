@@ -844,6 +844,7 @@ private fun OmniSearchSheet(
         withContext(Dispatchers.IO) {
             val cacheKey = "${query}_${fileTypeFilter}_${dateFilter}"
             searchCache[cacheKey]?.let { textMatchPaths = it; return@withContext }
+            if (searchCache.size > 50) searchCache.clear()
 
             val matched = mutableSetOf<String>()
             val folders = mutableListOf<Pair<String, String>>()
@@ -924,8 +925,8 @@ private fun OmniSearchSheet(
 
     var combinedPaths by remember { mutableStateOf<Set<String>?>(null) }
 
-    // Compute combined filter + live update on IO
-    LaunchedEffect(query, ratingFilter, selectedTags, textMatchPaths) {
+    // Compute combined filter when criteria change (NOT on every keystroke)
+    LaunchedEffect(ratingFilter, selectedTags, textMatchPaths) {
         withContext(Dispatchers.IO) {
             val sets = mutableListOf<Set<String>>()
             if (textMatchPaths != null) sets.add(textMatchPaths!!)
