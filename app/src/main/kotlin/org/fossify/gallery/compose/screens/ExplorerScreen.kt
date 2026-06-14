@@ -200,7 +200,7 @@ fun ExplorerScreen(
                     }
                     if (folderSettings.viewType == ViewType.GRID) {
                         folderItems.chunked(folderSettings.columnCount).forEach { chunk ->
-                            item {
+                            item(key = chunk.joinToString { it.path }) {
                                 Row(Modifier.fillMaxWidth().padding(folderSettings.spacing.dp / 2)) {
                                     chunk.forEach { item ->
                                         Box(Modifier.weight(1f).padding(folderSettings.spacing.dp / 2).combinedClickable(

@@ -67,6 +67,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -159,7 +160,7 @@ fun MediaScreen(
             pathFallbackMedia = withContext(Dispatchers.IO) { try { ctx.mediaDB.getNewestMedia(5000).filter { p -> (pathFilter + dirs).any { p.path.startsWith("$it/") || p.path == it } }.take(2000) } catch (_: Exception) { null } }
         } else pathFallbackMedia = null
     }
-    val unsortedMedia = remember(baseMedia, ratedMedia, tagMedia, pathFallbackMedia, ratingFilter, tagFilterPaths, pathFilter) {
+    val unsortedMedia by derivedStateOf {
         var m = baseMedia
         if (ratingFilter > 0) { val db = ratedMedia; m = if (db != null && db.isNotEmpty()) db else m.filter { it.rating >= ratingFilter } }
         if (tagFilterPaths != null) {
@@ -171,7 +172,7 @@ fun MediaScreen(
         m
     }
     val hasFilter = ratingFilter > 0 || tagFilterPaths != null || pathFilter != null
-    val displayMedia = remember(unsortedMedia, viewSettings.sortBy, viewSettings.sortDesc) {
+    val displayMedia by derivedStateOf {
         val sorted = when (viewSettings.sortBy) {
             SortField.NAME -> unsortedMedia.sortedBy { it.name.lowercase() }
             SortField.DATE -> unsortedMedia.sortedBy { it.modified }
@@ -180,6 +181,7 @@ fun MediaScreen(
         }
         if (viewSettings.sortDesc && viewSettings.sortBy != SortField.RATING) sorted.reversed() else sorted
     }
+    val pathIndexMap = remember(displayMedia) { displayMedia.withIndex().associate { it.value.path to it.index } }
     val cornerShape = if (viewSettings.roundedCorners) RoundedCornerShape(8.dp) else RoundedCornerShape(0.dp)
     val itemSpacing = viewSettings.spacing.dp
     val mediaCardColor = when (viewSettings.displayMode) { DisplayMode.COMPACT,DisplayMode.NORMAL->MaterialTheme.colorScheme.surface; DisplayMode.DARK->MaterialTheme.colorScheme.surfaceVariant }
@@ -211,16 +213,16 @@ fun MediaScreen(
             isGrid -> {
                 Column {
                     if (hasFilter) FilterBreadcrumbs(ratingFilter,activeTagName,activePathName,activeCollectionName,displayMedia.size,onClearRatingFilter,onClearTagFilter,onClearPathFilter,onClearFilter)
+                    val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
                     CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
                     LazyVerticalGrid(columns = GridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
-                    val grouped = displayMedia.groupByMonth()
                     grouped.forEach { (label, groupItems) ->
                         item(span = { GridItemSpan(maxLineSpan) }) { MonthHeader(label = label, count = groupItems.size) }
                         items(groupItems.size, key = { groupItems[it].path }) { idx ->
-                            val m = groupItems[idx]; val originalIdx = displayMedia.indexOf(m); val file = File(m.path); val isVideo = m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS
+                            val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val file = File(m.path); val isVideo = m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS
                             Column(Modifier.animateItem().padding(itemSpacing/2).background(mediaCardColor,cornerShape).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt())}) {
                                 Box(Modifier.aspectRatio(1f).selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewer(originalIdx)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path})) {
-                                    if(file.exists()){ if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop) else coil.compose.AsyncImage(model=coil.request.ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(file)).crossfade(true).build(),contentDescription=m.name,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop) } else Box(Modifier.fillMaxSize().clip(cornerShape).background(MaterialTheme.colorScheme.surfaceVariant))
+                                    if(m.size > 0){ if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop) else coil.compose.AsyncImage(model=coil.request.ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(file)).crossfade(true).build(),contentDescription=m.name,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop) } else Box(Modifier.fillMaxSize().clip(cornerShape).background(MaterialTheme.colorScheme.surfaceVariant))
                                     if(ctx.config.showRatingOnThumbnails&&m.rating>0){Box(Modifier.align(Alignment.TopStart).padding(4.dp).background(Color.Black.copy(alpha=0.6f),RoundedCornerShape(4.dp)).padding(horizontal=4.dp,vertical=1.dp)){Text("★★★★★".take(m.rating),style=MaterialTheme.typography.labelSmall,color=Color(0xFFFFD700),fontSize=8.sp)}}
                                     if(m.path in taggedPaths){Box(Modifier.align(Alignment.TopEnd).padding(4.dp).background(Color.Black.copy(alpha=0.5f),RoundedCornerShape(4.dp)).padding(horizontal=4.dp,vertical=1.dp)){Icon(Icons.Default.Label,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(10.dp))}}
                                     if(isVideo&&ctx.config.showVideoDurationOnThumbnails&&m.videoDuration>0){val d="%02d:%02d".format(m.videoDuration/60,m.videoDuration%60);Box(Modifier.align(Alignment.BottomEnd).padding(4.dp).background(Color.Black.copy(alpha=0.6f),RoundedCornerShape(4.dp)).padding(horizontal=4.dp,vertical=1.dp)){Text(d,style=MaterialTheme.typography.labelSmall,color=Color.White,fontSize=10.sp)}}
@@ -236,15 +238,15 @@ fun MediaScreen(
             }
             }
             else -> {
+                val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
                 LazyColumn(reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
-                    val grouped = displayMedia.groupByMonth()
                     grouped.forEach { (label, groupItems) ->
                         stickyHeader { MonthHeader(label = label, count = groupItems.size) }
                         items(groupItems.size, key = { groupItems[it].path }) { idx ->
-                            val m = groupItems[idx]; val originalIdx = displayMedia.indexOf(m); val file = File(m.path); val isVideo = m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS
+                            val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val file = File(m.path); val isVideo = m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS
                             Surface(modifier = Modifier.animateItem().fillMaxWidth().background(mediaCardColor,RoundedCornerShape(8.dp)).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt())}.selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewer(originalIdx)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path}),color=Color.Transparent) {
                                 Row(Modifier.padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
-                                    if(file.exists()){Box(Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))){if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop) else coil.compose.AsyncImage(model=coil.request.ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(file)).crossfade(true).build(),contentDescription=m.name,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop)}} else Box(Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant))
+                                    if(m.size > 0){Box(Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))){if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop) else coil.compose.AsyncImage(model=coil.request.ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(file)).crossfade(true).build(),contentDescription=m.name,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop)}} else Box(Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant))
                                     Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)){Text(m.name,style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis);Text(formatFileSize(m.size),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
                                     if(hasSelection){IconButton(onClick={openViewer(originalIdx)},modifier=Modifier.size(36.dp)){Icon(Icons.Default.Visibility,"Vorschau",tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(20.dp))}}
                                     if(m.path in selectedPaths) Icon(Icons.Default.Close,"Ausgewählt",tint=MaterialTheme.colorScheme.primary)

@@ -137,11 +137,13 @@ fun StorageAnalysisScreen(onBack: () -> Unit) {
 
             // Summary header
             if (state.results.isNotEmpty()) {
-                val totalWasted = state.results.sumOf { it.wastedBytes }
-                val filtered = when (state.filterMode) {
+                val totalWasted = remember(state.results) { state.results.sumOf { it.wastedBytes } }
+                val filtered = remember(state.results, state.filterMode) {
+                    when (state.filterMode) {
                     FilterMode.ALL -> state.results
                     FilterMode.IMAGES -> state.results.filter { it.mediaType == 1 }
-                    FilterMode.VIDEOS -> state.results.filter { it.mediaType == 2 }
+                        FilterMode.VIDEOS -> state.results.filter { it.mediaType == 2 }
+                    }
                 }
                 Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))) {
                     Column(Modifier.padding(12.dp)) {
