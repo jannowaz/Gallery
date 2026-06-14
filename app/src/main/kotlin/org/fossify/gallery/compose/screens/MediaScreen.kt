@@ -99,6 +99,7 @@ import org.fossify.commons.extensions.toast
 import org.fossify.gallery.activities.ComposeVideoPlayerActivity
 import org.fossify.gallery.activities.ComposeViewerActivity
 import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.compose.components.RenameDialog
 import org.fossify.gallery.compose.components.UndoBar
 import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.compose.components.StarRatingDialog
@@ -152,6 +153,7 @@ fun MediaScreen(
     var showSelectionSheet by remember { mutableStateOf(false) }
     var showRatingDialog by remember { mutableStateOf(false) }
     var showTagsDialog by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
     var showFolderPicker by remember { mutableStateOf(false) }
     var folderPickerIsMove by remember { mutableStateOf(false) }
     var currentRating by remember { mutableIntStateOf(0) }
@@ -366,6 +368,7 @@ fun MediaScreen(
                 SelectionRow(Icons.AutoMirrored.Filled.DriveFileMove,"Verschieben"){folderPickerIsMove=true;showFolderPicker=true;showSelectionSheet=false}
                 SelectionRow(Icons.Default.Star,"Bewerten"){showRatingDialog=true;showSelectionSheet=false}
                 SelectionRow(Icons.Default.Edit,"Tags"){showTagsDialog=true;showSelectionSheet=false}
+                SelectionRow(Icons.Default.Edit,"Umbenennen"){showRenameDialog=true;showSelectionSheet=false}
                 Spacer(Modifier.height(24.dp))
             }
         }
@@ -373,6 +376,7 @@ fun MediaScreen(
     if (showRatingDialog) { val batch=selectedPaths.toList(); StarRatingDialog(currentRating=currentRating,onRate={i->currentRating=i;scope.launch(Dispatchers.IO){batch.forEach{p->repo.updateRating(p,i)}};showRatingDialog=false},onDismiss={showRatingDialog=false}) }
     if (showTagsDialog) { val batch=selectedPaths.toList(); var allTags by remember{mutableStateOf<List<String>>(emptyList())}; LaunchedEffect(Unit){allTags=withContext(Dispatchers.IO){try{ctx.mediaCacheDB.getAllTagged().flatMap{it.tags.split(",").filter(String::isNotBlank)}.distinct()}catch(_:Exception){emptyList()}}}; TagInputDialog(initialTags=repo.getTags(batch.first()),suggestedTags=allTags,onAddTag={scope.launch(Dispatchers.IO){batch.forEach{p->repo.addTag(p,it)}}},onRemoveTag={scope.launch(Dispatchers.IO){batch.forEach{p->repo.removeTag(p,it)}}},onDismiss={showTagsDialog=false},batchCount=batch.size) }
     if (showFolderPicker) { val batch=selectedPaths.toList(); FolderPickerSheet(isMoveOperation=folderPickerIsMove,sourcePaths=batch,onDismiss={showFolderPicker=false;selectedPaths=emptySet()}) }
+    if (showRenameDialog) { val batch=selectedPaths.toList(); RenameDialog(paths=batch,onDismiss={showRenameDialog=false;viewModel.refresh()}) }
 }
 
 @Composable

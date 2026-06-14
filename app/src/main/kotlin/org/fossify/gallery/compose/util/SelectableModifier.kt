@@ -103,3 +103,17 @@ fun Modifier.dragSelectionGesture(
         onDragCancel = { state.reset() },
     )
 }
+
+@OptIn(ExperimentalFoundationApi::class)
+fun Modifier.selectableItemWithDrag(
+    isSelectionMode: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onSwipeToSelect: () -> Unit = {},
+): Modifier = combinedClickable(
+    onClick = {
+        if (isSelectionMode) onClick()
+        else onClick()
+    },
+    onLongClick = { onSwipeToSelect() },
+)
