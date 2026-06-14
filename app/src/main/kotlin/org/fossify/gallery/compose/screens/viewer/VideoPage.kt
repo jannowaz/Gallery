@@ -3,14 +3,13 @@ package org.fossify.gallery.compose.screens.viewer
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.provider.Settings
-import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -39,6 +39,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -82,6 +83,7 @@ fun VideoPage(
     modifier: Modifier = Modifier,
 ) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     var scale by remember { mutableFloatStateOf(1f) }
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
@@ -94,7 +96,10 @@ fun VideoPage(
     var trimMode by remember { mutableStateOf(false) }
     var trimStartMs by remember { mutableFloatStateOf(0f) }
     var trimEndMs by remember { mutableFloatStateOf(-1f) }
-    val trimScope = rememberCoroutineScope()
+
+    var scrubFraction by remember { mutableFloatStateOf(-1f) }
+    var scrubPreviewBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var lastFrameRequestMs by remember { mutableLongStateOf(0L) }
 
     val retriever = remember { MediaMetadataRetriever() }
     DisposableEffect(path) {
@@ -112,9 +117,7 @@ fun VideoPage(
     }
     val bgAudio by rememberUpdatedState(backgroundAudio)
     DisposableEffect(player) {
-        onDispose {
-            if (!bgAudio) player.release()
-        }
+        onDispose { if (!bgAudio) player.release() }
     }
 
     val listener = remember { object : Player.Listener { override fun onIsPlayingChanged(p: Boolean) { isPlaying = p } } }
@@ -127,59 +130,41 @@ fun VideoPage(
     LaunchedEffect(player) { spv.player = player }
     LaunchedEffect(scalingMode) { spv.resizeMode = scalingMode }
 
-    LaunchedEffect(showControls) {
-        if (showControls) { delay(autoHideMs.toLong()); showControls = false }
-    }
+    LaunchedEffect(showControls) { if (showControls) { delay(autoHideMs.toLong()); showControls = false } }
 
     Box(Modifier.fillMaxSize().clipToBounds().background(Color.Black).then(modifier)) {
-        AndroidView(factory = { spv }, modifier = Modifier.fillMaxSize().graphicsLayer {
-            scaleX = scale; scaleY = scale
-            translationX = offsetX; translationY = offsetY
-        }.pointerInput(Unit) {
-            val sz = this.size
-            awaitPointerEventScope {
-                while (true) {
-                    val e = awaitPointerEvent()
-                    val c = e.changes.filter { it.pressed }
-                    if (c.size > 1) {
-                        val pts = c.map { it.position }
-                        val pp = c.map { it.previousPosition }
-                        val cent = Offset(pts.sumOf { it.x.toDouble() }.toFloat() / pts.size, pts.sumOf { it.y.toDouble() }.toFloat() / pts.size)
-                        val pcent = Offset(pp.sumOf { it.x.toDouble() }.toFloat() / pp.size, pp.sumOf { it.y.toDouble() }.toFloat() / pp.size)
-                        val d = pts.sumOf { (it - cent).getDistance().toDouble() }.toFloat()
-                        val pd = pp.sumOf { (it - pcent).getDistance().toDouble() }.toFloat()
-                        val z = if (pd > 0f) (d / pd).coerceIn(0.5f, 3f) else 1f
-                        scale = (scale * z).coerceIn(1f, 5f)
-                        val pan = cent - pcent
-                        val mx = (scale - 1f) * sz.width / 2f
-                        val my = (scale - 1f) * sz.height / 2f
-                        offsetX = (offsetX + pan.x).coerceIn(-mx, mx)
-                        offsetY = (offsetY + pan.y).coerceIn(-my, my)
-                        c.forEach { it.consume() }
-                    } else if (c.size == 1 && scale > 1f) {
-                        val ch = c.first()
-                        val pan = ch.position - ch.previousPosition
-                        val mx = (scale - 1f) * sz.width / 2f
-                        val my = (scale - 1f) * sz.height / 2f
-                        offsetX = (offsetX + pan.x).coerceIn(-mx, mx)
-                        offsetY = (offsetY + pan.y).coerceIn(-my, my)
-                        c.forEach { it.consume() }
+        AndroidView(factory = { spv }, modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                scaleX = scale; scaleY = scale
+                translationX = offsetX; translationY = offsetY
+            }
+            .pointerInput(Unit) {
+                detectTransformGestures { centroid, pan, zoom, _ ->
+                    val newScale = (scale * zoom).coerceIn(0.5f, 5f)
+                    scale = newScale
+                    if (newScale > 1f) {
+                        val maxX = (newScale - 1f) * size.width / 2f
+                        val maxY = (newScale - 1f) * size.height / 2f
+                        offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX)
+                        offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
+                    } else {
+                        offsetX = 0f; offsetY = 0f
                     }
                 }
             }
-        })
+        )
 
         Box(Modifier.fillMaxSize().pointerInput(Unit) {
             detectTapGestures(
                 onTap = { showControls = !showControls },
-                onDoubleTap = {
-                    val next = when (scalingMode) {
-                        SCALING_FIT -> SCALING_ZOOM
-                        SCALING_ZOOM -> SCALING_FIT
-                        else -> SCALING_FIT
+                onDoubleTap = { tapPos ->
+                    if (scale > 1.1f) {
+                        scale = 1f; offsetX = 0f; offsetY = 0f
+                    } else {
+                        val next = when (scalingMode) { SCALING_FIT -> SCALING_ZOOM; SCALING_ZOOM -> SCALING_FIT; else -> SCALING_FIT }
+                        onScalingModeChange(next)
                     }
-                    onScalingModeChange(next)
-                    scale = 1f; offsetX = 0f; offsetY = 0f
                 }
             )
         })
@@ -189,103 +174,96 @@ fun VideoPage(
                 IconButton(
                     onClick = { if (isPlaying) player.pause() else player.play() },
                     modifier = Modifier.align(Alignment.Center).size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f))
-                ) {
-                    Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play/Pause", tint = Color.White, modifier = Modifier.size(28.dp))
-                }
+                ) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play/Pause", tint = Color.White, modifier = Modifier.size(28.dp)) }
+
                 val speedIdx = speeds.indexOf(playbackSpeed)
                 val nextSpeed = speeds[(speedIdx + 1) % speeds.size]
                 Column(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) {
-                    TextButton(
-                        onClick = { playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed) },
-                        modifier = Modifier.size(48.dp)
-                    ) {
+                    TextButton(onClick = { playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed) }, modifier = Modifier.size(48.dp)) {
                         Text("${playbackSpeed}x", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                     }
-                    TextButton(
-                        onClick = {
-                            backgroundAudio = !backgroundAudio
-                            onBackgroundAudioChange(backgroundAudio)
-                        },
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Text(if (backgroundAudio) "🎧" else "📢", style = MaterialTheme.typography.labelSmall)
+                    TextButton(onClick = {
+                        backgroundAudio = !backgroundAudio; onBackgroundAudioChange(backgroundAudio)
+                    }, modifier = Modifier.size(48.dp)) { Text(if (backgroundAudio) "🎧" else "📢", style = MaterialTheme.typography.labelSmall) }
+                    TextButton(onClick = { trimMode = !trimMode; if (trimMode && trimEndMs < 0f) trimEndMs = player.duration.toFloat() }, modifier = Modifier.size(48.dp)) {
+                        Text(if (trimMode) "✂" else "⚡", style = MaterialTheme.typography.labelSmall, color = Color.White)
                     }
                 }
+
                 if (player.duration > 0) {
                     var seekPos by remember { mutableFloatStateOf(-1f) }
                     Row(
                         Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Color.Black.copy(alpha = 0.6f)).padding(horizontal = 12.dp, vertical = 8.dp).navigationBarsPadding(),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        val pos = if (seekPos >= 0) seekPos else player.currentPosition.toFloat()
-                        Text("%02d:%02d".format((pos / 1000).toInt() / 60, (pos / 1000).toInt() % 60), style = MaterialTheme.typography.labelSmall, color = Color.White)
+                        val posMs = if (seekPos >= 0) seekPos else player.currentPosition.toFloat()
+                        Text("%02d:%02d".format((posMs / 1000).toInt() / 60, (posMs / 1000).toInt() % 60), style = MaterialTheme.typography.labelSmall, color = Color.White)
                         Slider(
-                            value = if (player.duration > 0) pos / player.duration else 0f,
-                            onValueChange = { seekPos = it * player.duration; player.seekTo((it * player.duration).toLong()) },
-                            onValueChangeFinished = { seekPos = -1f },
+                            value = if (player.duration > 0) posMs / player.duration else 0f,
+                            onValueChange = { fraction ->
+                                seekPos = fraction * player.duration
+                                scrubFraction = fraction
+                                player.seekTo((fraction * player.duration).toLong())
+                                val now = System.currentTimeMillis()
+                                if (now - lastFrameRequestMs > 90) {
+                                    lastFrameRequestMs = now
+                                    scope.launch(Dispatchers.IO) {
+                                        try {
+                                            val ms = (fraction * player.duration).toLong()
+                                            val bmp = retriever.getFrameAtTime(ms * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
+                                            withContext(Dispatchers.Main) { scrubPreviewBitmap = bmp }
+                                        } catch (_: Exception) { }
+                                    }
+                                }
+                            },
+                            onValueChangeFinished = { seekPos = -1f; scrubFraction = -1f; scrubPreviewBitmap = null },
                             modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                            colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color.White.copy(alpha = 0.3f))
+                            colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
                         )
                         Text("%02d:%02d".format((player.duration / 1000) / 60, (player.duration / 1000) % 60), style = MaterialTheme.typography.labelSmall, color = Color.White)
                     }
+                    // Frame preview
+                    if (scrubFraction >= 0f && scrubPreviewBitmap != null) {
+                        Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 60.dp), contentAlignment = Alignment.Center) {
+                            Surface(shape = RoundedCornerShape(8.dp), color = Color.Black.copy(alpha = 0.85f)) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Image(bitmap = scrubPreviewBitmap!!.asImageBitmap(), contentDescription = null, modifier = Modifier.size(width = 160.dp, height = 90.dp), contentScale = ContentScale.Crop)
+                                    Text("%02d:%02d".format(((scrubFraction * player.duration) / 1000).toInt() / 60, ((scrubFraction * player.duration) / 1000).toInt() % 60), color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(4.dp))
+                                }
+                            }
+                        }
+                    }
+                    // Trim bar
                     if (trimMode) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            TextButton(onClick = {
-                                trimStartMs = player.currentPosition.toFloat()
-                            }) { Text("Start: %02d:%02d".format((trimStartMs / 1000).toInt() / 60, (trimStartMs / 1000).toInt() % 60), color = Color(0xFF64B5F6), style = MaterialTheme.typography.labelSmall) }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { trimStartMs = player.currentPosition.toFloat() }) {
+                                Text("Start: %02d:%02d".format((trimStartMs / 1000).toInt() / 60, (trimStartMs / 1000).toInt() % 60), color = Color(0xFF64B5F6), style = MaterialTheme.typography.labelSmall)
+                            }
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = { trimEndMs = player.currentPosition.toFloat() }) {
+                                Text("Ende: %02d:%02d".format((trimEndMs / 1000).toInt() / 60, (trimEndMs / 1000).toInt() % 60), color = Color(0xFFEF5350), style = MaterialTheme.typography.labelSmall)
+                            }
                             Spacer(Modifier.weight(1f))
                             TextButton(onClick = {
-                                trimEndMs = player.currentPosition.toFloat()
-                            }) { Text("Ende: %02d:%02d".format((trimEndMs / 1000).toInt() / 60, (trimEndMs / 1000).toInt() % 60), color = Color(0xFFEF5350), style = MaterialTheme.typography.labelSmall) }
-                            Spacer(Modifier.weight(1f))
-                            TextButton(onClick = {
-                                val start = trimStartMs.toLong() * 1000
-                                val end = trimEndMs.toLong() * 1000
-                                trimScope.launch(Dispatchers.IO) {
+                                val start = trimStartMs.toLong() * 1000; val end = trimEndMs.toLong() * 1000
+                                scope.launch(Dispatchers.IO) {
                                     try {
-                                        val outFile = java.io.File(path.replaceBeforeLast('.', path.substringBeforeLast('.') + "_trimmed"))
-                                        val extractor = android.media.MediaExtractor()
-                                        extractor.setDataSource(path)
+                                        val outFile = File(path.replaceBeforeLast('.', path.substringBeforeLast('.') + "_trimmed"))
+                                        val extractor = android.media.MediaExtractor(); extractor.setDataSource(path)
                                         val muxer = android.media.MediaMuxer(outFile.absolutePath, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-                                        extractor.selectTrack(0)
-                                        val format = extractor.getTrackFormat(0)
-                                        val trackIndex = muxer.addTrack(format)
-                                        muxer.start()
+                                        extractor.selectTrack(0); val trackIndex = muxer.addTrack(extractor.getTrackFormat(0)); muxer.start()
                                         extractor.seekTo(start, android.media.MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-                                        val buf = java.nio.ByteBuffer.allocate(256 * 1024)
-                                        val bufferInfo = android.media.MediaCodec.BufferInfo()
-                                        while (true) {
-                                            bufferInfo.offset = 0; bufferInfo.size = extractor.readSampleData(buf, 0)
-                                            if (bufferInfo.size < 0 || extractor.sampleTime > end) break
-                                            bufferInfo.presentationTimeUs = extractor.sampleTime - start
-                                            bufferInfo.flags = extractor.sampleFlags
-                                            muxer.writeSampleData(trackIndex, buf, bufferInfo)
-                                            extractor.advance()
-                                        }
+                                        val buf = java.nio.ByteBuffer.allocate(256 * 1024); val info = android.media.MediaCodec.BufferInfo()
+                                        while (true) { info.offset = 0; info.size = extractor.readSampleData(buf, 0); if (info.size < 0 || extractor.sampleTime > end) break; info.presentationTimeUs = extractor.sampleTime - start; info.flags = extractor.sampleFlags; muxer.writeSampleData(trackIndex, buf, info); extractor.advance() }
                                         muxer.stop(); muxer.release(); extractor.release()
                                         withContext(Dispatchers.Main) { ctx.toast("Gespeichert: ${outFile.name}", android.widget.Toast.LENGTH_SHORT) }
                                     } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", android.widget.Toast.LENGTH_SHORT) } }
                                 }
-                            }) {
-                                Text("✂ Speichern", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                            }
+                            }) { Text("✂ Speichern", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold) }
                         }
                     }
                 }
             }
         }
-
-                    }
-                    TextButton(
-                        onClick = {
-                            trimMode = !trimMode
-                            if (trimMode && trimEndMs < 0f) trimEndMs = player.duration.toFloat()
-                        },
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Text(if (trimMode) "✂" else "⚡", style = MaterialTheme.typography.labelSmall, color = Color.White)
-                    }
-                }
+    }
+}
