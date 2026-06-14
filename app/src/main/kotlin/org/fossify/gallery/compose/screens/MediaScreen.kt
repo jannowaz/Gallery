@@ -139,6 +139,8 @@ fun MediaScreen(
     mediaOverride: List<Medium>? = null,
     refreshTrigger: Int = 0,
     onNavigateToViewer: ((paths: List<String>, startIndex: Int) -> Unit)? = null,
+    scrollToPath: String = "",
+    onClearScrollToPath: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val viewModel: MediaViewModel = viewModel()
@@ -254,6 +256,15 @@ fun MediaScreen(
                     }
                     val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
                     val gridState = rememberLazyGridState()
+                    LaunchedEffect(scrollToPath) {
+                        if (scrollToPath.isNotEmpty() && displayMedia.isNotEmpty()) {
+                            val idx = displayMedia.indexOfFirst { it.path == scrollToPath }
+                            if (idx >= 0) {
+                                gridState.scrollToItem(idx)
+                                onClearScrollToPath()
+                            }
+                        }
+                    }
                     LaunchedEffect(Unit) {
                         if (state.scrollIndex > 0 && displayMedia.isNotEmpty()) {
                             gridState.scrollToItem(minOf(state.scrollIndex, displayMedia.size - 1))

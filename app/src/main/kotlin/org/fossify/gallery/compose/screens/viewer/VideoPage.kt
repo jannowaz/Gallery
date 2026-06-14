@@ -218,7 +218,7 @@ fun VideoPage(
                                     }
                                 }
                             },
-                            onValueChangeFinished = { seekPos = -1f; scrubFraction = -1f; scrubPreviewBitmap = null },
+                            onValueChangeFinished = { seekPos = -1f; scrubFraction = -1f },
                             modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                             colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
                         )

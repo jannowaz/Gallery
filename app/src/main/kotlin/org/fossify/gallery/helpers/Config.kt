@@ -738,6 +738,10 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(VIEWER_SHOW_RATING_BAR, false)
         set(v) = prefs.edit().putBoolean(VIEWER_SHOW_RATING_BAR, v).apply()
 
+    var lastViewedPath: String
+        get() = prefs.getString("last_viewed_path", "") ?: ""
+        set(v) = prefs.edit().putString("last_viewed_path", v).apply()
+
     var tagHierarchy: MutableMap<String, String>
         get() {
             val json = prefs.getString(TAG_HIERARCHY, "{}") ?: "{}"

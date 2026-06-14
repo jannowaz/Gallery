@@ -570,6 +570,8 @@ private fun MainTabContent(
             refreshTrigger = state.mediaRefreshTrigger,
             onClearFilter = { mainVM.clearFilters() },
             onNavigateToViewer = { paths, startIndex -> navController.navigate(Viewer(paths, startIndex)) },
+            scrollToPath = state.lastViewedPath,
+            onClearScrollToPath = { mainVM.clearLastViewedPath() },
         )
         1 -> AlbumsScreen(
             viewModel = albumsViewModel,

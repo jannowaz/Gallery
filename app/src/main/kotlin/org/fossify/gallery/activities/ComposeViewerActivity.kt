@@ -201,6 +201,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
 
     val closeWithAnimation: () -> Unit = {
         (ctx as? android.app.Activity)?.window?.attributes?.screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        ctx.config.lastViewedPath = currentPath
         if (backgroundAudio) { (ctx as? android.app.Activity)?.moveTaskToBack(true) }
         else if (heroRect != null && !isClosing) { isClosing = true; scope.launch { heroProgress.animateTo(0f, animationSpec = tween(250, easing = FastOutSlowInEasing)); onClose() } }
         else onClose()
@@ -219,7 +220,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
             }
         }
     }) {
-        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize().offset(y = offsetY.dp)
+        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize().offset(y = offsetY.coerceAtLeast(0f).dp)
             .pointerInput(Unit) { detectVerticalDragGestures(onDragEnd = { if (kotlin.math.abs(offsetY) > size.height / 4f) closeWithAnimation() else { offsetY = 0f } }, onVerticalDrag = { _, drag -> if (drag < -20) { showActionSheet = true; offsetY = 0f } else offsetY = (offsetY + drag).coerceIn(-size.height.toFloat() / 4f, size.height.toFloat() / 4f) }) }
             .pointerInput(Unit) { detectTapGestures(onTap = { val p = paths.getOrNull(pagerState.currentPage) ?: ""; if (isVideo(p)) showUI = !showUI else { showActionSheet = true; offsetY = 0f } }) }
         ) { page ->
@@ -266,7 +267,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
 
     if (showActionSheet) {
         ModalBottomSheet(onDismissRequest = { showActionSheet = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).verticalScroll(rememberScrollState())) {
                 Row(Modifier.fillMaxWidth()) {
                     SelectionRow(Icons.Default.Share, "Teilen", modifier = Modifier.weight(1f)) { val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath)); ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(Intent.EXTRA_STREAM, u); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); showActionSheet = false }
                     Spacer(Modifier.width(8.dp))

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.RefreshBus
@@ -31,6 +32,7 @@ data class ExplorerUiState(
     val dbInitError: String? = null,
     val gridScrollIndex: Int = 0,
     val gridScrollOffset: Int = 0,
+    val lastViewedPath: String = "",
 )
 
 class ExplorerViewModel(application: Application) : AndroidViewModel(application) {
@@ -39,11 +41,11 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
     val state: StateFlow<ExplorerUiState> = _state.asStateFlow()
 
     init {
-        _state.update { it.copy(explorerPath = android.os.Environment.getExternalStorageDirectory().absolutePath) }
+        val ctx = getApplication<Application>()
+        val conf = ctx.config
+        _state.update { it.copy(explorerPath = android.os.Environment.getExternalStorageDirectory().absolutePath, lastViewedPath = conf.lastViewedPath) }
         viewModelScope.launch {
-            RefreshBus.events.collect {
-                triggerMediaRefresh()
-            }
+            RefreshBus.events.collect { triggerMediaRefresh() }
         }
     }
 
@@ -64,6 +66,14 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
 
     fun saveScrollPosition(index: Int, offset: Int) {
         _state.update { it.copy(gridScrollIndex = index, gridScrollOffset = offset) }
+    }
+
+    fun setLastViewedPath(path: String) {
+        _state.update { it.copy(lastViewedPath = path) }
+    }
+
+    fun clearLastViewedPath() {
+        _state.update { it.copy(lastViewedPath = "") }
     }
 
     fun initializeDatabase(onComplete: (() -> Unit)? = null) {
