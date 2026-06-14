@@ -1,5 +1,12 @@
 package org.fossify.gallery.compose.screens
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -77,6 +84,7 @@ fun AlbumsScreen(
     var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showSelectionSheet by remember { mutableStateOf(false) }
     val hasSelection = selectedPaths.isNotEmpty()
+    BackHandler(enabled = hasSelection) { selectedPaths = emptySet() }
 
     val sortedDirs = remember(state.directories, viewSettings.sortBy, viewSettings.sortDesc) {
         val sorted = when (viewSettings.sortBy) {
@@ -173,9 +181,14 @@ fun AlbumsScreen(
             }
         }
 
-        if (hasSelection) {
+        AnimatedVisibility(
+            visible = hasSelection,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(animationSpec = spring(dampingRatio = 0.7f)),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
             Surface(
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().clickable { showSelectionSheet = true },
+                modifier = Modifier.fillMaxWidth().clickable { showSelectionSheet = true },
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
                 shadowElevation = 8.dp,

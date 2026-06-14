@@ -348,7 +348,7 @@ fun MainScreen(onFinish: () -> Unit) {
                     }
                     selectedTab = 0
                 })
-                4 -> FavoritesScreen(onNavigateToPath = { path -> explorerPath = path; selectedTab = 2 }, viewSettings = tabSettings.favorites)
+                4 -> FavoritesScreen(viewSettings = tabSettings.favorites)
             }
         }
     }

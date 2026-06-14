@@ -17,6 +17,7 @@ import java.util.Locale
 
 class Config(context: Context) : BaseConfig(context) {
     companion object {
+        private const val VIEWER_AUTO_HIDE_MS = "viewer_auto_hide_ms"
         fun newInstance(context: Context) = Config(context)
     }
 
@@ -86,7 +87,7 @@ class Config(context: Context) : BaseConfig(context) {
         set(isThirdPartyIntent) = prefs.edit().putBoolean(IS_THIRD_PARTY_INTENT, isThirdPartyIntent).apply()
 
     var pinnedFolders: Set<String>
-        get() = prefs.getStringSet(PINNED_FOLDERS, HashSet<String>())!!
+        get() = prefs.getStringSet(PINNED_FOLDERS, HashSet()) ?: HashSet()
         set(pinnedFolders) = prefs.edit().putStringSet(PINNED_FOLDERS, pinnedFolders).apply()
 
     var showAll: Boolean
@@ -109,7 +110,7 @@ class Config(context: Context) : BaseConfig(context) {
     }
 
     var favoriteFolders: Set<String>
-        get() = prefs.getStringSet(FAVORITE_FOLDERS, HashSet<String>())!!
+        get() = prefs.getStringSet(FAVORITE_FOLDERS, HashSet()) ?: HashSet()
         set(folders) = prefs.edit().putStringSet(FAVORITE_FOLDERS, folders).apply()
 
     fun addFavoriteFolder(path: String) {
@@ -127,7 +128,7 @@ class Config(context: Context) : BaseConfig(context) {
     fun isFavoriteFolder(path: String) = favoriteFolders.contains(path)
 
     var quickTags: Set<String>
-        get() = prefs.getStringSet(QUICK_TAGS, HashSet<String>())!!
+        get() = prefs.getStringSet(QUICK_TAGS, HashSet()) ?: HashSet()
         set(tags) = prefs.edit().putStringSet(QUICK_TAGS, tags).apply()
 
     fun addQuickTag(tag: String) {
@@ -143,7 +144,7 @@ class Config(context: Context) : BaseConfig(context) {
     }
 
     var explorer2HiddenFolders: Set<String>
-        get() = prefs.getStringSet(EXPLORER2_HIDDEN_FOLDERS, HashSet<String>())!!
+        get() = prefs.getStringSet(EXPLORER2_HIDDEN_FOLDERS, HashSet()) ?: HashSet()
         set(folders) = prefs.edit().putStringSet(EXPLORER2_HIDDEN_FOLDERS, folders).apply()
 
     fun hideExplorer2Folder(path: String) {
@@ -181,7 +182,7 @@ class Config(context: Context) : BaseConfig(context) {
     }
 
     var excludedFolders: MutableSet<String>
-        get() = prefs.getStringSet(EXCLUDED_FOLDERS, HashSet())!!
+        get() = prefs.getStringSet(EXCLUDED_FOLDERS, HashSet()) ?: HashSet()
         set(excludedFolders) = prefs.edit().remove(EXCLUDED_FOLDERS).putStringSet(EXCLUDED_FOLDERS, excludedFolders).apply()
 
     var isExcludedPasswordProtectionOn: Boolean
@@ -189,7 +190,7 @@ class Config(context: Context) : BaseConfig(context) {
         set(isExcludedPasswordProtectionOn) = prefs.edit().putBoolean(EXCLUDED_PASSWORD_PROTECTION, isExcludedPasswordProtectionOn).apply()
 
     var excludedPasswordHash: String
-        get() = prefs.getString(EXCLUDED_PASSWORD_HASH, "")!!
+        get() = prefs.getString(EXCLUDED_PASSWORD_HASH, "") ?: ""
         set(excludedPasswordHash) = prefs.edit().putString(EXCLUDED_PASSWORD_HASH, excludedPasswordHash).apply()
 
     var excludedProtectionType: Int
@@ -215,7 +216,7 @@ class Config(context: Context) : BaseConfig(context) {
     }
 
     var includedFolders: MutableSet<String>
-        get() = prefs.getStringSet(INCLUDED_FOLDERS, HashSet<String>())!!
+        get() = prefs.getStringSet(INCLUDED_FOLDERS, HashSet()) ?: HashSet()
         set(includedFolders) = prefs.edit().remove(INCLUDED_FOLDERS).putStringSet(INCLUDED_FOLDERS, includedFolders).apply()
 
     var autoplayVideos: Boolean
@@ -304,7 +305,7 @@ class Config(context: Context) : BaseConfig(context) {
         set(dirColumnCnt) = prefs.edit().putInt(getDirectoryColumnsField(), dirColumnCnt).apply()
 
     var defaultFolder: String
-        get() = prefs.getString(DEFAULT_FOLDER, "")!!
+        get() = prefs.getString(DEFAULT_FOLDER, "") ?: ""
         set(defaultFolder) = prefs.edit().putString(DEFAULT_FOLDER, defaultFolder).apply()
 
     var allowInstantChange: Boolean
@@ -366,7 +367,7 @@ class Config(context: Context) : BaseConfig(context) {
     )
 
     var albumCovers: String
-        get() = prefs.getString(ALBUM_COVERS, "")!!
+        get() = prefs.getString(ALBUM_COVERS, "") ?: ""
         set(albumCovers) = prefs.edit().putString(ALBUM_COVERS, albumCovers).apply()
 
     fun parseAlbumCovers(): ArrayList<AlbumCover> {
@@ -393,6 +394,10 @@ class Config(context: Context) : BaseConfig(context) {
     var allowVideoGestures: Boolean
         get() = prefs.getBoolean(ALLOW_VIDEO_GESTURES, true)
         set(allowVideoGestures) = prefs.edit().putBoolean(ALLOW_VIDEO_GESTURES, allowVideoGestures).apply()
+
+    var viewerAutoHideMs: Int
+        get() = prefs.getInt(VIEWER_AUTO_HIDE_MS, 3000)
+        set(value) = prefs.edit().putInt(VIEWER_AUTO_HIDE_MS, value).apply()
 
     var slideshowInterval: Int
         get() = prefs.getInt(SLIDESHOW_INTERVAL, SLIDESHOW_DEFAULT_INTERVAL)
@@ -423,7 +428,7 @@ class Config(context: Context) : BaseConfig(context) {
         set(loopSlideshow) = prefs.edit().putBoolean(SLIDESHOW_LOOP, loopSlideshow).apply()
 
     var tempFolderPath: String
-        get() = prefs.getString(TEMP_FOLDER_PATH, "")!!
+        get() = prefs.getString(TEMP_FOLDER_PATH, "") ?: ""
         set(tempFolderPath) = prefs.edit().putString(TEMP_FOLDER_PATH, tempFolderPath).apply()
 
     var viewTypeFolders: Int
@@ -451,7 +456,7 @@ class Config(context: Context) : BaseConfig(context) {
         set(wasNewAppShown) = prefs.edit().putBoolean(WAS_NEW_APP_SHOWN, wasNewAppShown).apply()
 
     var lastFilepickerPath: String
-        get() = prefs.getString(LAST_FILEPICKER_PATH, "")!!
+        get() = prefs.getString(LAST_FILEPICKER_PATH, "") ?: ""
         set(lastFilepickerPath) = prefs.edit().putString(LAST_FILEPICKER_PATH, lastFilepickerPath).apply()
 
     var tempSkipDeleteConfirmation: Boolean
@@ -519,7 +524,7 @@ class Config(context: Context) : BaseConfig(context) {
 
     // if a user hides a folder, then enables temporary hidden folder displaying, make sure we show it properly
     var everShownFolders: Set<String>
-        get() = prefs.getStringSet(EVER_SHOWN_FOLDERS, getEverShownFolders())!!
+        get() = prefs.getStringSet(EVER_SHOWN_FOLDERS, getEverShownFolders()) ?: getEverShownFolders()
         set(everShownFolders) = prefs.edit().putStringSet(EVER_SHOWN_FOLDERS, everShownFolders).apply()
 
     private fun getEverShownFolders() = hashSetOf(
@@ -694,7 +699,7 @@ class Config(context: Context) : BaseConfig(context) {
         set(value) = prefs.edit().putBoolean(FOLDER_MEDIA_SHOW_FILE_NAMES, value).apply()
 
     var customFoldersOrder: String
-        get() = prefs.getString(CUSTOM_FOLDERS_ORDER, "")!!
+        get() = prefs.getString(CUSTOM_FOLDERS_ORDER, "") ?: ""
         set(customFoldersOrder) = prefs.edit().putString(CUSTOM_FOLDERS_ORDER, customFoldersOrder).apply()
 
     var avoidShowingAllFilesPrompt: Boolean
@@ -710,7 +715,7 @@ class Config(context: Context) : BaseConfig(context) {
         set(show) = prefs.edit().putBoolean("show_rating_bar", show).apply()
 
     var lastExportedFavoritesFolder: String
-        get() = prefs.getString(LAST_EXPORTED_FAVORITES_FOLDER, "")!!
+        get() = prefs.getString(LAST_EXPORTED_FAVORITES_FOLDER, "") ?: ""
         set(lastExportedFavoritesFolder) = prefs.edit().putString(LAST_EXPORTED_FAVORITES_FOLDER, lastExportedFavoritesFolder).apply()
 
     var showPermissionRationale: Boolean
@@ -718,7 +723,7 @@ class Config(context: Context) : BaseConfig(context) {
         set(showPermissionRationale) = prefs.edit().putBoolean(SHOW_PERMISSION_RATIONALE, showPermissionRationale).apply()
 
     var lastCopyMoveDestination: String
-        get() = prefs.getString(LAST_COPY_MOVE_DESTINATION, internalStoragePath)!!
+        get() = prefs.getString(LAST_COPY_MOVE_DESTINATION, internalStoragePath) ?: internalStoragePath
         set(path) = prefs.edit().putString(LAST_COPY_MOVE_DESTINATION, path).apply()
 
     var showRatingOnThumbnails: Boolean
@@ -731,7 +736,7 @@ class Config(context: Context) : BaseConfig(context) {
 
     var tagHierarchy: MutableMap<String, String>
         get() {
-            val json = prefs.getString(TAG_HIERARCHY, "{}")!!
+            val json = prefs.getString(TAG_HIERARCHY, "{}") ?: "{}"
             return try { com.google.gson.Gson().fromJson(json, object : com.google.gson.reflect.TypeToken<MutableMap<String, String>>() {}.type) } catch (_: Exception) { mutableMapOf() }
         }
         set(map) = prefs.edit().putString(TAG_HIERARCHY, com.google.gson.Gson().toJson(map)).apply()

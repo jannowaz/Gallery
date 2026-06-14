@@ -1,6 +1,12 @@
 package org.fossify.gallery.compose.screens
 
 import android.content.Intent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -311,7 +317,11 @@ fun ExplorerScreen(
             }
         }
 
-        if (hasFolderSelection) {
+        AnimatedVisibility(
+            visible = hasFolderSelection,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(animationSpec = spring(dampingRatio = 0.7f)),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+        ) {
             Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)).clickable { showFolderSheet = true }.padding(horizontal = 20.dp, vertical = 14.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("${selectedFolderPaths.size} ausgewählt", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))

@@ -60,7 +60,27 @@
 
         <activity
             android:name=".activities.ComposeExplorerActivity"
-            android:exported="false" />
+            android:configChanges="orientation"
+            android:exported="true"
+            android:resizeableActivity="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PICK" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="vnd.android.cursor.dir/image" />
+                <data android:mimeType="vnd.android.cursor.dir/video" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.GET_CONTENT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="vnd.android.cursor.dir/image" />
+                <data android:mimeType="vnd.android.cursor.dir/video" />
+            </intent-filter>
+        </activity>
 
         <activity
             android:name=".activities.ComposeFolderActivity"
@@ -87,31 +107,7 @@
         <activity
             android:name=".activities.MainActivity"
             android:configChanges="orientation"
-            android:exported="true"
-            android:resizeableActivity="true">
-
-            <intent-filter>
-                <action android:name="android.intent.action.PICK" />
-                <category android:name="android.intent.category.DEFAULT" />
-
-                <data android:mimeType="image/*" />
-                <data android:mimeType="video/*" />
-                <data android:mimeType="vnd.android.cursor.dir/image" />
-                <data android:mimeType="vnd.android.cursor.dir/video" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.GET_CONTENT" />
-
-                <category android:name="android.intent.category.OPENABLE" />
-                <category android:name="android.intent.category.DEFAULT" />
-
-                <data android:mimeType="image/*" />
-                <data android:mimeType="video/*" />
-                <data android:mimeType="vnd.android.cursor.dir/image" />
-                <data android:mimeType="vnd.android.cursor.dir/video" />
-            </intent-filter>
-        </activity>
+            android:exported="false" />
 
         <activity
             android:name=".activities.MediaActivity"

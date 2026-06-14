@@ -1,0 +1,140 @@
+package org.fossify.gallery.compose.screens.analysis
+
+import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+
+enum class FilterMode { ALL, IMAGES, VIDEOS }
+
+data class AnalysisState(
+    val isScanning: Boolean = false,
+    val progress: Int = 0,
+    val scannedCount: Int = 0,
+    val totalFiles: Int = 0,
+    val folderPath: String = "",
+    val results: List<AnalysisResult> = emptyList(),
+    val filterMode: FilterMode = FilterMode.ALL,
+    val selectedPaths: Set<String> = emptySet(),
+    val transformResults: List<TransformResult> = emptyList(),
+    val isTransforming: Boolean = false,
+)
+
+class StorageAnalysisViewModel(app: Application) : AndroidViewModel(app) {
+    private val _state = MutableStateFlow(AnalysisState())
+    val state: StateFlow<AnalysisState> = _state.asStateFlow()
+    private val analyzer = MediaAnalyzer(app)
+    val engine = TransformationEngine(app)
+
+    fun startAnalysis(folderPath: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(isScanning = true, progress = 0, folderPath = folderPath, results = emptyList(), scannedCount = 0, totalFiles = 0) }
+            analyzer.analyzeFolder(folderPath).collect { progress ->
+                when (progress) {
+                    is AnalysisProgress.Scanning -> _state.update { it.copy(progress = progress.percent, scannedCount = progress.scanned, totalFiles = progress.total) }
+                    is AnalysisProgress.Found -> _state.update { it.copy(results = progress.allResults) }
+                    is AnalysisProgress.Done -> _state.update { it.copy(isScanning = false, progress = 100, results = progress.results, totalFiles = progress.totalScanned) }
+                }
+            }
+        }
+    }
+
+    fun setFilterMode(mode: FilterMode) { _state.update { it.copy(filterMode = mode) } }
+    fun toggleSelection(path: String) {
+        _state.update { s -> s.copy(selectedPaths = if (path in s.selectedPaths) s.selectedPaths - path else s.selectedPaths + path) }
+    }
+    fun selectAll() { _state.update { s -> s.copy(selectedPaths = s.results.map { it.path }.toSet()) } }
+    fun clearSelection() { _state.update { it.copy(selectedPaths = emptySet()) } }
+
+    fun executeTransforms(losslessOnly: Boolean = true) {
+        val selected = _state.value.selectedPaths
+        if (selected.isEmpty()) return
+        viewModelScope.launch {
+            _state.update { it.copy(isTransforming = true, transformResults = emptyList()) }
+            val suggestions = engine.suggestTransformations(_state.value.results.filter { it.path in selected }, losslessOnly)
+            if (suggestions.isEmpty()) { _state.update { it.copy(isTransforming = false) }; return@launch }
+            val results = engine.executeBatch(suggestions) { _, _ -> }
+            _state.update { it.copy(isTransforming = false, transformResults = results, selectedPaths = emptySet()) }
+            startAnalysis(_state.value.folderPath)
+        }
+    }
+
+    fun clearTransformResults() { _state.update { it.copy(transformResults = emptyList()) } }
+}
+
+data class TransformSuggestion(
+    val originalPath: String,
+    val originalSize: Long,
+    val targetFormat: String,
+    val estimatedNewSize: Long,
+    val savedBytes: Long,
+    val isLossless: Boolean,
+    val reason: String,
+)
+
+data class TransformResult(
+    val success: Boolean,
+    val originalPath: String,
+    val newPath: String,
+    val savedBytes: Long,
+    val error: String? = null,
+)
+
+class TransformationEngine(private val context: android.content.Context) {
+
+    fun suggestTransformations(results: List<AnalysisResult>, losslessOnly: Boolean = true): List<TransformSuggestion> {
+        return results.mapNotNull { r ->
+            when (r.imageFormat) {
+                "bmp", "dib" -> TransformSuggestion(r.path, r.fileSize, "png", r.fileSize / 20, r.fileSize * 19 / 20, true, "BMP → PNG (lossless)")
+                "png" -> {
+                    if (r.bpp > 1.5f && !losslessOnly) TransformSuggestion(r.path, r.fileSize, "jpeg", r.fileSize / 6, r.fileSize * 5 / 6, false, "PNG → JPEG Q85")
+                    else if (r.bpp > 0.8f) TransformSuggestion(r.path, r.fileSize, "webp", r.fileSize * 7 / 10, r.fileSize * 3 / 10, true, "PNG → WebP-lossless")
+                    else null
+                }
+                "tiff", "tif" -> TransformSuggestion(r.path, r.fileSize, "png", r.fileSize / 15, r.fileSize * 14 / 15, true, "TIFF → PNG (lossless)")
+                "jpeg", "jpg" -> {
+                    if (r.bpp > 0.4f && !losslessOnly) TransformSuggestion(r.path, r.fileSize, "jpeg", r.fileSize * 4 / 10, r.fileSize * 6 / 10, false, "JPEG Rekompression Q85")
+                    else null
+                }
+                else -> null
+            }
+        }
+    }
+
+    suspend fun executeBatch(suggestions: List<TransformSuggestion>, onProgress: (Int, Int) -> Unit): List<TransformResult> = withContext(Dispatchers.IO) {
+        suggestions.mapIndexed { i, s -> onProgress(i + 1, suggestions.size); execute(s) }
+    }
+
+    suspend fun execute(s: TransformSuggestion): TransformResult = withContext(Dispatchers.IO) {
+        try {
+            val tmpFile = File(context.cacheDir, "transform_${System.nanoTime()}.tmp")
+            val opts = BitmapFactory.Options()
+            val bitmap = BitmapFactory.decodeFile(s.originalPath, opts) ?: return@withContext TransformResult(false, s.originalPath, "", 0, "Decode failed")
+            val (format, quality) = when (s.targetFormat) {
+                "png" -> Bitmap.CompressFormat.PNG to 100
+                "jpeg" -> Bitmap.CompressFormat.JPEG to 85
+                "webp" -> Bitmap.CompressFormat.WEBP to 80
+                else -> Bitmap.CompressFormat.JPEG to 85
+            }
+            tmpFile.outputStream().use { bitmap.compress(format, quality, it) }
+            bitmap.recycle()
+            if (tmpFile.length() >= s.originalSize) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Keine Ersparnis") }
+            val newExt = if (s.targetFormat == "jpeg") "jpg" else s.targetFormat
+            val newPath = s.originalPath.replaceAfterLast('.', newExt)
+            val finalFile = File(newPath)
+            if (tmpFile.renameTo(finalFile)) {
+                File(s.originalPath).delete()
+                TransformResult(true, s.originalPath, newPath, s.originalSize - finalFile.length())
+            } else { tmpFile.delete(); TransformResult(false, s.originalPath, "", 0, "Rename failed") }
+        } catch (e: Exception) { TransformResult(false, s.originalPath, "", 0, e.message) }
+    }
+}

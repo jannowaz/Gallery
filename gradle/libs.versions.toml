@@ -35,6 +35,7 @@ sanselan = "0.97-incubator"
 subsamplingScaleImageView = "d705c3c4ad"
 okhttp = "5.3.2"
 okio = "3.17.0"
+kotlinx-serialization-json = "1.7.3"
 picasso = "2.71828"
 #build
 app-build-compileSDKVersion = "36"
@@ -80,6 +81,8 @@ zjupure-webpdecoder = { module = "com.github.zjupure:webpdecoder", version.ref =
 picasso = { module = "com.squareup.picasso:picasso", version.ref = "picasso" }
 avif-integration = { group = "com.github.bumptech.glide", name = "avif-integration", version.ref = "glideCompiler" }
 jxl-integration = { group = "io.github.awxkee", name = "jxl-coder-glide", version.ref = "jxlDecoder" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization-json" }
+work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version = "2.9.1" }
 [bundles]
 room = [
     "androidx-room-ktx",

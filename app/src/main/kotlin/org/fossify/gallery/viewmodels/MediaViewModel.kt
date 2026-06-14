@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.models.Medium
@@ -31,6 +33,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = MediaRepository(application)
     private val _state = MutableStateFlow(MediaUiState())
     val state: StateFlow<MediaUiState> = _state.asStateFlow()
+    private val stateMutex = Mutex()
 
     private val videoExts = setOf("mp4", "mkv", "mov", "3gp", "wmv", "flv", "avi")
     private val imageExts = setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "avif", "bmp", "svg", "apng", "jxl")
@@ -52,9 +55,9 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun doLoad() {
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
+            stateMutex.withLock { _state.update { it.copy(isLoading = true, error = null) } }
             val media = withContext(Dispatchers.IO) { scanDirectories() }
-            _state.update { it.copy(allMedia = media, isLoading = false, hasMore = false) }
+            stateMutex.withLock { _state.update { it.copy(allMedia = media, isLoading = false, hasMore = false) } }
         }
     }
 
@@ -128,7 +131,20 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     fun deletePaths(paths: Set<String>) {
         viewModelScope.launch(Dispatchers.IO) {
             paths.forEach { p -> repository.deleteMedium(p) }
-            _state.update { s -> s.copy(allMedia = s.allMedia.filter { it.path !in paths }) }
+            stateMutex.withLock { _state.update { s -> s.copy(allMedia = s.allMedia.filter { it.path !in paths }) } }
+        }
+    }
+
+    fun softDeletePaths(paths: Set<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            paths.forEach { p -> repository.moveToRecycleBin(p) }
+            stateMutex.withLock { _state.update { s -> s.copy(allMedia = s.allMedia.filter { it.path !in paths }) } }
+        }
+    }
+
+    fun undoDeletePaths(paths: Set<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            paths.forEach { p -> repository.restoreFromRecycleBin(p) }
         }
     }
 }

@@ -172,6 +172,7 @@ import java.io.FileNotFoundException
 import java.io.InputStream
 import java.io.OutputStream
 
+@Deprecated("Use ComposeExplorerActivity instead", replaceWith = ReplaceWith("ComposeExplorerActivity"))
 class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     override var isSearchBarEnabled = true
     

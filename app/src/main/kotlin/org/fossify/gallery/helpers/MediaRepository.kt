@@ -58,4 +58,17 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     override fun deleteMedium(path: String) {
         try { context.mediaDB.deleteMediumPath(path); File(path).delete() } catch (_: Exception) { }
     }
+
+    fun moveToRecycleBin(path: String) {
+        try {
+            val now = System.currentTimeMillis()
+            context.mediaDB.softDelete(path, now)
+        } catch (_: Exception) { }
+    }
+
+    fun restoreFromRecycleBin(path: String) {
+        try {
+            context.mediaDB.restoreDeleted(path)
+        } catch (_: Exception) { }
+    }
 }

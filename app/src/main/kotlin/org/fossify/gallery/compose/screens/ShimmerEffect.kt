@@ -40,7 +40,8 @@ fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier, contentScal
     var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     LaunchedEffect(videoPath) {
         bitmap = withContext(Dispatchers.IO) {
-            try { val r = android.media.MediaMetadataRetriever(); r.setDataSource(videoPath); val b = r.frameAtTime; r.release(); b } catch (e: Exception) { null }
+            val r = android.media.MediaMetadataRetriever()
+            try { r.setDataSource(videoPath); r.frameAtTime } catch (_: Exception) { null } finally { r.release() }
         }
     }
     val bmp = bitmap
