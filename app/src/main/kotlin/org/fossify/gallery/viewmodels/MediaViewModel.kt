@@ -22,6 +22,8 @@ data class MediaUiState(
     val isLoadingMore: Boolean = false,
     val hasMore: Boolean = true,
     val error: String? = null,
+    val scrollIndex: Int = 0,
+    val scrollOffset: Int = 0,
 )
 
 class MediaViewModel(application: Application) : AndroidViewModel(application) {
@@ -165,5 +167,9 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun undoDeletePaths(paths: Set<String>) {
         viewModelScope.launch(Dispatchers.IO) { paths.forEach { p -> repository.restoreFromRecycleBin(p) } }
+    }
+
+    fun saveScrollPosition(index: Int, offset: Int) {
+        _state.update { it.copy(scrollIndex = index, scrollOffset = offset) }
     }
 }

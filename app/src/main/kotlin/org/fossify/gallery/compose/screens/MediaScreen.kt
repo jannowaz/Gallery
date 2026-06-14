@@ -254,6 +254,14 @@ fun MediaScreen(
                     }
                     val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
                     val gridState = rememberLazyGridState()
+                    LaunchedEffect(Unit) {
+                        if (state.scrollIndex > 0 && displayMedia.isNotEmpty()) {
+                            gridState.scrollToItem(minOf(state.scrollIndex, displayMedia.size - 1))
+                        }
+                    }
+                    LaunchedEffect(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset) {
+                        viewModel.saveScrollPosition(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset)
+                    }
                     LaunchedEffect(gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index) {
                         val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return@LaunchedEffect
                         val totalItems = gridState.layoutInfo.totalItemsCount

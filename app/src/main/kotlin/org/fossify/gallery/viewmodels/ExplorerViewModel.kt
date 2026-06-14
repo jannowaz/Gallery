@@ -29,6 +29,8 @@ data class ExplorerUiState(
     val preFilterTab: Int = -1,
     val dbInitialized: Boolean = false,
     val dbInitError: String? = null,
+    val gridScrollIndex: Int = 0,
+    val gridScrollOffset: Int = 0,
 )
 
 class ExplorerViewModel(application: Application) : AndroidViewModel(application) {
@@ -58,6 +60,10 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
 
     fun triggerMediaRefresh() {
         _state.update { it.copy(mediaRefreshTrigger = it.mediaRefreshTrigger + 1) }
+    }
+
+    fun saveScrollPosition(index: Int, offset: Int) {
+        _state.update { it.copy(gridScrollIndex = index, gridScrollOffset = offset) }
     }
 
     fun initializeDatabase(onComplete: (() -> Unit)? = null) {

@@ -1,6 +1,8 @@
 package org.fossify.gallery.activities
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -213,7 +215,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
         }
     }) {
         HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize().offset(y = offsetY.dp)
-            .pointerInput(Unit) { detectVerticalDragGestures(onDragEnd = { if (kotlin.math.abs(offsetY) > size.height / 4f) closeWithAnimation() else offsetY = 0f }, onVerticalDrag = { _, drag -> if (drag < -20) { showActionSheet = true; offsetY = 0f } else offsetY = (offsetY + drag).coerceIn(-size.height.toFloat() / 4f, size.height.toFloat() / 4f) }) }
+            .pointerInput(Unit) { detectVerticalDragGestures(onDragEnd = { if (kotlin.math.abs(offsetY) > size.height / 4f) closeWithAnimation() else { offsetY = 0f } }, onVerticalDrag = { _, drag -> if (drag < -20) { showActionSheet = true; offsetY = 0f } else offsetY = (offsetY + drag).coerceIn(-size.height.toFloat() / 4f, size.height.toFloat() / 4f) }) }
             .pointerInput(Unit) { detectTapGestures(onTap = { val p = paths.getOrNull(pagerState.currentPage) ?: ""; if (isVideo(p)) showUI = !showUI else { showActionSheet = true; offsetY = 0f } }) }
         ) { page ->
             val path = paths.getOrNull(page) ?: ""
@@ -291,6 +293,22 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth()) { SelectionRow(if (showPersistentTags) Icons.Default.Info else Icons.Default.Info, "Tags anzeigen", modifier = Modifier.weight(1f)) { showPersistentTags = !showPersistentTags; showActionSheet = false } }
                 if (currentIsVideo) { Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp)); SelectionRow(Icons.Default.Star, "Anzeigemodus") { showVideoSettings = true; showActionSheet = false } }
+                Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp))
+                SelectionRow(Icons.Default.Info, "Frame speichern") {
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            val r = MediaMetadataRetriever()
+                            r.setDataSource(currentPath)
+                            val bmp = r.frameAtTime ?: return@launch
+                            r.release()
+                            val outFile = File(ctx.cacheDir, "frame_${System.currentTimeMillis()}.jpg")
+                            outFile.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+                            bmp.recycle()
+                            withContext(Dispatchers.Main) { ctx.toast("Frame gespeichert: ${outFile.name}", Toast.LENGTH_SHORT) }
+                        } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", Toast.LENGTH_SHORT) } }
+                    }
+                    showActionSheet = false
+                }
                 Spacer(Modifier.height(16.dp))
             }
         }
