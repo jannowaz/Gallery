@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -268,54 +269,56 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
 
     if (showActionSheet) {
         ModalBottomSheet(onDismissRequest = { showActionSheet = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).verticalScroll(rememberScrollState())) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).verticalScroll(rememberScrollState())) {
                 Row(Modifier.fillMaxWidth()) {
                     SelectionRow(Icons.Default.Share, "Teilen", modifier = Modifier.weight(1f)) { val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath)); ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(Intent.EXTRA_STREAM, u); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); showActionSheet = false }
                     Spacer(Modifier.width(8.dp))
-                    SelectionRow(Icons.Default.ContentCopy, "Kopieren", modifier = Modifier.weight(1f)) { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }
+                    SelectionRow(Icons.Default.Edit, "Bearbeiten", modifier = Modifier.weight(1f)) { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
                 Row(Modifier.fillMaxWidth()) {
-                    SelectionRow(Icons.AutoMirrored.Filled.DriveFileMove, "Verschieben", modifier = Modifier.weight(1f)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false }
+                    SelectionRow(Icons.Default.ContentCopy, "Kopieren", modifier = Modifier.weight(1f)) { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }
                     Spacer(Modifier.width(8.dp))
-                    SelectionRow(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f)) { showDeleteConfirm = true; showActionSheet = false }
+                    SelectionRow(Icons.AutoMirrored.Filled.DriveFileMove, "Verschieben", modifier = Modifier.weight(1f)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false }
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
                 Row(Modifier.fillMaxWidth()) {
                     SelectionRow(Icons.Default.Info, "Info", modifier = Modifier.weight(1f)) { try { (ctx as? android.app.Activity)?.let { PropertiesDialog(it, currentPath, false) } } catch (e: Exception) { ctx.toast("Info-Fehler: ${e.message}", Toast.LENGTH_SHORT) }; showActionSheet = false }
                     Spacer(Modifier.width(8.dp))
-                    SelectionRow(if (showRatingOverlay) Icons.Default.Star else Icons.Default.StarBorder, "Bewerten", modifier = Modifier.weight(1f)) { val v = !showRatingOverlay; showRatingOverlay = v; ctx.config.viewerShowRatingBar = v; showActionSheet = false }
+                    SelectionRow(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f)) { showDeleteConfirm = true; showActionSheet = false }
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
                 Row(Modifier.fillMaxWidth()) {
-                    SelectionRow(Icons.Default.Edit, "Tags", modifier = Modifier.weight(1f)) { showTagsDialog = true; showActionSheet = false }
+                    SelectionRow(if (showRatingOverlay) Icons.Default.Star else Icons.Default.StarBorder, "Bewerten", modifier = Modifier.weight(1f)) { val v = !showRatingOverlay; showRatingOverlay = v; ctx.config.viewerShowRatingBar = v; showActionSheet = false }
                     Spacer(Modifier.width(8.dp))
                     SelectionRow(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, if (isFavorite) "Favorit" else "Favorisieren", modifier = Modifier.weight(1f)) { val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { repo.toggleFavorite(currentPath, f) }; showActionSheet = false }
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
                 Row(Modifier.fillMaxWidth()) {
-                    SelectionRow(Icons.Default.Edit, "Bearbeiten", modifier = Modifier.weight(1f)) { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }
-                    if (quickTags.isNotEmpty()) { Spacer(Modifier.width(8.dp)); SelectionRow(if (showQuickTags) Icons.Default.Star else Icons.Default.StarBorder, "Schnell-Tags", modifier = Modifier.weight(1f)) { showQuickTags = !showQuickTags; showActionSheet = false } } else { Spacer(Modifier.width(8.dp)); Spacer(Modifier.weight(1f)) }
+                    SelectionRow(Icons.Default.Edit, "Tags", modifier = Modifier.weight(1f)) { showTagsDialog = true; showActionSheet = false }
+                    if (quickTags.isNotEmpty()) { Spacer(Modifier.width(8.dp)); SelectionRow(if (showQuickTags) Icons.AutoMirrored.Filled.Label else Icons.AutoMirrored.Filled.Label, "Schnell-Tags", modifier = Modifier.weight(1f)) { showQuickTags = !showQuickTags; showActionSheet = false } } else Spacer(Modifier.weight(1f))
                 }
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth()) { SelectionRow(if (showPersistentTags) Icons.Default.Info else Icons.Default.Info, "Tags anzeigen", modifier = Modifier.weight(1f)) { showPersistentTags = !showPersistentTags; showActionSheet = false } }
-                if (currentIsVideo) { Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp)); SelectionRow(Icons.Default.Star, "Anzeigemodus") { showVideoSettings = true; showActionSheet = false } }
-                Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp))
-                SelectionRow(Icons.Default.Info, "Frame speichern") {
-                    scope.launch(Dispatchers.IO) {
-                        try {
-                            val r = MediaMetadataRetriever()
-                            r.setDataSource(currentPath)
-                            val bmp = r.frameAtTime ?: return@launch
-                            r.release()
-                            val outFile = File(ctx.cacheDir, "frame_${System.currentTimeMillis()}.jpg")
-                            outFile.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 95, it) }
-                            bmp.recycle()
-                            withContext(Dispatchers.Main) { ctx.toast("Frame gespeichert: ${outFile.name}", Toast.LENGTH_SHORT) }
-                        } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", Toast.LENGTH_SHORT) } }
+                if (currentIsVideo) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth()) {
+                        SelectionRow(Icons.Default.Star, "Anzeigemodus", modifier = Modifier.weight(1f)) { showVideoSettings = true; showActionSheet = false }
+                        Spacer(Modifier.width(8.dp))
+                        SelectionRow(Icons.Default.Close, "Frame speichern", modifier = Modifier.weight(1f)) {
+                            scope.launch(Dispatchers.IO) {
+                                try {
+                                    val r = MediaMetadataRetriever(); r.setDataSource(currentPath)
+                                    val bmp = r.frameAtTime ?: return@launch; r.release()
+                                    val parentDir = File(currentPath).parentFile ?: ctx.cacheDir
+                                    val outFile = File(parentDir, "frame_${System.currentTimeMillis()}.jpg")
+                                    outFile.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 95, it) }; bmp.recycle()
+                                    withContext(Dispatchers.Main) { ctx.toast("Frame gespeichert: ${outFile.name}", Toast.LENGTH_SHORT) }
+                                } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", Toast.LENGTH_SHORT) } }
+                            }
+                            showActionSheet = false
+                        }
                     }
-                    showActionSheet = false
                 }
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp)) { SelectionRow(if (showPersistentTags) Icons.AutoMirrored.Filled.Label else Icons.AutoMirrored.Filled.Label, "Tags anzeigen", modifier = Modifier.weight(1f)) { showPersistentTags = !showPersistentTags; showActionSheet = false } }
                 Spacer(Modifier.height(16.dp))
             }
         }
