@@ -742,6 +742,14 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getString("last_viewed_path", "") ?: ""
         set(v) = prefs.edit().putString("last_viewed_path", v).apply()
 
+    var widgetRenameCount: Int
+        get() = prefs.getInt("widget_rename_count", 5)
+        set(v) = prefs.edit().putInt("widget_rename_count", v).apply()
+
+    var widgetRenamePrefix: String
+        get() = prefs.getString("widget_rename_prefix", "") ?: ""
+        set(v) = prefs.edit().putString("widget_rename_prefix", v).apply()
+
     var tagHierarchy: MutableMap<String, String>
         get() {
             val json = prefs.getString(TAG_HIERARCHY, "{}") ?: "{}"

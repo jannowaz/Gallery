@@ -109,12 +109,29 @@ class MyWidgetProvider : AppWidgetProvider() {
                 }
 
                 setupAppOpenIntent(context, views, R.id.widget_holder, it)
-
-                try {
-                    appWidgetManager.updateAppWidget(it.widgetId, views)
-                } catch (ignored: Exception) {
-                }
+                setupRenameIntent(context, views, R.id.widget_rename_btn, it.widgetId)
             }
+        }
+    }
+
+    private fun setupRenameIntent(context: Context, views: RemoteViews, id: Int, widgetId: Int) {
+        val config = context.config
+        val count = config.widgetRenameCount.coerceIn(1, 50)
+        val prefix = config.widgetRenamePrefix.ifBlank { "IMG" }
+        val intent = Intent(context, MyWidgetProvider::class.java).apply {
+            action = ACTION_RENAME
+            putExtra(EXTRA_COUNT, count)
+            putExtra(EXTRA_PREFIX, prefix)
+        }
+        val pi = PendingIntent.getBroadcast(context, widgetId + 1000, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        views.setOnClickPendingIntent(id, pi)
+
+        // Update text to show what will be renamed
+        val media = context.mediaDB.getNewestMedia(count)
+        if (media.isNotEmpty()) {
+            val first = java.io.File(media.first().path).name
+            val last = java.io.File(media.last().path).name
+            views.setTextViewText(R.id.widget_rename_btn, "$prefix → $first … $last")
         }
     }
 

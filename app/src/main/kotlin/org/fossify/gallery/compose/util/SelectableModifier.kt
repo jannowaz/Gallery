@@ -59,7 +59,7 @@ fun rememberSelectionDragState(): SelectionDragState {
 fun Modifier.selectableItem(
     isSelectionMode: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onSwipeToSelect: () -> Unit = {},
 ): Modifier = composed {
     val view = LocalView.current
@@ -69,10 +69,7 @@ fun Modifier.selectableItem(
             if (isSelectionMode) onClick()
             else onClick()
         },
-        onLongClick = {
-            onLongClick()
-            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        },
+        onLongClick = null, // Let grid-level drag gesture handle long press
     )
 }
 
