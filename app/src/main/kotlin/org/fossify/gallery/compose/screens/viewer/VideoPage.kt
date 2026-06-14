@@ -93,6 +93,7 @@ fun VideoPage(
     val speeds = listOf(0.5f, 1f, 1.5f, 2f, 3f)
     val autoHideMs = ctx.config.viewerAutoHideMs
     var backgroundAudio by remember { mutableStateOf(false) }
+    var isMuted by remember { mutableStateOf(false) }
     var trimMode by remember { mutableStateOf(false) }
     var trimStartMs by remember { mutableFloatStateOf(0f) }
     var trimEndMs by remember { mutableFloatStateOf(-1f) }
@@ -186,12 +187,9 @@ fun VideoPage(
                     TextButton(onClick = { playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed) }, modifier = Modifier.size(48.dp)) {
                         Text("${playbackSpeed}x", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                     }
-                    TextButton(onClick = {
-                        backgroundAudio = !backgroundAudio; onBackgroundAudioChange(backgroundAudio)
-                    }, modifier = Modifier.size(48.dp)) { Text(if (backgroundAudio) "🎧" else "📢", style = MaterialTheme.typography.labelSmall) }
-                    TextButton(onClick = { trimMode = !trimMode; if (trimMode && trimEndMs < 0f) trimEndMs = player.duration.toFloat() }, modifier = Modifier.size(48.dp)) {
-                        Text(if (trimMode) "✂" else "⚡", style = MaterialTheme.typography.labelSmall, color = Color.White)
-                    }
+                    TextButton(onClick = { backgroundAudio = !backgroundAudio; onBackgroundAudioChange(backgroundAudio) }, modifier = Modifier.size(48.dp)) { Text(if (backgroundAudio) "🎧" else "📢", style = MaterialTheme.typography.labelSmall) }
+                    TextButton(onClick = { isMuted = !isMuted; player.volume = if (isMuted) 0f else 1f }, modifier = Modifier.size(48.dp)) { Text(if (isMuted) "🔇" else "🔊", style = MaterialTheme.typography.labelSmall) }
+                    TextButton(onClick = { trimMode = !trimMode; if (trimMode && trimEndMs < 0f) trimEndMs = player.duration.toFloat() }, modifier = Modifier.size(48.dp)) { Text(if (trimMode) "✂" else "⚡", style = MaterialTheme.typography.labelSmall, color = Color.White) }
                 }
 
                 if (player.duration > 0) {

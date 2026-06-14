@@ -105,6 +105,9 @@ import org.fossify.gallery.extensions.deleteMediumWithPath
 import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.openEditor
 import org.fossify.gallery.helpers.MediaRepository
+import org.fossify.gallery.helpers.UndoAction
+import org.fossify.gallery.helpers.UndoManager
+import org.fossify.gallery.helpers.UndoType
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import java.io.File
 
@@ -154,12 +157,14 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     var immersiveMode by remember { mutableStateOf(false) }
     var backgroundAudio by remember { mutableStateOf(false) }
     var showExif by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = showActionSheet || showExif || showVideoSettings || showTagsDialog || showFolderPicker) {
+    BackHandler(enabled = showActionSheet || showExif || showDeleteConfirm || showVideoSettings || showTagsDialog || showFolderPicker) {
         when {
             showFolderPicker -> showFolderPicker = false
             showTagsDialog -> showTagsDialog = false
             showVideoSettings -> showVideoSettings = false
+            showDeleteConfirm -> showDeleteConfirm = false
             showExif -> showExif = false
             showActionSheet -> showActionSheet = false
         }
@@ -271,7 +276,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                 Row(Modifier.fillMaxWidth()) {
                     SelectionRow(Icons.AutoMirrored.Filled.DriveFileMove, "Verschieben", modifier = Modifier.weight(1f)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false }
                     Spacer(Modifier.width(8.dp))
-                    SelectionRow(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f)) { scope.launch(Dispatchers.IO) { repo.moveToRecycleBin(currentPath) }; showActionSheet = false; closeWithAnimation() }
+                    SelectionRow(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f)) { showDeleteConfirm = true; showActionSheet = false }
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth()) {
@@ -326,6 +331,23 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
 
     if (showFolderPicker) {
         FolderPickerSheet(isMoveOperation = pendingFolderPickerIsMove, sourcePaths = listOf(currentPath), onDismiss = { showFolderPicker = false })
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Löschen") },
+            text = { Text("\"${File(currentPath).name}\" in den Papierkorb verschieben?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    scope.launch(Dispatchers.IO) { repo.moveToRecycleBin(currentPath) }
+                    UndoManager.push(UndoAction(paths = setOf(currentPath), type = UndoType.DELETE))
+                    closeWithAnimation()
+                }) { Text("Löschen", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Abbrechen") } }
+        )
     }
 }
 
