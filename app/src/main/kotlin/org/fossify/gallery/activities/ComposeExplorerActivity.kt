@@ -13,6 +13,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -560,7 +563,8 @@ private fun MainTabContent(
     scope: kotlinx.coroutines.CoroutineScope,
     navController: NavHostController,
 ) {
-    when (state.selectedTab) {
+    Crossfade(targetState = state.selectedTab, animationSpec = tween(200)) { tab ->
+    when (tab) {
         0 -> MediaScreen(
             viewSettings = tabSettings.media,
             ratingFilter = state.activeRatingFilter,
@@ -631,6 +635,7 @@ private fun MainTabContent(
             },
         )
         4 -> FavoritesScreen(viewSettings = tabSettings.favorites, onNavigateToViewer = { paths, startIndex -> navController.navigate(Viewer(paths, startIndex)) })
+    }
     }
 }
 

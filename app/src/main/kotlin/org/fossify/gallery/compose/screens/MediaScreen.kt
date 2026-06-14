@@ -234,6 +234,7 @@ fun MediaScreen(
                     if (hasFilter) FilterBreadcrumbs(ratingFilter,activeTagName,activePathName,activeCollectionName,displayMedia.size,onClearRatingFilter,onClearTagFilter,onClearPathFilter,onClearFilter)
                     // Quick-tag bar
                     val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
+                    AnimatedVisibility(visible = quickTags.isNotEmpty() && !hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
                     if (quickTags.isNotEmpty() && !hasSelection) {
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             quickTags.forEach { tag ->
@@ -254,6 +255,7 @@ fun MediaScreen(
                             }
                         }
                     }
+                    }  // AnimatedVisibility close
                     val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
                     val gridState = rememberLazyGridState()
                     LaunchedEffect(scrollToPath) {
