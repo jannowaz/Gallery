@@ -212,8 +212,8 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
             }
         }
     }) {
-        HorizontalPager(state = pagerState, userScrollEnabled = !currentIsVideo, modifier = Modifier.fillMaxSize().offset(y = offsetY.dp)
-            .pointerInput(Unit) { detectVerticalDragGestures(onDragEnd = { if (kotlin.math.abs(offsetY) > size.height / 4f) closeWithAnimation() else offsetY = 0f }, onVerticalDrag = { _, drag -> if (drag < -20) { showActionSheet = true; offsetY = 0f } else offsetY = (offsetY + drag).coerceAtLeast(0f) }) }
+        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize().offset(y = offsetY.dp)
+            .pointerInput(Unit) { detectVerticalDragGestures(onDragEnd = { if (kotlin.math.abs(offsetY) > size.height / 4f) closeWithAnimation() else offsetY = 0f }, onVerticalDrag = { _, drag -> if (drag < -20) { showActionSheet = true; offsetY = 0f } else offsetY = (offsetY + drag).coerceIn(-size.height.toFloat() / 4f, size.height.toFloat() / 4f) }) }
             .pointerInput(Unit) { detectTapGestures(onTap = { val p = paths.getOrNull(pagerState.currentPage) ?: ""; if (isVideo(p)) showUI = !showUI else { showActionSheet = true; offsetY = 0f } }) }
         ) { page ->
             val path = paths.getOrNull(page) ?: ""

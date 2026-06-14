@@ -126,12 +126,11 @@ fun ViewerScreen(
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         HorizontalPager(
             state = pagerState,
-            userScrollEnabled = !currentIsVideo,
             modifier = Modifier.fillMaxSize().offset(y = offsetY.dp)
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
                         onDragEnd = { if (kotlin.math.abs(offsetY) > size.height / 4f) onClose() else offsetY = 0f },
-                        onVerticalDrag = { _, drag -> if (drag < -20) { showActionSheet = true; offsetY = 0f } else offsetY = (offsetY + drag).coerceAtLeast(-size.height.toFloat() / 4f) }
+                        onVerticalDrag = { _, drag -> if (drag < -20) { showActionSheet = true; offsetY = 0f } else offsetY = (offsetY + drag).coerceIn(-size.height.toFloat() / 4f, size.height.toFloat() / 4f) }
                     )
                 }
                 .pointerInput(Unit) {

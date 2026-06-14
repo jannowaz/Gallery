@@ -10,8 +10,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -92,16 +90,10 @@ fun VideoPage(
     var playbackSpeed by remember { mutableFloatStateOf(1f) }
     val speeds = listOf(0.5f, 1f, 1.5f, 2f, 3f)
     val autoHideMs = ctx.config.viewerAutoHideMs
-    var seekTimeMs by remember { mutableFloatStateOf(0f) }
-    var isSeeking by remember { mutableStateOf(false) }
-    var seekBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var backgroundAudio by remember { mutableStateOf(false) }
-    var brightness by remember { mutableFloatStateOf(-1f) }
-    var volume by remember { mutableFloatStateOf(-1f) }
     var trimMode by remember { mutableStateOf(false) }
     var trimStartMs by remember { mutableFloatStateOf(0f) }
     var trimEndMs by remember { mutableFloatStateOf(-1f) }
-    val window = (ctx as? android.app.Activity)?.window
     val trimScope = rememberCoroutineScope()
 
     val retriever = remember { MediaMetadataRetriever() }
@@ -188,53 +180,6 @@ fun VideoPage(
                     }
                     onScalingModeChange(next)
                     scale = 1f; offsetX = 0f; offsetY = 0f
-                }
-            )
-        }.pointerInput(player.duration) {
-            if (player.duration <= 0) return@pointerInput
-            detectHorizontalDragGestures(
-                onDragStart = {
-                    isSeeking = true; showControls = true
-                    seekBitmap = try { retriever.getFrameAtTime(player.currentPosition * 1000, MediaMetadataRetriever.OPTION_CLOSEST) } catch (_: Exception) { null }
-                },
-                onHorizontalDrag = { _, dragAmount ->
-                    val fraction = dragAmount / (size.width * 0.5f)
-                    val deltaMs = (player.duration * fraction).toLong()
-                    seekTimeMs = (player.currentPosition + deltaMs).toFloat().coerceIn(0f, player.duration.toFloat())
-                    seekBitmap = try { retriever.getFrameAtTime(seekTimeMs.toLong() * 1000, MediaMetadataRetriever.OPTION_CLOSEST) } catch (_: Exception) { null }
-                },
-                onDragEnd = {
-                    isSeeking = false
-                    player.seekTo(seekTimeMs.toLong())
-                },
-                onDragCancel = { isSeeking = false }
-            )
-        }.pointerInput(Unit) {
-            detectVerticalDragGestures(
-                onVerticalDrag = { change, dragAmount ->
-                    if (scale > 1f) return@detectVerticalDragGestures
-                    val isLeftHalf = change.position.x < size.width / 2f
-                    val fraction = -dragAmount / size.height
-                    if (isLeftHalf) {
-                        brightness = ((brightness.coerceAtLeast(0f) + fraction).coerceIn(0f, 1f))
-                        window?.let {
-                            val lp = it.attributes
-                            lp.screenBrightness = brightness
-                            it.attributes = lp
-                        }
-                    } else {
-                        val audioManager = ctx.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager
-                        val maxVol = audioManager?.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC) ?: 15
-                        val curVol = audioManager?.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) ?: 0
-                        val newVol = (curVol + (fraction * maxVol).toInt()).coerceIn(0, maxVol)
-                        audioManager?.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, newVol, 0)
-                        volume = newVol.toFloat() / maxVol.toFloat()
-                    }
-                    showControls = false
-                },
-                onDragEnd = {
-                    println("Vertical drag ended")
-                    brightness = -1f; volume = -1f
                 }
             )
         })
@@ -333,40 +278,6 @@ fun VideoPage(
             }
         }
 
-        // Seek preview with frame thumbnail
-        AnimatedVisibility(visible = isSeeking, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp), enter = fadeIn(), exit = fadeOut()) {
-            Surface(
-                modifier = Modifier.size(width = 180.dp, height = 120.dp),
-                shape = RoundedCornerShape(8.dp),
-                color = Color.Black.copy(alpha = 0.85f),
-            ) {
-                Box {
-                    seekBitmap?.let { bmp ->
-                        Image(bitmap = bmp.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                    }
-                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)), contentAlignment = Alignment.Center) {
-                        Text(
-                            "%02d:%02d".format((seekTimeMs / 1000).toInt() / 60, (seekTimeMs / 1000).toInt() % 60),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                }
-            }
-        }
-
-        // Brightness / Volume feedback overlay
-        val showBrightnessVol = brightness >= 0f || volume >= 0f
-        AnimatedVisibility(visible = showBrightnessVol, modifier = Modifier.align(Alignment.Center), enter = fadeIn(), exit = fadeOut()) {
-            Surface(shape = RoundedCornerShape(12.dp), color = Color.Black.copy(alpha = 0.7f)) {
-                if (brightness >= 0f) {
-                    Text("☀ ${(brightness * 100).toInt()}%", modifier = Modifier.padding(16.dp), color = Color.White, style = MaterialTheme.typography.bodyLarge)
-                } else if (volume >= 0f) {
-                    Text("🔊 ${(volume * 100).toInt()}%", modifier = Modifier.padding(16.dp), color = Color.White, style = MaterialTheme.typography.bodyLarge)
-                }
-            }
-        }
                     }
                     TextButton(
                         onClick = {
