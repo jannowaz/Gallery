@@ -144,8 +144,8 @@ fun MediaScreen(
 ) {
     val ctx = LocalContext.current
     val viewModel: MediaViewModel = viewModel()
-    LaunchedEffect(refreshTrigger) { if (refreshTrigger > 0) viewModel.refresh() }
     val state by viewModel.state.collectAsState()
+    LaunchedEffect(refreshTrigger) { if (refreshTrigger > 0) { if (state.allMedia.isNotEmpty()) viewModel.silentRefresh() else viewModel.refresh() } }
     val repo = LocalMediaRepository.current
     var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     val dragSelection = rememberSelectionDragState()
@@ -287,12 +287,12 @@ fun MediaScreen(
                         item(span = { GridItemSpan(maxLineSpan) }) { MonthHeader(label = label, count = groupItems.size) }
                         items(groupItems.size, key = { groupItems[it].path }, contentType = { groupItems[it].type }) { idx ->
                             val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
-                            val isSelected = remember(m.path, selectedPaths) { m.path in selectedPaths }
+                            val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
                             val showDuration = remember { ctx.config.showVideoDurationOnThumbnails && m.videoDuration > 0 }
                             val durationText by remember(m.videoDuration) { derivedStateOf { if (showDuration) "%02d:%02d".format(m.videoDuration/60, m.videoDuration%60) else "" } }
-                            val hasTag = remember(m.path, taggedPaths) { m.path in taggedPaths }
-                            var lastPosUpdate by remember { mutableLongStateOf(0L) }
-                            Column(Modifier.padding(itemSpacing/2).background(mediaCardColor,cornerShape).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt());val now=System.currentTimeMillis();if(now-lastPosUpdate>200){lastPosUpdate=now;dragSelection.registerItemBounds(m.path,androidx.compose.ui.geometry.Rect(p,androidx.compose.ui.geometry.Size(s.width.toFloat(),s.height.toFloat())))}}) {
+                            val hasTag by remember(m.path) { derivedStateOf { m.path in taggedPaths } }
+                            var lastBoundsUpdate by remember { mutableLongStateOf(0L) }
+                            Column(Modifier.padding(itemSpacing/2).background(mediaCardColor,cornerShape).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt());val now=System.currentTimeMillis();if(now-lastBoundsUpdate>300){lastBoundsUpdate=now;dragSelection.registerItemBounds(m.path,androidx.compose.ui.geometry.Rect(p,androidx.compose.ui.geometry.Size(s.width.toFloat(),s.height.toFloat())))}}) {
                                 Box(Modifier.aspectRatio(1f).selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewer(originalIdx)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path})) {
                                     if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop) else GalleryImage(path=m.path,contentDescription=m.name,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop,placeholderIconSize=16.dp)
                                     // Stars (bottom-left, compact)
@@ -326,9 +326,9 @@ fun MediaScreen(
                         stickyHeader { MonthHeader(label = label, count = groupItems.size) }
                         items(groupItems.size, key = { groupItems[it].path }, contentType = { groupItems[it].type }) { idx ->
                             val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
-                            val isSelected = remember(m.path, selectedPaths) { m.path in selectedPaths }
-                            var lastPosUpdate by remember { mutableLongStateOf(0L) }
-                            Surface(modifier = Modifier.fillMaxWidth().background(mediaCardColor,RoundedCornerShape(8.dp)).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt());val now=System.currentTimeMillis();if(now-lastPosUpdate>200){lastPosUpdate=now;dragSelection.registerItemBounds(m.path,androidx.compose.ui.geometry.Rect(p,androidx.compose.ui.geometry.Size(s.width.toFloat(),s.height.toFloat())))}}.selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewer(originalIdx)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path}),color=Color.Transparent) {
+                            val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
+                            var lastBoundsUpdate by remember { mutableLongStateOf(0L) }
+                            Surface(modifier = Modifier.fillMaxWidth().background(mediaCardColor,RoundedCornerShape(8.dp)).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt());val now=System.currentTimeMillis();if(now-lastBoundsUpdate>300){lastBoundsUpdate=now;dragSelection.registerItemBounds(m.path,androidx.compose.ui.geometry.Rect(p,androidx.compose.ui.geometry.Size(s.width.toFloat(),s.height.toFloat())))}}.selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewer(originalIdx)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path}),color=Color.Transparent) {
                                 Row(Modifier.padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
                                     Box(Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))){if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop) else GalleryImage(path=m.path,contentDescription=m.name,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop,placeholderIconSize=18.dp)}
                                     Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)){Text(m.name,style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis);Text(formatFileSize(m.size),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}

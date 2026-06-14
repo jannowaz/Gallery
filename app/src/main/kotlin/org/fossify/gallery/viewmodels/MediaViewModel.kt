@@ -56,6 +56,19 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         doLoad()
     }
 
+    fun silentRefresh() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val ctx = getApplication<Application>()
+                val media = scanDirectories(ctx)
+                cachedAllMedia = media
+                currentPage = 0
+                val firstPage = getPage(media, 0)
+                _state.update { it.copy(allMedia = firstPage, hasMore = media.size > pageSize) }
+            } catch (_: Exception) { }
+        }
+    }
+
     fun loadMore() {
         if (_state.value.isLoadingMore || !_state.value.hasMore) return
         currentPage++
