@@ -117,7 +117,11 @@ fun VideoPage(
     }
     val bgAudio by rememberUpdatedState(backgroundAudio)
     DisposableEffect(player) {
-        onDispose { if (!bgAudio) player.release() }
+        onDispose {
+            player.playWhenReady = false
+            player.pause()
+            if (!bgAudio) player.release()
+        }
     }
 
     val listener = remember { object : Player.Listener { override fun onIsPlayingChanged(p: Boolean) { isPlaying = p } } }
