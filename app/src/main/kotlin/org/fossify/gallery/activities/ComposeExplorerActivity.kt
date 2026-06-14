@@ -730,311 +730,190 @@ private fun OmniSearchSheet(
     var allTags by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
     var isSearching by remember { mutableStateOf(false) }
     var textMatchPaths by remember { mutableStateOf<Set<String>?>(null) }
-    var searchTrigger by remember { mutableIntStateOf(0) }
-    var showTags by remember { mutableStateOf(false) }
     var folderResults by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
-    val searchCache = remember { mutableMapOf<String, Set<String>>() }
     var tagResults by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
-    var fileTypeFilter by remember { mutableIntStateOf(0) } // 0=Alle, 1=Bilder, 2=Videos
-    var dateFilter by remember { mutableIntStateOf(0) }     // 0=Alle, 1=Heute, 2=7 Tage, 3=30 Tage
+    var fileTypeFilter by remember { mutableIntStateOf(0) }
+    var dateFilter by remember { mutableIntStateOf(0) }
+    var showFilters by remember { mutableStateOf(false) }
+    val searchCache = remember { mutableMapOf<String, Set<String>>() }
 
-    // Load tags on demand (only when user clicks "Tags laden") - catch ALL errors
-    LaunchedEffect(showTags) {
-        if (!showTags) return@LaunchedEffect
-        try {
-            val cached = withContext(Dispatchers.IO) {
-                try { ctx.mediaCacheDB.getAllTagged() } catch (e: Exception) { emptyList() }
-            }
-            val tags = mutableMapOf<String, MutableSet<String>>()
-            cached.forEach { mc ->
-                kotlin.runCatching {
-                    mc.tags.split(",").filter { it.isNotBlank() }.forEach { t ->
-                        tags.getOrPut(t.trim()) { mutableSetOf() }.add(mc.fullPath)
-                    }
-                }
-            }
-            allTags = if (tags.isEmpty()) emptyMap() else tags
-        } catch (e: Throwable) {
-            android.util.Log.e("OmniSearch", "Tag load failed", e)
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            try {
+                val cached = ctx.mediaCacheDB.getAllTagged()
+                val tags = mutableMapOf<String, MutableSet<String>>()
+                cached.forEach { mc -> mc.tags.split(",").filter { it.isNotBlank() }.forEach { t -> tags.getOrPut(t.trim()) { mutableSetOf() }.add(mc.fullPath) } }
+                withContext(Dispatchers.Main) { allTags = tags.takeIf { it.isNotEmpty() } ?: emptyMap() }
+            } catch (_: Exception) { }
         }
     }
 
-    fun triggerSearch() {
-        searchTrigger++
-    }
-
-    // Text search: fuzzy match on filename + full path (manual trigger + live debounce)
-    LaunchedEffect(searchTrigger) {
-        if (query.length < 2) { textMatchPaths = null; return@LaunchedEffect }
+    fun performSearch() {
+        if (query.length < 2) { textMatchPaths = null; return }
         isSearching = true
-        // Yield so the spinner can render
-        kotlinx.coroutines.delay(50)
         val qParts = query.lowercase().split(" ").filter { it.isNotBlank() }
-        if (qParts.isEmpty()) { textMatchPaths = null; isSearching = false; return@LaunchedEffect }
-
-        withContext(Dispatchers.IO) {
+        if (qParts.isEmpty()) { textMatchPaths = null; isSearching = false; return }
+        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
             val cacheKey = "${query}_${fileTypeFilter}_${dateFilter}"
-            searchCache[cacheKey]?.let { textMatchPaths = it; return@withContext }
-            if (searchCache.size > 50) searchCache.clear()
-
+            searchCache[cacheKey]?.let { textMatchPaths = it; isSearching = false; return@launch }
+            if (searchCache.size > 30) searchCache.clear()
             val matched = mutableSetOf<String>()
             val folders = mutableListOf<Pair<String, String>>()
             val tags = mutableListOf<Pair<String, Int>>()
-
-            // 1. Search media via MediaStore (with file type + date filters)
             try {
                 val uri = android.provider.MediaStore.Files.getContentUri("external")
-                val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA, android.provider.MediaStore.MediaColumns.DISPLAY_NAME, android.provider.MediaStore.MediaColumns.DATE_MODIFIED)
-                val selParts = mutableListOf<String>()
-                val argsList = mutableListOf<String>()
-                when (fileTypeFilter) {
-                    1 -> { selParts.add("${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"); argsList.add(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString()) }
-                    2 -> { selParts.add("${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"); argsList.add(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()) }
-                    else -> { selParts.add("(${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?)"); argsList.addAll(arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())) }
-                }
-                when (dateFilter) {
-                    1 -> { val t = System.currentTimeMillis() / 1000 - (System.currentTimeMillis() % 86400000) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) }
-                    2 -> { val t = (System.currentTimeMillis() - 7 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) }
-                    3 -> { val t = (System.currentTimeMillis() - 30 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) }
-                    4 -> { val t = (System.currentTimeMillis() - 365 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) }
-                }
+                val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA, android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                val selParts = mutableListOf<String>(); val argsList = mutableListOf<String>()
+                when (fileTypeFilter) { 1 -> { selParts.add("${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"); argsList.add(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString()) } 2 -> { selParts.add("${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"); argsList.add(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()) } else -> { selParts.add("(${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?)"); argsList.addAll(arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())) } }
+                when (dateFilter) { 1 -> { val t = (System.currentTimeMillis() - 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } 2 -> { val t = (System.currentTimeMillis() - 7 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } 3 -> { val t = (System.currentTimeMillis() - 30 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } 4 -> { val t = (System.currentTimeMillis() - 365 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } }
                 ctx.contentResolver.query(uri, proj, selParts.joinToString(" AND "), argsList.toTypedArray(), null)?.use { c ->
-                    val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
-                    val nameCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
-                    val dateCol = if (dateFilter > 0) c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATE_MODIFIED) else -1
-                    while (c.moveToNext()) {
-                        val path = c.getString(dataCol) ?: continue
-                        val name = c.getString(nameCol) ?: ""
-                        val lowerFull = "$name ${path.lowercase()}"
-                        if (qParts.all { it in lowerFull }) matched.add(path)
-                    }
+                    val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA); val nameCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                    while (c.moveToNext()) { val path = c.getString(dataCol) ?: continue; val name = c.getString(nameCol) ?: ""; if (qParts.all { it in "${name} ${path}".lowercase() }) matched.add(path) }
                 }
             } catch (_: Exception) { }
-
-            // 2. Search folders (scan known roots 1 level deep)
-            try {
-                val roots = listOf(
-                    storagePath, "/storage/emulated/0/DCIM", "/storage/emulated/0/Download",
-                    "/storage/emulated/0/Pictures", "/storage/emulated/0/Movies"
-                ).distinct().filter { java.io.File(it).isDirectory }
-                roots.forEach { root ->
-                    java.io.File(root).listFiles()?.forEach { f ->
-                        if (f.isDirectory && !f.name.startsWith(".")) {
-                            if (qParts.all { it in f.name.lowercase() }) {
-                                folders.add(f.name to f.absolutePath)
-                            }
-                        }
-                    }
-                }
-            } catch (_: Exception) { }
-
-            // 3. Search tags (from already-loaded allTags)
-            if (allTags.isNotEmpty()) {
-                qParts.forEach { qp ->
-                    allTags.entries.forEach { (tag, paths) ->
-                        if (tag.lowercase().contains(qp) && tags.none { it.first == tag }) {
-                            tags.add(tag to paths.size)
-                        }
-                    }
-                }
-            }
-
-            textMatchPaths = matched
-            if (matched.isNotEmpty()) searchCache[cacheKey] = matched
-            folderResults = folders.sortedBy { it.first }.take(20)
-            tagResults = tags.sortedByDescending { it.second }.take(20)
-            isSearching = false
+            try { listOf(storagePath, "/storage/emulated/0/DCIM", "/storage/emulated/0/Pictures", "/storage/emulated/0/Download").distinct().filter { java.io.File(it).isDirectory }.forEach { r -> java.io.File(r).listFiles()?.forEach { f -> if (f.isDirectory && !f.name.startsWith(".") && qParts.all { it in f.name.lowercase() }) folders.add(f.name to f.absolutePath) } } } catch (_: Exception) { }
+            if (allTags.isNotEmpty()) qParts.forEach { qp -> allTags.entries.forEach { (tag, paths) -> if (tag.lowercase().contains(qp) && tags.none { it.first == tag }) tags.add(tag to paths.size) } }
+            withContext(Dispatchers.Main) { textMatchPaths = matched.takeIf { it.isNotEmpty() }?.also { searchCache[cacheKey] = it }; folderResults = folders.sortedBy { it.first }.take(15); tagResults = tags.sortedByDescending { it.second }.take(15); isSearching = false }
         }
     }
 
-    // Live debounced search (300ms after last keystroke)
-    LaunchedEffect(query) {
-        if (query.length < 2) { textMatchPaths = null; return@LaunchedEffect }
-        kotlinx.coroutines.delay(400)
-        triggerSearch()
-    }
+    LaunchedEffect(query) { kotlinx.coroutines.delay(300); performSearch() }
+    LaunchedEffect(fileTypeFilter, dateFilter) { if (query.length >= 2) performSearch() }
 
-    var combinedPaths by remember { mutableStateOf<Set<String>?>(null) }
-
-    // Compute combined filter when criteria change (NOT on every keystroke)
     LaunchedEffect(ratingFilter, selectedTags, textMatchPaths) {
         withContext(Dispatchers.IO) {
             val sets = mutableListOf<Set<String>>()
             if (textMatchPaths != null) sets.add(textMatchPaths!!)
-            if (ratingFilter > 0) {
-                try { sets.add(ctx.mediaDB.getByMinRating(ratingFilter).map { it.path }.toSet()) } catch (_: Exception) { }
-            }
-            if (selectedTags.isNotEmpty()) {
-                val tagPaths = allTags.filterKeys { it in selectedTags }.values.flatten().toSet()
-                sets.add(tagPaths)
-            }
-            val result = when {
-                sets.isEmpty() -> null
-                sets.size == 1 -> sets.first()
-                else -> sets.reduce { a, b -> a.intersect(b) }
-            }
+            if (ratingFilter > 0) { try { sets.add(ctx.mediaDB.getByMinRating(ratingFilter).map { it.path }.toSet()) } catch (_: Exception) { } }
+            if (selectedTags.isNotEmpty()) sets.add(allTags.filterKeys { it in selectedTags }.values.flatten().toSet())
+            val result = when { sets.isEmpty() -> null; sets.size == 1 -> sets.first(); else -> sets.reduce { a, b -> a.intersect(b) } }
             withContext(Dispatchers.Main) {
-                combinedPaths = result
                 onFilterChanged(result, ratingFilter, selectedTags.let { if (it.isEmpty()) null else allTags.filterKeys { t -> t in it }.values.flatten().toSet() }, selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", "), fileTypeFilter, dateFilter)
             }
         }
     }
 
+    val hasAnyFilter = ratingFilter > 0 || selectedTags.isNotEmpty() || fileTypeFilter > 0 || dateFilter > 0
+    val hasResults = textMatchPaths != null && textMatchPaths!!.isNotEmpty()
+    val mc = textMatchPaths?.size ?: 0
+
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false), containerColor = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).heightIn(max = 640.dp)) {
-            // Search text field (manual trigger via button)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).heightIn(max = 560.dp)) {
+            // Search bar
             OutlinedTextField(value = query, onValueChange = { query = it; textMatchPaths = null },
-                placeholder = { Text("Ordner-/Dateiname") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                leadingIcon = { Icon(Icons.Default.Search, "Suchen") },
+                placeholder = { Text("Dateiname, Ordner oder Tag\u2026") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                leadingIcon = { Icon(Icons.Default.Search, "Suchen", modifier = Modifier.size(20.dp)) },
                 trailingIcon = {
-                    if (isSearching) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    else if (query.length >= 2) IconButton(onClick = { triggerSearch() }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.KeyboardArrowRight, "Suchen starten", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (query.isNotEmpty()) IconButton(onClick = { query = ""; textMatchPaths = null; folderResults = emptyList(); tagResults = emptyList() }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, "Leeren", Modifier.size(16.dp)) }
+                        if (isSearching) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     }
                 },
-                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { triggerSearch() }),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
-                colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
+                colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.1f)),
+                shape = RoundedCornerShape(12.dp),
             )
+
             Spacer(Modifier.height(6.dp))
 
-            // Rating filter
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                Text("Bewertung:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 4.dp))
-                IconButton(onClick = { ratingFilter = 0 }, modifier = Modifier.size(28.dp)) { Text("Alle", style = MaterialTheme.typography.labelSmall, color = if (ratingFilter == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
-                for (i in 1..5) {
-                    IconButton(onClick = { ratingFilter = if (ratingFilter == i) 0 else i }, modifier = Modifier.size(28.dp)) {
-                        Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, "$i", tint = if (i <= ratingFilter) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            // Filter toggle bar
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                Surface(onClick = { showFilters = !showFilters }, shape = RoundedCornerShape(12.dp), color = if (showFilters || hasAnyFilter) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
+                    Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Close, null, modifier = Modifier.size(14.dp), tint = if (showFilters || hasAnyFilter) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (hasAnyFilter) {
+                            val parts = mutableListOf<String>()
+                            if (ratingFilter > 0) parts.add("★$ratingFilter")
+                            if (selectedTags.isNotEmpty()) parts.add(selectedTags.joinToString(","))
+                            Text(parts.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1)
+                        } else Text("Filter", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                if (hasAnyFilter) {
+                    Spacer(Modifier.width(4.dp))
+                    Surface(onClick = { ratingFilter = 0; selectedTags = emptySet(); fileTypeFilter = 0; dateFilter = 0 }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.errorContainer) {
+                        Text("Zurücksetzen", Modifier.padding(horizontal = 8.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onErrorContainer)
                     }
                 }
             }
-            Spacer(Modifier.height(4.dp))
 
-            // File type + Date filter chips
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Typ:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                listOf("Alle" to 0, "Bilder" to 1, "Videos" to 2).forEach { (label, v) ->
-                    Surface(onClick = { fileTypeFilter = v }, shape = RoundedCornerShape(12.dp), color = if (fileTypeFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
-                        Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp), color = if (fileTypeFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
-                    }
+            // Expandable filter panel
+            if (showFilters) {
+                Spacer(Modifier.height(6.dp))
+                // Rating
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("★", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    for (i in 1..5) IconButton(onClick = { ratingFilter = if (ratingFilter == i) 0 else i }, modifier = Modifier.size(32.dp)) { Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, "$i", tint = if (i <= ratingFilter) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
+                    Spacer(Modifier.width(4.dp))
+                    listOf("Alles" to 0, "Bilder" to 1, "Videos" to 2).forEach { (l, v) -> Surface(onClick = { fileTypeFilter = v }, shape = RoundedCornerShape(10.dp), color = if (fileTypeFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(l, Modifier.padding(horizontal = 7.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = if (fileTypeFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface) } }
+                    Spacer(Modifier.width(4.dp))
+                    listOf("Alle" to 0, "Heute" to 1, "7d" to 2, "30d" to 3).forEach { (l, v) -> Surface(onClick = { dateFilter = v }, shape = RoundedCornerShape(10.dp), color = if (dateFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(l, Modifier.padding(horizontal = 7.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = if (dateFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface) } }
                 }
-                Spacer(Modifier.width(4.dp))
-                Text("Datum:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                listOf("Alle" to 0, "Heute" to 1, "7 Tage" to 2, "30 Tage" to 3, "Dieses Jahr" to 4).forEach { (label, v) ->
-                    Surface(onClick = { dateFilter = v }, shape = RoundedCornerShape(12.dp), color = if (dateFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
-                        Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp), color = if (dateFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
-                    }
-                }
-            }
-            Spacer(Modifier.height(4.dp))
-
-            // Tag chips (lazy-loaded on demand)
-            if (allTags.isNotEmpty()) {
-                Text("Tags:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    allTags.entries.sortedByDescending { it.value.size }.take(20).forEach { (tag, paths) ->
-                        val isSelected = tag in selectedTags
-                        Surface(
-                            onClick = { selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag },
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                        ) {
-                            Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(tag, style = MaterialTheme.typography.labelSmall, color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
-                                Spacer(Modifier.width(4.dp))
-                                Text("${paths.size}", style = MaterialTheme.typography.labelSmall, color = if (isSelected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant)
+                // Tags
+                if (allTags.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        allTags.entries.sortedByDescending { it.value.size }.take(15).forEach { (tag, _) ->
+                            val sel = tag in selectedTags
+                            Surface(onClick = { selectedTags = if (sel) selectedTags - tag else selectedTags + tag }, shape = RoundedCornerShape(12.dp), color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
+                                Text(tag, Modifier.padding(horizontal = 8.dp, vertical = 3.dp), style = MaterialTheme.typography.labelSmall, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
                             }
                         }
                     }
                 }
-                Spacer(Modifier.height(4.dp))
-            } else if (showTags && allTags.isEmpty()) {
-                Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                }
-                Spacer(Modifier.height(4.dp))
-            } else {
-                Surface(onClick = { showTags = true }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-                    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
-                        Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Tags laden", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
             }
 
-            // Filter summary
-            val activeCount = listOfNotNull(
-                textMatchPaths?.let { "Text" },
-                ratingFilter.takeIf { it > 0 }?.let { "★ $it+" },
-                selectedTags.takeIf { it.isNotEmpty() }?.let { "${it.size} Tag${if (it.size != 1) "s" else ""}" }
-            )
-            if (activeCount.isNotEmpty()) {
-                Spacer(Modifier.height(4.dp))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Filter: ${activeCount.joinToString(" + ")}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    val resultCount = combinedPaths?.size
-                    if (resultCount != null) {
-                        Text("$resultCount Ergebnisse", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    IconButton(onClick = { query = ""; ratingFilter = 0; selectedTags = emptySet() }, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Close, "Filter zurücksetzen", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+            // Results
+            if (isSearching) {
+                Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
+            } else if (query.length >= 2 && !hasResults && folderResults.isEmpty() && tagResults.isEmpty()) {
+                Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+                    Text("Keine Ergebnisse", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Spacer(Modifier.height(4.dp))
-            }
-
-            // Search results (grouped)
-            val hasResults = (textMatchPaths != null) || folderResults.isNotEmpty() || tagResults.isNotEmpty()
-            if (hasResults && !isSearching) {
-                Spacer(Modifier.height(8.dp))
-                HorizontalDivider()
-                Spacer(Modifier.height(4.dp))
-                LazyColumn(Modifier.heightIn(max = 300.dp)) {
+            } else if (hasResults || folderResults.isNotEmpty() || tagResults.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp)); HorizontalDivider(); Spacer(Modifier.height(4.dp))
+                LazyColumn(Modifier.heightIn(max = 280.dp)) {
                     if (folderResults.isNotEmpty()) {
-                        item { Text("Ordner (${folderResults.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)) }
+                        item { Text("Ordner", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 4.dp)) }
                         items(folderResults.take(5), key = { it.second }) { (name, path) ->
-                            Surface(modifier = Modifier.fillMaxWidth().clickable {
-                                onNavigate(path)
-                            }, color = Color.Transparent, shape = RoundedCornerShape(8.dp)) {
-                                Row(Modifier.padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                    Icon(Icons.Default.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                            Surface(modifier = Modifier.fillMaxWidth().clickable { onNavigate(path) }, color = Color.Transparent, shape = RoundedCornerShape(8.dp)) {
+                                Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                                    Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                    Icon(Icons.Default.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                                 }
                             }
                         }
-                        if (folderResults.size > 5) {
-                            item { Text("+ ${folderResults.size - 5} weitere", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp)) }
-                        }
+                        if (folderResults.size > 5) item { Text("+${folderResults.size - 5} weitere", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp)) }
+                        item { Spacer(Modifier.height(8.dp)) }
                     }
                     if (tagResults.isNotEmpty()) {
-                        item { Text("Tags (${tagResults.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)) }
-                        items(tagResults.take(10), key = { it.first }) { (tag, cnt) ->
-                            Surface(modifier = Modifier.fillMaxWidth().clickable {
-                                onFilterChanged(null, 0, allTags[tag]?.toSet(), tag, 0, 0)
-                                onDismiss()
-                            }, color = Color.Transparent, shape = RoundedCornerShape(8.dp)) {
-                                Row(Modifier.padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(tag, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                                    Text("$cnt", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        item { Text("Tags", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(vertical = 4.dp)) }
+                        items(tagResults.take(8), key = { it.first }) { (tag, cnt) ->
+                            Surface(modifier = Modifier.fillMaxWidth().clickable { onFilterChanged(null, 0, allTags[tag]?.toSet(), tag, 0, 0); onDismiss() }, color = Color.Transparent, shape = RoundedCornerShape(8.dp)) {
+                                Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                                    Text(tag, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f)); Text("$cnt", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
+                        item { Spacer(Modifier.height(8.dp)) }
                     }
-                    if (textMatchPaths != null) {
-                        val mc = textMatchPaths!!.size
-                        item { Text("Medien ($mc)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)) }
+                    if (hasResults) {
+                        item { Text("Medien ($mc)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(vertical = 4.dp)) }
                     }
-                    item { Spacer(Modifier.height(8.dp)) }
+                }
+                Spacer(Modifier.height(4.dp))
+                if (hasResults || folderResults.isNotEmpty() || tagResults.isNotEmpty()) {
+                    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.Center) {
+                        Surface(onClick = {
+                            onFilterChanged(textMatchPaths, ratingFilter,
+                                selectedTags.let { if (it.isEmpty()) null else allTags.filterKeys { t -> t in it }.values.flatten().toSet() },
+                                selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", "), fileTypeFilter, dateFilter)
+                            onDismiss()
+                        }, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.primary) {
+                            Text("${mc + folderResults.size} Ergebnisse anzeigen", Modifier.padding(horizontal = 20.dp, vertical = 10.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)
+                        }
+                    }
                 }
             }
         }
