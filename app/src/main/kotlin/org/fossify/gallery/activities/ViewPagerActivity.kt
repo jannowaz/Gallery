@@ -210,6 +210,7 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
     private var mSlideshowMedia = mutableListOf<Medium>()
     private var mAreSlideShowMediaVisible = false
     private var mRandomSlideshowStopped = false
+    private var mAutoHideHandler: Handler? = null
 
     private var mIsOrientationLocked = false
 
@@ -260,6 +261,12 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
 
     private var isInfoHubVisible = false
 
+    private fun isCurrentFragmentZoomed(): Boolean {
+        val adapter = binding.viewPager.adapter as? MyPagerAdapter ?: return false
+        val fragment = adapter.getItem(binding.viewPager.currentItem)
+        return (fragment as? org.fossify.gallery.fragments.ViewPagerFragment)?.isZoomed() == true
+    }
+
     private fun setupSwipeToDismiss() {
         var startY = 0f
         var isDragging = false
@@ -281,7 +288,7 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
                 android.view.MotionEvent.ACTION_MOVE -> {
                     val deltaY = event.rawY - startY
                     mVelocityTracker?.addMovement(event)
-                    if (!isDragging && Math.abs(deltaY) > touchSlop) {
+                    if (!isDragging && Math.abs(deltaY) > touchSlop && !isCurrentFragmentZoomed()) {
                         isDragging = true
                     }
 
@@ -356,7 +363,8 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
         isInfoHubVisible = true
         loadExifData(medium)
         
-        val panel = findViewById<View>(R.id.info_panel_card)
+        val panel = findViewById<View>(R.id.info_panel_card) ?: return
+        if (panel == null) return
         panel.beVisible()
         panel.translationY = 1000f
         panel.animate().translationY(0f).setDuration(300).setInterpolator(DecelerateInterpolator()).start()
@@ -373,7 +381,7 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
 
     private fun hideInfoHub() {
         isInfoHubVisible = false
-        val panel = findViewById<View>(R.id.info_panel_card)
+        val panel = findViewById<View>(R.id.info_panel_card) ?: return
         panel.animate().translationY(1000f).setDuration(300).withEndAction { panel.beGone() }.start()
         
         binding.viewPager.animate().translationY(0f).scaleX(1f).scaleY(1f).setDuration(300).start()
@@ -390,7 +398,7 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
             findViewById<android.widget.TextView>(R.id.info_filename).text = medium.name
             findViewById<android.widget.TextView>(R.id.info_path).text = medium.path
             
-            val model = exif.getAttribute(ExifInterface.TAG_MODEL) ?: "Unbekannt"
+            val model = exif.getAttribute(ExifInterface.TAG_MODEL) ?: getString(R.string.unknown_exif)
             val make = exif.getAttribute(ExifInterface.TAG_MAKE) ?: ""
             findViewById<android.widget.TextView>(R.id.info_camera).text = if (make.isNotEmpty()) "$make $model" else model
             
@@ -408,12 +416,13 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
             
         } catch (e: Exception) {
             findViewById<android.widget.TextView>(R.id.info_filename).text = medium.name
-            findViewById<android.widget.TextView>(R.id.info_camera).text = "Keine EXIF-Daten"
+            findViewById<android.widget.TextView>(R.id.info_camera).text = getString(R.string.no_exif_data)
         }
     }
 
     override fun onResume() {
         super.onResume()
+        mRandomSlideshowStopped = false
         if (!hasPermission(getPermissionToRequest())) {
             finish()
             return
@@ -430,6 +439,7 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
         if (config.showRatingBar) {
             binding.ratingBar.ratingBarWrapper.beVisible()
             setupRatingStars()
+            adjustRatingBarForVideo()
         }
     }
 
@@ -440,6 +450,8 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
 
     override fun onDestroy() {
         super.onDestroy()
+        mAutoHideHandler?.removeCallbacksAndMessages(null)
+        mAutoHideHandler = null
         ColorModeHelper.resetColorMode(this)
 
         if (intent.extras?.containsKey(IS_VIEW_INTENT) == true) {
@@ -695,7 +707,8 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
 
         if (config.hideSystemUI) {
             binding.viewPager.onGlobalLayout {
-                Handler().postDelayed({
+                mAutoHideHandler = Handler()
+                mAutoHideHandler?.postDelayed({
                     fragmentClicked()
                 }, HIDE_SYSTEM_UI_DELAY)
             }
@@ -1274,7 +1287,24 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
             binding.ratingBar.ratingBarWrapper.beVisible()
             config.showRatingBar = true
             setupRatingStars()
+            adjustRatingBarForVideo()
         }
+    }
+
+    private fun adjustRatingBarForVideo() {
+        val isVideo = getCurrentMedium()?.isVideo() == true
+        val density = resources.displayMetrics.density
+        val params = binding.ratingBar.ratingBarWrapper.layoutParams as android.widget.RelativeLayout.LayoutParams
+        params.bottomMargin = if (isVideo && !mIsFullScreen) {
+            (220 * density).toInt()
+        } else if (isVideo) {
+            (100 * density).toInt()
+        } else if (mIsFullScreen) {
+            (24 * density).toInt()
+        } else {
+            (100 * density).toInt()
+        }
+        binding.ratingBar.ratingBarWrapper.layoutParams = params
     }
 
     private fun setupRatingStars() {
@@ -1328,7 +1358,6 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
             updateRating(medium.path, rating)
         }
         setupRatingStars()
-        navigateToNextItem()
     }
 
     private fun navigateToNextItem() {
@@ -1602,8 +1631,8 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
 
         if (refetchViewPagerPosition || mPos == -1) {
             mPos = getPositionInList(media)
-            if (mPos == -1) {
-                min(mPos, media.lastIndex)
+            if (mPos == -1 && media.isNotEmpty()) {
+                mPos = 0
             }
         }
 
@@ -1689,11 +1718,13 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
     override fun isFullScreen() = mIsFullScreen
 
     override fun goToPrevItem() {
+        if (binding.viewPager.currentItem <= 0) return
         binding.viewPager.setCurrentItem(binding.viewPager.currentItem - 1, false)
         checkOrientation()
     }
 
     override fun goToNextItem() {
+        if (binding.viewPager.currentItem >= (binding.viewPager.adapter?.count ?: 1) - 1) return
         binding.viewPager.setCurrentItem(binding.viewPager.currentItem + 1, false)
         checkOrientation()
     }
@@ -1751,13 +1782,7 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
                 binding.mediumViewerAppbar.beVisibleIf(newAlpha == 1f)
             }.start()
 
-            val ratingBarParams = binding.ratingBar.ratingBarWrapper.layoutParams as android.widget.RelativeLayout.LayoutParams
-            if (mIsFullScreen) {
-                ratingBarParams.bottomMargin = (24 * resources.displayMetrics.density).toInt()
-            } else {
-                ratingBarParams.bottomMargin = (100 * resources.displayMetrics.density).toInt()
-            }
-            binding.ratingBar.ratingBarWrapper.layoutParams = ratingBarParams
+            adjustRatingBarForVideo()
         }
     }
 
@@ -1791,6 +1816,7 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
             refreshMenuItems()
             if (binding.ratingBar.ratingBarWrapper.visibility == View.VISIBLE) {
                 setupRatingStars()
+                adjustRatingBarForVideo()
             }
             scheduleSwipe()
         }

@@ -229,7 +229,13 @@ class PickDirectoryDialog(
         }
 
         shownDirectories = dirs
-        val adapter = DirectoryAdapter(activity, dirs.clone() as ArrayList<Directory>, null, binding.directoriesGrid, true) {
+        val adapter = DirectoryAdapter(
+            activity = activity,
+            dirs = dirs.clone() as ArrayList<Directory>,
+            listener = null,
+            recyclerView = binding.directoriesGrid,
+            isPickIntent = true
+        ) {
             val clickedDir = it as Directory
             val path = clickedDir.path
             if (clickedDir.subfoldersCount == 1 || !activity.config.groupDirectSubfolders) {

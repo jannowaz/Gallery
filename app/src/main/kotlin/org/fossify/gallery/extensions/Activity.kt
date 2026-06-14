@@ -37,7 +37,7 @@ import org.fossify.commons.models.FileDirItem
 import org.fossify.gallery.BuildConfig
 import org.fossify.gallery.R
 import org.fossify.gallery.activities.MediaActivity
-import org.fossify.gallery.activities.SettingsActivity
+import org.fossify.gallery.activities.ComposeSettingsActivity
 import org.fossify.gallery.activities.SimpleActivity
 import org.fossify.gallery.activities.VideoPlayerActivity
 import org.fossify.gallery.dialogs.AllFilesPermissionDialog
@@ -108,7 +108,7 @@ fun Activity.launchCamera() {
 
 fun SimpleActivity.launchSettings() {
     hideKeyboard()
-    startActivity(Intent(applicationContext, SettingsActivity::class.java))
+    startActivity(Intent(applicationContext, ComposeSettingsActivity::class.java))
 }
 
 fun SimpleActivity.launchAbout() {

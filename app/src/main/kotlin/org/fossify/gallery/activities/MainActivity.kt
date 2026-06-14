@@ -479,7 +479,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         return if (binding.mainMenu.isSearchOpen) {
             binding.mainMenu.closeSearch(); true
         } else if (isExplorer2Active()) {
-            if (mOpenedSubfolders.size > 1) { mOpenedSubfolders.removeAt(mOpenedSubfolders.lastIndex); navigateExplorer2(mOpenedSubfolders.last()); true } else { true }
+            if (mOpenedSubfolders.size > 1) { mOpenedSubfolders.removeAt(mOpenedSubfolders.lastIndex); navigateExplorer2(mOpenedSubfolders.last()); true } else { false }
         } else if (config.groupDirectSubfolders) {
             if (mCurrentPathPrefix.isEmpty()) {
                 appLockManager.lock()
@@ -951,6 +951,13 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
         bottomNav.setOnItemReselectedListener { item ->
             if (mFromTabIntent) return@setOnItemReselectedListener
+            when (item.itemId) {
+                R.id.nav_folders -> binding.directoriesGrid.smoothScrollToPosition(0)
+                R.id.nav_explorer -> {
+                    deactivateExplorer()
+                    activateExplorer2()
+                }
+            }
         }
 
         bottomNav.selectedItemId = R.id.nav_folders
@@ -1188,8 +1195,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                     swipeRefreshLayout = binding.directoriesRefreshLayout
                 ) { clicked -> 
                     val d = clicked as Directory
-                    deactivateExplorer(false)
-                    navigateExplorer2(d.path)
+                    itemClicked(d.path)
                 }
                 val lm = binding.directoriesGrid.layoutManager as? androidx.recyclerview.widget.GridLayoutManager
                 lm?.spanSizeLookup = androidx.recyclerview.widget.GridLayoutManager.DefaultSpanSizeLookup()

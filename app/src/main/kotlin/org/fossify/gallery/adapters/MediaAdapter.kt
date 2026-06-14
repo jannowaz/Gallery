@@ -121,6 +121,7 @@ class MediaAdapter(
     private var animateGifs = config.animateGifs
     private var cropThumbnails = config.cropThumbnails
     private var displayFilenames = config.displayFileNames
+    private var displayAlbumName = config.displayAlbumName
     private var showFileTypes = config.showThumbnailFileTypes
 
     var sorting = config.getFolderSorting(if (config.showAll) SHOW_ALL else path)
@@ -646,6 +647,11 @@ class MediaAdapter(
         notifyDataSetChanged()
     }
 
+    fun updateDisplayAlbumName(displayAlbumName: Boolean) {
+        this.displayAlbumName = displayAlbumName
+        notifyDataSetChanged()
+    }
+
     fun updateAnimateGifs(animateGifs: Boolean) {
         this.animateGifs = animateGifs
         notifyDataSetChanged()
@@ -702,8 +708,14 @@ class MediaAdapter(
                 fileType?.beGone()
             }
 
-            mediumName.beVisibleIf(displayFilenames || isListViewType)
-            mediumName.text = medium.name
+            mediumName.beVisibleIf(displayFilenames || isListViewType || displayAlbumName)
+            mediumName.text = if (displayAlbumName && (displayFilenames || isListViewType)) {
+                "${medium.name}\n${medium.parentPath.substringAfterLast('/').ifEmpty { "/" }}"
+            } else if (displayAlbumName) {
+                medium.parentPath.substringAfterLast('/').ifEmpty { "/" }
+            } else {
+                medium.name
+            }
             mediumName.tag = medium.path
 
             val showVideoDuration = medium.isVideo() && config.showThumbnailVideoDuration
@@ -769,7 +781,7 @@ class MediaAdapter(
                 root.findViewById<android.widget.TextView>(R.id.medium_rating)?.setTextColor(textColor)
             }
             
-            root.findViewById<android.widget.TextView>(R.id.medium_rating)?.beVisibleIf(medium.rating > 0)
+            root.findViewById<android.widget.TextView>(R.id.medium_rating)?.beVisibleIf(medium.rating > 0 && config.showRatingOnThumbnails)
             root.findViewById<android.widget.TextView>(R.id.medium_rating)?.text = "★ ${medium.rating}"
         }
     }

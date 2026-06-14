@@ -135,7 +135,7 @@ fun ViewSettingsSheet(
                         selected = local.sortBy == sf,
                         onClick = { local = local.copy(sortBy = sf); onSettingsChange(local) },
                         shape = SegmentedButtonDefaults.itemShape(i, SortField.entries.size)
-                    ) { Text(when(sf) { SortField.NAME -> "Name"; SortField.DATE -> "Datum"; SortField.SIZE -> "Größe"; SortField.RATING -> "Bewertung" }) }
+                    ) { Text(when(sf) { SortField.NAME -> "Name"; SortField.DATE -> "Datum"; SortField.SIZE -> "Größe"; SortField.RATING -> "Rating" }) }
                 }
             }
 

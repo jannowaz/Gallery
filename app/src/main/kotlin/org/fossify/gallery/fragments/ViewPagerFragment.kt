@@ -25,6 +25,8 @@ abstract class ViewPagerFragment : Fragment() {
 
     abstract fun fullscreenToggled(isFullscreen: Boolean)
 
+    open fun isZoomed(): Boolean = false
+
     interface FragmentListener {
         fun fragmentClicked()
 

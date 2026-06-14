@@ -66,7 +66,8 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(HIDE_FOLDER_TOOLTIP_SHOWN, false)
         set(wasShown) = prefs.edit().putBoolean(HIDE_FOLDER_TOOLTIP_SHOWN, wasShown).apply()
 
-    var shouldShowHidden = showHiddenMedia || temporarilyShowHidden
+    val shouldShowHidden: Boolean
+        get() = showHiddenMedia || temporarilyShowHidden
 
     var showHiddenMedia: Boolean
         get() = prefs.getBoolean(SHOW_HIDDEN_MEDIA, false)
@@ -285,6 +286,10 @@ class Config(context: Context) : BaseConfig(context) {
     var displayFileNames: Boolean
         get() = prefs.getBoolean(DISPLAY_FILE_NAMES, false)
         set(display) = prefs.edit().putBoolean(DISPLAY_FILE_NAMES, display).apply()
+
+    var displayAlbumName: Boolean
+        get() = prefs.getBoolean(DISPLAY_ALBUM_NAME, false)
+        set(display) = prefs.edit().putBoolean(DISPLAY_ALBUM_NAME, display).apply()
 
     var blackBackground: Boolean
         get() = prefs.getBoolean(BLACK_BACKGROUND, true)

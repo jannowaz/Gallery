@@ -19,6 +19,8 @@ class GridSpacingItemDecoration(
         if (spacing <= 1) return
 
         if (isStaggered) {
+            val item = items.getOrNull(parent.getChildAdapterPosition(view))
+            if (item !is Medium) return
             val halfLow = spacing / 2
             val halfHigh = spacing - halfLow
             outRect.left = halfLow

@@ -956,4 +956,10 @@ class PhotoFragment : ViewPagerFragment() {
             }
         }
     }
+
+    override fun isZoomed(): Boolean {
+        if (binding.gesturesView.isVisible() && abs(mCurrentGestureViewZoom - mInitialZoom) > MAX_ZOOM_EQUALITY_TOLERANCE) return true
+        if (binding.subsamplingView.isVisible() && !binding.subsamplingView.isZoomedOut()) return true
+        return false
+    }
 }

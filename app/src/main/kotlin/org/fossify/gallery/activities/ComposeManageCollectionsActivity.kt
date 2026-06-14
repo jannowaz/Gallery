@@ -1,7 +1,9 @@
 package org.fossify.gallery.activities
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -61,6 +63,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,6 +72,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
+import org.fossify.gallery.R
 import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.extensions.collectionDB
 import org.fossify.gallery.extensions.config
@@ -118,19 +122,19 @@ private fun ManageCollectionsScreen(
     if (showDeleteConfirm != null) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = null },
-            title = { Text("Sammlung löschen") },
-            text = { Text("»${showDeleteConfirm!!.name}« wirklich löschen?") },
+            title = { Text(stringResource(R.string.delete_collection)) },
+            text = { Text(stringResource(R.string.delete_collection_confirm, showDeleteConfirm!!.name)) },
             confirmButton = {
                 TextButton(onClick = {
                     val c = showDeleteConfirm!!
                     showDeleteConfirm = null
                     scope.launch(Dispatchers.IO) {
                         try { ctx.collectionDB.delete(c); withContext(Dispatchers.Main) { refresh() } }
-                        catch (_: Exception) { withContext(Dispatchers.Main) { ctx.toast("Fehler beim Löschen", Toast.LENGTH_SHORT) } }
+                        catch (_: Exception) { withContext(Dispatchers.Main) { ctx.toast(R.string.delete_error) } }
                     }
-                }) { Text("Löschen", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(org.fossify.commons.R.string.delete), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { showDeleteConfirm = null }) { Text("Abbrechen") } }
+            dismissButton = { TextButton(onClick = { showDeleteConfirm = null }) { Text(stringResource(org.fossify.commons.R.string.cancel)) } }
         )
     }
 
@@ -145,7 +149,7 @@ private fun ManageCollectionsScreen(
                         collections = try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() }
                         withContext(Dispatchers.Main) { showEditDialog = false }
                     } catch (e: Exception) {
-                        withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", Toast.LENGTH_LONG) }
+                        withContext(Dispatchers.Main) { ctx.toast("${ctx.getString(R.string.error_prefix)}: ${e.message}", Toast.LENGTH_LONG) }
                     }
                 }
             }
@@ -155,7 +159,7 @@ private fun ManageCollectionsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Sammlungen") },
+                title = { Text(stringResource(R.string.collections)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück")
@@ -168,7 +172,7 @@ private fun ManageCollectionsScreen(
         },
         floatingActionButton = {
             FloatingActionButton(onClick = { editingColl = null; showEditDialog = true }) {
-                Icon(Icons.Default.Add, "Neue Sammlung")
+                Icon(Icons.Default.Add, stringResource(R.string.new_collection))
             }
         }
     ) { padding ->
@@ -177,9 +181,9 @@ private fun ManageCollectionsScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.CollectionsBookmark, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
                     Spacer(Modifier.height(16.dp))
-                    Text("Keine Sammlungen", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                    Text(stringResource(R.string.no_collections), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(8.dp))
-                    Text("Tippe auf + um eine zu erstellen", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.tap_to_create_collection), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else {
@@ -199,19 +203,34 @@ private fun ManageCollectionsScreen(
                                 Icon(Icons.Default.CollectionsBookmark, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                             }
                             Spacer(Modifier.width(12.dp))
-                            Text(
-                                coll.name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    coll.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                val inclCount = coll.getIncludedPaths().size
+                                val exclCount = coll.getExcludedPaths().size
+                                if (inclCount > 0 || exclCount > 0) {
+                                    val parts = mutableListOf<String>()
+                                    if (inclCount > 0) parts.add(stringResource(R.string.folder_count, inclCount))
+                                    if (exclCount > 0) parts.add(stringResource(R.string.folders_excluded, exclCount))
+                                    Text(
+                                        parts.joinToString(" · "),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
                             IconButton(onClick = { editingColl = coll; showEditDialog = true }, modifier = Modifier.size(36.dp)) {
-                                Icon(Icons.Default.Edit, "Bearbeiten", modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Edit, stringResource(R.string.edit), modifier = Modifier.size(20.dp))
                             }
                             IconButton(onClick = { showDeleteConfirm = coll }, modifier = Modifier.size(36.dp)) {
-                                Icon(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                             }
                         }
                     }
@@ -231,39 +250,55 @@ private fun EditCollectionDialog(
     var includedPaths by remember(initial) { mutableStateOf(initial?.getIncludedPaths() ?: emptyList()) }
     var excludedPaths by remember(initial) { mutableStateOf(initial?.getExcludedPaths() ?: emptyList()) }
 
+    val ctx = LocalContext.current
+
+    fun uriToPath(uri: Uri): String? {
+        return try {
+            val docId = DocumentsContract.getTreeDocumentId(uri)
+            val split = docId.indexOf(':')
+            if (split >= 0) {
+                val type = docId.substring(0, split)
+                val relative = docId.substring(split + 1)
+                (if (type == "primary") "/storage/emulated/0/$relative" else "/storage/$type/$relative").trimEnd('/')
+            } else null
+        } catch (_: Exception) { null }
+    }
+
     val inclPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
-            val p = uri.toString()
+            ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val p = uriToPath(uri) ?: uri.toString()
             if (p !in includedPaths) includedPaths = includedPaths + p
         }
     }
     val exclPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
-            val p = uri.toString()
+            ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val p = uriToPath(uri) ?: uri.toString()
             if (p !in excludedPaths) excludedPaths = excludedPaths + p
         }
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initial != null) "Sammlung bearbeiten" else "Sammlung erstellen") },
+        title = { Text(if (initial != null) stringResource(R.string.edit_collection) else stringResource(R.string.collection_create)) },
         text = {
             Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Name") },
+                    label = { Text(stringResource(org.fossify.commons.R.string.name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(12.dp))
 
-                Text("Eingeschlossene Ordner:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.included_folders), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
                 includedPaths.forEach { p ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(p.substringAfterLast('/').take(50), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                         IconButton(onClick = { includedPaths = includedPaths - p }, modifier = Modifier.size(24.dp)) {
-                            Icon(Icons.Default.Delete, "Entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Delete, stringResource(R.string.remove), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
@@ -275,17 +310,17 @@ private fun EditCollectionDialog(
                     Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Ordner hinzufügen", style = MaterialTheme.typography.labelSmall)
+                        Text(stringResource(R.string.add_folder), style = MaterialTheme.typography.labelSmall)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
 
-                Text("Ausgeschlossene Ordner:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.excluded_folders), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
                 excludedPaths.forEach { p ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(p.substringAfterLast('/').take(50), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                         IconButton(onClick = { excludedPaths = excludedPaths - p }, modifier = Modifier.size(24.dp)) {
-                            Icon(Icons.Default.Delete, "Entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Delete, stringResource(R.string.remove), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
@@ -297,7 +332,7 @@ private fun EditCollectionDialog(
                     Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Ordner ausschließen", style = MaterialTheme.typography.labelSmall)
+                        Text(stringResource(R.string.exclude_folder), style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
@@ -311,8 +346,8 @@ private fun EditCollectionDialog(
                     excludedPaths = MediaCollection.createPathsJson(excludedPaths),
                 )
                 onSave(col)
-            }) { Text("Speichern") }
+            }) { Text(stringResource(org.fossify.commons.R.string.save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(org.fossify.commons.R.string.cancel)) } }
     )
 }

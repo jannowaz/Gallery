@@ -4,6 +4,7 @@ package org.fossify.gallery.fragments
 
 import android.annotation.SuppressLint
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Point
 import android.graphics.SurfaceTexture
@@ -48,6 +49,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.bumptech.glide.Glide
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.fossify.commons.extensions.beGone
 import org.fossify.commons.extensions.beGoneIf
 import org.fossify.commons.extensions.beVisible
@@ -73,6 +75,7 @@ import org.fossify.gallery.activities.VideoActivity
 import org.fossify.gallery.databinding.PagerVideoItemBinding
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.getActionBarHeight
+import org.fossify.commons.extensions.rescanPaths
 import org.fossify.gallery.extensions.getBottomActionsHeight
 import org.fossify.gallery.extensions.getFormattedDuration
 import org.fossify.gallery.extensions.getFriendlyMessage
@@ -130,6 +133,16 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
     private var mIsLongPressActive = false
     private var mHasAudio = true
 
+    private val CONTROLS_AUTO_HIDE_DELAY_MS = 10000L
+    private val mAutoHideRunnable = Runnable { fullscreenToggled(true) }
+
+    private fun resetAutoHideTimer() {
+        mTimerHandler.removeCallbacks(mAutoHideRunnable)
+        if (!mIsFullscreen && mIsPlaying) {
+            mTimerHandler.postDelayed(mAutoHideRunnable, CONTROLS_AUTO_HIDE_DELAY_MS)
+        }
+    }
+
     private val mTouchHoldRunnable = Runnable {
         mView.parent.requestDisallowInterceptTouchEvent(true)
         // This code runs after the delay, only if the user is still holding down.
@@ -180,7 +193,10 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
                 updatePlayerMuteState(showToast = true)
             }
 
-            videoSurfaceFrame.controller.settings.swallowDoubleTaps = true
+            videoSurfaceFrame.controller.settings.apply {
+                swallowDoubleTaps = true
+                maxZoom = 5f
+            }
 
             videoPlayOutline.setOnClickListener {
                 if (mConfig.gestureVideoPlayer) activity.launchGesturePlayer(mMedium.path) else togglePlayPause()
@@ -240,7 +256,19 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
                 false
             }
 
+            var swipeUpStartY = 0f
             videoSurfaceFrame.setOnTouchListener { view, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> swipeUpStartY = event.rawY
+                    MotionEvent.ACTION_MOVE -> {
+                        val deltaY = swipeUpStartY - event.rawY
+                        if (deltaY > resources.displayMetrics.heightPixels * 0.25f) {
+                            swipeUpStartY = Float.MAX_VALUE
+                            showVideoActionSheet()
+                            return@setOnTouchListener true
+                        }
+                    }
+                }
                 if (videoSurfaceFrame.controller.state.zoom == 1f) {
                     handleEvent(event)
                 }
@@ -377,6 +405,7 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
 
     override fun onDestroy() {
         super.onDestroy()
+        mTimerHandler.removeCallbacksAndMessages(null)
         if (activity?.isChangingConfigurations == false) {
             cleanup()
         }
@@ -464,25 +493,23 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
         val isContentUri = mMedium.path.startsWith("content://")
         val uri = if (isContentUri) Uri.parse(mMedium.path) else Uri.fromFile(File(mMedium.path))
         val dataSpec = DataSpec(uri)
-        val fileDataSource = if (isContentUri) {
-            ContentDataSource(requireContext())
-        } else {
-            FileDataSource()
-        }
 
-        try {
-            fileDataSource.open(dataSpec)
-        } catch (e: Exception) {
-            fileDataSource.close()
-            activity?.showErrorToast(e)
-            return
+        val factory = DataSource.Factory {
+            val ds = if (isContentUri) {
+                ContentDataSource(requireContext())
+            } else {
+                FileDataSource()
+            }
+            try {
+                ds.open(dataSpec)
+            } catch (e: Exception) {
+                ds.close()
+                throw e
+            }
+            ds
         }
-
-        val factory = DataSource.Factory { fileDataSource }
         val mediaSource: MediaSource = ProgressiveMediaSource.Factory(factory)
-            .createMediaSource(MediaItem.fromUri(fileDataSource.uri!!))
-
-        fileDataSource.close()
+            .createMediaSource(MediaItem.fromUri(uri))
 
         mPlayOnPrepared = true
 
@@ -622,12 +649,14 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
             it.isClickable = !mIsFullscreen
         }
 
+        mTimerHandler.removeCallbacks(mAutoHideRunnable)
         if (isFullscreen) {
             mTimeHolder.fadeOut(DEFAULT_ANIMATION_DURATION)
             binding.bottomActionsDummy.fadeOut(DEFAULT_ANIMATION_DURATION)
         } else {
             binding.bottomActionsDummy.beVisible()
             mTimeHolder.fadeIn(DEFAULT_ANIMATION_DURATION)
+            mTimerHandler.postDelayed(mAutoHideRunnable, CONTROLS_AUTO_HIDE_DELAY_MS)
         }
 
         binding.videoDetails.apply {
@@ -713,7 +742,7 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
         if (mExoPlayer == null) {
             return
         }
-
+        resetAutoHideTimer()
         mExoPlayer!!.playWhenReady = false
         mIsDragged = true
     }
@@ -722,7 +751,7 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
         if (mExoPlayer == null) {
             return
         }
-
+        resetAutoHideTimer()
         if (mIsPlaying) {
             mExoPlayer!!.playWhenReady = true
         }
@@ -731,6 +760,7 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
     }
 
     private fun togglePlayPause() {
+        resetAutoHideTimer()
         if (activity == null || !isAdded) {
             return
         }
@@ -1024,5 +1054,61 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
             mIsLongPressActive = false
             mPlaybackSpeedPill.fadeOut()
         }
+    }
+
+    private fun showVideoActionSheet() {
+        val ctx = context ?: return
+        val activity = activity ?: return
+        val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(ctx)
+        val view = LayoutInflater.from(ctx).inflate(R.layout.bottom_sheet_video_actions, dialog.findViewById(android.R.id.content), false)
+        view.findViewById<android.widget.TextView>(R.id.action_screenshot_save)?.setOnClickListener {
+            takeScreenshot(deleteAfter = false)
+            dialog.dismiss()
+        }
+        view.findViewById<android.widget.TextView>(R.id.action_screenshot_delete)?.setOnClickListener {
+            takeScreenshot(deleteAfter = true)
+            dialog.dismiss()
+        }
+        view.findViewById<android.widget.TextView>(R.id.action_cancel)?.setOnClickListener {
+            dialog.dismiss()
+        }
+        dialog.setContentView(view)
+        dialog.show()
+    }
+
+    private fun takeScreenshot(deleteAfter: Boolean) {
+        val ctx = context ?: return
+        val a = activity ?: return
+        val bitmap = mTextureView.getBitmap() ?: run {
+            ctx.toast(R.string.screenshot_failed)
+            return
+        }
+        ensureBackgroundThread {
+            try {
+                val parentDir = File(mMedium.path).parentFile ?: return@ensureBackgroundThread
+                if (!parentDir.exists()) parentDir.mkdirs()
+                val screenshot = File(parentDir, "${File(mMedium.path).nameWithoutExtension}_${System.currentTimeMillis()}.jpg")
+                java.io.FileOutputStream(screenshot).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+                }
+                bitmap.recycle()
+                ctx.rescanPaths(arrayListOf(screenshot.absolutePath)) {
+                    ctx.toast(ctx.getString(R.string.screenshot_saved, screenshot.name))
+                }
+                if (deleteAfter) {
+                    val video = File(mMedium.path)
+                    if (video.exists() && video.delete()) {
+                        ctx.toast(R.string.video_deleted)
+                        a.finish()
+                    }
+                }
+            } catch (e: Exception) {
+                ctx.toast("${ctx.getString(R.string.error_prefix)}: ${e.message}")
+            }
+        }
+    }
+
+    override fun isZoomed(): Boolean {
+        return binding.videoSurfaceFrame.controller.state.zoom > 1f
     }
 }

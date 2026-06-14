@@ -321,7 +321,8 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
 
         // do not refresh Random sorted files after opening a fullscreen image and going Back
         val isRandomSorting = config.getFolderSorting(mPath) and SORT_BY_RANDOM != 0
-        if (mMedia.isEmpty() || !isRandomSorting || (isRandomSorting && !mWasFullscreenViewOpen)) {
+        if (mMedia.isEmpty() || !mWasFullscreenViewOpen || mWasFullscreenViewOpen) {
+            mWasFullscreenViewOpen = false
             if (shouldSkipAuthentication()) {
                 tryLoadGallery()
             } else {
@@ -383,8 +384,8 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             if (config.showAll) {
                 appLockManager.lock()
             }
-
-            false
+            finishAfterTransition()
+            true
         }
     }
 
@@ -426,6 +427,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             val viewType = config.getFolderViewType(if (mShowAll) SHOW_ALL else mPath)
             findItem(R.id.column_count).isVisible = viewType == VIEW_TYPE_GRID
             findItem(R.id.toggle_filename).isVisible = viewType == VIEW_TYPE_GRID
+            findItem(R.id.toggle_album).isVisible = viewType == VIEW_TYPE_GRID
         }
     }
 
@@ -448,6 +450,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                 R.id.empty_disable_recycle_bin -> emptyAndDisableRecycleBin()
                 R.id.restore_all_files -> restoreAllFiles()
                 R.id.toggle_filename -> toggleFilenameVisibility()
+                R.id.toggle_album -> toggleAlbumVisibility()
                 R.id.open_camera -> launchCamera()
                 R.id.folder_view -> switchToFolderView()
                 R.id.change_view_type -> changeViewType()
@@ -686,6 +689,11 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         getMediaAdapter()?.updateDisplayFilenames(config.displayFileNames)
     }
 
+    private fun toggleAlbumVisibility() {
+        config.displayAlbumName = !config.displayAlbumName
+        getMediaAdapter()?.updateDisplayAlbumName(config.displayAlbumName)
+    }
+
     private fun switchToFolderView() {
         hideKeyboard()
         config.showAll = false
@@ -764,6 +772,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         }
 
         mLoadedInitialPhotos = true
+        // always refresh after returning from viewer to show rating/favorite changes
     }
 
     private fun startAsyncTask() {
@@ -879,6 +888,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             config.mediaColumnCnt,
             if (config.scrollHorizontally) StaggeredGridLayoutManager.HORIZONTAL else StaggeredGridLayoutManager.VERTICAL
         )
+        layoutManager.gapStrategy = StaggeredGridLayoutManager.GAP_HANDLING_NONE
         binding.mediaGrid.layoutManager = layoutManager
 
         if (config.scrollHorizontally) {
@@ -1100,6 +1110,8 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
 
         if (mShowAll && mMedia.isNotEmpty()) {
             sCachedAllMedia = ArrayList(mMedia)
+        } else if (!mShowAll) {
+            sCachedAllMedia = null
         }
 
         runOnUiThread {
