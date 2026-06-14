@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -268,8 +269,9 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     }
 
     if (showActionSheet) {
-        ModalBottomSheet(onDismissRequest = { showActionSheet = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).verticalScroll(rememberScrollState())) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+        ModalBottomSheet(onDismissRequest = { showActionSheet = false }, sheetState = sheetState) {
+            Column(Modifier.fillMaxWidth().heightIn(min = 420.dp).padding(horizontal = 12.dp, vertical = 8.dp).verticalScroll(rememberScrollState())) {
                 Row(Modifier.fillMaxWidth()) {
                     SelectionRow(Icons.Default.Share, "Teilen", modifier = Modifier.weight(1f)) { val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath)); ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(Intent.EXTRA_STREAM, u); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); showActionSheet = false }
                     Spacer(Modifier.width(8.dp))
