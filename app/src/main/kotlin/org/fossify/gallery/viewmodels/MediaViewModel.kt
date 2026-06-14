@@ -16,9 +16,15 @@ import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.models.Medium
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+data class MonthGroup(val label: String, val items: List<Medium>)
 
 data class MediaUiState(
     val allMedia: List<Medium> = emptyList(),
+    val monthGroups: List<MonthGroup> = emptyList(),
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
     val hasMore: Boolean = true,
@@ -66,6 +72,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 currentPage = 0
                 val firstPage = getPage(media, 0)
                 _state.update { it.copy(allMedia = firstPage, hasMore = media.size > pageSize) }
+                updateGroups()
             } catch (_: Exception) { }
         }
     }
@@ -78,6 +85,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             val nextPage = getPage(cachedAllMedia, currentPage)
             if (nextPage.isNotEmpty()) {
                 _state.update { it.copy(allMedia = it.allMedia + nextPage, isLoadingMore = false) }
+                updateGroups()
             } else {
                 _state.update { it.copy(isLoadingMore = false, hasMore = false) }
             }
@@ -97,6 +105,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             cachedAllMedia = media
             val firstPage = getPage(media, 0)
             _state.update { it.copy(allMedia = firstPage, isLoading = false, hasMore = media.size > pageSize) }
+            updateGroups()
         }
     }
 
@@ -190,5 +199,22 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveScrollPosition(index: Int, offset: Int) {
         _state.update { it.copy(scrollIndex = index, scrollOffset = offset) }
+    }
+
+    private fun updateGroups() {
+        val media = _state.value.allMedia
+        _state.update { it.copy(monthGroups = groupByMonth(media)) }
+    }
+
+    private fun groupByMonth(media: List<Medium>): List<MonthGroup> {
+        if (media.isEmpty()) return emptyList()
+        val f = SimpleDateFormat("MMMM yyyy", Locale.GERMANY)
+        val g = LinkedHashMap<String, MutableList<Medium>>()
+        media.forEach { m ->
+            val d = if (m.taken > 0) Date(m.taken) else Date(m.modified)
+            val k = f.format(d).replaceFirstChar { it.uppercase() }
+            g.getOrPut(k) { mutableListOf() }.add(m)
+        }
+        return g.map { MonthGroup(it.key, it.value) }
     }
 }
