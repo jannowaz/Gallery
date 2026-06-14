@@ -4,6 +4,8 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -92,6 +94,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.dialogs.PropertiesDialog
@@ -258,30 +261,11 @@ fun MediaScreen(
                     }  // AnimatedVisibility close
                     val grouped = state.monthGroups
                     val gridState = rememberLazyGridState()
-                    val isScrolling = remember { derivedStateOf { gridState.isScrollInProgress } }
-                    LaunchedEffect(scrollToPath) {
-                        if (scrollToPath.isNotEmpty() && displayMedia.isNotEmpty()) {
-                            val idx = displayMedia.indexOfFirst { it.path == scrollToPath }
-                            if (idx >= 0) {
-                                gridState.scrollToItem(idx)
-                                onClearScrollToPath()
-                            }
-                        }
-                    }
-                    LaunchedEffect(Unit) {
-                        if (state.scrollIndex > 0 && displayMedia.isNotEmpty()) {
-                            gridState.scrollToItem(minOf(state.scrollIndex, displayMedia.size - 1))
-                        }
-                    }
-                    LaunchedEffect(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset) {
-                        viewModel.saveScrollPosition(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset)
-                    }
-                    LaunchedEffect(gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index) {
-                        val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return@LaunchedEffect
-                        val totalItems = gridState.layoutInfo.totalItemsCount
-                        if (totalItems > 0 && lastVisible >= totalItems - columnCount * 2 && state.hasMore && !state.isLoadingMore) {
-                            viewModel.loadMore()
-                        }
+                    val isScrollingRaw = remember { derivedStateOf { gridState.isScrollInProgress } }
+                    var showOverlays by remember { mutableStateOf(true) }
+                    LaunchedEffect(isScrollingRaw.value) {
+                        if (isScrollingRaw.value) showOverlays = false
+                        else { delay(400); showOverlays = true }
                     }
                     CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
                     Box(Modifier.dragSelectionGesture(dragSelection) { path -> selectedPaths = selectedPaths + path }) {
@@ -298,7 +282,7 @@ fun MediaScreen(
                             Column(Modifier.padding(itemSpacing/2).background(mediaCardColor,cornerShape).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt());val now=System.currentTimeMillis();if(now-lastBoundsUpdate>300){lastBoundsUpdate=now;dragSelection.registerItemBounds(m.path,androidx.compose.ui.geometry.Rect(p,androidx.compose.ui.geometry.Size(s.width.toFloat(),s.height.toFloat())))}}) {
                                 Box(Modifier.aspectRatio(1f).selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewer(originalIdx)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path})) {
                                     if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop) else GalleryImage(path=m.path,contentDescription=m.name,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop,placeholderIconSize=16.dp)
-                                    if (!isScrolling.value) {
+                                    if (showOverlays) {
                                         // Stars (bottom-left, compact)
                                         Row(Modifier.align(Alignment.BottomStart).padding(2.dp).background(Color.Black.copy(alpha=0.55f),RoundedCornerShape(4.dp)).padding(horizontal=2.dp,vertical=1.dp)){for(i in 1..5){Box(Modifier.size(14.dp).clickable{scope.launch(Dispatchers.IO){repo.updateRating(m.path,if(m.rating==i) 0 else i);m.rating=if(m.rating==i) 0 else i}}){Text("★",style=MaterialTheme.typography.labelSmall,color=if(i<=m.rating)Color(0xFFFFD700) else Color.White.copy(alpha=0.2f),fontSize=9.sp)}}}
                                         if(hasTag) Box(Modifier.align(Alignment.TopEnd).padding(4.dp).background(Color.Black.copy(alpha=0.5f),RoundedCornerShape(4.dp)).padding(horizontal=4.dp,vertical=1.dp)) { Icon(Icons.Default.Label,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(10.dp)) }
