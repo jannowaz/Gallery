@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
@@ -64,6 +64,31 @@ fun ImagePage(
     Box(Modifier.fillMaxSize().clipToBounds().graphicsLayer {
         alpha = targetAlpha
     }.then(modifier)) {
+        // Gesture layers BELOW the image (receive events AFTER image)
+        Box(Modifier.fillMaxSize().pointerInput(Unit) {
+            detectTapGestures(onDoubleTap = {
+                scope.launch {
+                    contentScale = if (contentScale == ContentScale.Fit) ContentScale.Crop else ContentScale.Fit
+                    scale = 1f; offsetX = 0f; offsetY = 0f; willClose = false
+                    dismissAnim.snapTo(0f)
+                }
+            })
+        })
+
+        Box(Modifier.fillMaxSize().pointerInput(scale) {
+            if (scale > 1.01f) return@pointerInput
+            detectVerticalDragGestures(
+                onVerticalDrag = { _, dragAmount ->
+                    scope.launch { dismissAnim.snapTo((dismissOffsetY + dragAmount).coerceAtLeast(0f)) }
+                },
+                onDragEnd = {
+                    if (dismissProgress <= 0.7f) {
+                        scope.launch { dismissAnim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)) }
+                    }
+                },
+            )
+        })
+
         AsyncImage(
             model = ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(file)).crossfade(true).build(),
             contentDescription = file.name,
@@ -84,14 +109,8 @@ fun ImagePage(
                                 scope.launch { dismissAnim.snapTo(0f) }
                                 val pts = changes.map { it.position }
                                 val prevPts = changes.map { it.previousPosition }
-                                val centroid = Offset(
-                                    pts.sumOf { it.x.toDouble() }.toFloat() / pts.size,
-                                    pts.sumOf { it.y.toDouble() }.toFloat() / pts.size,
-                                )
-                                val prevCentroid = Offset(
-                                    prevPts.sumOf { it.x.toDouble() }.toFloat() / prevPts.size,
-                                    prevPts.sumOf { it.y.toDouble() }.toFloat() / prevPts.size,
-                                )
+                                val centroid = Offset(pts.sumOf { it.x.toDouble() }.toFloat() / pts.size, pts.sumOf { it.y.toDouble() }.toFloat() / pts.size)
+                                val prevCentroid = Offset(prevPts.sumOf { it.x.toDouble() }.toFloat() / prevPts.size, prevPts.sumOf { it.y.toDouble() }.toFloat() / prevPts.size)
                                 val curDist = pts.sumOf { (it - centroid).getDistance().toDouble() }.toFloat()
                                 val prevDist = prevPts.sumOf { (it - prevCentroid).getDistance().toDouble() }.toFloat()
                                 val zoom = if (prevDist > 0f) (curDist / prevDist) else 1f
@@ -120,32 +139,6 @@ fun ImagePage(
                     }
                 }
         )
-
-        Box(Modifier.fillMaxSize().pointerInput(Unit) {
-            detectTapGestures(onDoubleTap = {
-                scope.launch {
-                    contentScale = if (contentScale == ContentScale.Fit) ContentScale.Crop else ContentScale.Fit
-                    scale = 1f; offsetX = 0f; offsetY = 0f; willClose = false
-                    dismissAnim.snapTo(0f)
-                }
-            })
-        })
-
-        Box(Modifier.fillMaxSize().pointerInput(scale) {
-            if (scale > 1.01f) return@pointerInput
-            detectVerticalDragGestures(
-                onVerticalDrag = { _, dragAmount ->
-                    scope.launch { dismissAnim.snapTo((dismissOffsetY + dragAmount).coerceAtLeast(0f)) }
-                },
-                onDragEnd = {
-                    if (dismissProgress <= 0.7f) {
-                        scope.launch {
-                            dismissAnim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))
-                        }
-                    }
-                },
-            )
-        })
     }
 
     if (willClose) {
