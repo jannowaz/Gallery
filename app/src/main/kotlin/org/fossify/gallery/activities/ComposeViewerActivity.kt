@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -234,7 +235,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
         var currentTags by remember { mutableStateOf<Set<String>>(emptySet()) }
         LaunchedEffect(currentPath, tagRefreshTrigger) { currentTags = withContext(Dispatchers.IO) { repo.getTags(currentPath) } }
         val showOverlay = showRatingOverlay || (showQuickTags && quickTags.isNotEmpty()) || showPersistentTags
-        AnimatedVisibility(visible = showOverlay, modifier = Modifier.align(Alignment.BottomCenter), enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = showOverlay, modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (currentIsVideo) 56.dp else 0.dp), enter = fadeIn(), exit = fadeOut()) {
             Column(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.65f))) {
                 if (showRatingOverlay) {
                     Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
