@@ -34,6 +34,7 @@ fun GalleryImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
     placeholderIconSize: Dp = 24.dp,
+    thumbnailSize: Int? = 384,
 ) {
     val ctx = LocalContext.current
     val file = File(path)
@@ -44,6 +45,7 @@ fun GalleryImage(
             model = ImageRequest.Builder(ctx)
                 .data(Uri.fromFile(file))
                 .crossfade(true)
+                .apply { if (thumbnailSize != null) size(thumbnailSize, thumbnailSize) }
                 .build(),
             contentDescription = contentDescription,
             modifier = Modifier.fillMaxSize(),

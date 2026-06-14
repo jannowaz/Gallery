@@ -1,11 +1,13 @@
 package org.fossify.gallery
 
+import android.graphics.Bitmap
 import android.os.StrictMode
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.decode.Decoder
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
-import coil.decode.VideoFrameDecoder
+import coil.size.Precision
 import coil.util.DebugLogger
 import com.github.ajalt.reprint.core.Reprint
 import org.fossify.commons.FossifyApp
@@ -18,18 +20,19 @@ class App : FossifyApp(), ImageLoaderFactory {
         return ImageLoader.Builder(this)
             .memoryCache {
                 MemoryCache.Builder(this)
-                    .maxSizePercent(0.20)
+                    .maxSizePercent(0.25)
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("coil_cache"))
-                    .maxSizeBytes(200L * 1024 * 1024)
+                    .maxSizeBytes(256L * 1024 * 1024)
                     .build()
             }
             .components {
-                add(VideoFrameDecoder.Factory())
+                add(coil.decode.VideoFrameDecoder.Factory())
             }
+            .bitmapConfig(Bitmap.Config.RGB_565)
             .crossfade(true)
             .build()
     }
