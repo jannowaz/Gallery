@@ -269,11 +269,11 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     }
 
     if (showActionSheet) {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(onDismissRequest = { showActionSheet = false }, sheetState = sheetState) {
-            Column(Modifier.fillMaxWidth().heightIn(min = 420.dp).padding(horizontal = 12.dp, vertical = 8.dp).verticalScroll(rememberScrollState())) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).verticalScroll(rememberScrollState())) {
                 Row(Modifier.fillMaxWidth()) {
-                    SelectionRow(Icons.Default.Share, "Teilen", modifier = Modifier.weight(1f)) { val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath)); ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(Intent.EXTRA_STREAM, u); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); showActionSheet = false }
+                    SelectionRow(Icons.Default.Share, "◎ Teilen", modifier = Modifier.weight(1f)) { val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath)); ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(Intent.EXTRA_STREAM, u); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); showActionSheet = false }
                     Spacer(Modifier.width(8.dp))
                     SelectionRow(Icons.Default.Edit, "Bearbeiten", modifier = Modifier.weight(1f)) { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }
                 }

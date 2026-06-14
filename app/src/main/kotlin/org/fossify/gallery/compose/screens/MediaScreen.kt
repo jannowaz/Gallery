@@ -122,6 +122,9 @@ import org.fossify.gallery.models.Medium
 import org.fossify.gallery.viewmodels.MediaViewModel
 import org.fossify.gallery.viewmodels.MonthGroup
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -224,6 +227,9 @@ fun MediaScreen(
         BackHandler(enabled = hasSelection) { selectedPaths = emptySet() }
         Box(modifier = modifier.fillMaxSize()) {
         when {
+            mediaOverride != null && mediaOverride.isEmpty() -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Keine Medien in diesem Ordner", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
             state.isLoading && !hasFilter && mediaOverride == null -> MediaSkeleton(columns = columnCount)
             displayMedia.isEmpty() -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -259,7 +265,7 @@ fun MediaScreen(
                         }
                     }
                     }  // AnimatedVisibility close
-                    val grouped = state.monthGroups
+                    val grouped = if (mediaOverride != null) remember(displayMedia.size) { displayMedia.groupByMonth() } else state.monthGroups
                     val gridState = rememberLazyGridState()
                     val isScrollingRaw = remember { derivedStateOf { gridState.isScrollInProgress } }
                     var showOverlays by remember { mutableStateOf(true) }
@@ -308,7 +314,7 @@ fun MediaScreen(
             }
             }
             else -> {
-                val grouped = state.monthGroups
+                val grouped = if (mediaOverride != null) remember(displayMedia.size) { displayMedia.groupByMonth() } else state.monthGroups
                 Box(Modifier.dragSelectionGesture(dragSelection) { path -> selectedPaths = selectedPaths + path }) {
                 LazyColumn(reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
                     grouped.forEach { (label, groupItems) ->
@@ -382,3 +388,4 @@ private fun FilterChip(label:String,onRemove:()->Unit){Surface(onClick=onRemove,
 private fun formatFileSize(bytes: Long): String { if (bytes < 1024) return "$bytes B"; val kb = bytes / 1024; if (kb < 1024) return "${kb} KB"; val mb = kb / 1024; if (mb < 1024) return "${mb} MB"; return "%.1f GB".format(mb / 1024.0) }
 @Composable
 private fun MonthHeader(label:String,count:Int){Surface(Modifier.fillMaxWidth(),color=MaterialTheme.colorScheme.background){Row(Modifier.padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically){Text(label,style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.onSurface);Spacer(Modifier.width(8.dp));Text("$count",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}}
+private fun List<Medium>.groupByMonth():List<MonthGroup>{if(isEmpty())return emptyList();val f=SimpleDateFormat("MMMM yyyy",Locale.GERMANY);val g=LinkedHashMap<String,MutableList<Medium>>();forEach{m->val d=if(m.taken>0)Date(m.taken) else Date(m.modified);val k=f.format(d).replaceFirstChar{it.uppercase()};g.getOrPut(k){mutableListOf()}.add(m)};return g.map{MonthGroup(it.key,it.value)}}

@@ -11,6 +11,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -49,6 +50,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,15 +60,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.gallery.compose.components.FolderTile
+import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.models.Directory
 import org.fossify.gallery.viewmodels.AlbumsViewModel
 
@@ -147,6 +154,12 @@ fun AlbumsScreen(
                 LazyColumn(reverseLayout = viewSettings.anchorBottom, modifier = Modifier.weight(1f)) {
                     items(sortedDirs, key = { it.path }) { dir ->
                         val isFav = dir.path in favorites
+                        var previewPaths by remember { mutableStateOf<List<String>>(emptyList()) }
+                        LaunchedEffect(dir.path) {
+                            withContext(Dispatchers.IO) {
+                                try { previewPaths = ctx.mediaDB.getMediaFromPath(dir.path).map { it.path }.take(4) } catch (_: Exception) { }
+                            }
+                        }
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).combinedClickable(
                                 onClick = { if (hasSelection) selectedPaths = if (dir.path in selectedPaths) selectedPaths - dir.path else selectedPaths + dir.path else onFolderClick(dir) },
@@ -164,6 +177,16 @@ fun AlbumsScreen(
                                     Text(dir.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (viewSettings.displayMode == DisplayMode.DARK) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
                                     Text("${dir.mediaCnt} Medien", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
+                                if (previewPaths.isNotEmpty()) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        previewPaths.take(3).forEach { p ->
+                                            Box(Modifier.size(44.dp).clip(RoundedCornerShape(6.dp))) {
+                                                GalleryImage(path = p, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 12.dp, thumbnailSize = 128)
+                                            }
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.width(8.dp))
                                 IconButton(onClick = {
                                     if (isFav) ctx.config.removeFavoriteFolder(dir.path) else ctx.config.addFavoriteFolder(dir.path)
                                     favorites = ctx.config.favoriteFolders
