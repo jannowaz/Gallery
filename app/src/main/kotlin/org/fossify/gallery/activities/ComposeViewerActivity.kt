@@ -14,6 +14,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.clickable
@@ -50,6 +51,8 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -59,6 +62,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -110,9 +114,10 @@ class ComposeViewerActivity : ComponentActivity() {
         if (hasHero) overridePendingTransition(0, 0) else overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
         val paths = intent.getStringArrayListExtra("PATHS") ?: arrayListOf()
         val startIdx = intent.getIntExtra("START_INDEX", 0)
+        val conf = config
         setContent {
             val repo = remember { MediaRepository(this@ComposeViewerActivity) }
-            GalleryTheme(darkTheme = true) { AppProviders(repo) { ViewerScreen(paths = paths, startIndex = startIdx, onClose = { finish() }) } }
+            GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme()) { AppProviders(repo) { ViewerScreen(paths = paths, startIndex = startIdx, onClose = { finish() }) } }
         }
     }
 }
@@ -133,7 +138,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     var isFavorite by remember { mutableStateOf(false) }
     var showTagsDialog by remember { mutableStateOf(false) }
     var showVideoSettings by remember { mutableStateOf(false) }
-    var showRatingOverlay by remember { mutableStateOf(false) }
+    var showRatingOverlay by remember { mutableStateOf(ctx.config.viewerShowRatingBar) }
     var showQuickTags by remember { mutableStateOf(false) }
     var showPersistentTags by remember { mutableStateOf(true) }
     var tagRefreshTrigger by remember { mutableIntStateOf(0) }
@@ -224,8 +229,9 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
         AnimatedVisibility(visible = showOverlay, modifier = Modifier.align(Alignment.BottomCenter), enter = fadeIn(), exit = fadeOut()) {
             Column(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.65f))) {
                 if (showRatingOverlay) {
-                    Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                    Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         for (i in 1..5) { IconButton(onClick = { val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) { Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, "Bewertung $i", tint = if (i <= currentRating) MaterialTheme.colorScheme.tertiary else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp)) } }
+                        IconButton(onClick = { showRatingOverlay = false; ctx.config.viewerShowRatingBar = false }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, "Ausblenden", tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
                     }
                 }
                 val hasQuick = showQuickTags && quickTags.isNotEmpty(); val hasPersistent = showPersistentTags && currentTags.isNotEmpty()
@@ -269,7 +275,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                 Row(Modifier.fillMaxWidth()) {
                     SelectionRow(Icons.Default.Info, "Info", modifier = Modifier.weight(1f)) { try { (ctx as? android.app.Activity)?.let { PropertiesDialog(it, currentPath, false) } } catch (e: Exception) { ctx.toast("Info-Fehler: ${e.message}", Toast.LENGTH_SHORT) }; showActionSheet = false }
                     Spacer(Modifier.width(8.dp))
-                    SelectionRow(if (showRatingOverlay) Icons.Default.Star else Icons.Default.StarBorder, "Bewerten", modifier = Modifier.weight(1f)) { showRatingOverlay = !showRatingOverlay; showActionSheet = false }
+                    SelectionRow(if (showRatingOverlay) Icons.Default.Star else Icons.Default.StarBorder, "Bewerten", modifier = Modifier.weight(1f)) { val v = !showRatingOverlay; showRatingOverlay = v; ctx.config.viewerShowRatingBar = v; showActionSheet = false }
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth()) {
@@ -309,6 +315,12 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
 @Composable
 private fun ExifSheet(path: String, onDismiss: () -> Unit) {
     var exifData by remember { mutableStateOf<Map<String, String>?>(null) }
+    var rotationDegrees by remember { mutableIntStateOf(0) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var pendingDate by remember { mutableStateOf(android.icu.util.Calendar.getInstance().timeInMillis) }
+    val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
+
     LaunchedEffect(path) {
         exifData = withContext(Dispatchers.IO) {
             val data = mutableMapOf<String, String>()
@@ -335,13 +347,104 @@ private fun ExifSheet(path: String, onDismiss: () -> Unit) {
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).verticalScroll(rememberScrollState())) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("EXIF-Details", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)); IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Schließen") } }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("EXIF-Details", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Schließen") }
+            }
             Spacer(Modifier.height(8.dp))
             val data = exifData
             if (data == null) Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             else if (data.isEmpty()) Text("Keine EXIF-Daten verfügbar", color = MaterialTheme.colorScheme.onSurfaceVariant)
             else data.forEach { (label, value) -> Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) { Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(120.dp)); Text(value, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f)) } }
-            Spacer(Modifier.height(16.dp))
+
+            Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(12.dp))
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable {
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            val exif = android.media.ExifInterface(path)
+                            val cur = exif.getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)
+                            val next = when (cur) { 1 -> 8; 8 -> 3; 3 -> 6; 6 -> 1; else -> 8 }
+                            exif.setAttribute(android.media.ExifInterface.TAG_ORIENTATION, next.toString())
+                            exif.saveAttributes()
+                            rotationDegrees = (rotationDegrees - 90) % 360
+                        } catch (_: Exception) { }
+                    }
+                }) {
+                    Icon(Icons.Default.Close, "90° CCW", modifier = Modifier.size(32.dp))
+                    Text("90° CCW", style = MaterialTheme.typography.labelSmall)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable {
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            val exif = android.media.ExifInterface(path)
+                            val cur = exif.getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)
+                            val next = when (cur) { 1 -> 6; 6 -> 3; 3 -> 8; 8 -> 1; else -> 6 }
+                            exif.setAttribute(android.media.ExifInterface.TAG_ORIENTATION, next.toString())
+                            exif.saveAttributes()
+                            rotationDegrees = (rotationDegrees + 90) % 360
+                        } catch (_: Exception) { }
+                    }
+                }) {
+                    Icon(Icons.Default.Close, "90° CW", modifier = Modifier.size(32.dp))
+                    Text("90° CW", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Surface(
+                onClick = {
+                    try {
+                        val exif = android.media.ExifInterface(path)
+                        val dt = exif.getAttribute(android.media.ExifInterface.TAG_DATETIME)
+                        if (dt != null) {
+                            val sdf = java.text.SimpleDateFormat("yyyy:MM:dd HH:mm:ss", java.util.Locale.US)
+                            pendingDate = sdf.parse(dt)?.time ?: System.currentTimeMillis()
+                        }
+                    } catch (_: Exception) { }
+                    showDatePicker = true
+                },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            ) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Edit, null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Aufnahmedatum ändern", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+
+    if (showDatePicker) {
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = pendingDate)
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDatePicker = false
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        scope.launch(Dispatchers.IO) {
+                            try {
+                                val exif = android.media.ExifInterface(path)
+                                val sdf = java.text.SimpleDateFormat("yyyy:MM:dd HH:mm:ss", java.util.Locale.US)
+                                exif.setAttribute(android.media.ExifInterface.TAG_DATETIME, sdf.format(java.util.Date(millis)))
+                                exif.saveAttributes()
+                                withContext(Dispatchers.Main) { ctx.toast("Datum gespeichert", android.widget.Toast.LENGTH_SHORT) }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", android.widget.Toast.LENGTH_SHORT) }
+                            }
+                        }
+                    }
+                }) { Text("Speichern") }
+            },
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Abbrechen") } },
+        ) {
+            DatePicker(state = datePickerState)
         }
     }
 }

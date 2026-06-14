@@ -32,6 +32,7 @@ import org.fossify.gallery.models.Medium
 fun FavoritesScreen(
     modifier: Modifier = Modifier,
     viewSettings: ViewSettings = ViewSettings(),
+    onNavigateToViewer: ((paths: List<String>, startIndex: Int) -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     var favoriteMedia by remember { mutableStateOf<List<Medium>>(emptyList()) }
@@ -50,7 +51,7 @@ fun FavoritesScreen(
                 }
             }
         } else {
-            MediaScreen(viewSettings = viewSettings, mediaOverride = favoriteMedia)
+            MediaScreen(viewSettings = viewSettings, mediaOverride = favoriteMedia, onNavigateToViewer = onNavigateToViewer)
         }
     }
 }

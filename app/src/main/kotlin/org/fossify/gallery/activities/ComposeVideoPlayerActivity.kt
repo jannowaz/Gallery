@@ -14,6 +14,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +69,7 @@ import org.fossify.gallery.compose.screens.viewer.VideoPage
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.deleteMediumWithPath
 import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.helpers.MediaRepository
@@ -79,9 +81,10 @@ class ComposeVideoPlayerActivity : ComponentActivity() {
         enableEdgeToEdge()
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
         val videoPath = intent.getStringExtra("VIDEO_PATH") ?: run { finish(); return }
+        val conf = config
         setContent {
             val repo = remember { MediaRepository(this@ComposeVideoPlayerActivity) }
-            GalleryTheme(darkTheme = true) {
+            GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme()) {
                 AppProviders(repo) {
                     VideoPlayerScreen(videoPath = videoPath, onClose = { finish(); overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out) })
                 }

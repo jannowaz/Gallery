@@ -65,6 +65,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.screens.VideoThumbnail
+import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.mediaCacheDB
@@ -164,10 +165,7 @@ fun TagBrowserScreen(
                                         if (isVideo) {
                                             VideoThumbnail(videoPath = thumbPath, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                                         } else {
-                                            coil.compose.AsyncImage(
-                                                model = coil.request.ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(File(thumbPath))).crossfade(true).build(),
-                                                contentDescription = tag, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
-                                            )
+                                            GalleryImage(path = thumbPath, contentDescription = tag, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 16.dp)
                                         }
                                     } else {
                                         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {

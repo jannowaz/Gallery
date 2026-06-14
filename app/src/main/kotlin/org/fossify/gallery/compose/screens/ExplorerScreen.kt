@@ -62,13 +62,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.activities.ComposeViewerActivity
 import org.fossify.gallery.compose.components.FolderTile
+import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
@@ -183,7 +182,7 @@ fun ExplorerScreen(
         }
 
         if (isLoading) {
-            LoadingIndicator()
+            MediaSkeleton(columns = 3)
         } else if (folderItems.isEmpty() && fileItems.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Keine Elemente", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
@@ -268,12 +267,8 @@ fun ExplorerScreen(
                                         }) {
                                             Column {
                                                 Box(Modifier.aspectRatio(1f).clip(cornerShape)) {
-                                                    if (file.exists()) {
-                                                        if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                                        else AsyncImage(model = ImageRequest.Builder(context).data(android.net.Uri.fromFile(file)).crossfade(true).build(), contentDescription = item.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                                    } else {
-                                                        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant))
-                                                    }
+                                                    if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                                    else GalleryImage(path = item.path, contentDescription = item.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 20.dp)
                                                 }
                                                 if (mediaSettings.showFileNames) {
                                                     Text(item.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
@@ -294,14 +289,8 @@ fun ExplorerScreen(
                             }, color = Color.Transparent) {
                                 Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))) {
-                                        if (file.exists()) {
-                                            if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                            else AsyncImage(model = ImageRequest.Builder(context).data(android.net.Uri.fromFile(file)).crossfade(true).build(), contentDescription = item.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                        } else {
-                                            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                                                Icon(Icons.Default.Image, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
-                                            }
-                                        }
+                                        if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                        else GalleryImage(path = item.path, contentDescription = item.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 16.dp)
                                     }
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {

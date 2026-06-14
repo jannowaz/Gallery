@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,6 +51,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Icon
@@ -95,11 +97,19 @@ import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.activities.ComposeVideoPlayerActivity
 import org.fossify.gallery.activities.ComposeViewerActivity
+import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.compose.components.UndoBar
 import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.compose.components.StarRatingDialog
 import org.fossify.gallery.compose.components.TagInputDialog
 import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.compose.util.dragSelectionGesture
+import org.fossify.gallery.compose.util.rememberSelectionDragState
 import org.fossify.gallery.compose.util.selectableItem
+import org.fossify.gallery.compose.util.sharedElementKey
+import org.fossify.gallery.helpers.UndoAction
+import org.fossify.gallery.helpers.UndoManager
+import org.fossify.gallery.helpers.UndoType
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.mediaDB
@@ -128,6 +138,7 @@ fun MediaScreen(
     onClearPathFilter: () -> Unit = {},
     mediaOverride: List<Medium>? = null,
     refreshTrigger: Int = 0,
+    onNavigateToViewer: ((paths: List<String>, startIndex: Int) -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     val viewModel: MediaViewModel = viewModel()
@@ -135,6 +146,7 @@ fun MediaScreen(
     val state by viewModel.state.collectAsState()
     val repo = LocalMediaRepository.current
     var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val dragSelection = rememberSelectionDragState()
     var showSelectionSheet by remember { mutableStateOf(false) }
     var showRatingDialog by remember { mutableStateOf(false) }
     var showTagsDialog by remember { mutableStateOf(false) }
@@ -188,11 +200,16 @@ fun MediaScreen(
 
     fun openViewer(index: Int) {
         val paths = displayMedia.map { it.path }
-        ctx.startActivity(Intent(ctx, ComposeViewerActivity::class.java).apply {
-            putStringArrayListExtra("PATHS", ArrayList(paths)); putExtra("START_INDEX", index)
-            heroRect?.let { putExtra("HERO_LEFT",it.left.toFloat()); putExtra("HERO_TOP",it.top.toFloat()); putExtra("HERO_WIDTH",it.width().toFloat()); putExtra("HERO_HEIGHT",it.height().toFloat()) }
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        })
+        val navigate = onNavigateToViewer
+        if (navigate != null) {
+            navigate(paths, index)
+        } else {
+            ctx.startActivity(Intent(ctx, ComposeViewerActivity::class.java).apply {
+                putStringArrayListExtra("PATHS", ArrayList(paths)); putExtra("START_INDEX", index)
+                heroRect?.let { putExtra("HERO_LEFT",it.left.toFloat()); putExtra("HERO_TOP",it.top.toFloat()); putExtra("HERO_WIDTH",it.width().toFloat()); putExtra("HERO_HEIGHT",it.height().toFloat()) }
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+        }
     }
 
     val hasSelection = selectedPaths.isNotEmpty()
@@ -202,7 +219,7 @@ fun MediaScreen(
         BackHandler(enabled = hasSelection) { selectedPaths = emptySet() }
         Box(modifier = modifier.fillMaxSize()) {
         when {
-            state.isLoading && !hasFilter && mediaOverride == null -> LoadingIndicator()
+            state.isLoading && !hasFilter && mediaOverride == null -> MediaSkeleton(columns = columnCount)
             displayMedia.isEmpty() -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.Search,null,Modifier.size(64.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=0.4f)); Spacer(Modifier.height(16.dp))
@@ -213,17 +230,49 @@ fun MediaScreen(
             isGrid -> {
                 Column {
                     if (hasFilter) FilterBreadcrumbs(ratingFilter,activeTagName,activePathName,activeCollectionName,displayMedia.size,onClearRatingFilter,onClearTagFilter,onClearPathFilter,onClearFilter)
+                    // Quick-tag bar
+                    val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
+                    if (quickTags.isNotEmpty() && !hasSelection) {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            quickTags.forEach { tag ->
+                                val active = selectedPaths.isNotEmpty() && selectedPaths.all { p -> repo.getTags(p).contains(tag) }
+                                Surface(
+                                    onClick = {
+                                        val targets = if (selectedPaths.isNotEmpty()) selectedPaths else displayMedia.take(100).map { it.path }.toSet()
+                                        scope.launch(Dispatchers.IO) {
+                                            targets.forEach { p -> if (repo.getTags(p).contains(tag)) repo.removeTag(p, tag) else repo.addTag(p, tag) }
+                                            withContext(Dispatchers.Main) { taggedPaths = withContext(Dispatchers.IO) { try { ctx.mediaCacheDB.getAllTagged().map { it.fullPath }.toSet() } catch (_: Exception) { emptySet() } } }
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                ) {
+                                    Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
                     val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
+                    val gridState = rememberLazyGridState()
+                    LaunchedEffect(gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index) {
+                        val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return@LaunchedEffect
+                        val totalItems = gridState.layoutInfo.totalItemsCount
+                        if (totalItems > 0 && lastVisible >= totalItems - columnCount * 2 && state.hasMore && !state.isLoadingMore) {
+                            viewModel.loadMore()
+                        }
+                    }
                     CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
-                    LazyVerticalGrid(columns = GridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
+                    Box(Modifier.dragSelectionGesture(dragSelection) { path -> selectedPaths = selectedPaths + path }) {
+                    LazyVerticalGrid(state = gridState, columns = GridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
                     grouped.forEach { (label, groupItems) ->
                         item(span = { GridItemSpan(maxLineSpan) }) { MonthHeader(label = label, count = groupItems.size) }
-                        items(groupItems.size, key = { groupItems[it].path }) { idx ->
+                        items(groupItems.size, key = { groupItems[it].path }, contentType = { groupItems[it].type }) { idx ->
                             val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val file = File(m.path); val isVideo = m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS
-                            Column(Modifier.animateItem().padding(itemSpacing/2).background(mediaCardColor,cornerShape).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt())}) {
-                                Box(Modifier.aspectRatio(1f).selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewer(originalIdx)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path})) {
-                                    if(m.size > 0){ if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop) else coil.compose.AsyncImage(model=coil.request.ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(file)).crossfade(true).build(),contentDescription=m.name,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop) } else Box(Modifier.fillMaxSize().clip(cornerShape).background(MaterialTheme.colorScheme.surfaceVariant))
-                                    if(ctx.config.showRatingOnThumbnails&&m.rating>0){Box(Modifier.align(Alignment.TopStart).padding(4.dp).background(Color.Black.copy(alpha=0.6f),RoundedCornerShape(4.dp)).padding(horizontal=4.dp,vertical=1.dp)){Text("★★★★★".take(m.rating),style=MaterialTheme.typography.labelSmall,color=Color(0xFFFFD700),fontSize=8.sp)}}
+                            Column(Modifier.animateItem().padding(itemSpacing/2).background(mediaCardColor,cornerShape).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt());dragSelection.registerItemBounds(m.path,androidx.compose.ui.geometry.Rect(p,androidx.compose.ui.geometry.Size(s.width.toFloat(),s.height.toFloat())))}) {
+                                Box(Modifier.aspectRatio(1f).sharedElementKey("image/${m.path}").selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewer(originalIdx)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path})) {
+                                    if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop) else GalleryImage(path=m.path,contentDescription=m.name,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop,placeholderIconSize=20.dp)
+                                    // Clickable rating stars (left side)
+                                    Row(Modifier.align(Alignment.BottomStart).padding(2.dp).background(Color.Black.copy(alpha=0.55f),RoundedCornerShape(4.dp)).padding(horizontal=2.dp,vertical=1.dp)){for(i in 1..5){Box(Modifier.size(14.dp).clickable{scope.launch(Dispatchers.IO){repo.updateRating(m.path,if(m.rating==i) 0 else i);m.rating=if(m.rating==i) 0 else i}}){Text("★",style=MaterialTheme.typography.labelSmall,color=if(i<=m.rating)Color(0xFFFFD700) else Color.White.copy(alpha=0.25f),fontSize=9.sp)}}}
                                     if(m.path in taggedPaths){Box(Modifier.align(Alignment.TopEnd).padding(4.dp).background(Color.Black.copy(alpha=0.5f),RoundedCornerShape(4.dp)).padding(horizontal=4.dp,vertical=1.dp)){Icon(Icons.Default.Label,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(10.dp))}}
                                     if(isVideo&&ctx.config.showVideoDurationOnThumbnails&&m.videoDuration>0){val d="%02d:%02d".format(m.videoDuration/60,m.videoDuration%60);Box(Modifier.align(Alignment.BottomEnd).padding(4.dp).background(Color.Black.copy(alpha=0.6f),RoundedCornerShape(4.dp)).padding(horizontal=4.dp,vertical=1.dp)){Text(d,style=MaterialTheme.typography.labelSmall,color=Color.White,fontSize=10.sp)}}
                                     if(m.path in selectedPaths){Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha=0.4f)));Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp).background(MaterialTheme.colorScheme.primary,CircleShape),contentAlignment=Alignment.Center){Icon(Icons.Default.Close,null,tint=Color.White,modifier=Modifier.size(16.dp))}}
@@ -233,20 +282,29 @@ fun MediaScreen(
                             }
                         }
                     }
+                    if (state.isLoadingMore) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                            }
+                        }
+                    }
+                    }
                     }
                 }
             }
             }
             else -> {
                 val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
+                Box(Modifier.dragSelectionGesture(dragSelection) { path -> selectedPaths = selectedPaths + path }) {
                 LazyColumn(reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
                     grouped.forEach { (label, groupItems) ->
                         stickyHeader { MonthHeader(label = label, count = groupItems.size) }
-                        items(groupItems.size, key = { groupItems[it].path }) { idx ->
+                        items(groupItems.size, key = { groupItems[it].path }, contentType = { groupItems[it].type }) { idx ->
                             val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val file = File(m.path); val isVideo = m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS
-                            Surface(modifier = Modifier.animateItem().fillMaxWidth().background(mediaCardColor,RoundedCornerShape(8.dp)).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt())}.selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewer(originalIdx)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path}),color=Color.Transparent) {
+                            Surface(modifier = Modifier.animateItem().fillMaxWidth().background(mediaCardColor,RoundedCornerShape(8.dp)).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt());dragSelection.registerItemBounds(m.path,androidx.compose.ui.geometry.Rect(p,androidx.compose.ui.geometry.Size(s.width.toFloat(),s.height.toFloat())))}.selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewer(originalIdx)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path}),color=Color.Transparent) {
                                 Row(Modifier.padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
-                                    if(m.size > 0){Box(Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))){if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop) else coil.compose.AsyncImage(model=coil.request.ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(file)).crossfade(true).build(),contentDescription=m.name,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop)}} else Box(Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant))
+                                    Box(Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))){if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop) else GalleryImage(path=m.path,contentDescription=m.name,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop,placeholderIconSize=18.dp)}
                                     Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)){Text(m.name,style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis);Text(formatFileSize(m.size),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
                                     if(hasSelection){IconButton(onClick={openViewer(originalIdx)},modifier=Modifier.size(36.dp)){Icon(Icons.Default.Visibility,"Vorschau",tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(20.dp))}}
                                     if(m.path in selectedPaths) Icon(Icons.Default.Close,"Ausgewählt",tint=MaterialTheme.colorScheme.primary)
@@ -256,6 +314,7 @@ fun MediaScreen(
                         }
                     }
                 }
+                }
             }
         }
         AnimatedVisibility(visible=hasSelection,enter=slideInVertically(initialOffsetY={it})+fadeIn(animationSpec=spring(dampingRatio=0.7f)),exit=slideOutVertically(targetOffsetY={it})+fadeOut(),modifier=Modifier.align(Alignment.BottomCenter)) {
@@ -264,6 +323,7 @@ fun MediaScreen(
             }
         }
         SnackbarHost(hostState=snackbarHostState,modifier=Modifier.align(Alignment.BottomCenter))
+        UndoBar(modifier = Modifier.align(Alignment.BottomCenter))
         }
     }
     if (showSelectionSheet) {
@@ -272,7 +332,7 @@ fun MediaScreen(
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary,CircleShape));Spacer(Modifier.width(8.dp));Text("${selectedPaths.size} ausgewählt",style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold,modifier=Modifier.weight(1f),color=MaterialTheme.colorScheme.onSurfaceVariant);IconButton(onClick={selectedPaths=emptySet();showSelectionSheet=false}){Icon(Icons.Default.Close,"Auswahl schließen",tint=MaterialTheme.colorScheme.onSurfaceVariant)}}
                 Spacer(Modifier.height(12.dp))
                 SelectionRow(Icons.Default.Share,"Teilen"){val uris=ArrayList(selectedPaths.map{androidx.core.content.FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",File(it))});val allVideo=selectedPaths.all{it.substringAfterLast('.').lowercase() in VIDEO_EXTENSIONS};val si=if(uris.size==1)Intent(Intent.ACTION_SEND).apply{type=if(allVideo)"video/*" else "image/*";putExtra(Intent.EXTRA_STREAM,uris.first());addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)} else Intent(Intent.ACTION_SEND_MULTIPLE).apply{type="*/*";putParcelableArrayListExtra(Intent.EXTRA_STREAM,uris);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)};ctx.startActivity(Intent.createChooser(si,"Teilen").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));showSelectionSheet=false;selectedPaths=emptySet()}
-                SelectionRow(Icons.Default.Delete,"Löschen",tint=MaterialTheme.colorScheme.error){val d=selectedPaths.toSet();viewModel.softDeletePaths(d);selectedPaths=emptySet();showSelectionSheet=false;scope.launch{val r=snackbarHostState.showSnackbar("${d.size} in Papierkorb","Rückgängig",duration=SnackbarDuration.Short);if(r==SnackbarResult.ActionPerformed){viewModel.undoDeletePaths(d);viewModel.refresh()}}}
+                SelectionRow(Icons.Default.Delete,"Löschen",tint=MaterialTheme.colorScheme.error){val d=selectedPaths.toSet();viewModel.softDeletePaths(d);UndoManager.push(UndoAction(paths=d,type=UndoType.DELETE));selectedPaths=emptySet();showSelectionSheet=false}
                 SelectionRow(Icons.Default.Info,"Info"){ try { selectedPaths.firstOrNull()?.let { p -> (ctx as? android.app.Activity)?.let { a -> PropertiesDialog(a, p, false) } } } catch (e: Exception) { ctx.toast("Info-Fehler: ${e.message}", Toast.LENGTH_LONG) }; showSelectionSheet = false }
                 SelectionRow(Icons.Default.ContentCopy,"Kopieren"){folderPickerIsMove=false;showFolderPicker=true;showSelectionSheet=false}
                 SelectionRow(Icons.AutoMirrored.Filled.DriveFileMove,"Verschieben"){folderPickerIsMove=true;showFolderPicker=true;showSelectionSheet=false}

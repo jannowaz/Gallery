@@ -50,7 +50,7 @@ class SetWallpaperActivity : BaseCropActivity() {
 
         setupOptionsMenu()
         if (intent.data == null) {
-            val pickIntent = Intent(applicationContext, MainActivity::class.java)
+            val pickIntent = Intent(applicationContext, ComposeExplorerActivity::class.java)
             pickIntent.action = Intent.ACTION_PICK
             pickIntent.type = "image/*"
             startActivityForResult(pickIntent, PICK_IMAGE)

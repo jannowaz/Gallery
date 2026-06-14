@@ -247,7 +247,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                 else -> 1
             }
 
-            val intent = Intent(this@MediaActivity, MainActivity::class.java).apply {
+            val intent = Intent(this@MediaActivity, ComposeExplorerActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
                 putExtra("SELECTED_TAB", t)
@@ -697,7 +697,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     private fun switchToFolderView() {
         hideKeyboard()
         config.showAll = false
-        startActivity(Intent(this, MainActivity::class.java))
+        startActivity(Intent(this, ComposeExplorerActivity::class.java))
         finish()
     }
 

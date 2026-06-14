@@ -16,6 +16,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -42,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,8 +63,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.fossify.commons.extensions.toast
 import org.fossify.gallery.extensions.config
 import java.io.File
 
@@ -93,7 +98,11 @@ fun VideoPage(
     var backgroundAudio by remember { mutableStateOf(false) }
     var brightness by remember { mutableFloatStateOf(-1f) }
     var volume by remember { mutableFloatStateOf(-1f) }
+    var trimMode by remember { mutableStateOf(false) }
+    var trimStartMs by remember { mutableFloatStateOf(0f) }
+    var trimEndMs by remember { mutableFloatStateOf(-1f) }
     val window = (ctx as? android.app.Activity)?.window
+    val trimScope = rememberCoroutineScope()
 
     val retriever = remember { MediaMetadataRetriever() }
     DisposableEffect(path) {
@@ -274,6 +283,52 @@ fun VideoPage(
                         )
                         Text("%02d:%02d".format((player.duration / 1000) / 60, (player.duration / 1000) % 60), style = MaterialTheme.typography.labelSmall, color = Color.White)
                     }
+                    if (trimMode) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TextButton(onClick = {
+                                trimStartMs = player.currentPosition.toFloat()
+                            }) { Text("Start: %02d:%02d".format((trimStartMs / 1000).toInt() / 60, (trimStartMs / 1000).toInt() % 60), color = Color(0xFF64B5F6), style = MaterialTheme.typography.labelSmall) }
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = {
+                                trimEndMs = player.currentPosition.toFloat()
+                            }) { Text("Ende: %02d:%02d".format((trimEndMs / 1000).toInt() / 60, (trimEndMs / 1000).toInt() % 60), color = Color(0xFFEF5350), style = MaterialTheme.typography.labelSmall) }
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = {
+                                val start = trimStartMs.toLong() * 1000
+                                val end = trimEndMs.toLong() * 1000
+                                trimScope.launch(Dispatchers.IO) {
+                                    try {
+                                        val outFile = java.io.File(path.replaceBeforeLast('.', path.substringBeforeLast('.') + "_trimmed"))
+                                        val extractor = android.media.MediaExtractor()
+                                        extractor.setDataSource(path)
+                                        val muxer = android.media.MediaMuxer(outFile.absolutePath, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+                                        extractor.selectTrack(0)
+                                        val format = extractor.getTrackFormat(0)
+                                        val trackIndex = muxer.addTrack(format)
+                                        muxer.start()
+                                        extractor.seekTo(start, android.media.MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+                                        val buf = java.nio.ByteBuffer.allocate(256 * 1024)
+                                        val bufferInfo = android.media.MediaCodec.BufferInfo()
+                                        while (true) {
+                                            bufferInfo.offset = 0; bufferInfo.size = extractor.readSampleData(buf, 0)
+                                            if (bufferInfo.size < 0 || extractor.sampleTime > end) break
+                                            bufferInfo.presentationTimeUs = extractor.sampleTime - start
+                                            bufferInfo.flags = extractor.sampleFlags
+                                            muxer.writeSampleData(trackIndex, buf, bufferInfo)
+                                            extractor.advance()
+                                        }
+                                        muxer.stop(); muxer.release(); extractor.release()
+                                        withContext(Dispatchers.Main) { ctx.toast("Gespeichert: ${outFile.name}", android.widget.Toast.LENGTH_SHORT) }
+                                    } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", android.widget.Toast.LENGTH_SHORT) } }
+                                }
+                            }) {
+                                Text("✂ Speichern", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -312,5 +367,14 @@ fun VideoPage(
                 }
             }
         }
-    }
-}
+                    }
+                    TextButton(
+                        onClick = {
+                            trimMode = !trimMode
+                            if (trimMode && trimEndMs < 0f) trimEndMs = player.duration.toFloat()
+                        },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Text(if (trimMode) "✂" else "⚡", style = MaterialTheme.typography.labelSmall, color = Color.White)
+                    }
+                }

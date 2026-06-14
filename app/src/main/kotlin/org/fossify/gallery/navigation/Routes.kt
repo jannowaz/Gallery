@@ -22,3 +22,6 @@ data object TagBrowser
 
 @Serializable
 data object StorageAnalysis
+
+@Serializable
+data class Viewer(val paths: List<String>, val startIndex: Int)

@@ -169,7 +169,7 @@ open class PhotoVideoActivity : BaseViewerActivity(), ViewPagerFragment.Fragment
     private fun checkIntent(savedInstanceState: Bundle? = null) {
         if (intent.data == null && intent.action == Intent.ACTION_VIEW) {
             hideKeyboard()
-            startActivity(Intent(this, MainActivity::class.java))
+            startActivity(Intent(this, ComposeExplorerActivity::class.java))
             finish()
             return
         }

@@ -734,6 +734,10 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(SHOW_VIDEO_DURATION_ON_THUMBNAILS, true)
         set(v) = prefs.edit().putBoolean(SHOW_VIDEO_DURATION_ON_THUMBNAILS, v).apply()
 
+    var viewerShowRatingBar: Boolean
+        get() = prefs.getBoolean(VIEWER_SHOW_RATING_BAR, false)
+        set(v) = prefs.edit().putBoolean(VIEWER_SHOW_RATING_BAR, v).apply()
+
     var tagHierarchy: MutableMap<String, String>
         get() {
             val json = prefs.getString(TAG_HIERARCHY, "{}") ?: "{}"

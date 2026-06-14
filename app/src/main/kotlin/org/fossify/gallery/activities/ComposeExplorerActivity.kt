@@ -1,12 +1,19 @@
 package org.fossify.gallery.activities
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.database.ContentObserver
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -109,16 +116,19 @@ import org.fossify.gallery.compose.screens.ExplorerScreen
 import org.fossify.gallery.compose.screens.FavoritesScreen
 import org.fossify.gallery.compose.screens.MediaScreen
 import org.fossify.gallery.compose.screens.SettingsMode
+import org.fossify.gallery.compose.screens.TabViewSettings
 import org.fossify.gallery.compose.screens.ViewSettings
 import org.fossify.gallery.compose.screens.ViewSettingsSheet
 import org.fossify.gallery.compose.screens.ViewSettingsViewModel
 import org.fossify.gallery.compose.screens.VideoThumbnail
+import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.navigation.GalleryNavHost
 import org.fossify.gallery.navigation.ManageCollections
 import org.fossify.gallery.navigation.Settings
 import org.fossify.gallery.navigation.StorageAnalysis
 import org.fossify.gallery.navigation.TagBrowser
+import org.fossify.gallery.navigation.Viewer
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.extensions.config
@@ -126,17 +136,249 @@ import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MediaRepository
+import org.fossify.gallery.helpers.RefreshBus
 import org.fossify.gallery.helpers.XmpWriter
 import org.fossify.gallery.viewmodels.AlbumsViewModel
+import org.fossify.gallery.viewmodels.ExplorerViewModel
+import org.fossify.gallery.viewmodels.ExplorerUiState
+import org.fossify.gallery.workers.RecycleBinCleanupWorker
 import java.io.File
 
 private enum class ActiveSheet { MORE_MENU, VIEW_SETTINGS }
 
 class ComposeExplorerActivity : ComponentActivity() {
+
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { granted ->
+        if (granted.values.any { it }) {
+            recreate()
+        }
+    }
+
+    private val mediaObserver = object : ContentObserver(null) {
+        override fun onChange(selfChange: Boolean, uri: Uri?) {
+            super.onChange(selfChange, uri)
+            if (uri != null) {
+                RefreshBus.trigger()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { GalleryNavHost() }
+
+        contentResolver.registerContentObserver(
+            android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, mediaObserver
+        )
+        contentResolver.registerContentObserver(
+            android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, mediaObserver
+        )
+
+        if (hasMediaPermissions()) {
+            RecycleBinCleanupWorker.schedule(this)
+            setContent { GalleryNavHost() }
+        } else {
+            requestPermissionLauncher.launch(getMediaPermissionStrings())
+            RecycleBinCleanupWorker.schedule(this)
+            setContent { GalleryNavHost() }
+        }
+    }
+
+    private fun hasMediaPermissions(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
+        } else {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        contentResolver.unregisterContentObserver(mediaObserver)
+    }
+
+    private fun getMediaPermissionStrings(): Array<String> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
+        } else {
+            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+    }
+}
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+private fun TagBrowserSheet(
+    ctx: android.content.Context,
+    mainVM: ExplorerViewModel,
+    onDismiss: () -> Unit,
+) {
+    var allTags by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
+    var scanning by remember { mutableStateOf(false) }
+    var deleteConfirmTags by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var mergeTargetTag by remember { mutableStateOf<String?>(null) }
+    var pendingParentAssign by remember { mutableStateOf<Set<String>?>(null) }
+    var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var tagSearchQuery by remember { mutableStateOf("") }
+    var refreshTrigger by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(refreshTrigger) {
+        scanning = true
+        withContext(Dispatchers.IO) {
+            val tags = mutableMapOf<String, MutableList<String>>()
+            try {
+                val cached = ctx.mediaCacheDB.getAllTagged()
+                if (cached.isNotEmpty()) {
+                    cached.forEach { mc ->
+                        mc.tags.split(",").filter { it.isNotBlank() }.forEach { t ->
+                            tags.getOrPut(t.trim()) { mutableListOf() }.add(mc.fullPath)
+                        }
+                    }
+                }
+            } catch (_: Exception) { }
+            withContext(Dispatchers.Main) { allTags = tags.entries.sortedByDescending { it.value.size }.associate { it.key to it.value }; scanning = false }
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Tags (${allTags.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Schließen") }
+            }
+            OutlinedTextField(
+                value = tagSearchQuery,
+                onValueChange = { tagSearchQuery = it },
+                placeholder = { Text("Tag suchen") },
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Default.Search, "Suchen", modifier = Modifier.size(18.dp)) },
+                trailingIcon = { if (tagSearchQuery.isNotEmpty()) IconButton(onClick = { tagSearchQuery = "" }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Close, "Leeren", modifier = Modifier.size(16.dp)) } },
+                modifier = Modifier.fillMaxWidth(),
+                textStyle = MaterialTheme.typography.bodyMedium,
+                colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
+                shape = RoundedCornerShape(12.dp),
+            )
+            Spacer(Modifier.height(8.dp))
+            if (scanning) {
+                Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            } else if (allTags.isEmpty()) {
+                Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                    Text("Keine Tags gefunden", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                val filteredTags = if (tagSearchQuery.isBlank()) allTags.entries.toList() else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
+                LazyColumn(Modifier.heightIn(max = if (tagSearchQuery.isNotBlank()) 600.dp else 480.dp)) {
+                    items(filteredTags, key = { it.key }) { (tag, paths) ->
+                        val thumbPath = paths.firstOrNull()
+                        val isVideo = thumbPath?.let { it.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS } ?: false
+                        val isSelected = tag in selectedTags
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(
+                                onClick = {
+                                    onDismiss()
+                                    mainVM.setPreFilterTab(1)
+                                    mainVM.setTagFilter(paths.toSet(), tag)
+                                    mainVM.setRatingFilter(0)
+                                    mainVM.setPathFilter(null)
+                                    mainVM.setSelectedTab(0)
+                                },
+                                onLongClick = { selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag }
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        ) {
+                            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surface)) {
+                                    if (thumbPath != null && File(thumbPath).exists()) {
+                                        if (isVideo) {
+                                            VideoThumbnail(videoPath = thumbPath, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                        } else {
+                                            GalleryImage(path = thumbPath, contentDescription = tag, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 16.dp)
+                                        }
+                                    } else {
+                                        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                                            Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(tag, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${paths.size} Dateien", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (isSelected) {
+                                    Icon(Icons.Default.Close, "Ausgewählt", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+                if (selectedTags.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Surface(onClick = {
+                            val tagPaths = selectedTags.flatMap { allTags[it] ?: emptyList() }.toSet()
+                            onDismiss()
+                            mainVM.setTagFilter(tagPaths, selectedTags.joinToString(", "))
+                            mainVM.setRatingFilter(0)
+                            mainVM.setPathFilter(null)
+                            mainVM.setSelectedTab(0)
+                        }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f)) {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Filtern", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimary) }
+                        }
+                        Surface(onClick = { deleteConfirmTags = selectedTags }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.weight(1f)) {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Löschen", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer) }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+        }
+    }
+
+    if (deleteConfirmTags.isNotEmpty()) {
+        val tagsToDelete = deleteConfirmTags
+        val totalFiles = tagsToDelete.flatMap { allTags[it] ?: emptyList() }.distinct().size
+        AlertDialog(
+            onDismissRequest = { deleteConfirmTags = emptySet() },
+            title = { Text(if (tagsToDelete.size == 1) "Tag entfernen" else "Tags entfernen") },
+            text = {
+                if (tagsToDelete.size == 1) Text("Tag \"${tagsToDelete.first()}\" aus $totalFiles Dateien entfernen? Die Dateien bleiben erhalten.")
+                else Text("${tagsToDelete.size} Tags aus $totalFiles Dateien entfernen? Die Dateien bleiben erhalten.")
+            },
+            confirmButton = {
+                val repo = LocalMediaRepository.current
+                TextButton(onClick = {
+                    scope.launch(Dispatchers.IO) {
+                        tagsToDelete.forEach { tag ->
+                            val pathsForTag = allTags[tag] ?: return@forEach
+                            pathsForTag.forEach { p -> repo.removeTag(p, tag) }
+                        }
+                        try {
+                            val cached = ctx.mediaCacheDB.getAllTagged().filter { mc -> tagsToDelete.any { mc.tags.contains(it) } }
+                            cached.forEach { mc ->
+                                var newTags = mc.tags
+                                tagsToDelete.forEach { tag -> newTags = newTags.split(",").filter { it.trim() != tag }.joinToString(",") }
+                                ctx.mediaCacheDB.upsertAll(listOf(mc.copy(tags = newTags)))
+                            }
+                        } catch (_: Exception) { }
+                        withContext(Dispatchers.Main) {
+                            ctx.toast("${tagsToDelete.size} Tag(s) entfernt", Toast.LENGTH_SHORT)
+                            deleteConfirmTags = emptySet(); refreshTrigger++; selectedTags = emptySet()
+                        }
+                    }
+                }) { Text("Entfernen", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deleteConfirmTags = emptySet() }) { Text("Abbrechen") } }
+        )
     }
 }
 
@@ -150,272 +392,91 @@ private val navTabs = listOf(
     NavTab(4, "Favoriten", Icons.Default.Star)
 )
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
     val ctx = LocalContext.current
-    var selectedTab by remember { mutableIntStateOf(1) }
-    var activeSheet by remember { mutableStateOf<ActiveSheet?>(null) }
-    var showOmniSearch by remember { mutableStateOf(false) }
-    var showRatingBrowser by remember { mutableStateOf(false) }
-    var showTagBrowser by remember { mutableStateOf(false) }
-    var explorerPath by remember { mutableStateOf(ctx.config.internalStoragePath) }
-    var activeRatingFilter by remember { mutableIntStateOf(0) }
-    var activeTagFilter by remember { mutableStateOf<Set<String>?>(null) }
-    var activeTagName by remember { mutableStateOf<String?>(null) }
-    var activePathFilter by remember { mutableStateOf<Set<String>?>(null) }
-    var mediaRefreshTrigger by remember { mutableIntStateOf(0) }
-    var preFilterTab by remember { mutableIntStateOf(-1) }
+    val mainVM: ExplorerViewModel = viewModel()
+    val uiState by mainVM.state.collectAsState()
     val viewSettingsVM: ViewSettingsViewModel = viewModel()
     val tabSettings by viewSettingsVM.settings.collectAsState()
     val settingsMode by viewSettingsVM.settingsMode.collectAsState()
     val albumsViewModel: AlbumsViewModel = viewModel()
     val scope = rememberCoroutineScope()
+    var activeSheet by remember { mutableStateOf<ActiveSheet?>(null) }
+    var showOmniSearch by remember { mutableStateOf(false) }
+    var showRatingBrowser by remember { mutableStateOf(false) }
+    var showTagBrowser by remember { mutableStateOf(false) }
 
-    // Back: reopen tag browser or clear filters, then close
-    BackHandler(enabled = activeRatingFilter > 0 || activeTagFilter != null || activePathFilter != null || showTagBrowser || showOmniSearch || selectedTab != 1) {
+    LaunchedEffect(Unit) {
+        mainVM.initializeDatabase { mainVM.triggerMediaRefresh() }
+    }
+
+    BackHandler(enabled = uiState.activeRatingFilter > 0 || uiState.activeTagFilter != null || uiState.activePathFilter != null || showTagBrowser || showOmniSearch || uiState.selectedTab != 1) {
         when {
             showTagBrowser -> showTagBrowser = false
             showOmniSearch -> showOmniSearch = false
-            activeTagFilter != null -> { showTagBrowser = true; selectedTab = 1 }
-            activePathFilter != null -> {
-                val backTab = if (preFilterTab >= 0) preFilterTab else 1
-                activeRatingFilter = 0; activeTagFilter = null; activeTagName = null; activePathFilter = null; preFilterTab = -1
-                selectedTab = backTab
+            uiState.activeTagFilter != null -> { showTagBrowser = true; mainVM.setSelectedTab(1) }
+            uiState.activePathFilter != null -> {
+                val backTab = if (uiState.preFilterTab >= 0) uiState.preFilterTab else 1
+                mainVM.clearFilters()
+                mainVM.setSelectedTab(backTab)
             }
-            activeRatingFilter > 0 -> { activeRatingFilter = 0; selectedTab = 1 }
-            selectedTab != 1 -> selectedTab = 1
+            uiState.activeRatingFilter > 0 -> { mainVM.setRatingFilter(0); mainVM.setSelectedTab(1) }
+            uiState.selectedTab != 1 -> mainVM.setSelectedTab(1)
             else -> onFinish()
-        }
-    }
-
-    // Populate Room DB from MediaStore on first launch
-    LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
-            try {
-                val existing = ctx.mediaDB.getNewestMedia(1)
-                android.util.Log.e("DBInit", "existing.isEmpty=${existing.isEmpty()}")
-                if (existing.isEmpty()) {
-                    val mediums = mutableListOf<org.fossify.gallery.models.Medium>()
-                    val uri = android.provider.MediaStore.Files.getContentUri("external")
-                    val projection = arrayOf(
-                        android.provider.MediaStore.Files.FileColumns._ID,
-                        android.provider.MediaStore.Files.FileColumns.DATA,
-                        android.provider.MediaStore.Files.FileColumns.DATE_MODIFIED,
-                        android.provider.MediaStore.Files.FileColumns.DATE_TAKEN,
-                        android.provider.MediaStore.Files.FileColumns.SIZE,
-                        android.provider.MediaStore.Files.FileColumns.MIME_TYPE,
-                        android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE,
-                        android.provider.MediaStore.Files.FileColumns.DURATION,
-                    )
-                    val selection = "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
-                    val selectionArgs = arrayOf(
-                        android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
-                        android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
-                    )
-                    ctx.contentResolver.query(uri, projection, selection, selectionArgs, "${android.provider.MediaStore.Files.FileColumns.DATE_MODIFIED} DESC")?.use { cursor ->
-                        android.util.Log.e("DBInit", "MediaStore cursor count=${cursor.count}")
-                        val dataCol = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.DATA)
-                        val dateCol = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.DATE_MODIFIED)
-                        val takenCol = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.DATE_TAKEN)
-                        val sizeCol = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.SIZE)
-                        val typeCol = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE)
-                        val durCol = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.DURATION)
-                        while (cursor.moveToNext()) {
-                            val path = cursor.getString(dataCol) ?: continue
-                            val name = java.io.File(path).name
-                            val parentPath = java.io.File(path).parent ?: ""
-                            val modified = cursor.getLong(dateCol) * 1000L
-                            val taken = if (!cursor.isNull(takenCol)) cursor.getLong(takenCol) else modified
-                            val size = cursor.getLong(sizeCol)
-                            val mediaType = cursor.getInt(typeCol)
-                            val type = if (mediaType == android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) 2 else 1
-                            val duration = if (!cursor.isNull(durCol)) (cursor.getInt(durCol) / 1000) else 0
-                            mediums.add(org.fossify.gallery.models.Medium(
-                                id = null, name = name, path = path, parentPath = parentPath,
-                                modified = modified, taken = taken, size = size, type = type,
-                                videoDuration = duration, isFavorite = false, deletedTS = 0L, mediaStoreId = 0, rating = 0,
-                            ))
-                        }
-                    }
-                    android.util.Log.e("DBInit", "Scanned ${mediums.size} media from MediaStore")
-                    if (mediums.isNotEmpty()) {
-                        ctx.mediaDB.insertAll(mediums)
-                        android.util.Log.e("DBInit", "Inserted ${mediums.size} media into DB")
-                        // Also populate directories
-                        val dirs = mediums.map { it.parentPath }.distinct()
-                        dirs.forEach { dirPath ->
-                            val dirMedia = mediums.filter { it.parentPath == dirPath }
-                            val dirName = java.io.File(dirPath).name
-                            val hasImage = dirMedia.any { it.type == 1 }
-                            val hasVideo = dirMedia.any { it.type == 2 }
-                            val types = if (hasImage && hasVideo) 3 else if (hasVideo) 2 else 1
-                            ctx.directoryDB.insertAll(listOf(org.fossify.gallery.models.Directory(
-                                id = null, path = dirPath, tmb = dirMedia.maxByOrNull { it.modified }?.path ?: "",
-                                name = dirName, mediaCnt = dirMedia.size,
-                                modified = dirMedia.maxOf { it.modified },
-                                taken = dirMedia.maxOf { it.taken },
-                                size = dirMedia.size.toLong(),
-                                location = org.fossify.gallery.helpers.LOCATION_INTERNAL, types = types, sortValue = "",
-                            )))
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("Gallery", "MediaStore scan failed", e)
-            }
         }
     }
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { activeSheet = ActiveSheet.MORE_MENU }
-            ) {
+            FloatingActionButton(onClick = { activeSheet = ActiveSheet.MORE_MENU }) {
                 Icon(Icons.Default.MoreVert, "Mehr")
             }
         },
         bottomBar = {
-            Box(Modifier.pointerInput(Unit) {
-                detectVerticalDragGestures(onVerticalDrag = { _, drag -> if (drag < -50f) showOmniSearch = true })
-            }) {
-                NavigationBar(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 0.dp,
-                            modifier = Modifier.height(56.dp)
-                        ) {
-                            navTabs.forEach { tab ->
-                                NavigationBarItem(
-                                    selected = selectedTab == tab.index,
-                                    onClick = { selectedTab = tab.index },
-                                    icon = { Icon(tab.icon, tab.label, modifier = Modifier.size(22.dp)) },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    ),
-                                )
-                            }
-                        }
-                }
+            MainBottomBar(
+                selectedTab = uiState.selectedTab,
+                onTabSelected = { mainVM.setSelectedTab(it) },
+                onSwipeUp = { showOmniSearch = true },
+            )
         }
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            when (selectedTab) {
-                0 -> MediaScreen(viewSettings = tabSettings.media, ratingFilter = activeRatingFilter, tagFilterPaths = activeTagFilter, pathFilter = activePathFilter, activeTagName = activeTagName, refreshTrigger = mediaRefreshTrigger, onClearFilter = { activeRatingFilter = 0; activeTagFilter = null; activeTagName = null; activePathFilter = null })
-                1 -> AlbumsScreen(viewModel = albumsViewModel, onFolderClick = { dir ->
-                    ctx.startActivity(Intent(ctx, ComposeFolderActivity::class.java).apply {
-                        putExtra("FOLDER_PATH", dir.path)
-                    })
-                }, viewSettings = tabSettings.albums)
-                2 -> ExplorerScreen(internalStoragePath = explorerPath, folderSettings = tabSettings.explorerAlbums, mediaSettings = tabSettings.explorerMedia)
-                3 -> CollectionsScreen(onCollectionClick = { coll ->
-                    preFilterTab = 3
-                    activeRatingFilter = coll.ratingFilter
-                    activeTagName = coll.tagFilter.takeIf { it.isNotBlank() }
-                    if (coll.tagFilter.isNotBlank()) {
-                        scope.launch(Dispatchers.IO) {
-                            val tagNames = coll.tagFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }
-                            val tagPaths = mutableSetOf<String>()
-                            try { ctx.mediaCacheDB.getAllTagged().filter { mc -> tagNames.any { mc.tags.contains(it) } }.forEach { tagPaths.add(it.fullPath) } } catch (_: Exception) { }
-                            withContext(Dispatchers.Main) { activeTagFilter = if (tagPaths.isNotEmpty()) tagPaths else null }
-                        }
-                    } else { activeTagFilter = null }
-                    val included = coll.getIncludedPaths()
-                    val excluded = coll.getExcludedPaths()
-                    val incPaths = included.mapNotNull { resolveContentUriToPath(it) }.filter { it.isNotEmpty() }.toSet()
-                    val excPaths = excluded.mapNotNull { resolveContentUriToPath(it) }.filter { it.isNotEmpty() }.toSet()
-                    activePathFilter = when {
-                        incPaths.isNotEmpty() && excPaths.isNotEmpty() -> incPaths - excPaths
-                        incPaths.isNotEmpty() -> incPaths
-                        excPaths.isNotEmpty() -> {
-                            // All media except excluded: compute from DB
-                            scope.launch(Dispatchers.IO) {
-                                try {
-                                    val allPaths = ctx.mediaDB.getNewestMedia(5000).map { it.path }.filter { it.isNotEmpty() }.toSet()
-                                    withContext(Dispatchers.Main) { activePathFilter = allPaths - excPaths }
-                                } catch (_: Exception) { }
-                            }
-                            null
-                        }
-                        else -> null
-                    }
-                    selectedTab = 0
-                })
-                4 -> FavoritesScreen(viewSettings = tabSettings.favorites)
-            }
+            MainTabContent(
+                state = uiState,
+                tabSettings = tabSettings,
+                settingsMode = settingsMode,
+                albumsViewModel = albumsViewModel,
+                mainVM = mainVM,
+                ctx = ctx,
+                scope = scope,
+                navController = navController,
+            )
         }
     }
 
-    if (activeSheet == ActiveSheet.MORE_MENU) {
-        ModalBottomSheet(
-            onDismissRequest = { activeSheet = null },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = MaterialTheme.colorScheme.surface,
-        ) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text("Mehr", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                if (selectedTab in listOf(0, 1, 2, 4)) {
-                    MenuRow(Icons.Default.GridView, "Ansicht") { activeSheet = ActiveSheet.VIEW_SETTINGS }
-                    HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                }
-                MenuRow(Icons.Default.Star, "Nach Bewertung") { activeSheet = null; showRatingBrowser = true }
-                MenuRow(Icons.AutoMirrored.Filled.Label, "Nach Tags") { activeSheet = null; navController.navigate(TagBrowser) }
-                HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                MenuRow(Icons.Default.Settings, "Einstellungen") { activeSheet = null; navController.navigate(Settings) }
-                MenuRow(Icons.Default.CollectionsBookmark, "Sammlungen verwalten") { activeSheet = null; navController.navigate(ManageCollections) }
-                MenuRow(Icons.Default.Delete, "Speicher-Analyse") { activeSheet = null; navController.navigate(StorageAnalysis) }
-            }
-        }
-    }
+    MainSheets(
+        activeSheet = activeSheet,
+        selectedTab = uiState.selectedTab,
+        tabSettings = tabSettings,
+        settingsMode = settingsMode,
+        viewSettingsVM = viewSettingsVM,
+        navController = navController,
+        onDismissSheet = { activeSheet = null },
+        onSelectSheet = { activeSheet = it },
+        onShowRatingBrowser = { showRatingBrowser = true },
+    )
 
-    if (activeSheet == ActiveSheet.VIEW_SETTINGS) {
-        val isAlbumsTab = selectedTab == 1
-        val isExplorerTab = selectedTab == 2
-        val s = when (selectedTab) {
-            0 -> tabSettings.media
-            1 -> if (settingsMode == SettingsMode.ALBUMS) tabSettings.albums else tabSettings.folderMedia
-            2 -> if (settingsMode == SettingsMode.ALBUMS) tabSettings.explorerAlbums else tabSettings.explorerMedia
-            4 -> tabSettings.favorites
-            else -> ViewSettings()
-        }
-        ViewSettingsSheet(
-            settings = s,
-            showDisplayMode = ((selectedTab == 1 || selectedTab == 4) && settingsMode == SettingsMode.ALBUMS) || (selectedTab == 2 && settingsMode == SettingsMode.ALBUMS),
-            onSettingsChange = { v ->
-                when (selectedTab) {
-                    0 -> viewSettingsVM.updateMedia(v)
-                    1 -> if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateAlbums(v) else viewSettingsVM.updateFolderMedia(v)
-                    2 -> if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateExplorerAlbums(v) else viewSettingsVM.updateExplorerMedia(v)
-                    4 -> viewSettingsVM.updateFavorites(v)
-                }
-            },
-            onDismiss = { activeSheet = null },
-            modeTitle = when {
-                selectedTab == 1 -> if (settingsMode == SettingsMode.ALBUMS) "Alben" else "Ordner-Inhalt"
-                selectedTab == 2 -> if (settingsMode == SettingsMode.ALBUMS) "Alben" else "Medien"
-                else -> null
-            },
-            modeOptions = when (selectedTab) {
-                1 -> listOf("Alben", "Ordner-Inhalt")
-                2 -> listOf("Alben", "Medien")
-                else -> null
-            },
-            onToggleMode = if (isAlbumsTab || isExplorerTab) {{ viewSettingsVM.setSettingsMode(if (settingsMode == SettingsMode.ALBUMS) SettingsMode.MEDIA else SettingsMode.ALBUMS) }} else null,
-        )
-    }
     if (showOmniSearch) {
         OmniSearchSheet(
             onDismiss = { showOmniSearch = false },
             storagePath = android.os.Environment.getExternalStorageDirectory().absolutePath,
-            onNavigate = { path -> explorerPath = path; showOmniSearch = false; selectedTab = 2 },
-            onFilterChanged = { textPaths, rating, tagPaths, tagName, fileType, dateRange ->
-                activeRatingFilter = rating
-                activePathFilter = textPaths
-                activeTagFilter = tagPaths
-                activeTagName = tagName
-                if (rating > 0 || tagPaths != null || textPaths != null || fileType > 0 || dateRange > 0) selectedTab = 0
+            onNavigate = { path -> mainVM.setExplorerPath(path); showOmniSearch = false; mainVM.setSelectedTab(2) },
+            onFilterChanged = { textPaths, rating, tagPaths, tagName, _, _ ->
+                mainVM.setRatingFilter(rating)
+                mainVM.setPathFilter(textPaths)
+                mainVM.setTagFilter(tagPaths, tagName)
+                if (rating > 0 || tagPaths != null || textPaths != null) mainVM.setSelectedTab(0)
             },
         )
     }
@@ -441,335 +502,205 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
             confirmButton = { TextButton(onClick = {
                 showRatingBrowser = false
                 if (ratingFilter > 0) {
-                    preFilterTab = 1
-                    activeRatingFilter = ratingFilter
-                    activeTagFilter = null
-                    activeTagName = null
-                    activePathFilter = null
-                    selectedTab = 0
+                    mainVM.setPreFilterTab(1)
+                    mainVM.setRatingFilter(ratingFilter)
+                    mainVM.setTagFilter(null, null)
+                    mainVM.setPathFilter(null)
+                    mainVM.setSelectedTab(0)
                 }
             }) { Text("Filtern") } },
             dismissButton = { TextButton(onClick = { showRatingBrowser = false }) { Text("Schließen") } }
         )
     }
 
-     if (showTagBrowser) {
-        var allTags by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
-        var scanning by remember { mutableStateOf(false) }
-        var deleteConfirmTags by remember { mutableStateOf<Set<String>>(emptySet()) }
-        var mergeTargetTag by remember { mutableStateOf<String?>(null) }
-        var pendingParentAssign by remember { mutableStateOf<Set<String>?>(null) }
-        var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
-        var tagSearchQuery by remember { mutableStateOf("") }
-        var refreshTrigger by remember { mutableIntStateOf(0) }
-        val scope = rememberCoroutineScope()
+    if (showTagBrowser) {
+        TagBrowserSheet(
+            ctx = ctx,
+            mainVM = mainVM,
+            onDismiss = { showTagBrowser = false },
+        )
+    }
+}
 
-        LaunchedEffect(refreshTrigger) {
-            scanning = true
-            withContext(Dispatchers.IO) {
-                val tags = mutableMapOf<String, MutableList<String>>()
-                try {
-                    val cached = ctx.mediaCacheDB.getAllTagged()
-                    if (cached.isNotEmpty()) {
-                        cached.forEach { mc ->
-                            mc.tags.split(",").filter { it.isNotBlank() }.forEach { t ->
-                                tags.getOrPut(t.trim()) { mutableListOf() }.add(mc.fullPath)
-                            }
-                        }
-                    }
-                } catch (_: Exception) { }
-                withContext(Dispatchers.Main) { allTags = tags.entries.sortedByDescending { it.value.size }.associate { it.key to it.value }; scanning = false }
+@Composable
+private fun MainBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit, onSwipeUp: () -> Unit) {
+    Box(Modifier.pointerInput(Unit) {
+        detectVerticalDragGestures(onVerticalDrag = { _, drag -> if (drag < -50f) onSwipeUp() })
+    }) {
+        NavigationBar(
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp,
+            modifier = Modifier.height(56.dp)
+        ) {
+            navTabs.forEach { tab ->
+                NavigationBarItem(
+                    selected = selectedTab == tab.index,
+                    onClick = { onTabSelected(tab.index) },
+                    icon = { Icon(tab.icon, tab.label, modifier = Modifier.size(22.dp)) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                )
             }
         }
+    }
+}
 
+@Composable
+private fun MainTabContent(
+    state: ExplorerUiState,
+    tabSettings: TabViewSettings,
+    settingsMode: SettingsMode,
+    albumsViewModel: AlbumsViewModel,
+    mainVM: ExplorerViewModel,
+    ctx: android.content.Context,
+    scope: kotlinx.coroutines.CoroutineScope,
+    navController: NavHostController,
+) {
+    when (state.selectedTab) {
+        0 -> MediaScreen(
+            viewSettings = tabSettings.media,
+            ratingFilter = state.activeRatingFilter,
+            tagFilterPaths = state.activeTagFilter,
+            pathFilter = state.activePathFilter,
+            activeTagName = state.activeTagName,
+            refreshTrigger = state.mediaRefreshTrigger,
+            onClearFilter = { mainVM.clearFilters() },
+            onNavigateToViewer = { paths, startIndex -> navController.navigate(Viewer(paths, startIndex)) },
+        )
+        1 -> AlbumsScreen(
+            viewModel = albumsViewModel,
+            onFolderClick = { dir ->
+                ctx.startActivity(Intent(ctx, ComposeFolderActivity::class.java).apply {
+                    putExtra("FOLDER_PATH", dir.path)
+                })
+            },
+            viewSettings = tabSettings.albums,
+        )
+        2 -> ExplorerScreen(
+            internalStoragePath = state.explorerPath,
+            folderSettings = tabSettings.explorerAlbums,
+            mediaSettings = tabSettings.explorerMedia,
+        )
+        3 -> CollectionsScreen(
+            onCollectionClick = { coll ->
+                mainVM.setPreFilterTab(3)
+                mainVM.setRatingFilter(coll.ratingFilter)
+                if (coll.tagFilter.isNotBlank()) {
+                    scope.launch(Dispatchers.IO) {
+                        val tagNames = coll.tagFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                        val tagPaths = mutableSetOf<String>()
+                        try {
+                            ctx.mediaCacheDB.getAllTagged()
+                                .filter { mc -> tagNames.any { mc.tags.contains(it) } }
+                                .forEach { tagPaths.add(it.fullPath) }
+                        } catch (_: Exception) { }
+                        withContext(Dispatchers.Main) {
+                            mainVM.setTagFilter(if (tagPaths.isNotEmpty()) tagPaths else null, coll.tagFilter.takeIf { it.isNotBlank() })
+                        }
+                    }
+                } else {
+                    mainVM.setTagFilter(null, null)
+                }
+                val included = coll.getIncludedPaths()
+                val excluded = coll.getExcludedPaths()
+                val incPaths = included.mapNotNull { it.removePrefix("content:").takeIf(String::isNotEmpty) ?: it }
+                    .filter { it.isNotEmpty() }.toSet()
+                val excPaths = excluded.mapNotNull { it.removePrefix("content:").takeIf(String::isNotEmpty) ?: it }
+                    .filter { it.isNotEmpty() }.toSet()
+                mainVM.setPathFilter(when {
+                    incPaths.isNotEmpty() && excPaths.isNotEmpty() -> incPaths - excPaths
+                    incPaths.isNotEmpty() -> incPaths
+                    excPaths.isNotEmpty() -> {
+                        scope.launch(Dispatchers.IO) {
+                            try {
+                                val allPaths = ctx.mediaDB.getNewestMedia(5000).map { it.path }.toSet()
+                                withContext(Dispatchers.Main) { mainVM.setPathFilter(allPaths - excPaths) }
+                            } catch (_: Exception) { }
+                        }
+                        null
+                    }
+                    else -> null
+                })
+                mainVM.setSelectedTab(0)
+            },
+        )
+        4 -> FavoritesScreen(viewSettings = tabSettings.favorites, onNavigateToViewer = { paths, startIndex -> navController.navigate(Viewer(paths, startIndex)) })
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MainSheets(
+    activeSheet: ActiveSheet?,
+    selectedTab: Int,
+    tabSettings: TabViewSettings,
+    settingsMode: SettingsMode,
+    viewSettingsVM: ViewSettingsViewModel,
+    navController: NavHostController,
+    onDismissSheet: () -> Unit,
+    onSelectSheet: (ActiveSheet) -> Unit,
+    onShowRatingBrowser: () -> Unit,
+) {
+    if (activeSheet == ActiveSheet.MORE_MENU) {
         ModalBottomSheet(
-            onDismissRequest = { showTagBrowser = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
+            onDismissRequest = onDismissSheet,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = MaterialTheme.colorScheme.surface,
         ) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Tags (${allTags.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    // Hierarchy removed – use selection menu (Parent button) instead
-                    IconButton(onClick = { showTagBrowser = false }) { Icon(Icons.Default.Close, "Schließen") }
+                Text("Mehr", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                if (selectedTab in listOf(0, 1, 2, 4)) {
+                    MenuRow(Icons.Default.GridView, "Ansicht") { onSelectSheet(ActiveSheet.VIEW_SETTINGS) }
+                    HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 }
-                // Search
-                OutlinedTextField(
-                    value = tagSearchQuery,
-                    onValueChange = { tagSearchQuery = it },
-                    placeholder = { Text("Tag suchen") },
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Search, "Suchen", modifier = Modifier.size(18.dp)) },
-                    trailingIcon = { if (tagSearchQuery.isNotEmpty()) IconButton(onClick = { tagSearchQuery = "" }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Close, "Leeren", modifier = Modifier.size(16.dp)) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = MaterialTheme.typography.bodyMedium,
-                    colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
-                    shape = RoundedCornerShape(12.dp),
-                )
-                Spacer(Modifier.height(8.dp))
-                if (scanning) {
-                    Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                } else if (allTags.isEmpty()) {
-                    Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
-                        Text("Keine Tags gefunden", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                } else {
-                    val filteredTags = if (tagSearchQuery.isBlank()) allTags.entries.toList() else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
-                    LazyColumn(Modifier.heightIn(max = if (tagSearchQuery.isNotBlank()) 600.dp else 480.dp)) {
-                        items(filteredTags, key = { it.key }) { (tag, paths) ->
-                            val thumbPath = paths.firstOrNull()
-                            val isVideo = thumbPath?.let { it.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS } ?: false
-                            val isSelected = tag in selectedTags
-                            Card(
-                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(
-                                    onClick = {
-                                        // Always filter on tap
-                                        showTagBrowser = false
-                                        preFilterTab = 1
-                                        activeTagFilter = paths.toSet()
-                                        activeTagName = tag
-                                        activeRatingFilter = 0
-                                        activePathFilter = null
-                                        selectedTab = 0
-                                    },
-                                    onLongClick = { selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag }
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                )
-                            ) {
-                                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surface)) {
-                                        if (thumbPath != null && File(thumbPath).exists()) {
-                                            if (isVideo) {
-                                                VideoThumbnail(videoPath = thumbPath, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                            } else {
-                                                coil.compose.AsyncImage(
-                                                    model = coil.request.ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(File(thumbPath))).crossfade(true).build(),
-                                                    contentDescription = tag, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
-                                                )
-                                            }
-                                        } else {
-                                            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                                                Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
-                                            }
-                                        }
-                                    }
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(tag, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text("${paths.size} Dateien", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                    if (isSelected) {
-                                        Icon(Icons.Default.Close, "Ausgewählt", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    // Action bar when tags are selected
-                    if (selectedTags.isNotEmpty()) {
-                        Spacer(Modifier.height(8.dp))
-                        HorizontalDivider()
-                        Spacer(Modifier.height(8.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Surface(
-                                onClick = {
-                                    val tagPaths = selectedTags.flatMap { allTags[it] ?: emptyList() }.toSet()
-                                    showTagBrowser = false
-                                    activeTagFilter = tagPaths
-                                    activeTagName = selectedTags.joinToString(", ")
-                                    activeRatingFilter = 0
-                                    activePathFilter = null
-                                    selectedTab = 0
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
-                                    Text("Filtern", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimary)
-                                }
-                            }
-                            Surface(
-                                onClick = { deleteConfirmTags = selectedTags },
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.errorContainer,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
-                                    Text("Löschen", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer)
-                                }
-                            }
-                            Surface(
-                                onClick = { pendingParentAssign = selectedTags },
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
-                                    Text("Parent", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                                }
-                            }
-                            if (selectedTags.size >= 2) {
-                                Surface(
-                                    onClick = { mergeTargetTag = selectedTags.first() ?: "" },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.tertiaryContainer,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
-                                        Text("Merge", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                                    }
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                    }
-                }
+                MenuRow(Icons.Default.Star, "Nach Bewertung") { onDismissSheet(); onShowRatingBrowser() }
+                MenuRow(Icons.AutoMirrored.Filled.Label, "Nach Tags") { onDismissSheet(); navController.navigate(TagBrowser) }
+                HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                MenuRow(Icons.Default.Settings, "Einstellungen") { onDismissSheet(); navController.navigate(Settings) }
+                MenuRow(Icons.Default.CollectionsBookmark, "Sammlungen verwalten") { onDismissSheet(); navController.navigate(ManageCollections) }
+                MenuRow(Icons.Default.Delete, "Speicher-Analyse") { onDismissSheet(); navController.navigate(StorageAnalysis) }
             }
         }
+    }
 
-        // Delete confirmation (single or batch)
-        if (deleteConfirmTags.isNotEmpty()) {
-            val tagsToDelete = deleteConfirmTags
-            val totalFiles = tagsToDelete.flatMap { allTags[it] ?: emptyList() }.distinct().size
-            AlertDialog(
-                onDismissRequest = { deleteConfirmTags = emptySet() },
-                title = { Text(if (tagsToDelete.size == 1) "Tag entfernen" else "Tags entfernen") },
-                text = {
-                    if (tagsToDelete.size == 1) Text("Tag \"${tagsToDelete.first()}\" aus $totalFiles Dateien entfernen? Die Dateien bleiben erhalten.")
-                    else Text("${tagsToDelete.size} Tags (${tagsToDelete.joinToString(", ")}) aus $totalFiles Dateien entfernen? Die Dateien bleiben erhalten.")
-                },
-                confirmButton = {
-                    val repo = LocalMediaRepository.current
-                    TextButton(onClick = {
-                        scope.launch(Dispatchers.IO) {
-                            tagsToDelete.forEach { tag ->
-                                val pathsForTag = allTags[tag] ?: return@forEach
-                                pathsForTag.forEach { p -> repo.removeTag(p, tag) }
-                            }
-                            try {
-                                val cached = ctx.mediaCacheDB.getAllTagged().filter { mc -> tagsToDelete.any { mc.tags.contains(it) } }
-                                cached.forEach { mc ->
-                                    var newTags = mc.tags
-                                    tagsToDelete.forEach { tag -> newTags = newTags.split(",").filter { it.trim() != tag }.joinToString(",") }
-                                    ctx.mediaCacheDB.upsertAll(listOf(mc.copy(tags = newTags)))
-                                }
-                            } catch (_: Exception) { }
-                            withContext(Dispatchers.Main) {
-                                ctx.toast("${tagsToDelete.size} Tag${if (tagsToDelete.size != 1) "s" else ""} aus $totalFiles Dateien entfernt", Toast.LENGTH_SHORT)
-                                deleteConfirmTags = emptySet(); refreshTrigger++; selectedTags = emptySet()
-                            }
-                        }
-                    }) { Text("Entfernen", color = MaterialTheme.colorScheme.error) }
-                },
-                dismissButton = { TextButton(onClick = { deleteConfirmTags = emptySet() }) { Text("Abbrechen") } }
-            )
+    if (activeSheet == ActiveSheet.VIEW_SETTINGS) {
+        val isAlbumsTab = selectedTab == 1
+        val isExplorerTab = selectedTab == 2
+        val s = when (selectedTab) {
+            0 -> tabSettings.media
+            1 -> if (settingsMode == SettingsMode.ALBUMS) tabSettings.albums else tabSettings.folderMedia
+            2 -> if (settingsMode == SettingsMode.ALBUMS) tabSettings.explorerAlbums else tabSettings.explorerMedia
+            4 -> tabSettings.favorites
+            else -> ViewSettings()
         }
-
-        // Parent assign dialog (multi-select tags)
-        if (pendingParentAssign != null) {
-            val tagsToAssign = pendingParentAssign!!
-            val candidates = allTags.keys.filter { it !in tagsToAssign }.sorted()
-            var selectedParent by remember { mutableStateOf(candidates.firstOrNull() ?: "") }
-            AlertDialog(
-                onDismissRequest = { pendingParentAssign = null },
-                title = { Text("Eltern-Tag zuweisen") },
-                text = {
-                    Column {
-                        Text("Setze Eltern-Tag für: ${tagsToAssign.joinToString(", ")}")
-                        Spacer(Modifier.height(8.dp))
-                        if (candidates.isEmpty()) Text("Keine anderen Tags vorhanden", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        else {
-                            androidx.compose.material3.OutlinedTextField(
-                                value = selectedParent,
-                                onValueChange = { selectedParent = it },
-                                label = { Text("Eltern-Tag") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        if (selectedParent.isNotBlank()) {
-                            val h = ctx.config.tagHierarchy.toMutableMap()
-                            tagsToAssign.forEach { h[it] = selectedParent }
-                            ctx.config.tagHierarchy = h
-                            ctx.toast("Eltern-Tag gesetzt", Toast.LENGTH_SHORT)
-                        }
-                        pendingParentAssign = null; selectedTags = emptySet()
-                    }) { Text("Speichern") }
-                },
-                dismissButton = { TextButton(onClick = { pendingParentAssign = null }) { Text("Abbrechen") } }
-            )
-        }
-
-        // Merge dialog
-        if (mergeTargetTag != null) {
-            val defaultTarget = mergeTargetTag!!
-            var mergeTargetName by remember(mergeTargetTag) { mutableStateOf(defaultTarget) }
-            val existingTags = allTags.keys.filter { it != defaultTarget }.sorted()
-            AlertDialog(
-                onDismissRequest = { mergeTargetTag = null },
-                title = { Text("Merge Tags") },
-                text = {
-                    Column {
-                        Text("Quellen: ${selectedTags.joinToString(", ")}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(value = mergeTargetName, onValueChange = { mergeTargetName = it }, label = { Text("Ziel-Tag") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                        if (existingTags.isNotEmpty()) {
-                            Spacer(Modifier.height(8.dp))
-                            Text("Vorhandene Tags:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(4.dp))
-                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                existingTags.forEach { t ->
-                                    Surface(onClick = { mergeTargetName = t }, shape = RoundedCornerShape(12.dp), color = if (t == mergeTargetName) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
-                                        Text(t, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = if (t == mergeTargetName) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    val repo = LocalMediaRepository.current
-                    TextButton(onClick = {
-                        val target = mergeTargetName.trim()
-                        if (target.isBlank()) return@TextButton
-                        val sources = selectedTags - target
-                        scope.launch(Dispatchers.IO) {
-                            sources.forEach { srcTag ->
-                                val srcPaths = allTags[srcTag] ?: return@forEach
-                                srcPaths.forEach { p ->
-                                    repo.addTag(p, target)
-                                    repo.removeTag(p, srcTag)
-                                }
-                            }
-                            try {
-                                val cached = ctx.mediaCacheDB.getAllTagged().filter { it.tags.let { t -> sources.any { s -> t.contains(s) } } }
-                                cached.forEach { mc ->
-                                    var newTags = mc.tags
-                                    sources.forEach { src -> newTags = newTags.split(",").filter { it.trim() != src }.joinToString(",") }
-                                    if (target !in newTags.split(",").map { it.trim() }) newTags = "$newTags,$target"
-                                    ctx.mediaCacheDB.upsertAll(listOf(mc.copy(tags = newTags)))
-                                }
-                            } catch (_: Exception) { }
-                            withContext(Dispatchers.Main) {
-                                ctx.toast("Zu \"$target\" gemerged", Toast.LENGTH_SHORT)
-                                mergeTargetTag = null; refreshTrigger++; selectedTags = emptySet()
-                            }
-                        }
-                    }) { Text("Merge") }
-                },
-                dismissButton = { TextButton(onClick = { mergeTargetTag = null }) { Text("Abbrechen") } }
-            )
-        }
+        ViewSettingsSheet(
+            settings = s,
+            showDisplayMode = ((selectedTab == 1 || selectedTab == 4) && settingsMode == SettingsMode.ALBUMS) || (selectedTab == 2 && settingsMode == SettingsMode.ALBUMS),
+            onSettingsChange = { v ->
+                when (selectedTab) {
+                    0 -> viewSettingsVM.updateMedia(v)
+                    1 -> if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateAlbums(v) else viewSettingsVM.updateFolderMedia(v)
+                    2 -> if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateExplorerAlbums(v) else viewSettingsVM.updateExplorerMedia(v)
+                    4 -> viewSettingsVM.updateFavorites(v)
+                }
+            },
+            onDismiss = onDismissSheet,
+            modeTitle = when {
+                selectedTab == 1 -> if (settingsMode == SettingsMode.ALBUMS) "Alben" else "Ordner-Inhalt"
+                selectedTab == 2 -> if (settingsMode == SettingsMode.ALBUMS) "Alben" else "Medien"
+                else -> null
+            },
+            modeOptions = when (selectedTab) {
+                1 -> listOf("Alben", "Ordner-Inhalt")
+                2 -> listOf("Alben", "Medien")
+                else -> null
+            },
+            onToggleMode = if (isAlbumsTab || isExplorerTab) {{ viewSettingsVM.setSettingsMode(if (settingsMode == SettingsMode.ALBUMS) SettingsMode.MEDIA else SettingsMode.ALBUMS) }} else null,
+        )
     }
 }
 

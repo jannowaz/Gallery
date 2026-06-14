@@ -24,6 +24,12 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private val videoThumbnailCache = object : LinkedHashMap<String, android.graphics.Bitmap?>(16, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, android.graphics.Bitmap?>?): Boolean {
+        return size > 50
+    }
+}
+
 @Composable
 fun LoadingIndicator(modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -39,9 +45,11 @@ fun LoadingIndicator(modifier: Modifier = Modifier) {
 fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop) {
     var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     LaunchedEffect(videoPath) {
+        val cached = synchronized(videoThumbnailCache) { videoThumbnailCache[videoPath] }
+        if (cached != null) { bitmap = cached; return@LaunchedEffect }
         bitmap = withContext(Dispatchers.IO) {
             val r = android.media.MediaMetadataRetriever()
-            try { r.setDataSource(videoPath); r.frameAtTime } catch (_: Exception) { null } finally { r.release() }
+            try { r.setDataSource(videoPath); val bmp = r.frameAtTime; synchronized(videoThumbnailCache) { videoThumbnailCache[videoPath] = bmp }; bmp } catch (_: Exception) { null } finally { r.release() }
         }
     }
     val bmp = bitmap

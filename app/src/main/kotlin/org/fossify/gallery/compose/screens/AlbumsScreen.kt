@@ -106,7 +106,7 @@ fun AlbumsScreen(
     Box(Modifier.fillMaxSize()) {
         Column(modifier = modifier.fillMaxSize()) {
             if (state.isLoading) {
-                LoadingIndicator()
+                MediaSkeleton(columns = viewSettings.columnCount)
             } else if (state.directories.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {

@@ -5,8 +5,6 @@
     <ID>ComplexCondition:Activity.kt$(hide &amp;&amp; filename.startsWith('.')) || (!hide &amp;&amp; !filename.startsWith('.'))</ID>
     <ID>ComplexCondition:Context.kt$animate &amp;&amp; roundCorners == ROUNDED_CORNERS_NONE &amp;&amp; (path.isGif() || path.isWebP())</ID>
     <ID>ComplexCondition:DirectoryAdapter.kt$DirectoryAdapter$!config.useRecycleBin || config.tempSkipRecycleBin || (isOneItemSelected() &amp;&amp; fileDirItem.areFavorites())</ID>
-    <ID>ComplexCondition:MainActivity.kt$MainActivity$!config.wasOTGHandled &amp;&amp; hasPermission(getPermissionToRequest()) &amp;&amp; hasOTGConnected() &amp;&amp; config.OTGPath.isEmpty()</ID>
-    <ID>ComplexCondition:MainActivity.kt$MainActivity$(!defaultDir.exists() || !defaultDir.isDirectory) &amp;&amp; (config.defaultFolder != RECYCLE_BIN &amp;&amp; config.defaultFolder != FAVORITES)</ID>
     <ID>ComplexCondition:MediaActivity.kt$MediaActivity$mMedia.isEmpty() || !isRandomSorting || (isRandomSorting &amp;&amp; !mWasFullscreenViewOpen)</ID>
     <ID>ComplexCondition:MediaAdapter.kt$MediaAdapter$showFileTypes &amp;&amp; (medium.isGIF() || medium.isRaw() || medium.isSVG())</ID>
     <ID>ComplexCondition:MediaFetcher.kt$MediaFetcher$!isImage &amp;&amp; !isVideo &amp;&amp; !isGif &amp;&amp; !isRaw &amp;&amp; !isSvg</ID>
@@ -36,10 +34,6 @@
     <ID>CyclomaticComplexMethod:DirectoryAdapter.kt$DirectoryAdapter$private fun setupView(view: View, directory: Directory, holder: ViewHolder)</ID>
     <ID>CyclomaticComplexMethod:EditActivity.kt$EditActivity$private fun initEditActivity()</ID>
     <ID>CyclomaticComplexMethod:EditActivity.kt$EditActivity$private fun updatePrimaryActionButtons()</ID>
-    <ID>CyclomaticComplexMethod:MainActivity.kt$MainActivity$override fun deleteFolders(folders: ArrayList&lt;File&gt;)</ID>
-    <ID>CyclomaticComplexMethod:MainActivity.kt$MainActivity$private fun checkInvalidDirectories(dirs: ArrayList&lt;Directory&gt;)</ID>
-    <ID>CyclomaticComplexMethod:MainActivity.kt$MainActivity$private fun gotDirectories(newDirs: ArrayList&lt;Directory&gt;)</ID>
-    <ID>CyclomaticComplexMethod:MainActivity.kt$MainActivity$private fun setupOptionsMenu()</ID>
     <ID>CyclomaticComplexMethod:ManageBottomActionsDialog.kt$ManageBottomActionsDialog$private fun dialogConfirmed()</ID>
     <ID>CyclomaticComplexMethod:MediaActivity.kt$MediaActivity$override fun onResume()</ID>
     <ID>CyclomaticComplexMethod:MediaActivity.kt$MediaActivity$private fun setupOptionsMenu()</ID>
@@ -65,7 +59,6 @@
     <ID>CyclomaticComplexMethod:ViewPagerFragment.kt$ViewPagerFragment$fun getMediumExtendedDetails(medium: Medium): String</ID>
     <ID>EmptyCatchBlock:Activity.kt${ }</ID>
     <ID>EmptyCatchBlock:Context.kt${ }</ID>
-    <ID>EmptyCatchBlock:MainActivity.kt$MainActivity${ }</ID>
     <ID>EmptyCatchBlock:MediaActivity.kt$MediaActivity${ }</ID>
     <ID>EmptyCatchBlock:MediaFetcher.kt$MediaFetcher${ }</ID>
     <ID>EmptyCatchBlock:MyWidgetProvider.kt$MyWidgetProvider${ }</ID>
@@ -91,7 +84,6 @@
     <ID>InstanceOfCheckForException:Activity.kt$e !is IOException</ID>
     <ID>LargeClass:DirectoryAdapter.kt$DirectoryAdapter : MyRecyclerViewAdapterItemTouchHelperContractOnPopupTextUpdate</ID>
     <ID>LargeClass:EditActivity.kt$EditActivity : BaseCropActivity</ID>
-    <ID>LargeClass:MainActivity.kt$MainActivity : SimpleActivityDirectoryOperationsListener</ID>
     <ID>LargeClass:MediaActivity.kt$MediaActivity : SimpleActivityMediaOperationsListener</ID>
     <ID>LargeClass:MediaAdapter.kt$MediaAdapter : MyRecyclerViewAdapterOnPopupTextUpdate</ID>
     <ID>LargeClass:MediaFetcher.kt$MediaFetcher</ID>
@@ -100,7 +92,6 @@
     <ID>LargeClass:VideoFragment.kt$VideoFragment : ViewPagerFragmentSurfaceTextureListenerOnSeekBarChangeListenerPlaybackSpeedListener</ID>
     <ID>LargeClass:VideoPlayerActivity.kt$VideoPlayerActivity : BaseViewerActivityOnSeekBarChangeListenerSurfaceTextureListenerPlaybackSpeedListener</ID>
     <ID>LargeClass:ViewPagerActivity.kt$ViewPagerActivity : BaseViewerActivityOnPageChangeListenerFragmentListener</ID>
-    <ID>LongMethod:MainActivity.kt$MainActivity$private fun gotDirectories(newDirs: ArrayList&lt;Directory&gt;)</ID>
     <ID>LongMethod:SettingsActivity.kt$SettingsActivity$private fun parseFile(inputStream: InputStream?)</ID>
     <ID>LongMethod:VideoFragment.kt$VideoFragment$override fun onCreateView( inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle? ): View</ID>
     <ID>LongParameterList:MediaAdapter.kt$MediaAdapter$( activity: BaseSimpleActivity, var media: ArrayList&lt;ThumbnailItem&gt;, val listener: MediaOperationsListener?, val isAGetIntent: Boolean, val allowMultiplePicks: Boolean, val path: String, recyclerView: MyRecyclerView, itemClick: (Any) -&gt; Unit )</ID>
@@ -151,10 +142,6 @@
     <ID>MagicNumber:GalleryDatabase.kt$GalleryDatabase.Companion.&lt;no name provided&gt;$9</ID>
     <ID>MagicNumber:IsoTypeReader.kt$IsoTypeReader$32</ID>
     <ID>MagicNumber:IsoTypeReader.kt$IsoTypeReader$4</ID>
-    <ID>MagicNumber:MainActivity.kt$MainActivity$30</ID>
-    <ID>MagicNumber:MainActivity.kt$MainActivity$3000L</ID>
-    <ID>MagicNumber:MainActivity.kt$MainActivity$50</ID>
-    <ID>MagicNumber:MainActivity.kt$MainActivity$500</ID>
     <ID>MagicNumber:MediaActivity.kt$MediaActivity$3000L</ID>
     <ID>MagicNumber:MediaAdapter.kt$MediaAdapter$180</ID>
     <ID>MagicNumber:MediaAdapter.kt$MediaAdapter$270</ID>
@@ -293,11 +280,6 @@
     <ID>MaxLineLength:GrantAllFilesDialog.kt$GrantAllFilesDialog$.</ID>
     <ID>MaxLineLength:GridSpacingItemDecoration.kt$GridSpacingItemDecoration$override</ID>
     <ID>MaxLineLength:InstantItemSwitch.kt$InstantItemSwitch$if</ID>
-    <ID>MaxLineLength:MainActivity.kt$MainActivity$// exclude probably unwanted folders, for example facebook stickers are split between hundreds of separate folders like</ID>
-    <ID>MaxLineLength:MainActivity.kt$MainActivity$// recyclerview sometimes becomes empty at init/update, triggering an invisible refresh like this seems to work fine</ID>
-    <ID>MaxLineLength:MainActivity.kt$MainActivity$// update directories and media files in the local db, delete invalid items. Intentionally creating a new thread</ID>
-    <ID>MaxLineLength:MainActivity.kt$MainActivity$// we are looping through the already displayed folders looking for changes, do not do anything if nothing changed</ID>
-    <ID>MaxLineLength:MainActivity.kt$MainActivity$if</ID>
     <ID>MaxLineLength:ManageFoldersAdapter.kt$ManageFoldersAdapter$activity: BaseSimpleActivity</ID>
     <ID>MaxLineLength:MediaAdapter.kt$MediaAdapter$findItem(R.id.cab_confirm_selection).isVisible = isAGetIntent &amp;&amp; allowMultiplePicks &amp;&amp; selectedKeys.isNotEmpty()</ID>
     <ID>MaxLineLength:MediaAdapter.kt$MediaAdapter$findItem(R.id.cab_restore_recycle_bin_files).isVisible = selectedPaths.all { it.startsWith(activity.recycleBinPath) }</ID>
@@ -448,9 +430,6 @@
     <ID>NestedBlockDepth:Context.kt$fun Context.getNoMediaFoldersSync(): ArrayList&lt;String&gt;</ID>
     <ID>NestedBlockDepth:Context.kt$fun Context.parseFileChannel( path: String, fc: FileChannel, level: Int, start: Long, end: Long, callback: () -&gt; Unit )</ID>
     <ID>NestedBlockDepth:Context.kt$fun Context.updateSubfolderCounts( children: ArrayList&lt;Directory&gt;, parentDirs: ArrayList&lt;Directory&gt; )</ID>
-    <ID>NestedBlockDepth:MainActivity.kt$MainActivity$override fun onActivityResult(requestCode: Int, resultCode: Int, resultData: Intent?)</ID>
-    <ID>NestedBlockDepth:MainActivity.kt$MainActivity$private fun getFoldersWithMedia(path: String): HashSet&lt;String&gt;</ID>
-    <ID>NestedBlockDepth:MainActivity.kt$MainActivity$private fun gotDirectories(newDirs: ArrayList&lt;Directory&gt;)</ID>
     <ID>NestedBlockDepth:MediaFetcher.kt$MediaFetcher$fun getFilesFrom( curPath: String, isPickImage: Boolean, isPickVideo: Boolean, getProperDateTaken: Boolean, getProperLastModified: Boolean, getProperFileSize: Boolean, favoritePaths: ArrayList&lt;String&gt;, getVideoDurations: Boolean, lastModifieds: HashMap&lt;String, Long&gt;, dateTakens: HashMap&lt;String, Long&gt;, android11Files: HashMap&lt;String, ArrayList&lt;Medium&gt;&gt;? ): ArrayList&lt;Medium&gt;</ID>
     <ID>NestedBlockDepth:MediaFetcher.kt$MediaFetcher$private fun getLatestFileFolders(): LinkedHashSet&lt;String&gt;</ID>
     <ID>NestedBlockDepth:MediaFetcher.kt$MediaFetcher$private fun getMediaInFolder( folder: String, isPickImage: Boolean, isPickVideo: Boolean, filterMedia: Int, getProperDateTaken: Boolean, getProperLastModified: Boolean, getProperFileSize: Boolean, favoritePaths: ArrayList&lt;String&gt;, getVideoDurations: Boolean, lastModifieds: HashMap&lt;String, Long&gt;, dateTakens: HashMap&lt;String, Long&gt; ): ArrayList&lt;Medium&gt;</ID>
@@ -465,14 +444,12 @@
     <ID>ReturnCount:Context.kt$fun Context.getDirectorySortingValue( media: ArrayList&lt;Medium&gt;, path: String, name: String, size: Long, count: Int ): String</ID>
     <ID>ReturnCount:ViewPagerActivity.kt$ViewPagerActivity$private fun isShowHiddenFlagNeeded(): Boolean</ID>
     <ID>SpreadOperator:Context.kt$(*mediaToDelete.toTypedArray())</ID>
-    <ID>SpreadOperator:MainActivity.kt$MainActivity$(*mediaToDelete.toTypedArray())</ID>
     <ID>SwallowedException:Activity.kt$e: Exception</ID>
     <ID>SwallowedException:Activity.kt$e: OutOfMemoryError</ID>
     <ID>SwallowedException:Context.kt$e: Exception</ID>
     <ID>SwallowedException:EditActivity.kt$EditActivity$e: Exception</ID>
     <ID>SwallowedException:EditActivity.kt$EditActivity$e: OutOfMemoryError</ID>
     <ID>SwallowedException:IsoTypeReader.kt$IsoTypeReader$e: UnsupportedEncodingException</ID>
-    <ID>SwallowedException:MainActivity.kt$MainActivity$e: Exception</ID>
     <ID>SwallowedException:MediaActivity.kt$MediaActivity$e: Exception</ID>
     <ID>SwallowedException:MediaFetcher.kt$MediaFetcher$e: Exception</ID>
     <ID>SwallowedException:MediaSideScroll.kt$MediaSideScroll$e: Settings.SettingNotFoundException</ID>
@@ -491,7 +468,6 @@
     <ID>TooGenericExceptionCaught:Context.kt$e: Exception</ID>
     <ID>TooGenericExceptionCaught:DirectoryAdapter.kt$DirectoryAdapter$e: Exception</ID>
     <ID>TooGenericExceptionCaught:EditActivity.kt$EditActivity$e: Exception</ID>
-    <ID>TooGenericExceptionCaught:MainActivity.kt$MainActivity$e: Exception</ID>
     <ID>TooGenericExceptionCaught:MediaActivity.kt$MediaActivity$e: Exception</ID>
     <ID>TooGenericExceptionCaught:MediaFetcher.kt$MediaFetcher$e: Exception</ID>
     <ID>TooGenericExceptionCaught:MyWidgetProvider.kt$MyWidgetProvider$e: Exception</ID>
@@ -511,7 +487,6 @@
     <ID>TooManyFunctions:DirectoryAdapter.kt$DirectoryAdapter : MyRecyclerViewAdapterItemTouchHelperContractOnPopupTextUpdate</ID>
     <ID>TooManyFunctions:EditActivity.kt$EditActivity : BaseCropActivity</ID>
     <ID>TooManyFunctions:EditorDrawCanvas.kt$EditorDrawCanvas : View</ID>
-    <ID>TooManyFunctions:MainActivity.kt$MainActivity : SimpleActivityDirectoryOperationsListener</ID>
     <ID>TooManyFunctions:ManageFoldersAdapter.kt$ManageFoldersAdapter : MyRecyclerViewAdapter</ID>
     <ID>TooManyFunctions:ManageHiddenFoldersAdapter.kt$ManageHiddenFoldersAdapter : MyRecyclerViewAdapter</ID>
     <ID>TooManyFunctions:MediaActivity.kt$MediaActivity : SimpleActivityMediaOperationsListener</ID>
@@ -536,7 +511,6 @@
     <ID>VariableNaming:Activity.kt$val OTGPath = config.OTGPath</ID>
     <ID>VariableNaming:Context.kt$val OTGPath = config.OTGPath</ID>
     <ID>VariableNaming:DirectoryAdapter.kt$DirectoryAdapter$val SAFPath = getFirstSelectedItemPath() ?: return</ID>
-    <ID>VariableNaming:MainActivity.kt$MainActivity$val OTGPath = config.OTGPath</ID>
     <ID>VariableNaming:MediaActivity.kt$MediaActivity$private val LAST_MEDIA_CHECK_PERIOD = 3000L</ID>
     <ID>VariableNaming:MediaAdapter.kt$MediaAdapter$private val ITEM_MEDIUM_PHOTO = 2</ID>
     <ID>VariableNaming:MediaAdapter.kt$MediaAdapter$private val ITEM_MEDIUM_VIDEO_PORTRAIT = 1</ID>

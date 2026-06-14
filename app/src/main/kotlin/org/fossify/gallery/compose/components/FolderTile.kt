@@ -15,12 +15,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import org.fossify.gallery.compose.screens.VideoThumbnail
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import java.io.File
@@ -34,7 +31,6 @@ fun FolderTile(
     roundedCorners: Boolean = true,
     containerColor: Color = MaterialTheme.colorScheme.surface,
 ) {
-    val ctx = LocalContext.current
     val shape = if (roundedCorners) RoundedCornerShape(8.dp) else RoundedCornerShape(0.dp)
 
     Box(modifier.aspectRatio(1f).clip(shape)) {
@@ -43,11 +39,12 @@ fun FolderTile(
             if (isVideo) {
                 VideoThumbnail(videoPath = thumbnailPath, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             } else {
-                AsyncImage(
-                    model = ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(File(thumbnailPath))).crossfade(true).build(),
+                GalleryImage(
+                    path = thumbnailPath,
                     contentDescription = name,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    placeholderIconSize = 20.dp,
                 )
             }
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))

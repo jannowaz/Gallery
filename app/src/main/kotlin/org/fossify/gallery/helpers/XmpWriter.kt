@@ -6,6 +6,7 @@ import java.io.RandomAccessFile
 object XmpWriter {
     private const val XMP_NS = "http://ns.adobe.com/xap/1.0/"
     private const val DC_NS = "http://purl.org/dc/elements/1.1/"
+    private const val MAX_SCAN_BYTES = 2L * 1024 * 1024 // 2MB — XMP is always at the JPEG header
 
     data class XmpData(
         val tags: List<String> = emptyList(),
@@ -32,7 +33,6 @@ object XmpWriter {
 
     private fun parseXmp(raw: String): XmpData {
         val tags = mutableListOf<String>()
-        // Only extract <rdf:li> values that are inside <dc:subject> (actual tags, not other XMP list data)
         val subjectMatch = Regex("<dc:subject>\\s*<rdf:Bag>\\s*(.*?)\\s*</rdf:Bag>\\s*</dc:subject>", RegexOption.DOT_MATCHES_ALL)
             .find(raw)
         if (subjectMatch != null) {
@@ -90,62 +90,21 @@ $tagXml
         .replace("\"", "&quot;")
         .replace("'", "&apos;")
 
-    // --- JPEG embedding (reused from RatingWriter) ---
-
-    private fun writeXmpToJpeg(file: File, xmpData: ByteArray) {
-        try {
-            RandomAccessFile(file, "rw").use { raf ->
-                val buffer = ByteArray(raf.length().toInt())
-                raf.readFully(buffer)
-                raf.seek(0)
-                val xmpHeader = "http://ns.adobe.com/xap/1.0/\u0000".toByteArray()
-                val existingIndex = findSequence(buffer, xmpHeader)
-                val newData = if (existingIndex >= 0) {
-                    val start = existingIndex - 29
-                    if (start >= 0 && buffer[start] == 0xFF.toByte() && buffer[start + 1] == 0xE1.toByte()) {
-                        val oldLen = ((buffer[start + 2].toInt() and 0xFF) shl 8) or (buffer[start + 3].toInt() and 0xFF)
-                        val newApp1 = buildApp1Segment(xmpData)
-                        buffer.copyOf(start) + newApp1 + buffer.copyOfRange(start + 2 + oldLen, buffer.size)
-                    } else {
-                        insertAfterHeader(buffer, xmpData)
-                    }
-                } else {
-                    insertAfterHeader(buffer, xmpData)
-                }
-                raf.setLength(newData.size.toLong())
-                raf.write(newData)
-            }
-        } catch (_: Exception) { }
-    }
-
-    private fun insertAfterHeader(buffer: ByteArray, xmpData: ByteArray): ByteArray {
-        var pos = 2
-        while (pos < buffer.size - 1) {
-            if (buffer[pos] == 0xFF.toByte() && buffer[pos + 1].toInt() and 0xFF >= 0xE0) {
-                val segLen = ((buffer[pos + 2].toInt() and 0xFF) shl 8) or (buffer[pos + 3].toInt() and 0xFF)
-                pos += 2 + segLen
-            } else break
-        }
-        return buffer.copyOf(pos) + buildApp1Segment(xmpData) + buffer.copyOfRange(pos, buffer.size)
-    }
-
-    private fun buildApp1Segment(xmpData: ByteArray): ByteArray {
-        val header = "http://ns.adobe.com/xap/1.0/\u0000".toByteArray()
-        val app1Data = header + xmpData
-        val len = app1Data.size + 2
-        val segLen = byteArrayOf(((len shr 8) and 0xFF).toByte(), (len and 0xFF).toByte())
-        return byteArrayOf(0xFF.toByte(), 0xE1.toByte()) + segLen + app1Data
-    }
+    // --- JPEG embedding with streaming (no full-file read) ---
 
     private fun readXmpFromJpeg(file: File): String {
         try {
-            val data = file.readBytes()
-            val xmpHeader = "http://ns.adobe.com/xap/1.0/\u0000".toByteArray()
-            val idx = findSequence(data, xmpHeader)
-            if (idx >= 0) {
-                val start = idx + xmpHeader.size
-                val end = findSequence(data, "<?xpacket end=".toByteArray())
-                if (end > start) return String(data, start, end - start, Charsets.UTF_8)
+            RandomAccessFile(file, "r").use { raf ->
+                val readLen = minOf(raf.length(), MAX_SCAN_BYTES).toInt()
+                val buffer = ByteArray(readLen)
+                raf.readFully(buffer)
+                val xmpHeader = "http://ns.adobe.com/xap/1.0/\u0000".toByteArray()
+                val idx = findSequence(buffer, xmpHeader)
+                if (idx >= 0) {
+                    val start = idx + xmpHeader.size
+                    val end = findSequence(buffer, "<?xpacket end=".toByteArray())
+                    if (end > start) return String(buffer, start, end - start, Charsets.UTF_8)
+                }
             }
         } catch (_: Exception) { }
         return ""
@@ -159,6 +118,97 @@ $tagXml
 
     private fun writeXmpSidecar(file: File, xmpData: ByteArray) {
         try { File("${file.absolutePath}.xmp").writeBytes(xmpData) } catch (_: Exception) { }
+    }
+
+    /**
+     * Streaming write: scans the first [MAX_SCAN_BYTES] of the JPEG for an existing XMP APP1 segment.
+     * If found, replaces it. Otherwise inserts after all APP marker segments.
+     * Uses a temp file to avoid loading the entire image into memory.
+     */
+    private fun writeXmpToJpeg(file: File, xmpData: ByteArray) {
+        try {
+            val xmpHeader = "http://ns.adobe.com/xap/1.0/\u0000".toByteArray()
+            val newApp1 = buildApp1Segment(xmpData)
+            val scanLen = minOf(file.length(), MAX_SCAN_BYTES).toInt()
+            val scanBuf = ByteArray(scanLen)
+
+            RandomAccessFile(file, "r").use { raf ->
+                raf.readFully(scanBuf)
+            }
+
+            // Locate existing XMP position, or compute insertion point after APP markers
+            data class SegmentPos(val start: Int, val length: Int)
+
+            val existingXmp: SegmentPos? = run {
+                val idx = findSequence(scanBuf, xmpHeader)
+                if (idx >= 0) {
+                    val start = idx - 29
+                    if (start >= 0 && scanBuf[start] == 0xFF.toByte() && scanBuf[start + 1] == 0xE1.toByte()) {
+                        val segLen = ((scanBuf[start + 2].toInt() and 0xFF) shl 8) or (scanBuf[start + 3].toInt() and 0xFF)
+                        SegmentPos(start, 2 + segLen)
+                    } else null
+                } else null
+            }
+
+            val insertPos: Int = if (existingXmp != null) {
+                existingXmp.start
+            } else {
+                // Walk past all APP marker segments (0xFFE0 – 0xFFEF)
+                var pos = 2
+                while (pos + 3 < scanBuf.size) {
+                    if (scanBuf[pos] == 0xFF.toByte() && (scanBuf[pos + 1].toInt() and 0xFF) in 0xE0..0xEF) {
+                        val segLen = ((scanBuf[pos + 2].toInt() and 0xFF) shl 8) or (scanBuf[pos + 3].toInt() and 0xFF)
+                        pos += 2 + segLen
+                    } else break
+                }
+                pos
+            }
+
+            val tempFile = File("${file.absolutePath}.tmp")
+
+            RandomAccessFile(file, "r").use { input ->
+                tempFile.outputStream().buffered().use { output ->
+                    val buf = ByteArray(64 * 1024)
+
+                    // Copy bytes before the target position
+                    var remaining = insertPos.toLong()
+                    while (remaining > 0) {
+                        val chunk = input.read(buf, 0, minOf(buf.size, remaining.toInt()))
+                        if (chunk <= 0) break
+                        output.write(buf, 0, chunk)
+                        remaining -= chunk
+                    }
+
+                    // Write new XMP segment
+                    output.write(newApp1)
+
+                    // Skip old XMP segment if replacing
+                    if (existingXmp != null) {
+                        input.seek((existingXmp.start + existingXmp.length).toLong())
+                    }
+
+                    // Copy the rest of the file
+                    var bytesRead: Int
+                    while (input.read(buf).also { bytesRead = it } > 0) {
+                        output.write(buf, 0, bytesRead)
+                    }
+                }
+            }
+
+            // Atomic rename
+            if (tempFile.exists() && tempFile.length() > 0) {
+                file.delete()
+                tempFile.renameTo(file)
+            }
+        } catch (_: Exception) { }
+    }
+
+    private fun buildApp1Segment(xmpData: ByteArray): ByteArray {
+        val header = "http://ns.adobe.com/xap/1.0/\u0000".toByteArray()
+        val app1Data = header + xmpData
+        val len = app1Data.size + 2
+        val segLen = byteArrayOf(((len shr 8) and 0xFF).toByte(), (len and 0xFF).toByte())
+        return byteArrayOf(0xFF.toByte(), 0xE1.toByte()) + segLen + app1Data
     }
 
     private fun findSequence(data: ByteArray, pattern: ByteArray): Int {
