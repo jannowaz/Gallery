@@ -1,17 +1,18 @@
 package org.fossify.gallery.compose.components
 
 import android.widget.Toast
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,28 +29,25 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.extensions.mediaDB
-import org.fossify.gallery.extensions.mediaDB
 import java.io.File
 
-enum class RenameMode { PREFIX, SUFFIX, NEW_NAME }
-
 @Composable
-fun RenameDialog(
-    paths: List<String>,
-    onDismiss: () -> Unit,
-) {
+fun RenameDialog(paths: List<String>, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
-    var mode by remember { mutableIntStateOf(0) } // 0=prefix, 1=suffix, 2=new
+    var mode by remember { mutableIntStateOf(0) }
     var text by remember { mutableStateOf("") }
     var counter by remember { mutableIntStateOf(1) }
     val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
+    val modes = listOf("Präfix" to "Vor den Dateinamen", "Suffix" to "Vor die Dateiendung", "Neuer Name" to "Mit Nummerierung")
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
@@ -58,31 +56,44 @@ fun RenameDialog(
         title = { Text("${paths.size} Dateien umbenennen") },
         text = {
             Column {
-                Row(Modifier.fillMaxWidth()) {
-                    Surface(onClick = { mode = 0 }, color = androidx.compose.ui.graphics.Color.Transparent) {
-                        Row { RadioButton(selected = mode == 0, onClick = { mode = 0 }); Text("Präfix", Modifier.width(70.dp)) }
-                    }
-                    Surface(onClick = { mode = 1 }, color = androidx.compose.ui.graphics.Color.Transparent) {
-                        Row { RadioButton(selected = mode == 1, onClick = { mode = 1 }); Text("Suffix", Modifier.width(70.dp)) }
-                    }
-                    Surface(onClick = { mode = 2 }, color = androidx.compose.ui.graphics.Color.Transparent) {
-                        Row { RadioButton(selected = mode == 2, onClick = { mode = 2 }); Text("Neuer Name") }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    modes.forEachIndexed { idx, (title, _) ->
+                        Surface(
+                            onClick = { mode = idx },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (mode == idx) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(title, modifier = Modifier.padding(vertical = 6.dp).fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = if (mode == idx) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
-                    label = { Text(when (mode) { 0 -> "Präfix"; 1 -> "Suffix (vor Dateiendung)"; 2 -> "Neuer Name"; else -> "" }) },
+                    placeholder = { Text(when (mode) { 0 -> "z.B. Urlaub_"; 1 -> "_edited"; 2 -> "z.B. Foto"; else -> "" }, style = MaterialTheme.typography.bodySmall) },
+                    label = { Text(modes[mode].second) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
                     shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant),
                 )
-                if (mode in listOf(0, 2)) {
+                if (mode == 2) {
                     Spacer(Modifier.height(4.dp))
+                    Text("Start-Nummer: $counter", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Spacer(Modifier.height(6.dp))
+                if (text.isNotBlank()) {
                     val preview1 = generatePreview(paths.firstOrNull() ?: "", text, mode, counter)
                     val preview2 = generatePreview(paths.lastOrNull() ?: "", text, mode, counter + paths.size - 1)
-                    Text("$counter–${counter+paths.size-1}: $preview1 … $preview2", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(8.dp)) {
+                            Text("${File(paths.firstOrNull() ?: "").name} → $preview1", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${File(paths.lastOrNull() ?: "").name} → $preview2", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("$counter–${counter + paths.size - 1} von ${paths.size}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
             }
         },
@@ -97,9 +108,9 @@ fun RenameDialog(
                         if (!file.exists()) return@forEachIndexed
                         val ext = file.extension
                         val newName = when (mode) {
-                            0 -> "${text}${file.name}"
-                            1 -> "${file.nameWithoutExtension}${text}.${ext}"
-                            2 -> "${text}_${counter + idx}.${ext}"
+                            0 -> "$text${file.name}"
+                            1 -> "${file.nameWithoutExtension}$text.$ext"
+                            2 -> "${text}_${counter + idx}.$ext"
                             else -> file.name
                         }
                         val newFile = File(file.parent, newName)
@@ -121,11 +132,10 @@ fun RenameDialog(
 
 private fun generatePreview(path: String, text: String, mode: Int, counter: Int): String {
     val file = File(path)
-    val ext = file.extension
     return when (mode) {
-        0 -> "${text}${file.name}"
-        1 -> "${file.nameWithoutExtension}${text}.${ext}"
-        2 -> "${text}_${counter}.${ext}"
+        0 -> "$text${file.name}"
+        1 -> "${file.nameWithoutExtension}$text.${file.extension}"
+        2 -> "${text}_$counter.${file.extension}"
         else -> file.name
     }
 }
