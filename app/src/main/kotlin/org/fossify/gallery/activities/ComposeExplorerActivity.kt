@@ -59,6 +59,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -83,6 +84,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.navigation.NavHostController
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -112,6 +114,11 @@ import org.fossify.gallery.compose.screens.ViewSettingsSheet
 import org.fossify.gallery.compose.screens.ViewSettingsViewModel
 import org.fossify.gallery.compose.screens.VideoThumbnail
 import org.fossify.gallery.compose.theme.AppProviders
+import org.fossify.gallery.navigation.GalleryNavHost
+import org.fossify.gallery.navigation.ManageCollections
+import org.fossify.gallery.navigation.Settings
+import org.fossify.gallery.navigation.StorageAnalysis
+import org.fossify.gallery.navigation.TagBrowser
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.extensions.config
@@ -129,13 +136,7 @@ class ComposeExplorerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent {
-            val repo = remember { MediaRepository(this@ComposeExplorerActivity) }
-            val conf = this.config
-            GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme()) {
-                AppProviders(repo) { MainScreen(onFinish = { finish() }) }
-            }
-        }
+        setContent { GalleryNavHost() }
     }
 }
 
@@ -146,13 +147,12 @@ private val navTabs = listOf(
     NavTab(1, "Alben", Icons.Default.Folder),
     NavTab(2, "Pfad", Icons.Default.Search),
     NavTab(3, "Sammlung", Icons.Default.CollectionsBookmark),
-    NavTab(4, "Favoriten", Icons.Default.Star),
-    NavTab(5, "Mehr", Icons.Default.MoreVert),
+    NavTab(4, "Favoriten", Icons.Default.Star)
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun MainScreen(onFinish: () -> Unit) {
+fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
     val ctx = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(1) }
     var activeSheet by remember { mutableStateOf<ActiveSheet?>(null) }
@@ -268,18 +268,18 @@ fun MainScreen(onFinish: () -> Unit) {
     }
 
     Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { activeSheet = ActiveSheet.MORE_MENU }
+            ) {
+                Icon(Icons.Default.MoreVert, "Mehr")
+            }
+        },
         bottomBar = {
-            if (selectedTab != 5) {
-                Box(Modifier.pointerInput(Unit) {
-                    detectVerticalDragGestures(onVerticalDrag = { _, drag -> if (drag < -50f) showOmniSearch = true })
-                }) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.KeyboardArrowUp, "Hochwischen",
-                            modifier = Modifier.size(18.dp).padding(top = 2.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                        )
-                        NavigationBar(
+            Box(Modifier.pointerInput(Unit) {
+                detectVerticalDragGestures(onVerticalDrag = { _, drag -> if (drag < -50f) showOmniSearch = true })
+            }) {
+                NavigationBar(
                             containerColor = MaterialTheme.colorScheme.surface,
                             tonalElevation = 0.dp,
                             modifier = Modifier.height(56.dp)
@@ -287,10 +287,7 @@ fun MainScreen(onFinish: () -> Unit) {
                             navTabs.forEach { tab ->
                                 NavigationBarItem(
                                     selected = selectedTab == tab.index,
-                                    onClick = {
-                                        if (tab.index == 5) { activeSheet = ActiveSheet.MORE_MENU; return@NavigationBarItem }
-                                        selectedTab = tab.index
-                                    },
+                                    onClick = { selectedTab = tab.index },
                                     icon = { Icon(tab.icon, tab.label, modifier = Modifier.size(22.dp)) },
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = MaterialTheme.colorScheme.primary,
@@ -301,9 +298,7 @@ fun MainScreen(onFinish: () -> Unit) {
                                 )
                             }
                         }
-                    }
                 }
-        }
         }
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
@@ -366,9 +361,11 @@ fun MainScreen(onFinish: () -> Unit) {
                     HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 }
                 MenuRow(Icons.Default.Star, "Nach Bewertung") { activeSheet = null; showRatingBrowser = true }
-                MenuRow(Icons.AutoMirrored.Filled.Label, "Nach Tags") { activeSheet = null; showTagBrowser = true }
+                MenuRow(Icons.AutoMirrored.Filled.Label, "Nach Tags") { activeSheet = null; navController.navigate(TagBrowser) }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                MenuRow(Icons.Default.Settings, "Einstellungen") { activeSheet = null; ctx.startActivity(Intent(ctx, ComposeSettingsActivity::class.java)) }
+                MenuRow(Icons.Default.Settings, "Einstellungen") { activeSheet = null; navController.navigate(Settings) }
+                MenuRow(Icons.Default.CollectionsBookmark, "Sammlungen verwalten") { activeSheet = null; navController.navigate(ManageCollections) }
+                MenuRow(Icons.Default.Delete, "Speicher-Analyse") { activeSheet = null; navController.navigate(StorageAnalysis) }
             }
         }
     }

@@ -44,6 +44,7 @@ fun GalleryNavHost(
             ) {
                 composable<Home> {
                     MainScreen(
+                        navController = navController,
                         onFinish = { (ctx as? android.app.Activity)?.finish() },
                     )
                 }
