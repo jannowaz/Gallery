@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.models.Medium
 import java.io.File
@@ -57,10 +58,10 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun silentRefresh() {
+        val app = getApplication<Application>()
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val ctx = getApplication<Application>()
-                val media = scanDirectories(ctx)
+                val media = try { app.mediaDB.getNewestMedia(4000).sortedByDescending { it.modified } } catch (_: Exception) { scanDirectories(app) }
                 cachedAllMedia = media
                 currentPage = 0
                 val firstPage = getPage(media, 0)
@@ -86,8 +87,13 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private fun doLoad() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            val ctx = getApplication<Application>()
-            val media = withContext(Dispatchers.IO) { scanDirectories(ctx) }
+            val app = getApplication<Application>()
+            val media = withContext(Dispatchers.IO) {
+                try {
+                    val db = app.mediaDB.getNewestMedia(4000)
+                    if (db.isNotEmpty()) db.sortedByDescending { it.modified } else scanDirectories(app)
+                } catch (_: Exception) { scanDirectories(app) }
+            }
             cachedAllMedia = media
             val firstPage = getPage(media, 0)
             _state.update { it.copy(allMedia = firstPage, isLoading = false, hasMore = media.size > pageSize) }
@@ -116,14 +122,14 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             )
             val sel = "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
             val args = arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
-            ctx.contentResolver.query(uri, proj, sel, args, "${MediaStore.MediaColumns.DATE_MODIFIED} DESC")?.use { c ->
+            ctx.contentResolver.query(uri, proj, sel, args, "${MediaStore.MediaColumns.DATE_MODIFIED} DESC LIMIT 4000")?.use { c ->
                 val dataCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
                 val nameCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                 val dateCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
                 val sizeCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
                 val typeCol = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MEDIA_TYPE)
                 val durCol = try { c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DURATION) } catch (_: Exception) { -1 }
-                val maxItems = 5000
+                val maxItems = 4000
                 while (c.moveToNext() && allMedia.size < maxItems) {
                     val path = c.getString(dataCol) ?: continue
                     if (path in seen) continue
