@@ -256,7 +256,7 @@ fun MediaScreen(
                         }
                     }
                     }  // AnimatedVisibility close
-                    val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
+                    val grouped = remember(displayMedia.size, viewSettings.sortBy, viewSettings.sortDesc) { displayMedia.groupByMonth() }
                     val gridState = rememberLazyGridState()
                     LaunchedEffect(scrollToPath) {
                         if (scrollToPath.isNotEmpty() && displayMedia.isNotEmpty()) {
