@@ -20,10 +20,45 @@ import org.fossify.gallery.activities.MediaActivity
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.getFolderNameFromPath
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.extensions.widgetsDB
 import org.fossify.gallery.models.Widget
+import java.io.File
 
 class MyWidgetProvider : AppWidgetProvider() {
+    companion object {
+        const val ACTION_RENAME = "org.fossify.gallery.RENAME_LAST_MEDIA"
+        const val EXTRA_COUNT = "count"
+        const val EXTRA_PREFIX = "prefix"
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        if (intent.action == ACTION_RENAME) {
+            val count = intent.getIntExtra(EXTRA_COUNT, 5)
+            val prefix = intent.getStringExtra(EXTRA_PREFIX) ?: return
+            val pending = goAsync()
+            ensureBackgroundThread {
+                try {
+                    val media = context.mediaDB.getNewestMedia(count)
+                    var renamed = 0
+                    media.forEachIndexed { idx, m ->
+                        val file = java.io.File(m.path)
+                        if (!file.exists()) return@forEachIndexed
+                        val ext = file.extension
+                        val newName = "${prefix}_${idx + 1}.$ext"
+                        val newFile = java.io.File(file.parent, newName)
+                        if (file.renameTo(newFile)) {
+                            try { context.mediaDB.updateMedium(m.path, file.parent ?: "", newName, newFile.absolutePath) } catch (_: Exception) { }
+                            renamed++
+                        }
+                    }
+                    android.util.Log.i("WidgetRename", "Renamed $renamed of $count media with prefix '$prefix'")
+                } catch (_: Exception) { }
+                pending.finish()
+            }
+        }
+    }
     private fun setupAppOpenIntent(context: Context, views: RemoteViews, id: Int, widget: Widget) {
         val intent = Intent(context, MediaActivity::class.java).apply {
             putExtra(DIRECTORY, widget.folderPath)
