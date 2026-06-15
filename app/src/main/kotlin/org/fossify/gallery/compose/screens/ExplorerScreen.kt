@@ -1,6 +1,7 @@
 package org.fossify.gallery.compose.screens
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -100,6 +101,11 @@ fun ExplorerScreen(
     var selectedFolderPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showFolderSheet by remember { mutableStateOf(false) }
     val hasFolderSelection = selectedFolderPaths.isNotEmpty()
+
+    BackHandler(enabled = navStack.size > 1) {
+        navStack.removeLastOrNull()
+        currentPath = navStack.lastOrNull() ?: internalStoragePath
+    }
 
     suspend fun findThumbnailInFolder(folderPath: String): String = withContext(Dispatchers.IO) {
         try {
