@@ -136,20 +136,17 @@ fun VideoPage(
     LaunchedEffect(player) { spv.player = player }
     LaunchedEffect(scalingMode) { spv.resizeMode = scalingMode }
 
-    LaunchedEffect(showControls) {
+    fun resetAutoHide() {
+        autoHideJob?.cancel()
         if (showControls) {
-            delay(autoHideMs.toLong())
-            showControls = false
+            autoHideJob = scope.launch {
+                delay(autoHideMs.toLong())
+                showControls = false
+            }
         }
     }
 
-    fun resetAutoHide() {
-        autoHideJob?.cancel()
-        autoHideJob = scope.launch {
-            delay(autoHideMs.toLong())
-            showControls = false
-        }
-    }
+    LaunchedEffect(Unit) { resetAutoHide() }
 
     Box(Modifier.fillMaxSize().clipToBounds().background(Color.Black).then(modifier)) {
         AndroidView(factory = { spv }, modifier = Modifier
@@ -176,7 +173,7 @@ fun VideoPage(
 
         Box(Modifier.fillMaxSize().pointerInput(Unit) {
             detectTapGestures(
-                onTap = { showControls = !showControls },
+                onTap = { showControls = !showControls; resetAutoHide() },
                 onDoubleTap = { tapPos ->
                     if (scale > 1.1f) {
                         scale = 1f; offsetX = 0f; offsetY = 0f

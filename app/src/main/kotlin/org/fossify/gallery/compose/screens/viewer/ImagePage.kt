@@ -48,7 +48,7 @@ fun ImagePage(
     val dismissAnim = remember { Animatable(0f) }
 
     val dismissOffsetY = dismissAnim.value
-    val dismissProgress = (abs(dismissOffsetY) / 400f).coerceIn(0f, 1f)
+    val dismissProgress = (abs(dismissOffsetY) / 250f).coerceIn(0f, 1f)
     val backgroundAlpha = 1f - dismissProgress
     val targetAlpha by animateFloatAsState(
         targetValue = if (willClose) 0f else backgroundAlpha,
