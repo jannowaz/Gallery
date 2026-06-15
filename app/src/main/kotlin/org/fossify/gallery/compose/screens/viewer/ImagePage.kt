@@ -82,9 +82,8 @@ fun ImagePage(
                     scope.launch { dismissAnim.snapTo((dismissOffsetY + dragAmount).coerceAtLeast(0f)) }
                 },
                 onDragEnd = {
-                    if (dismissProgress <= 0.7f) {
-                        scope.launch { dismissAnim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)) }
-                    }
+                    if (dismissProgress > 0.6f) onClose()
+                    else scope.launch { dismissAnim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)) }
                 },
             )
         })

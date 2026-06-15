@@ -105,8 +105,8 @@ object AnalysisCriteria {
             bitrateKbps = bitrateKbps, codec = codec,
             imageFormat = if (isImage) ext else null,
             bpp = bpp, score = reasons.size.coerceAtMost(3),
-            wastedBytes = wastedBytes.coerceAtLeast(0),
-            reasons = reasons,
+            wastedBytes = if (wastedBytes > 5_000_000) wastedBytes else 0,  // <5MB savings = not worth it
+            reasons = if (wastedBytes > 5_000_000) reasons else emptyList(),
         )
     }
 
@@ -171,7 +171,7 @@ object AnalysisCriteria {
             else -> 3_000L
         }
         if (bitrateKbps <= targetKbps) return 0
-        val optimalBytes = (targetKbps * durationMs) / 8000
+        val optimalBytes = (targetKbps * durationMs) / 8
         return (size - optimalBytes).coerceAtLeast(0)
     }
 
