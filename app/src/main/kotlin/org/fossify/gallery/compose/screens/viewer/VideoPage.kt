@@ -92,6 +92,7 @@ fun VideoPage(
     var playbackSpeed by remember { mutableFloatStateOf(1f) }
     val speeds = listOf(0.5f, 1f, 1.5f, 2f, 3f)
     val autoHideMs = ctx.config.viewerAutoHideMs
+    var autoHideJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var backgroundAudio by remember { mutableStateOf(false) }
     var isMuted by remember { mutableStateOf(false) }
     var trimMode by remember { mutableStateOf(false) }
@@ -135,7 +136,20 @@ fun VideoPage(
     LaunchedEffect(player) { spv.player = player }
     LaunchedEffect(scalingMode) { spv.resizeMode = scalingMode }
 
-    LaunchedEffect(showControls) { if (showControls) { delay(autoHideMs.toLong()); showControls = false } }
+    LaunchedEffect(showControls) {
+        if (showControls) {
+            delay(autoHideMs.toLong())
+            showControls = false
+        }
+    }
+
+    fun resetAutoHide() {
+        autoHideJob?.cancel()
+        autoHideJob = scope.launch {
+            delay(autoHideMs.toLong())
+            showControls = false
+        }
+    }
 
     Box(Modifier.fillMaxSize().clipToBounds().background(Color.Black).then(modifier)) {
         AndroidView(factory = { spv }, modifier = Modifier
@@ -206,6 +220,7 @@ fun VideoPage(
                                 seekPos = fraction * player.duration
                                 scrubFraction = fraction
                                 player.seekTo((fraction * player.duration).toLong())
+                                resetAutoHide()
                                 val now = System.currentTimeMillis()
                                 if (now - lastFrameRequestMs > 90) {
                                     lastFrameRequestMs = now
