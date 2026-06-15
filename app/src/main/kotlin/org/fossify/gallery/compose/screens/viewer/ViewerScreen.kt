@@ -118,7 +118,6 @@ fun ViewerScreen(
     val quickTags = remember { ctx.config.quickTags.toList() }
     var currentRating by remember { mutableIntStateOf(0) }
     var videoScalingMode by remember { mutableIntStateOf(0) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
     var backgroundAudio by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showVideoSettings by remember { mutableStateOf(false) }
@@ -135,16 +134,8 @@ fun ViewerScreen(
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.fillMaxSize().offset(y = offsetY.dp)
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onDragEnd = { if (kotlin.math.abs(offsetY) > size.height / 4f) onClose() else offsetY = 0f },
-                        onVerticalDrag = { _, drag -> if (drag < -20) { showActionSheet = true; offsetY = 0f } else offsetY = (offsetY + drag).coerceIn(-size.height.toFloat() / 4f, size.height.toFloat() / 4f) }
-                    )
-                }
-                .pointerInput(Unit) {
-                    detectTapGestures(onTap = { showUI = !showUI })
-                }
+            modifier = Modifier.fillMaxSize()
+                .pointerInput(Unit) { detectTapGestures(onTap = { showUI = !showUI }) }
         ) { page ->
             val path = paths.getOrNull(page) ?: ""
             val file = File(path)

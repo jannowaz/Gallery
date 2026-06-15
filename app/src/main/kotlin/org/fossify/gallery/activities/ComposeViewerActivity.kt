@@ -155,7 +155,6 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     var showFolderPicker by remember { mutableStateOf(false) }
     var pendingFolderPickerIsMove by remember { mutableStateOf(false) }
     var videoScalingMode by remember { mutableIntStateOf(0) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
     var isClosing by remember { mutableStateOf(false) }
     var immersiveMode by remember { mutableStateOf(false) }
     var backgroundAudio by remember { mutableStateOf(false) }
@@ -212,8 +211,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
 
     Box(Modifier.fillMaxSize().background(Color.Black).graphicsLayer {
         val progress = heroProgress.value
-        val dragAlpha = if (size.height > 0f) ((size.height - offsetY) / size.height).coerceIn(0f, 1f) else 1f
-        alpha = progress * dragAlpha
+        alpha = progress
         heroRect?.let { r ->
             if (progress < 1f) {
                 val targetW = size.width.toFloat(); val targetH = size.height.toFloat()
@@ -223,10 +221,8 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
             }
         }
     }) {
-        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize().offset(y = offsetY.coerceAtLeast(0f).dp)
-            .pointerInput(currentIsVideo) { if (!currentIsVideo) return@pointerInput
-                detectVerticalDragGestures(onDragEnd = { if (kotlin.math.abs(offsetY) > size.height / 4f) closeWithAnimation() else { offsetY = 0f } }, onVerticalDrag = { _, drag -> if (drag < -20) { showActionSheet = true; offsetY = 0f } else offsetY = (offsetY + drag).coerceIn(-size.height.toFloat() / 4f, size.height.toFloat() / 4f) }) }
-            .pointerInput(Unit) { detectTapGestures(onTap = { val p = paths.getOrNull(pagerState.currentPage) ?: ""; if (isVideo(p)) showUI = !showUI else { showActionSheet = true; offsetY = 0f } }) }
+        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()
+            .pointerInput(Unit) { detectTapGestures(onTap = { showActionSheet = true }) }
         ) { page ->
             val path = paths.getOrNull(page) ?: ""
             val file = File(path)
