@@ -149,7 +149,7 @@ fun ViewerScreen(
         AnimatedVisibility(visible = showUI, enter = fadeIn(), exit = fadeOut()) {
             Box(Modifier.fillMaxSize()) {
                 IconButton(
-                    onClick = onClose,
+                    onClick = { ctx.config.lastViewedPath = currentPath; onClose() },
                     modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
                         .background(Color.Black.copy(alpha = 0.4f), CircleShape).size(44.dp)
                 ) { Icon(Icons.Default.Close, "Schließen", tint = Color.White) }
@@ -244,7 +244,7 @@ fun ViewerScreen(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("Löschen") },
             text = { Text("\"${File(currentPath).name}\" in den Papierkorb verschieben?") },
-            confirmButton = { TextButton(onClick = { showDeleteConfirm = false; scope.launch(Dispatchers.IO) { repo.moveToRecycleBin(currentPath) }; onClose() }) { Text("Löschen", color = MaterialTheme.colorScheme.error) } },
+            confirmButton = { TextButton(onClick = { showDeleteConfirm = false; ctx.config.lastViewedPath = currentPath; scope.launch(Dispatchers.IO) { repo.moveToRecycleBin(currentPath) }; onClose() }) { Text("Löschen", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Abbrechen") } },
         )
     }
