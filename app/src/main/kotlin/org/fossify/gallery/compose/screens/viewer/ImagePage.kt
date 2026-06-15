@@ -55,12 +55,6 @@ fun ImagePage(
         animationSpec = tween(200),
     )
 
-    LaunchedEffect(dismissOffsetY) {
-        if (dismissProgress > 0.7f) {
-            onClose()
-        }
-    }
-
     Box(Modifier.fillMaxSize().clipToBounds().graphicsLayer {
         alpha = targetAlpha
     }.then(modifier)) {
@@ -79,10 +73,11 @@ fun ImagePage(
             if (scale > 1.01f) return@pointerInput
             detectVerticalDragGestures(
                 onVerticalDrag = { _, dragAmount ->
-                    scope.launch { dismissAnim.snapTo((dismissOffsetY + dragAmount).coerceAtLeast(0f)) }
+                    scope.launch { dismissAnim.snapTo((dismissAnim.value + dragAmount).coerceAtLeast(0f)) }
                 },
                 onDragEnd = {
-                    if (dismissProgress > 0.6f) onClose()
+                    val progress = (abs(dismissAnim.value) / 250f).coerceIn(0f, 1f)
+                    if (progress > 0.6f) onClose()
                     else scope.launch { dismissAnim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)) }
                 },
             )
