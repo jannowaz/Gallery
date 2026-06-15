@@ -111,7 +111,7 @@ fun ViewerScreen(
     var showTagsDialog by remember { mutableStateOf(false) }
     var showFolderPicker by remember { mutableStateOf(false) }
     var pendingFolderPickerIsMove by remember { mutableStateOf(false) }
-    var showRatingOverlay by remember { mutableStateOf(false) }
+    var showRatingOverlay by remember { mutableStateOf(ctx.config.viewerShowRatingBar) }
     var showQuickTags by remember { mutableStateOf(false) }
     var showPersistentTags by remember { mutableStateOf(true) }
     var tagRefreshTrigger by remember { mutableIntStateOf(0) }
