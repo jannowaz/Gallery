@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -172,6 +173,24 @@ fun ViewerScreen(
                 )
             }
         }
+
+        // Rating overlay (inside main Box)
+        AnimatedVisibility(
+            visible = showRatingOverlay,
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (currentIsVideo) 56.dp else 0.dp),
+            enter = fadeIn(), exit = fadeOut(),
+        ) {
+            Box(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.65f)).padding(8.dp), contentAlignment = Alignment.Center) {
+                Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                    for (i in 1..5) {
+                        IconButton(onClick = { val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) {
+                            Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, "Bewertung $i", tint = if (i <= currentRating) MaterialTheme.colorScheme.tertiary else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))
+                        }
+                    }
+                    IconButton(onClick = { showRatingOverlay = false; ctx.config.viewerShowRatingBar = false }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, "Ausblenden", tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
+                }
+            }
+        }
     }
 
     if (showActionSheet) {
@@ -266,32 +285,5 @@ fun ViewerScreen(
             sourcePaths = listOf(currentPath),
             onDismiss = { showFolderPicker = false },
         )
-    }
-
-    // Rating overlay
-    AnimatedVisibility(
-        visible = showRatingOverlay,
-        modifier = Modifier.fillMaxWidth(),
-        enter = fadeIn(),
-        exit = fadeOut(),
-    ) {
-        Box(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.65f)).padding(8.dp), contentAlignment = Alignment.Center) {
-            Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-            for (i in 1..5) {
-                IconButton(onClick = {
-                    val r = if (currentRating == i) 0 else i
-                    currentRating = r
-                    scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) }
-                }, modifier = Modifier.size(40.dp)) {
-                    Icon(
-                        if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder,
-                        "Bewertung $i",
-                        tint = if (i <= currentRating) MaterialTheme.colorScheme.tertiary else Color.White.copy(alpha = 0.4f),
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-            }
-        }
-    }
     }
 }
