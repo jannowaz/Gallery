@@ -224,7 +224,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
         ) { page ->
             val path = paths.getOrNull(page) ?: ""
             val file = File(path)
-            if (isVideo(path)) VideoPage(path = path, scalingMode = videoScalingMode, onScalingModeChange = { videoScalingMode = it }, onBackgroundAudioChange = { backgroundAudio = it })
+            if (isVideo(path)) VideoPage(path = path, scalingMode = videoScalingMode, onScalingModeChange = { videoScalingMode = it }, onBackgroundAudioChange = { backgroundAudio = it }, isCurrentPage = page == pagerState.currentPage)
             else if (file.exists()) ImagePage(path = path, file = file, onClose = closeWithAnimation)
         }
 
@@ -327,8 +327,9 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
 
     if (showTagsDialog) {
         var allTags by remember { mutableStateOf<List<String>>(emptyList()) }
-        LaunchedEffect(Unit) { allTags = withContext(Dispatchers.IO) { try { ctx.mediaCacheDB.getAllTagged().flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct() } catch (_: Exception) { emptyList() } } }
-        TagInputDialog(initialTags = repo.getTags(currentPath), suggestedTags = allTags, onAddTag = { scope.launch(Dispatchers.IO) { repo.addTag(currentPath, it) } }, onRemoveTag = { scope.launch(Dispatchers.IO) { repo.removeTag(currentPath, it) } }, onDismiss = { showTagsDialog = false })
+        var tagCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+        LaunchedEffect(Unit) { withContext(Dispatchers.IO) { try { val tagged = ctx.mediaCacheDB.getAllTagged(); val counts = tagged.flatMap { it.tags.split(",").filter(String::isNotBlank) }.groupingBy { it }.eachCount(); allTags = counts.entries.sortedByDescending { it.value }.map { it.key }; tagCounts = counts } catch (_: Exception) { } } }
+        TagInputDialog(initialTags = repo.getTags(currentPath), suggestedTags = allTags, suggestedTagCounts = tagCounts, onAddTag = { scope.launch(Dispatchers.IO) { repo.addTag(currentPath, it) } }, onRemoveTag = { scope.launch(Dispatchers.IO) { repo.removeTag(currentPath, it) } }, onDismiss = { showTagsDialog = false })
     }
 
     if (showFolderPicker) {

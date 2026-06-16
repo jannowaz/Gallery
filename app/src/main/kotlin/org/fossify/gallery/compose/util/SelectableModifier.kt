@@ -1,9 +1,10 @@
 package org.fossify.gallery.compose.util
 
-import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -13,14 +14,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.layout.boundsInWindow
 
 @Stable
 class SelectionDragState {
     var isDragging by mutableStateOf(false)
     var dragBounds by mutableStateOf<Rect?>(null)
     var anchorPath by mutableStateOf<String?>(null)
+    var autoScrollSpeed by mutableStateOf(0f)
 
     private val itemBounds = mutableMapOf<String, Rect>()
 
@@ -47,6 +47,7 @@ class SelectionDragState {
         isDragging = false
         dragBounds = null
         anchorPath = null
+        autoScrollSpeed = 0f
     }
 }
 
@@ -62,21 +63,20 @@ fun Modifier.selectableItem(
     onLongClick: () -> Unit = {},
     onSwipeToSelect: () -> Unit = {},
 ): Modifier = composed {
-    val view = LocalView.current
-
     this.combinedClickable(
-        onClick = {
-            if (isSelectionMode) onClick()
-            else onClick()
-        },
-        onLongClick = null, // Let grid-level drag gesture handle long press
+        onClick = onClick,
+        onLongClick = null,
     )
 }
 
 fun Modifier.dragSelectionGesture(
     state: SelectionDragState,
+    gridState: LazyGridState? = null,
+    staggeredGridState: LazyStaggeredGridState? = null,
     onSelectPath: (String) -> Unit,
-): Modifier = pointerInput(Unit) {
+): Modifier = pointerInput(gridState, staggeredGridState) {
+    val edgeThreshold = 80f
+
     detectDragGesturesAfterLongPress(
         onDragStart = { offset ->
             state.isDragging = true
@@ -95,22 +95,16 @@ fun Modifier.dragSelectionGesture(
                 bottom = maxOf(prev.bottom, change.position.y),
             )
             state.getItemsInDragArea().forEach { onSelectPath(it) }
+
+            val containerHeight = size.height.toFloat()
+            val posY = change.position.y
+            state.autoScrollSpeed = when {
+                posY < edgeThreshold -> ((posY - edgeThreshold) / edgeThreshold * 4f).coerceIn(-4f, 0f)
+                posY > containerHeight - edgeThreshold -> ((posY - (containerHeight - edgeThreshold)) / edgeThreshold * 4f).coerceIn(0f, 4f)
+                else -> 0f
+            }
         },
         onDragEnd = { state.reset() },
         onDragCancel = { state.reset() },
     )
 }
-
-@OptIn(ExperimentalFoundationApi::class)
-fun Modifier.selectableItemWithDrag(
-    isSelectionMode: Boolean,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    onSwipeToSelect: () -> Unit = {},
-): Modifier = combinedClickable(
-    onClick = {
-        if (isSelectionMode) onClick()
-        else onClick()
-    },
-    onLongClick = { onSwipeToSelect() },
-)

@@ -53,14 +53,14 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         if (loaded) return
         loaded = true
         currentPage = 0
-        doLoad()
+        rescanAndLoad()
     }
 
     fun refresh() {
         loaded = false
         currentPage = 0
         cachedAllMedia = emptyList()
-        doLoad()
+        rescanAndLoad()
     }
 
     fun silentRefresh() {
@@ -77,6 +77,57 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun rescanAndLoad() {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+            val app = getApplication<Application>()
+            val media = withContext(Dispatchers.IO) {
+                try {
+                    rescanNewMedia(app)
+                    val db = app.mediaDB.getNewestMedia(4000)
+                    if (db.isNotEmpty()) db.sortedByDescending { it.modified } else scanDirectories(app)
+                } catch (_: Exception) { scanDirectories(app) }
+            }
+            cachedAllMedia = media
+            val firstPage = getPage(media, 0)
+            _state.update { it.copy(allMedia = firstPage, isLoading = false, hasMore = media.size > pageSize) }
+            updateGroups()
+        }
+    }
+
+    private fun rescanNewMedia(ctx: android.content.Context) {
+        try {
+            val existingPaths = ctx.mediaDB.getNewestMedia(4000).map { it.path }.toSet()
+            val newMedia = mutableListOf<Medium>()
+            val uri = android.provider.MediaStore.Files.getContentUri("external")
+            val proj = arrayOf(
+                android.provider.MediaStore.MediaColumns.DATA, android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
+                android.provider.MediaStore.MediaColumns.DATE_MODIFIED, android.provider.MediaStore.MediaColumns.SIZE,
+                android.provider.MediaStore.MediaColumns.MIME_TYPE, android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE,
+            )
+            val sel = "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
+            val args = arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
+            ctx.contentResolver.query(uri, proj, sel, args, "${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} DESC LIMIT 2000")?.use { c ->
+                val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
+                val nameCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                val dateCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATE_MODIFIED)
+                val sizeCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.SIZE)
+                val typeCol = c.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE)
+                while (c.moveToNext()) {
+                    val path = c.getString(dataCol) ?: continue
+                    if (path in existingPaths) continue
+                    val name = c.getString(nameCol) ?: ""
+                    val modified = c.getLong(dateCol) * 1000L
+                    val size = c.getLong(sizeCol)
+                    val mediaType = c.getInt(typeCol)
+                    val type = if (mediaType == android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) 2 else 1
+                    newMedia.add(Medium(null, name, path, File(path).parent ?: "", modified, modified, size, type, 0, false, 0L, 0L, 0))
+                }
+            }
+            if (newMedia.isNotEmpty()) ctx.mediaDB.insertAll(newMedia)
+        } catch (_: Exception) { }
+    }
+
     fun loadMore() {
         if (_state.value.isLoadingMore || !_state.value.hasMore) return
         currentPage++
@@ -89,23 +140,6 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 _state.update { it.copy(isLoadingMore = false, hasMore = false) }
             }
-        }
-    }
-
-    private fun doLoad() {
-        viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
-            val app = getApplication<Application>()
-            val media = withContext(Dispatchers.IO) {
-                try {
-                    val db = app.mediaDB.getNewestMedia(4000)
-                    if (db.isNotEmpty()) db.sortedByDescending { it.modified } else scanDirectories(app)
-                } catch (_: Exception) { scanDirectories(app) }
-            }
-            cachedAllMedia = media
-            val firstPage = getPage(media, 0)
-            _state.update { it.copy(allMedia = firstPage, isLoading = false, hasMore = media.size > pageSize) }
-            updateGroups()
         }
     }
 

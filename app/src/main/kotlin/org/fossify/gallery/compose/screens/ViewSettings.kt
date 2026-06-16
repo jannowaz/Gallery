@@ -1,7 +1,7 @@
 package org.fossify.gallery.compose.screens
 
 enum class ViewType(val value: Int) {
-    GRID(0), LIST(1);
+    GRID(0), LIST(1), MOSAIC(2);
 
     companion object {
         fun from(value: Int) = entries.find { it.value == value } ?: GRID

@@ -23,10 +23,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.InputChip
 import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -34,7 +30,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +49,7 @@ fun TagInputDialog(
     onAddTag: (String) -> Unit,
     onRemoveTag: (String) -> Unit,
     suggestedTags: List<String> = emptyList(),
+    suggestedTagCounts: Map<String, Int> = emptyMap(),
     onDismiss: () -> Unit,
     batchCount: Int = 1,
 ) {
@@ -61,12 +57,14 @@ fun TagInputDialog(
     val tags = remember { mutableStateListOf<String>().also { it.addAll(initialTags) } }
     var showSuggestions by remember { mutableStateOf(false) }
 
-    val filteredSuggestions = suggestedTags
-        .filter { it.contains(tagInput, ignoreCase = true) && it !in tags }
-        .take(8)
+    val filteredSuggestions = if (tagInput.isBlank()) {
+        suggestedTags.filter { it !in tags }.take(8)
+    } else {
+        suggestedTags.filter { it.contains(tagInput, ignoreCase = true) && it !in tags }.take(12)
+    }
 
     fun addCurrentTag() {
-        val t = tagInput.trim()
+        val t = tagInput.trim().replace(",", "").replace(";", "")
         if (t.isNotBlank() && t !in tags) {
             tags.add(t)
             onAddTag(t)
@@ -79,7 +77,7 @@ fun TagInputDialog(
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Tags", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                if (batchCount > 1) Text("$batchCount ${if (batchCount == 1) "Datei" else "Dateien"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (batchCount > 1) Text("$batchCount Dateien", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         text = {
@@ -88,7 +86,7 @@ fun TagInputDialog(
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
                         tags.forEach { tag ->
                             InputChip(
-                                selected = false,
+                                selected = true,
                                 onClick = { },
                                 label = { Text(tag, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium) },
                                 trailingIcon = {
@@ -97,7 +95,7 @@ fun TagInputDialog(
                                     }
                                 },
                                 shape = RoundedCornerShape(8.dp),
-                                colors = InputChipDefaults.inputChipColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+                                colors = InputChipDefaults.inputChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer, labelColor = MaterialTheme.colorScheme.onPrimaryContainer),
                             )
                         }
                     }
@@ -106,7 +104,7 @@ fun TagInputDialog(
                 Box(Modifier.fillMaxWidth()) {
                     OutlinedTextField(
                         value = tagInput,
-                        onValueChange = { tagInput = it; showSuggestions = it.isNotEmpty() },
+                        onValueChange = { tagInput = it; showSuggestions = it.isNotEmpty() || suggestedTags.any { s -> s !in tags } },
                         label = { Text("Tag hinzufügen") },
                         placeholder = { Text("z.B. Urlaub, Familie, ...") },
                         singleLine = true,
@@ -124,8 +122,14 @@ fun TagInputDialog(
                             modifier = Modifier.fillMaxWidth(0.9f)
                         ) {
                             filteredSuggestions.forEach { suggestion ->
+                                val count = suggestedTagCounts[suggestion]
                                 DropdownMenuItem(
-                                    text = { Text(suggestion) },
+                                    text = {
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                            Text(suggestion, style = MaterialTheme.typography.bodyMedium)
+                                            if (count != null) Text("$count", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    },
                                     onClick = { tagInput = suggestion; showSuggestions = false },
                                 )
                             }
@@ -133,11 +137,10 @@ fun TagInputDialog(
                     }
                 }
 
-                if (tagInput.isNotBlank()) {
+                if (tagInput.isNotBlank() && filteredSuggestions.none { it.equals(tagInput, ignoreCase = true) }) {
                     Spacer(Modifier.height(8.dp))
                     TextButton(onClick = { addCurrentTag() }) {
-                        Icon(Icons.Default.Close, null, Modifier.size(16.dp).padding(end = 4.dp).let { it })
-                        Text("\"$tagInput\" hinzufügen")
+                        Text("\"${tagInput.trim()}\" hinzufügen")
                     }
                 }
             }

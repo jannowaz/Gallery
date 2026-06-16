@@ -1,9 +1,12 @@
 package org.fossify.gallery.helpers
 
 import android.content.Context
+import kotlinx.coroutines.runBlocking
 import org.fossify.gallery.extensions.favoritesDB
 import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.models.Medium
+import org.fossify.gallery.models.MediaCache
 import java.io.File
 
 class MediaRepository(private val context: Context) : MediaRepositoryInterface {
@@ -47,12 +50,22 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         val current = XmpWriter.read(path)
         val tags = if (tag in current.tags) current.tags else current.tags + tag
         XmpWriter.write(path, tags, current.rating)
+        syncCache(path, tags.joinToString(","), current.rating)
     }
 
     override fun removeTag(path: String, tag: String) {
         val current = XmpWriter.read(path)
         val tags = current.tags.filter { it != tag }
         XmpWriter.write(path, tags, current.rating)
+        syncCache(path, tags.joinToString(","), current.rating)
+    }
+
+    private fun syncCache(path: String, tags: String, rating: Int) {
+        try {
+            runBlocking {
+                context.mediaCacheDB.upsertAll(listOf(MediaCache(fullPath = path, tags = tags, rating = rating, lastScanned = System.currentTimeMillis())))
+            }
+        } catch (_: Exception) { }
     }
 
     override fun deleteMedium(path: String) {

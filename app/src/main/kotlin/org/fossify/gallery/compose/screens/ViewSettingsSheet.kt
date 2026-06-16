@@ -48,6 +48,7 @@ fun ViewSettingsSheet(
     modeTitle: String? = null,
     onToggleMode: (() -> Unit)? = null,
     modeOptions: List<String>? = null,
+    isAlbumMode: Boolean = false,
 ) {
     var local by remember(settings) { mutableStateOf(settings) }
 
@@ -86,7 +87,7 @@ fun ViewSettingsSheet(
                             selected = local.viewType == vt,
                             onClick = { local = local.copy(viewType = vt); onSettingsChange(local) },
                             shape = SegmentedButtonDefaults.itemShape(i, ViewType.entries.size)
-                        ) { Text(when(vt) { ViewType.GRID -> "Kacheln"; ViewType.LIST -> "Liste" }) }
+                        ) { Text(when(vt) { ViewType.GRID -> "Kacheln"; ViewType.LIST -> "Liste"; ViewType.MOSAIC -> "Mosaik" }) }
                     }
             }
 
@@ -130,11 +131,12 @@ fun ViewSettingsSheet(
             Text("Sortierung", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                SortField.entries.forEachIndexed { i, sf ->
+                val sortFields = if (isAlbumMode) SortField.entries.filter { it != SortField.RATING } else SortField.entries
+                sortFields.forEachIndexed { i, sf ->
                     SegmentedButton(
                         selected = local.sortBy == sf,
                         onClick = { local = local.copy(sortBy = sf); onSettingsChange(local) },
-                        shape = SegmentedButtonDefaults.itemShape(i, SortField.entries.size)
+                        shape = SegmentedButtonDefaults.itemShape(i, sortFields.size)
                     ) { Text(when(sf) { SortField.NAME -> "Name"; SortField.DATE -> "Datum"; SortField.SIZE -> "Größe"; SortField.RATING -> "Rating" }) }
                 }
             }
@@ -146,10 +148,12 @@ fun ViewSettingsSheet(
                 Spacer(Modifier.weight(1f))
                 Switch(checked = local.sortDesc, onCheckedChange = { local = local.copy(sortDesc = it); onSettingsChange(local) })
             }
+            if (!isAlbumMode) {
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Dateinamen anzeigen", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.weight(1f))
                 Switch(checked = local.showFileNames, onCheckedChange = { local = local.copy(showFileNames = it); onSettingsChange(local) })
+            }
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Abgerundete Ecken", style = MaterialTheme.typography.bodyMedium)
@@ -182,6 +186,7 @@ fun ViewSettingsSheet(
             }
 
             // Thumbnail overlays (global config)
+            if (!isAlbumMode) {
             Spacer(Modifier.height(12.dp))
             HorizontalDivider()
             Spacer(Modifier.height(4.dp))
@@ -199,6 +204,7 @@ fun ViewSettingsSheet(
             }
 
             Spacer(Modifier.height(24.dp))
+            }
         }
     }
 }

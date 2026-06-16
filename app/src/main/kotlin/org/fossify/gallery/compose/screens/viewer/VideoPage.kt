@@ -81,6 +81,7 @@ fun VideoPage(
     onScalingModeChange: (Int) -> Unit,
     onBackgroundAudioChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
+    isCurrentPage: Boolean = true,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -103,10 +104,10 @@ fun VideoPage(
     var scrubPreviewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var lastFrameRequestMs by remember { mutableLongStateOf(0L) }
 
-    val retriever = remember { MediaMetadataRetriever() }
+    val retriever = remember(path) { MediaMetadataRetriever() }
     DisposableEffect(path) {
         retriever.setDataSource(path)
-        onDispose { retriever.release() }
+        onDispose { try { retriever.release() } catch (_: Exception) { } }
     }
 
     val player = remember(path) {
@@ -114,8 +115,11 @@ fun VideoPage(
             setMediaItem(MediaItem.fromUri(Uri.fromFile(File(path))))
             repeatMode = Player.REPEAT_MODE_ONE
             prepare()
-            playWhenReady = true
+            playWhenReady = isCurrentPage
         }
+    }
+    LaunchedEffect(isCurrentPage) {
+        player.playWhenReady = isCurrentPage
     }
     val bgAudio by rememberUpdatedState(backgroundAudio)
     DisposableEffect(player) {

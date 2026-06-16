@@ -168,34 +168,21 @@ fun AlbumsScreen(
                             shape = RoundedCornerShape(12.dp),
                             colors = CardDefaults.cardColors(containerColor = if (dir.path in selectedPaths) MaterialTheme.colorScheme.primaryContainer else containerColor)
                         ) {
-                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(28.dp))
-                                }
-                                Spacer(Modifier.width(12.dp))
+                            Row(Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text(dir.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (viewSettings.displayMode == DisplayMode.DARK) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
                                     Text("${dir.mediaCnt} Medien", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                if (previewPaths.isNotEmpty()) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    if (previewPaths.isEmpty()) {
+                                        Box(Modifier.size(44.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceVariant))
+                                    } else {
                                         previewPaths.take(3).forEach { p ->
                                             Box(Modifier.size(44.dp).clip(RoundedCornerShape(6.dp))) {
                                                 GalleryImage(path = p, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 12.dp, thumbnailSize = 128)
                                             }
                                         }
                                     }
-                                }
-                                Spacer(Modifier.width(8.dp))
-                                IconButton(onClick = {
-                                    if (isFav) ctx.config.removeFavoriteFolder(dir.path) else ctx.config.addFavoriteFolder(dir.path)
-                                    favorites = ctx.config.favoriteFolders
-                                }) {
-                                    Icon(
-                                        if (isFav) Icons.Default.Star else Icons.Default.StarBorder,
-                                        if (isFav) "Aus Favoriten entfernen" else "Zu Favoriten hinzufügen",
-                                        tint = if (isFav) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
                                 }
                             }
                         }

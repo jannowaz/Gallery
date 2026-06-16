@@ -1,6 +1,7 @@
 package org.fossify.gallery.compose.screens
 
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -10,7 +11,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.background
@@ -36,6 +36,11 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,6 +56,7 @@ import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
@@ -83,6 +89,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -97,6 +104,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.activities.ComposeVideoPlayerActivity
@@ -146,6 +154,7 @@ fun MediaScreen(
     onNavigateToViewer: ((paths: List<String>, startIndex: Int) -> Unit)? = null,
     scrollToPath: String = "",
     onClearScrollToPath: () -> Unit = {},
+    onSelectionActiveChanged: (Boolean) -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val viewModel: MediaViewModel = viewModel()
@@ -168,6 +177,18 @@ fun MediaScreen(
     LaunchedEffect(Unit) { taggedPaths = withContext(Dispatchers.IO) { try { ctx.mediaCacheDB.getAllTagged().map { it.fullPath }.toSet() } catch (_: Exception) { emptySet() } } }
     val columnCount = viewSettings.columnCount
     val isGrid = viewSettings.viewType == ViewType.GRID
+    val isMosaic = viewSettings.viewType == ViewType.MOSAIC
+    val imageAspectCache = remember { mutableMapOf<String, Float>() }
+    fun getImageAspect(path: String): Float {
+        imageAspectCache[path]?.let { return it }
+        return try {
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(path, opts)
+            val ratio = if (opts.outWidth > 0 && opts.outHeight > 0) opts.outWidth.toFloat() / opts.outHeight.toFloat() else 1f
+            imageAspectCache[path] = ratio
+            ratio
+        } catch (_: Exception) { imageAspectCache[path] = 1f; 1f }
+    }
     val baseMedia = mediaOverride ?: state.allMedia
     var ratedMedia by remember { mutableStateOf<List<Medium>?>(null) }
     var tagMedia by remember { mutableStateOf<List<Medium>?>(null) }
@@ -221,6 +242,7 @@ fun MediaScreen(
     }
 
     val hasSelection = selectedPaths.isNotEmpty()
+    LaunchedEffect(hasSelection) { onSelectionActiveChanged(hasSelection) }
 
     var isRefreshing by remember { mutableStateOf(false) }
     PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = { isRefreshing = true; viewModel.refresh(); scope.launch { kotlinx.coroutines.delay(800); isRefreshing = false } }, modifier = Modifier.fillMaxSize()) {
@@ -241,7 +263,6 @@ fun MediaScreen(
             isGrid -> {
                 Column {
                     if (hasFilter) FilterBreadcrumbs(ratingFilter,activeTagName,activePathName,activeCollectionName,displayMedia.size,onClearRatingFilter,onClearTagFilter,onClearPathFilter,onClearFilter)
-                    // Quick-tag bar
                     val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
                     AnimatedVisibility(visible = quickTags.isNotEmpty() && !hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
                     if (quickTags.isNotEmpty() && !hasSelection) {
@@ -264,17 +285,36 @@ fun MediaScreen(
                             }
                         }
                     }
-                    }  // AnimatedVisibility close
+                    }
                     val grouped = if (mediaOverride != null) remember(displayMedia.size) { displayMedia.groupByMonth() } else state.monthGroups
                     val gridState = rememberLazyGridState()
-                    val isScrollingRaw = remember { derivedStateOf { gridState.isScrollInProgress } }
                     var showOverlays by remember { mutableStateOf(true) }
-                    LaunchedEffect(isScrollingRaw.value) {
-                        if (isScrollingRaw.value) showOverlays = false
-                        else { delay(400); showOverlays = true }
+                    val isScrolling by remember { derivedStateOf { gridState.isScrollInProgress } }
+                    val shouldLoadMore by remember { derivedStateOf {
+                        val info = gridState.layoutInfo
+                        val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                        lastVisible >= info.totalItemsCount - 6 && info.totalItemsCount > 0
+                    } }
+                    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) viewModel.loadMore() }
+                    LaunchedEffect(isScrolling) {
+                        if (isScrolling) showOverlays = false
+                        else { delay(300); showOverlays = true }
+                    }
+                    LaunchedEffect(dragSelection.isDragging) {
+                        if (dragSelection.isDragging) {
+                            var targetIdx = gridState.firstVisibleItemIndex
+                            while (dragSelection.isDragging) {
+                                val s = dragSelection.autoScrollSpeed
+                                if (s < -0.5f) targetIdx = maxOf(targetIdx - 1, 0)
+                                else if (s > 0.5f) targetIdx++
+                                else { kotlinx.coroutines.delay(50); continue }
+                                gridState.animateScrollToItem(targetIdx, 0)
+                                kotlinx.coroutines.delay((120 / kotlin.math.abs(s).coerceAtLeast(0.5f)).toLong().coerceIn(60, 200))
+                            }
+                        }
                     }
                     CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
-                    Box(Modifier.dragSelectionGesture(dragSelection) { path -> selectedPaths = selectedPaths + path }) {
+                    Box(Modifier.dragSelectionGesture(dragSelection, gridState = gridState) { path -> selectedPaths = selectedPaths + path }) {
                     LazyVerticalGrid(state = gridState, columns = GridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
                     grouped.forEach { (label, groupItems) ->
                         item(span = { GridItemSpan(maxLineSpan) }) { MonthHeader(label = label, count = groupItems.size) }
@@ -289,8 +329,19 @@ fun MediaScreen(
                                 Box(Modifier.aspectRatio(1f).selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewer(originalIdx)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path})) {
                                     if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop) else GalleryImage(path=m.path,contentDescription=m.name,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop,placeholderIconSize=16.dp)
                                     if (showOverlays) {
-                                        // Stars (bottom-left, compact)
-                                        Row(Modifier.align(Alignment.BottomStart).padding(2.dp).background(Color.Black.copy(alpha=0.55f),RoundedCornerShape(4.dp)).padding(horizontal=2.dp,vertical=1.dp)){for(i in 1..5){Box(Modifier.size(14.dp).clickable{scope.launch(Dispatchers.IO){repo.updateRating(m.path,if(m.rating==i) 0 else i);m.rating=if(m.rating==i) 0 else i}}){Text("★",style=MaterialTheme.typography.labelSmall,color=if(i<=m.rating)Color(0xFFFFD700) else Color.White.copy(alpha=0.2f),fontSize=9.sp)}}}
+                                    val overlayAlpha by androidx.compose.animation.core.animateFloatAsState(targetValue = 1f, animationSpec = tween(350), label = "overlayFade")
+                                    Box(Modifier.fillMaxSize().graphicsLayer { alpha = overlayAlpha }, contentAlignment = Alignment.BottomCenter) {
+                                        Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(bottom = 3.dp)) {
+                                            for (i in 1..5) {
+                                                Icon(
+                                                    if (i <= m.rating) Icons.Default.Star else Icons.Default.StarBorder,
+                                                    contentDescription = "Bewertung $i",
+                                                    tint = if (i <= m.rating) Color(0xFFFFD700) else Color.White.copy(alpha = 0.35f),
+                                                    modifier = Modifier.size(11.dp).clickable { scope.launch(Dispatchers.IO) { repo.updateRating(m.path, if (m.rating == i) 0 else i); m.rating = if (m.rating == i) 0 else i } }
+                                                )
+                                            }
+                                        }
+                                    }
                                         if(hasTag) Box(Modifier.align(Alignment.TopEnd).padding(4.dp).background(Color.Black.copy(alpha=0.5f),RoundedCornerShape(4.dp)).padding(horizontal=4.dp,vertical=1.dp)) { Icon(Icons.Default.Label,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(10.dp)) }
                                         if(isVideo && showDuration) Box(Modifier.align(Alignment.BottomEnd).padding(4.dp).background(Color.Black.copy(alpha=0.6f),RoundedCornerShape(4.dp)).padding(horizontal=4.dp,vertical=1.dp)) { Text(durationText,style=MaterialTheme.typography.labelSmall,color=Color.White,fontSize=10.sp) }
                                     }
@@ -310,8 +361,80 @@ fun MediaScreen(
                     }
                     }
                     }
+                    }
                 }
             }
+            isMosaic -> {
+                Column {
+                    if (hasFilter) FilterBreadcrumbs(ratingFilter,activeTagName,activePathName,activeCollectionName,displayMedia.size,onClearRatingFilter,onClearTagFilter,onClearPathFilter,onClearFilter)
+                    val quickTagsM = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
+                    AnimatedVisibility(visible = quickTagsM.isNotEmpty() && !hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
+                    if (quickTagsM.isNotEmpty() && !hasSelection) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { quickTagsM.forEach { tag -> val active = selectedPaths.isNotEmpty() && selectedPaths.all { p -> repo.getTags(p).contains(tag) }; Surface(onClick = { val targets = if (selectedPaths.isNotEmpty()) selectedPaths else displayMedia.take(100).map { it.path }.toSet(); scope.launch(Dispatchers.IO) { targets.forEach { p -> if (repo.getTags(p).contains(tag)) repo.removeTag(p, tag) else repo.addTag(p, tag) }; withContext(Dispatchers.Main) { taggedPaths = withContext(Dispatchers.IO) { try { ctx.mediaCacheDB.getAllTagged().map { it.fullPath }.toSet() } catch (_: Exception) { emptySet() } } } } }, shape = RoundedCornerShape(16.dp), color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
+                    }
+                    val grouped = if (mediaOverride != null) remember(displayMedia.size) { displayMedia.groupByMonth() } else state.monthGroups
+                    val mosaicState = rememberLazyStaggeredGridState()
+                    var showOverlaysStag by remember { mutableStateOf(true) }
+                    val isScrollingStag by remember { derivedStateOf { mosaicState.isScrollInProgress } }
+                    val shouldLoadMoreStag by remember { derivedStateOf {
+                        val info = mosaicState.layoutInfo
+                        val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                        lastVisible >= info.totalItemsCount - 6 && info.totalItemsCount > 0
+                    } }
+                    LaunchedEffect(shouldLoadMoreStag) { if (shouldLoadMoreStag) viewModel.loadMore() }
+                    LaunchedEffect(isScrollingStag) {
+                        if (isScrollingStag) showOverlaysStag = false
+                        else { delay(300); showOverlaysStag = true }
+                    }
+                    LaunchedEffect(dragSelection.isDragging) {
+                        if (dragSelection.isDragging) {
+                            var targetIdx = mosaicState.firstVisibleItemIndex
+                            while (dragSelection.isDragging) {
+                                val s = dragSelection.autoScrollSpeed
+                                if (s < -0.5f) targetIdx = maxOf(targetIdx - 1, 0)
+                                else if (s > 0.5f) targetIdx++
+                                else { kotlinx.coroutines.delay(50); continue }
+                                mosaicState.animateScrollToItem(targetIdx, 0)
+                                kotlinx.coroutines.delay((120 / kotlin.math.abs(s).coerceAtLeast(0.5f)).toLong().coerceIn(60, 200))
+                            }
+                        }
+                    }
+                    CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
+                    Box(Modifier.dragSelectionGesture(dragSelection, staggeredGridState = mosaicState) { path -> selectedPaths = selectedPaths + path }) {
+                    LazyVerticalStaggeredGrid(state = mosaicState, columns = StaggeredGridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
+                    grouped.forEach { (label, groupItems) ->
+                        item(span = StaggeredGridItemSpan.FullLine) { MonthHeader(label = label, count = groupItems.size) }
+                        items(groupItems.size, key = { groupItems[it].path }, contentType = { groupItems[it].type }) { idx ->
+                            val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
+                            val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
+                            val showDuration = remember { ctx.config.showVideoDurationOnThumbnails && m.videoDuration > 0 }
+                            val durationText by remember(m.videoDuration) { derivedStateOf { if (showDuration) "%02d:%02d".format(m.videoDuration/60, m.videoDuration%60) else "" } }
+                            val hasTag by remember(m.path) { derivedStateOf { m.path in taggedPaths } }
+                            var lastBoundsUpdate by remember { mutableLongStateOf(0L) }
+                            val imageAspect = if (isVideo) 1f else getImageAspect(m.path)
+                            Column(Modifier.padding(itemSpacing/2).background(mediaCardColor,cornerShape).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt());val now=System.currentTimeMillis();if(now-lastBoundsUpdate>300){lastBoundsUpdate=now;dragSelection.registerItemBounds(m.path,androidx.compose.ui.geometry.Rect(p,androidx.compose.ui.geometry.Size(s.width.toFloat(),s.height.toFloat())))}}) {
+                                Box(Modifier.aspectRatio(imageAspect).selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewer(originalIdx)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path})) {
+                                    if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop) else GalleryImage(path=m.path,contentDescription=m.name,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop,placeholderIconSize=16.dp)
+                                    if (showOverlaysStag) {
+                                    val overlayAlphaM by androidx.compose.animation.core.animateFloatAsState(targetValue = 1f, animationSpec = tween(350), label = "overlayFadeM")
+                                    Box(Modifier.fillMaxSize().graphicsLayer { alpha = overlayAlphaM }, contentAlignment = Alignment.BottomCenter) {
+                                        Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(bottom = 3.dp)) {
+                                            for (i in 1..5) { Icon(if (i <= m.rating) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = "Bewertung $i", tint = if (i <= m.rating) Color(0xFFFFD700) else Color.White.copy(alpha = 0.35f), modifier = Modifier.size(11.dp).clickable { scope.launch(Dispatchers.IO) { repo.updateRating(m.path, if (m.rating == i) 0 else i); m.rating = if (m.rating == i) 0 else i } }) }
+                                        }
+                                    }
+                                        if(hasTag) Box(Modifier.align(Alignment.TopEnd).padding(4.dp).background(Color.Black.copy(alpha=0.5f),RoundedCornerShape(4.dp)).padding(horizontal=4.dp,vertical=1.dp)) { Icon(Icons.Default.Label,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(10.dp)) }
+                                        if(isVideo && showDuration) Box(Modifier.align(Alignment.BottomEnd).padding(4.dp).background(Color.Black.copy(alpha=0.6f),RoundedCornerShape(4.dp)).padding(horizontal=4.dp,vertical=1.dp)) { Text(durationText,style=MaterialTheme.typography.labelSmall,color=Color.White,fontSize=10.sp) }
+                                    }
+                                    if(isSelected){Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha=0.4f)));Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp).background(MaterialTheme.colorScheme.primary,CircleShape),contentAlignment=Alignment.Center){Icon(Icons.Default.Close,null,tint=Color.White,modifier=Modifier.size(16.dp))}}
+                                    if(hasSelection && !isSelected) Box(Modifier.align(Alignment.BottomEnd).padding(4.dp).size(28.dp).background(Color.Black.copy(alpha=0.5f),CircleShape).clickable { openViewer(originalIdx) }, contentAlignment = Alignment.Center) { Icon(Icons.Default.Visibility,"Vorschau",tint=Color.White,modifier=Modifier.size(18.dp)) }
+                                }
+                                if(viewSettings.showFileNames) Text(m.name,style=MaterialTheme.typography.labelSmall,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.padding(top=2.dp))
+                            }
+                        }
+                    }
+                    }
+                    }
+                    }
+                }
             }
             else -> {
                 val grouped = if (mediaOverride != null) remember(displayMedia.size) { displayMedia.groupByMonth() } else state.monthGroups
@@ -365,7 +488,7 @@ fun MediaScreen(
         }
     }
     if (showRatingDialog) { val batch=selectedPaths.toList(); StarRatingDialog(currentRating=currentRating,onRate={i->currentRating=i;scope.launch(Dispatchers.IO){batch.forEach{p->repo.updateRating(p,i)}};showRatingDialog=false},onDismiss={showRatingDialog=false}) }
-    if (showTagsDialog) { val batch=selectedPaths.toList(); var allTags by remember{mutableStateOf<List<String>>(emptyList())}; LaunchedEffect(Unit){allTags=withContext(Dispatchers.IO){try{ctx.mediaCacheDB.getAllTagged().flatMap{it.tags.split(",").filter(String::isNotBlank)}.distinct()}catch(_:Exception){emptyList()}}}; TagInputDialog(initialTags=repo.getTags(batch.first()),suggestedTags=allTags,onAddTag={scope.launch(Dispatchers.IO){batch.forEach{p->repo.addTag(p,it)}}},onRemoveTag={scope.launch(Dispatchers.IO){batch.forEach{p->repo.removeTag(p,it)}}},onDismiss={showTagsDialog=false},batchCount=batch.size) }
+    if (showTagsDialog) { val batch=selectedPaths.toList(); var allTags by remember{mutableStateOf<List<String>>(emptyList())}; var tagCounts by remember{mutableStateOf<Map<String, Int>>(emptyMap())}; LaunchedEffect(Unit){withContext(Dispatchers.IO){try{val tagged=ctx.mediaCacheDB.getAllTagged();val counts=tagged.flatMap{it.tags.split(",").filter(String::isNotBlank)}.groupingBy{it}.eachCount();allTags=counts.entries.sortedByDescending{it.value}.map{it.key};tagCounts=counts}catch(_:Exception){}}}; TagInputDialog(initialTags=repo.getTags(batch.first()),suggestedTags=allTags,suggestedTagCounts=tagCounts,onAddTag={scope.launch(Dispatchers.IO){batch.forEach{p->repo.addTag(p,it)}}},onRemoveTag={scope.launch(Dispatchers.IO){batch.forEach{p->repo.removeTag(p,it)}}},onDismiss={showTagsDialog=false},batchCount=batch.size) }
     if (showFolderPicker) { val batch=selectedPaths.toList(); FolderPickerSheet(isMoveOperation=folderPickerIsMove,sourcePaths=batch,onDismiss={showFolderPicker=false;selectedPaths=emptySet()}) }
     if (showRenameDialog) { val batch=selectedPaths.toList(); RenameDialog(paths=batch,onDismiss={showRenameDialog=false;viewModel.refresh()}) }
 }

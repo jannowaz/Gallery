@@ -490,7 +490,11 @@ private fun startTagScan(ctx: android.content.Context, scope: kotlinx.coroutines
 
 // -- Label helpers --
 
-private fun getViewTypeLabel(viewType: Int): String = if (viewType == VIEW_TYPE_GRID) "Raster" else "Liste"
+private fun getViewTypeLabel(viewType: Int): String = when {
+    viewType == VIEW_TYPE_GRID -> "Kacheln"
+    viewType == 2 -> "Mosaik"
+    else -> "Liste"
+}
 private fun getRotationLabel(rotation: Int): String = when (rotation) {
     ROTATE_BY_SYSTEM_SETTING -> "Systemeinstellung"
     ROTATE_BY_DEVICE_ROTATION -> "Geräterotation"

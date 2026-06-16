@@ -461,7 +461,11 @@ internal fun startTagScan(ctx: Context, scope: CoroutineScope, showDialog: (Bool
     }
 }
 
-internal fun getViewTypeLabel(viewType: Int): String = if (viewType == VIEW_TYPE_GRID) "Raster" else "Liste"
+internal fun getViewTypeLabel(viewType: Int): String = when {
+    viewType == VIEW_TYPE_GRID -> "Kacheln"
+    viewType == 2 -> "Mosaik"
+    else -> "Liste"
+}
 internal fun getRotationLabel(rotation: Int): String = when (rotation) {
     ROTATE_BY_SYSTEM_SETTING -> "Systemeinstellung"
     ROTATE_BY_DEVICE_ROTATION -> "Geräterotation"

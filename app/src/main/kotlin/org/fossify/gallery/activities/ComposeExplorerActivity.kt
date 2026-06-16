@@ -22,6 +22,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -145,6 +147,7 @@ import org.fossify.gallery.viewmodels.AlbumsViewModel
 import org.fossify.gallery.viewmodels.ExplorerViewModel
 import org.fossify.gallery.viewmodels.ExplorerUiState
 import org.fossify.gallery.workers.RecycleBinCleanupWorker
+import org.fossify.gallery.workers.MediaSyncWorker
 import java.io.File
 
 private enum class ActiveSheet { MORE_MENU, VIEW_SETTINGS }
@@ -181,6 +184,8 @@ class ComposeExplorerActivity : ComponentActivity() {
 
         if (hasMediaPermissions()) {
             RecycleBinCleanupWorker.schedule(this)
+            MediaSyncWorker.schedule(this)
+            MediaSyncWorker.scheduleInitialSync(this)
             setContent { GalleryNavHost() }
         } else {
             requestPermissionLauncher.launch(getMediaPermissionStrings())
@@ -409,16 +414,17 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
     var showOmniSearch by remember { mutableStateOf(false) }
     var showRatingBrowser by remember { mutableStateOf(false) }
     var showTagBrowser by remember { mutableStateOf(false) }
+    var isMediaSelectionActive by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         mainVM.initializeDatabase { mainVM.triggerMediaRefresh() }
     }
 
-    BackHandler(enabled = uiState.activeRatingFilter > 0 || uiState.activeTagFilter != null || uiState.activePathFilter != null || showTagBrowser || showOmniSearch || uiState.selectedTab != 1) {
+    BackHandler(enabled = uiState.activeRatingFilter > 0 || uiState.activeTagFilter != null || uiState.activePathFilter != null || showTagBrowser || showOmniSearch || (uiState.selectedTab != 1 && !isMediaSelectionActive)) {
         when {
             showTagBrowser -> showTagBrowser = false
             showOmniSearch -> showOmniSearch = false
-            uiState.activeTagFilter != null -> { showTagBrowser = true; mainVM.setSelectedTab(1) }
+            uiState.activeTagFilter != null -> { mainVM.setTagFilter(null, null); mainVM.setSelectedTab(1) }
             uiState.activePathFilter != null -> {
                 val backTab = if (uiState.preFilterTab >= 0) uiState.preFilterTab else 1
                 mainVM.clearFilters()
@@ -454,6 +460,7 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                 ctx = ctx,
                 scope = scope,
                 navController = navController,
+                onMediaSelectionChanged = { isMediaSelectionActive = it },
             )
         }
     }
@@ -562,9 +569,18 @@ private fun MainTabContent(
     ctx: android.content.Context,
     scope: kotlinx.coroutines.CoroutineScope,
     navController: NavHostController,
+    onMediaSelectionChanged: (Boolean) -> Unit = {},
 ) {
-    Crossfade(targetState = state.selectedTab, animationSpec = tween(200)) { tab ->
-    when (tab) {
+    val pagerState = rememberPagerState(initialPage = state.selectedTab, pageCount = { navTabs.size })
+    LaunchedEffect(pagerState.settledPage) { mainVM.setSelectedTab(pagerState.settledPage) }
+    LaunchedEffect(state.selectedTab) {
+        if (state.selectedTab != pagerState.currentPage && state.selectedTab != pagerState.targetPage) {
+            pagerState.animateScrollToPage(state.selectedTab)
+        }
+    }
+
+    HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { tab ->
+        when (tab) {
         0 -> MediaScreen(
             viewSettings = tabSettings.media,
             ratingFilter = state.activeRatingFilter,
@@ -576,6 +592,7 @@ private fun MainTabContent(
             onNavigateToViewer = { paths, startIndex -> navController.navigate(Viewer(paths, startIndex)) },
             scrollToPath = state.lastViewedPath,
             onClearScrollToPath = { mainVM.clearLastViewedPath() },
+            onSelectionActiveChanged = onMediaSelectionChanged,
         )
         1 -> AlbumsScreen(
             viewModel = albumsViewModel,
@@ -687,6 +704,7 @@ private fun MainSheets(
         ViewSettingsSheet(
             settings = s,
             showDisplayMode = ((selectedTab == 1 || selectedTab == 4) && settingsMode == SettingsMode.ALBUMS) || (selectedTab == 2 && settingsMode == SettingsMode.ALBUMS),
+            isAlbumMode = (selectedTab == 1 || selectedTab == 2) && settingsMode == SettingsMode.ALBUMS,
             onSettingsChange = { v ->
                 when (selectedTab) {
                     0 -> viewSettingsVM.updateMedia(v)
@@ -731,6 +749,7 @@ private fun OmniSearchSheet(
     onFilterChanged: (filterPaths: Set<String>?, rating: Int, tagPaths: Set<String>?, tagName: String?, fileType: Int, dateRange: Int) -> Unit,
 ) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
     var ratingFilter by remember { mutableIntStateOf(0) }
     var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -760,7 +779,7 @@ private fun OmniSearchSheet(
         isSearching = true
         val qParts = query.lowercase().split(" ").filter { it.isNotBlank() }
         if (qParts.isEmpty()) { textMatchPaths = null; isSearching = false; return }
-        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+        scope.launch(Dispatchers.IO) {
             val cacheKey = "${query}_${fileTypeFilter}_${dateFilter}"
             searchCache[cacheKey]?.let { textMatchPaths = it; isSearching = false; return@launch }
             if (searchCache.size > 30) searchCache.clear()
