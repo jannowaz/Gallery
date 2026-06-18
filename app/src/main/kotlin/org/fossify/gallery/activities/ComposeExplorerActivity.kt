@@ -507,6 +507,9 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                     Text("Wähle eine Bewertung:", style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Surface(onClick = { ratingFilter = if (ratingFilter == 0) -1 else 0 }, shape = RoundedCornerShape(12.dp), color = if (ratingFilter == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
+                            Text("Unbewertet", Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelMedium, color = if (ratingFilter == 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         for (i in 1..5) {
                             IconButton(onClick = { ratingFilter = i }, modifier = Modifier.size(48.dp)) {
                                 Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, "Bewertung $i", tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(36.dp))

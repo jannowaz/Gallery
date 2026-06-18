@@ -86,8 +86,9 @@ fun TagBrowserScreen(
     var allTags by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var scanning by remember { mutableStateOf(false) }
     var deleteConfirmTags by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var mergeTargetTag by remember { mutableStateOf<String?>(null) }
-    var pendingParentAssign by remember { mutableStateOf<Set<String>?>(null) }
+                var mergeTargetTag by remember { mutableStateOf<String?>(null) }
+                var renameTargetTag by remember { mutableStateOf<String?>(null) }
+                var pendingParentAssign by remember { mutableStateOf<Set<String>?>(null) }
     var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
     var tagSearchQuery by remember { mutableStateOf("") }
     var refreshTrigger by remember { mutableIntStateOf(0) }
@@ -195,50 +196,35 @@ fun TagBrowserScreen(
                     HorizontalDivider()
                     Spacer(Modifier.height(8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Surface(
-                            onClick = {
-                                val tagPaths = selectedTags.flatMap { allTags[it] ?: emptyList() }.toSet()
-                                onTagFilterApplied(tagPaths, selectedTags.joinToString(", "))
-                                onBack()
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
-                                Text("Filtern", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimary)
+                        Surface(onClick = {
+                            val tagPaths = selectedTags.flatMap { allTags[it] ?: emptyList() }.toSet()
+                            onBack()
+                            onTagFilterApplied(tagPaths, selectedTags.joinToString(", "))
+                        }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f)) {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Filtern", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimary) }
+                        }
+                        Surface(onClick = { deleteConfirmTags = selectedTags }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.weight(1f)) {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Löschen", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer) }
+                        }
+                    }
+                    if (selectedTags.size == 1) {
+                        Spacer(Modifier.height(6.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Surface(onClick = { renameTargetTag = selectedTags.first() }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Umbenennen", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }
+                            }
+                            Surface(onClick = { pendingParentAssign = selectedTags }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Parent", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }
                             }
                         }
-                        Surface(
-                            onClick = { deleteConfirmTags = selectedTags },
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.errorContainer,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
-                                Text("Löschen", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer)
+                    } else {
+                        Spacer(Modifier.height(6.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Surface(onClick = { pendingParentAssign = selectedTags }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Parent", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }
                             }
-                        }
-                        Surface(
-                            onClick = { pendingParentAssign = selectedTags },
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
-                                Text("Parent", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                            }
-                        }
-                        if (selectedTags.size >= 2) {
-                            Surface(
-                                onClick = { mergeTargetTag = selectedTags.first() ?: "" },
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.tertiaryContainer,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
-                                    Text("Merge", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                                }
+                            Surface(onClick = { mergeTargetTag = selectedTags.first() ?: "" }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.weight(1f)) {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Merge", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onTertiaryContainer) }
                             }
                         }
                     }
@@ -378,6 +364,47 @@ fun TagBrowserScreen(
                 }) { Text("Merge") }
             },
             dismissButton = { TextButton(onClick = { mergeTargetTag = null }) { Text("Abbrechen") } }
+        )
+    }
+
+    if (renameTargetTag != null) {
+        val oldName = renameTargetTag!!
+        var newName by remember(renameTargetTag) { mutableStateOf(oldName) }
+        val count = allTags[oldName]?.size ?: 0
+        AlertDialog(
+            onDismissRequest = { renameTargetTag = null },
+            title = { Text("Tag umbenennen") },
+            text = {
+                Column {
+                    Text("\"$oldName\" ($count Dateien) umbenennen in:", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(value = newName, onValueChange = { newName = it }, label = { Text("Neuer Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val target = newName.trim()
+                    if (target.isBlank() || target == oldName) return@TextButton
+                    scope.launch(Dispatchers.IO) {
+                        val paths = allTags[oldName] ?: emptyList()
+                        paths.forEach { p -> repo.addTag(p, target); repo.removeTag(p, oldName) }
+                        try {
+                            val cached = ctx.mediaCacheDB.getAllTagged().filter { it.tags.contains(oldName) }
+                            cached.forEach { mc ->
+                                var newTags = mc.tags.split(",").map { it.trim() }.toMutableList()
+                                val idx = newTags.indexOf(oldName)
+                                if (idx >= 0) { newTags[idx] = target; if (target !in newTags.take(idx)) newTags = newTags.distinct().toMutableList() }
+                                ctx.mediaCacheDB.upsertAll(listOf(mc.copy(tags = newTags.joinToString(","))))
+                            }
+                        } catch (_: Exception) { }
+                        withContext(Dispatchers.Main) {
+                            ctx.toast("\"$oldName\" → \"$target\" ($count Dateien)", Toast.LENGTH_SHORT)
+                            renameTargetTag = null; refreshTrigger++; selectedTags = emptySet()
+                        }
+                    }
+                }) { Text("Umbenennen") }
+            },
+            dismissButton = { TextButton(onClick = { renameTargetTag = null }) { Text("Abbrechen") } }
         )
     }
 }
