@@ -127,6 +127,7 @@ import org.fossify.gallery.compose.screens.ViewSettingsSheet
 import org.fossify.gallery.compose.screens.ViewSettingsViewModel
 import org.fossify.gallery.compose.screens.VideoThumbnail
 import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.compose.screens.tagbrowser.TagBrowserScreen
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.navigation.GalleryNavHost
 import org.fossify.gallery.navigation.ManageCollections
@@ -148,6 +149,7 @@ import org.fossify.gallery.viewmodels.ExplorerViewModel
 import org.fossify.gallery.viewmodels.ExplorerUiState
 import org.fossify.gallery.workers.RecycleBinCleanupWorker
 import org.fossify.gallery.workers.MediaSyncWorker
+import org.fossify.gallery.workers.MetadataSyncWorker
 import java.io.File
 
 private enum class ActiveSheet { MORE_MENU, VIEW_SETTINGS }
@@ -167,6 +169,7 @@ class ComposeExplorerActivity : ComponentActivity() {
             super.onChange(selfChange, uri)
             if (uri != null) {
                 RefreshBus.trigger()
+                MediaSyncWorker.scheduleIncrementalSync(this@ComposeExplorerActivity)
             }
         }
     }
@@ -186,6 +189,8 @@ class ComposeExplorerActivity : ComponentActivity() {
             RecycleBinCleanupWorker.schedule(this)
             MediaSyncWorker.schedule(this)
             MediaSyncWorker.scheduleInitialSync(this)
+            MetadataSyncWorker.schedule(this)
+            MetadataSyncWorker.scheduleNow(this)
             setContent { GalleryNavHost() }
         } else {
             requestPermissionLauncher.launch(getMediaPermissionStrings())
@@ -397,7 +402,8 @@ private val navTabs = listOf(
     NavTab(1, "Alben", Icons.Default.Folder),
     NavTab(2, "Pfad", Icons.Default.Search),
     NavTab(3, "Sammlung", Icons.Default.CollectionsBookmark),
-    NavTab(4, "Favoriten", Icons.Default.Star)
+    NavTab(4, "Favoriten", Icons.Default.Star),
+    NavTab(5, "Tags", Icons.AutoMirrored.Filled.Label)
 )
 
 @Composable
@@ -635,7 +641,22 @@ private fun MainTabContent(
                 val excPaths = excluded.mapNotNull { it.removePrefix("content:").takeIf(String::isNotEmpty) ?: it }
                     .filter { it.isNotEmpty() }.toSet()
                 mainVM.setPathFilter(when {
-                    incPaths.isNotEmpty() && excPaths.isNotEmpty() -> incPaths - excPaths
+                    incPaths.isNotEmpty() && excPaths.isNotEmpty() -> {
+                        scope.launch(Dispatchers.IO) {
+                            try {
+                                val allFiles = ctx.mediaDB.getNewestMedia(5000).map { it.path }.toSet()
+                                val excDirs = excPaths.filter { File(it).isDirectory }.toSet()
+                                val incDirs = incPaths.filter { File(it).isDirectory }.toSet()
+                                val result = allFiles.filter { path ->
+                                    path in incPaths || incDirs.any { path.startsWith("$it/") }
+                                }.filter { path ->
+                                    path !in excPaths && excDirs.none { path.startsWith("$it/") }
+                                }.toSet()
+                                withContext(Dispatchers.Main) { mainVM.setPathFilter(result) }
+                            } catch (_: Exception) { }
+                        }
+                        null
+                    }
                     incPaths.isNotEmpty() -> incPaths
                     excPaths.isNotEmpty() -> {
                         scope.launch(Dispatchers.IO) {
@@ -652,6 +673,16 @@ private fun MainTabContent(
             },
         )
         4 -> FavoritesScreen(viewSettings = tabSettings.favorites, onNavigateToViewer = { paths, startIndex -> navController.navigate(Viewer(paths, startIndex)) })
+        5 -> TagBrowserScreen(
+            onBack = {},
+            onTagFilterApplied = { tagPaths, tagName ->
+                mainVM.setPreFilterTab(5)
+                mainVM.setRatingFilter(0)
+                mainVM.setTagFilter(tagPaths, tagName)
+                mainVM.setPathFilter(null)
+                mainVM.setSelectedTab(0)
+            },
+        )
     }
     }
 }
@@ -670,6 +701,7 @@ private fun MainSheets(
     onShowRatingBrowser: () -> Unit,
 ) {
     if (activeSheet == ActiveSheet.MORE_MENU) {
+        val sheetCtx = LocalContext.current
         ModalBottomSheet(
             onDismissRequest = onDismissSheet,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -684,6 +716,7 @@ private fun MainSheets(
                 MenuRow(Icons.Default.Star, "Nach Bewertung") { onDismissSheet(); onShowRatingBrowser() }
                 MenuRow(Icons.AutoMirrored.Filled.Label, "Nach Tags") { onDismissSheet(); navController.navigate(TagBrowser) }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                MenuRow(Icons.Default.Search, "Tags & Bewertungen neu scannen") { onDismissSheet(); MetadataSyncWorker.scheduleFullScan(sheetCtx) }
                 MenuRow(Icons.Default.Settings, "Einstellungen") { onDismissSheet(); navController.navigate(Settings) }
                 MenuRow(Icons.Default.CollectionsBookmark, "Sammlungen verwalten") { onDismissSheet(); navController.navigate(ManageCollections) }
                 MenuRow(Icons.Default.Delete, "Speicher-Analyse") { onDismissSheet(); navController.navigate(StorageAnalysis) }

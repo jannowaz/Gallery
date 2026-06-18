@@ -67,6 +67,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         val app = getApplication<Application>()
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                quickSyncNewMedia(app)
                 val media = try { app.mediaDB.getNewestMedia(4000).sortedByDescending { it.modified } } catch (_: Exception) { scanDirectories(app) }
                 cachedAllMedia = media
                 currentPage = 0
@@ -75,6 +76,39 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 updateGroups()
             } catch (_: Exception) { }
         }
+    }
+
+    private fun quickSyncNewMedia(ctx: android.content.Context) {
+        try {
+            val existingPaths = ctx.mediaDB.getNewestMedia(4000).map { it.path }.toSet()
+            val newMedia = mutableListOf<Medium>()
+            val uri = android.provider.MediaStore.Files.getContentUri("external")
+            val proj = arrayOf(
+                android.provider.MediaStore.MediaColumns.DATA, android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
+                android.provider.MediaStore.MediaColumns.DATE_MODIFIED, android.provider.MediaStore.MediaColumns.SIZE,
+                android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE,
+            )
+            val sel = "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
+            val args = arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
+            ctx.contentResolver.query(uri, proj, sel, args, "${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} DESC LIMIT 100")?.use { c ->
+                val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
+                val nameCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                val dateCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATE_MODIFIED)
+                val sizeCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.SIZE)
+                val typeCol = c.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE)
+                while (c.moveToNext()) {
+                    val path = c.getString(dataCol) ?: continue
+                    if (path in existingPaths) continue
+                    val name = c.getString(nameCol) ?: ""
+                    val modified = c.getLong(dateCol) * 1000L
+                    val size = c.getLong(sizeCol)
+                    val mediaType = c.getInt(typeCol)
+                    val type = if (mediaType == android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) 2 else 1
+                    newMedia.add(Medium(null, name, path, File(path).parent ?: "", modified, modified, size, type, 0, false, 0L, 0L, 0))
+                }
+            }
+            if (newMedia.isNotEmpty()) ctx.mediaDB.insertAll(newMedia)
+        } catch (_: Exception) { }
     }
 
     private fun rescanAndLoad() {

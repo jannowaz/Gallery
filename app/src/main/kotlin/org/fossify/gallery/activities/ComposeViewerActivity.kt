@@ -328,7 +328,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     if (showTagsDialog) {
         var allTags by remember { mutableStateOf<List<String>>(emptyList()) }
         var tagCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
-        LaunchedEffect(Unit) { withContext(Dispatchers.IO) { try { val tagged = ctx.mediaCacheDB.getAllTagged(); val counts = tagged.flatMap { it.tags.split(",").filter(String::isNotBlank) }.groupingBy { it }.eachCount(); allTags = counts.entries.sortedByDescending { it.value }.map { it.key }; tagCounts = counts } catch (_: Exception) { } } }
+        LaunchedEffect(Unit) { withContext(Dispatchers.IO) { try { val tagged = ctx.mediaCacheDB.getRecentTagged(1000); val counts = tagged.flatMap { it.tags.split(",").filter(String::isNotBlank) }.groupingBy { it }.eachCount(); allTags = counts.entries.sortedByDescending { it.value }.map { it.key }; tagCounts = counts } catch (_: Exception) { } } }
         TagInputDialog(initialTags = repo.getTags(currentPath), suggestedTags = allTags, suggestedTagCounts = tagCounts, onAddTag = { scope.launch(Dispatchers.IO) { repo.addTag(currentPath, it) } }, onRemoveTag = { scope.launch(Dispatchers.IO) { repo.removeTag(currentPath, it) } }, onDismiss = { showTagsDialog = false })
     }
 

@@ -309,7 +309,7 @@ fun MediaScreen(
                                 else if (s > 0.5f) targetIdx++
                                 else { kotlinx.coroutines.delay(50); continue }
                                 gridState.animateScrollToItem(targetIdx, 0)
-                                kotlinx.coroutines.delay((120 / kotlin.math.abs(s).coerceAtLeast(0.5f)).toLong().coerceIn(60, 200))
+                                kotlinx.coroutines.delay((100 / kotlin.math.abs(s).coerceAtLeast(0.5f)).toLong().coerceIn(50, 150))
                             }
                         }
                     }

@@ -1,15 +1,29 @@
 package org.fossify.gallery.compose.screens
 
+import android.content.Intent
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,13 +34,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.fossify.gallery.activities.ComposeFolderActivity
+import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.extensions.config
+import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.models.Directory
 import org.fossify.gallery.models.Medium
+import java.io.File
 
 @Composable
 fun FavoritesScreen(
@@ -36,22 +61,70 @@ fun FavoritesScreen(
 ) {
     val ctx = LocalContext.current
     var favoriteMedia by remember { mutableStateOf<List<Medium>>(emptyList()) }
+    var favoriteDirs by remember { mutableStateOf<List<Directory>>(emptyList()) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
-    LaunchedEffect(refreshTrigger) { favoriteMedia = withContext(Dispatchers.IO) { try { ctx.mediaDB.getFavorites() } catch (_: Exception) { emptyList() } } }
+
+    LaunchedEffect(refreshTrigger) {
+        favoriteMedia = withContext(Dispatchers.IO) {
+            try { ctx.mediaDB.getFavorites() } catch (_: Exception) { emptyList() }
+        }
+        favoriteDirs = withContext(Dispatchers.IO) {
+            try {
+                val paths = ctx.config.favoriteFolders.toList()
+                if (paths.isEmpty()) emptyList()
+                else ctx.directoryDB.getAll().filter { it.path in paths }
+            } catch (_: Exception) { emptyList() }
+        }
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
-        if (favoriteMedia.isEmpty()) {
+        if (favoriteMedia.isEmpty() && favoriteDirs.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.Star, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
                     Spacer(Modifier.height(16.dp))
                     Text("Keine Favoriten", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(8.dp))
-                    Text("Tippe auf den Stern in der Detailansicht", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                    Text("Tippe auf den Stern bei Medien oder Ordnern", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                 }
             }
         } else {
-            MediaScreen(viewSettings = viewSettings, mediaOverride = favoriteMedia, onNavigateToViewer = onNavigateToViewer)
+            LazyColumn(contentPadding = PaddingValues(8.dp)) {
+                if (favoriteDirs.isNotEmpty()) {
+                    item {
+                        Text("Ordner", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                    }
+                    items(favoriteDirs, key = { it.path }) { dir ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp).clickable {
+                                ctx.startActivity(Intent(ctx, ComposeFolderActivity::class.java).apply { putExtra("FOLDER_PATH", dir.path) })
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        ) {
+                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(dir.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${dir.mediaCnt} Medien", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                    if (favoriteMedia.isNotEmpty()) {
+                        item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+                    }
+                }
+                if (favoriteMedia.isNotEmpty()) {
+                    item {
+                        Text("Medien", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                    }
+                    item {
+                        MediaScreen(viewSettings = viewSettings, mediaOverride = favoriteMedia, onNavigateToViewer = onNavigateToViewer)
+                    }
+                }
+            }
         }
     }
 }

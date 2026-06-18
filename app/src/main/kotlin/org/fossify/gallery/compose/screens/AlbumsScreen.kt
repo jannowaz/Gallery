@@ -35,6 +35,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -76,6 +77,10 @@ import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.models.Directory
 import org.fossify.gallery.viewmodels.AlbumsViewModel
+import org.fossify.gallery.workers.MetadataSyncWorker
+import android.widget.Toast
+import org.fossify.commons.extensions.toast
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -221,6 +226,14 @@ fun AlbumsScreen(
                 Spacer(Modifier.height(12.dp))
                 SelectionRow(Icons.Default.Folder, "Öffnen") { selectedPaths.firstOrNull()?.let { p -> sortedDirs.find { it.path == p }?.let { onFolderClick(it) } }; showSelectionSheet = false; selectedPaths = emptySet() }
                 SelectionRow(Icons.Default.Info, "Info") { selectedPaths.firstOrNull()?.let { (ctx as? android.app.Activity)?.let { a -> PropertiesDialog(a, it, true) } }; showSelectionSheet = false }
+                HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                SelectionRow(Icons.AutoMirrored.Filled.Label, "Tags & Bewertungen scannen") {
+                    selectedPaths.firstOrNull()?.let { path ->
+                        MetadataSyncWorker.scheduleFolderScan(ctx, path)
+                        ctx.toast("Scan für \"${File(path).name}\" gestartet", Toast.LENGTH_SHORT)
+                    }
+                    showSelectionSheet = false; selectedPaths = emptySet()
+                }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 val selPath = selectedPaths.firstOrNull() ?: ""
                 val isFav = selPath in favorites

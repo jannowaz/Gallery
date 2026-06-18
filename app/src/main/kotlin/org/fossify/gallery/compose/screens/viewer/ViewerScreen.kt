@@ -31,7 +31,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -223,7 +222,7 @@ fun ViewerScreen(
             if (showActionSheet) {
                 currentTags = withContext(Dispatchers.IO) { repo.getTags(currentPath) }
                 tagSuggestions = withContext(Dispatchers.IO) {
-                    try { ctx.mediaCacheDB.getAllTagged().flatMap { it.tags.split(",").filter(String::isNotBlank) }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(24).map { it.key to it.value } } catch (_: Exception) { emptyList() }
+                    try { ctx.mediaCacheDB.getRecentTagged(1000).flatMap { it.tags.split(",").filter(String::isNotBlank) }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(24).map { it.key to it.value } } catch (_: Exception) { emptyList() }
                 }
             }
             if (showActionSheet && !currentIsVideo) {
@@ -287,7 +286,7 @@ fun ViewerScreen(
         var allTags by remember { mutableStateOf<List<String>>(emptyList()) }
         LaunchedEffect(Unit) {
             allTags = withContext(Dispatchers.IO) {
-                try { ctx.mediaCacheDB.getAllTagged().flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct() } catch (_: Exception) { emptyList() }
+                try { ctx.mediaCacheDB.getRecentTagged(1000).flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct() } catch (_: Exception) { emptyList() }
             }
         }
         TagInputDialog(
