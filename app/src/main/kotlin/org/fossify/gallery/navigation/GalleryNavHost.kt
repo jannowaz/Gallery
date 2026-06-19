@@ -35,6 +35,7 @@ import org.fossify.gallery.compose.screens.collections.ManageCollectionsScreen
 import org.fossify.gallery.compose.screens.about.AboutScreen
 import org.fossify.gallery.compose.screens.tagbrowser.TagBrowserScreen
 import org.fossify.gallery.compose.screens.analysis.StorageAnalysisScreen
+import org.fossify.gallery.compose.screens.analysis.DuplicateFinderScreen
 import org.fossify.gallery.compose.screens.viewer.ViewerScreen
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
@@ -132,6 +133,9 @@ fun GalleryNavHost(
                     }
                     composable<StorageAnalysis> {
                         StorageAnalysisScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable<DuplicateFinder> {
+                        DuplicateFinderScreen(onBack = { navController.popBackStack() })
                     }
                 }
             }

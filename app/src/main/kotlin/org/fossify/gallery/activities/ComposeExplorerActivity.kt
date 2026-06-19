@@ -50,6 +50,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CollectionsBookmark
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GridView
@@ -133,6 +134,7 @@ import org.fossify.gallery.navigation.GalleryNavHost
 import org.fossify.gallery.navigation.ManageCollections
 import org.fossify.gallery.navigation.Settings
 import org.fossify.gallery.navigation.StorageAnalysis
+import org.fossify.gallery.navigation.DuplicateFinder
 import org.fossify.gallery.navigation.TagBrowser
 import org.fossify.gallery.navigation.Viewer
 import org.fossify.gallery.compose.theme.LocalMediaRepository
@@ -723,6 +725,7 @@ private fun MainSheets(
                 MenuRow(Icons.Default.Settings, "Einstellungen") { onDismissSheet(); navController.navigate(Settings) }
                 MenuRow(Icons.Default.CollectionsBookmark, "Sammlungen verwalten") { onDismissSheet(); navController.navigate(ManageCollections) }
                 MenuRow(Icons.Default.Delete, "Speicher-Analyse") { onDismissSheet(); navController.navigate(StorageAnalysis) }
+                MenuRow(Icons.Default.ContentCopy, "Duplikate finden") { onDismissSheet(); navController.navigate(DuplicateFinder) }
             }
         }
     }

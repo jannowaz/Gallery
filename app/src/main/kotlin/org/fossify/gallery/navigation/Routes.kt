@@ -24,4 +24,7 @@ data object TagBrowser
 data object StorageAnalysis
 
 @Serializable
+data object DuplicateFinder
+
+@Serializable
 data class Viewer(val paths: List<String>, val startIndex: Int)
