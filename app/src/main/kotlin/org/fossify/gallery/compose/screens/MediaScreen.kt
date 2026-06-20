@@ -176,7 +176,6 @@ fun MediaScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var heroRect by remember { mutableStateOf<android.graphics.Rect?>(null) }
     var taggedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
-    val ratingOverrides = remember { mutableStateMapOf<String, Int>() }
     var selectedCommonTags by remember { mutableStateOf<Set<String>>(emptySet()) }
     LaunchedEffect(selectedPaths) {
         selectedCommonTags = if (selectedPaths.isEmpty()) emptySet()
@@ -340,13 +339,12 @@ fun MediaScreen(
                                     val overlayAlpha by androidx.compose.animation.core.animateFloatAsState(targetValue = 1f, animationSpec = tween(350), label = "overlayFade")
                                     Box(Modifier.fillMaxSize().graphicsLayer { alpha = overlayAlpha }, contentAlignment = Alignment.BottomCenter) {
                                         Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(bottom = 3.dp)) {
-                                            val curRating = ratingOverrides[m.path] ?: m.rating
                                             for (i in 1..5) {
                                                 Icon(
-                                                    if (i <= curRating) Icons.Default.Star else Icons.Default.StarBorder,
+                                                    if (i <= m.rating) Icons.Default.Star else Icons.Default.StarBorder,
                                                     contentDescription = "Bewertung $i",
-                                                    tint = if (i <= curRating) Color(0xFFFFD700) else Color.White.copy(alpha = 0.35f),
-                                                    modifier = Modifier.size(11.dp).clickable { val nr = if (curRating == i) 0 else i; ratingOverrides[m.path] = nr; m.rating = nr; scope.launch(Dispatchers.IO) { repo.updateRating(m.path, nr) } }
+                                                    tint = if (i <= m.rating) Color(0xFFFFD700) else Color.White.copy(alpha = 0.35f),
+                                                    modifier = Modifier.size(11.dp)
                                                 )
                                             }
                                         }
@@ -427,8 +425,7 @@ fun MediaScreen(
                                     val overlayAlphaM by androidx.compose.animation.core.animateFloatAsState(targetValue = 1f, animationSpec = tween(350), label = "overlayFadeM")
                                     Box(Modifier.fillMaxSize().graphicsLayer { alpha = overlayAlphaM }, contentAlignment = Alignment.BottomCenter) {
                                         Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(bottom = 3.dp)) {
-                                            val curRatingM = ratingOverrides[m.path] ?: m.rating
-                                            for (i in 1..5) { Icon(if (i <= curRatingM) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = "Bewertung $i", tint = if (i <= curRatingM) Color(0xFFFFD700) else Color.White.copy(alpha = 0.35f), modifier = Modifier.size(11.dp).clickable { val nr = if (curRatingM == i) 0 else i; ratingOverrides[m.path] = nr; m.rating = nr; scope.launch(Dispatchers.IO) { repo.updateRating(m.path, nr) } }) }
+                                            for (i in 1..5) { Icon(if (i <= m.rating) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = "Bewertung $i", tint = if (i <= m.rating) Color(0xFFFFD700) else Color.White.copy(alpha = 0.35f), modifier = Modifier.size(11.dp)) }
                                         }
                                     }
                                         if(hasTag) Box(Modifier.align(Alignment.TopEnd).padding(4.dp).background(Color.Black.copy(alpha=0.5f),RoundedCornerShape(4.dp)).padding(horizontal=4.dp,vertical=1.dp)) { Icon(Icons.Default.Label,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(10.dp)) }

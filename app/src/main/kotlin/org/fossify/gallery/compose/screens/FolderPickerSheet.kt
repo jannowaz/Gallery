@@ -152,20 +152,31 @@ fun FolderPickerSheet(
         conf.lastCopyMoveDestination = destPath
         scope.launch(Dispatchers.IO) {
             var copied = 0; var skipped = 0
-            val newPaths = mutableListOf<String>()
+            val scanPaths = mutableListOf<String>()
             for (srcPath in sourcePaths) {
                 try {
                     val src = File(srcPath)
                     val destFile = File(destPath, src.name)
                     if (destFile.exists()) { skipped++; continue }
-                    src.copyTo(destFile, overwrite = false)
-                    if (isMoveOperation) { src.delete(); ctx.deleteMediumWithPath(srcPath) }
-                    newPaths.add(destFile.absolutePath)
+                    if (isMoveOperation) {
+                        // Real move: rename within the volume, else copy + delete (rolling back the copy if delete fails)
+                        val moved = src.renameTo(destFile) || run {
+                            src.copyTo(destFile, overwrite = false)
+                            if (src.delete()) true else { destFile.delete(); false }
+                        }
+                        if (!moved) { skipped++; continue }
+                        ctx.deleteMediumWithPath(srcPath)
+                        scanPaths.add(srcPath)               // let MediaStore drop the stale source entry
+                        scanPaths.add(destFile.absolutePath)
+                    } else {
+                        src.copyTo(destFile, overwrite = false)
+                        scanPaths.add(destFile.absolutePath)
+                    }
                     copied++
                 } catch (_: Exception) { skipped++ }
             }
-            if (newPaths.isNotEmpty()) {
-                try { android.media.MediaScannerConnection.scanFile(ctx, newPaths.toTypedArray(), null, null) } catch (_: Exception) { }
+            if (scanPaths.isNotEmpty()) {
+                try { android.media.MediaScannerConnection.scanFile(ctx, scanPaths.toTypedArray(), null, null) } catch (_: Exception) { }
                 org.fossify.gallery.helpers.RefreshBus.trigger()
             }
             val total = sourcePaths.size
@@ -173,7 +184,7 @@ fun FolderPickerSheet(
                 val msg = when {
                     copied == total -> if (isMoveOperation) "Verschoben" else "Kopiert"
                     copied > 0 -> "$copied/${total} ${if (isMoveOperation) "verschoben" else "kopiert"}, $skipped übersprungen"
-                    else -> "Keine Dateien ${if (isMoveOperation) "verschoben" else "kopiert"} ($skipped existieren bereits)"
+                    else -> "Keine Dateien ${if (isMoveOperation) "verschoben" else "kopiert"} ($skipped übersprungen)"
                 }
                 ctx.toast(msg, Toast.LENGTH_LONG)
             }
