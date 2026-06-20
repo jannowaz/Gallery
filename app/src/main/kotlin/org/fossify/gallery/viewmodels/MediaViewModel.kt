@@ -125,7 +125,9 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 val dateIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.DATE_MODIFIED)
                 val sizeIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.SIZE)
                 val typeIdx = c.getColumnIndex(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE)
+                var scanned = 0
                 while (c.moveToNext()) {
+                    if (scanned++ >= 4000) break
                     var path = if (dataIdx >= 0) c.getString(dataIdx) else null
                     if (path.isNullOrBlank()) {
                         val relPath = if (relPathIdx >= 0) c.getString(relPathIdx) ?: "" else ""
@@ -152,11 +154,10 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { it.copy(isLoading = true, error = null) }
             val app = getApplication<Application>()
             val media = withContext(Dispatchers.IO) {
-                try {
-                    rescanNewMedia(app)
-                    val db = app.mediaDB.getNewestMedia(4000)
-                    if (db.isNotEmpty()) db.sortedByDescending { it.modified } else scanDirectories(app)
-                } catch (_: Exception) { scanDirectories(app) }
+                try { rescanNewMedia(app) } catch (_: Throwable) { }
+                val db = try { app.mediaDB.getNewestMedia(4000) } catch (_: Throwable) { emptyList() }
+                if (db.isNotEmpty()) db.sortedByDescending { it.modified }
+                else try { scanDirectories(app) } catch (_: Throwable) { emptyList() }
             }
             cachedAllMedia = applySort(media)
             val firstPage = getPage(media, 0)
@@ -189,7 +190,9 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 val dateIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.DATE_MODIFIED)
                 val sizeIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.SIZE)
                 val typeIdx = c.getColumnIndex(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE)
+                var scanned = 0
                 while (c.moveToNext()) {
+                    if (scanned++ >= 4000) break
                     var path = if (dataIdx >= 0) c.getString(dataIdx) else null
                     if (path.isNullOrBlank()) {
                         val relPath = if (relPathIdx >= 0) c.getString(relPathIdx) ?: "" else ""
