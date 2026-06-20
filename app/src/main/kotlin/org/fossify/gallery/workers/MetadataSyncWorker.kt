@@ -7,6 +7,7 @@ import android.provider.MediaStore
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.Data
+import androidx.work.ForegroundInfo
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -25,6 +26,28 @@ class MetadataSyncWorker(
     context: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
+
+    override suspend fun getForegroundInfo(): ForegroundInfo = createForegroundInfo(0, 0, 0, 0)
+
+    private fun createForegroundInfo(done: Int, total: Int, tags: Int, ratings: Int): ForegroundInfo {
+        val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "metadata_sync"
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            nm.createNotificationChannel(NotificationChannel(channelId, "Metadaten-Scan", NotificationManager.IMPORTANCE_LOW))
+        }
+        val notification = NotificationCompat.Builder(applicationContext, channelId)
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setContentTitle("Tags & Bewertungen scannen")
+            .setContentText(if (total > 0) "$done/$total · $tags Tags · $ratings Bewertungen" else "Vorbereiten…")
+            .setProgress(total.coerceAtLeast(1), done.coerceAtMost(total.coerceAtLeast(1)), total == 0)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
+            ForegroundInfo(2002, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        else
+            ForegroundInfo(2002, notification)
+    }
 
     override suspend fun doWork(): Result {
         val fullScan = inputData.getBoolean("full_scan", false)
@@ -51,7 +74,7 @@ class MetadataSyncWorker(
             while (c.moveToNext()) c.getString(col)?.let { paths.add(it) }
         }
         val total = paths.size
-        showProgress(0, total, 0, 0)
+        try { setForeground(createForegroundInfo(0, total, 0, 0)) } catch (_: Exception) { }
         val batch = mutableListOf<MediaCache>()
         var processed = 0; var foundTags = 0; var foundRatings = 0; var lastNotify = 0L
         for (p in paths) {
@@ -65,11 +88,10 @@ class MetadataSyncWorker(
             } catch (_: Exception) { }
             processed++
             val nowMs = System.currentTimeMillis()
-            if (nowMs - lastNotify > 400) { lastNotify = nowMs; showProgress(processed, total, foundTags, foundRatings) }
+            if (nowMs - lastNotify > 500) { lastNotify = nowMs; try { setForeground(createForegroundInfo(processed, total, foundTags, foundRatings)) } catch (_: Exception) { } }
         }
         if (batch.isNotEmpty()) applicationContext.mediaCacheDB.upsertAll(batch.toList())
         RefreshBus.trigger()
-        cancelProgress()
         showNotification("Scan abgeschlossen", "$total Dateien · $foundTags mit Tags · $foundRatings bewertet")
     }
 

@@ -20,13 +20,15 @@ object XmpWriter {
         val isJpeg = file.extension.lowercase() in setOf("jpg", "jpeg")
         val raw: String = if (isJpeg) readXmpFromJpeg(file) else readXmpFromSidecar(file)
         var data = if (raw.isBlank()) tryMigrateOldFormat(file) else parseXmp(raw)
-        // Fall back to IPTC / Windows (XPKeywords) keywords written by other apps
-        if (data.tags.isEmpty()) {
+        // Fall back to IPTC / Windows (XPKeywords) keywords written by other apps (image formats only)
+        if (data.tags.isEmpty() && file.extension.lowercase() in IMAGE_META_EXTS) {
             val extra = readExternalKeywords(file)
             if (extra.isNotEmpty()) data = data.copy(tags = extra)
         }
         return data
     }
+
+    private val IMAGE_META_EXTS = setOf("jpg", "jpeg", "tiff", "tif", "png", "webp", "heic", "heif")
 
     private fun readExternalKeywords(file: File): List<String> {
         return try {
