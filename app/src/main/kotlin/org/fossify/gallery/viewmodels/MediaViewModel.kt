@@ -104,7 +104,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun quickSyncNewMedia(ctx: android.content.Context) {
         try {
-            val existingPaths = ctx.mediaDB.getNewestMedia(4000).map { it.path }.toSet()
+            val existingPaths = ctx.mediaDB.getAllPaths().toSet()
             val newMedia = mutableListOf<Medium>()
             val uri = android.provider.MediaStore.Files.getContentUri("external")
             val proj = arrayOf(
@@ -167,7 +167,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun rescanNewMedia(ctx: android.content.Context) {
         try {
-            val existingPaths = ctx.mediaDB.getNewestMedia(4000).map { it.path }.toSet()
+            val existingPaths = ctx.mediaDB.getAllPaths().toSet()
             val newMedia = mutableListOf<Medium>()
             val uri = android.provider.MediaStore.Files.getContentUri("external")
             val proj = arrayOf(
