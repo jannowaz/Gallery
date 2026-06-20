@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -384,7 +385,11 @@ fun MediaScreen(
                     if (quickTagsM.isNotEmpty() && hasSelection) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { quickTagsM.forEach { tag -> val active = tag in selectedCommonTags; Surface(onClick = { val targets = selectedPaths; scope.launch(Dispatchers.IO) { targets.forEach { p -> if (repo.getTags(p).contains(tag)) repo.removeTag(p, tag) else repo.addTag(p, tag) }; withContext(Dispatchers.Main) { taggedPaths = withContext(Dispatchers.IO) { try { ctx.mediaCacheDB.getAllTagged().map { it.fullPath }.toSet() } catch (_: Exception) { emptySet() } } } } }, shape = RoundedCornerShape(16.dp), color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
                     }
                     val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
-                    val mosaicState = rememberLazyStaggeredGridState()
+                    val mosaicState = rememberLazyStaggeredGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
+                    LaunchedEffect(mosaicState) {
+                        snapshotFlow { mosaicState.firstVisibleItemIndex to mosaicState.firstVisibleItemScrollOffset }
+                            .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
+                    }
                     var showOverlaysStag by remember { mutableStateOf(true) }
                     val isScrollingStag by remember { derivedStateOf { mosaicState.isScrollInProgress } }
                     val shouldLoadMoreStag by remember { derivedStateOf {
@@ -450,8 +455,13 @@ fun MediaScreen(
             }
             else -> {
                 val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
+                val listState = rememberLazyListState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
+                LaunchedEffect(listState) {
+                    snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+                        .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
+                }
                 Box(Modifier.dragSelectionGesture(dragSelection) { path -> selectedPaths = selectedPaths + path }) {
-                LazyColumn(reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
+                LazyColumn(state = listState, reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
                     grouped.forEach { (label, groupItems) ->
                         stickyHeader { MonthHeader(label = label, count = groupItems.size) }
                         items(groupItems.size, key = { groupItems[it].path }, contentType = { groupItems[it].type }) { idx ->

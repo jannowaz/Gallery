@@ -19,8 +19,26 @@ object XmpWriter {
         if (!file.exists()) return XmpData()
         val isJpeg = file.extension.lowercase() in setOf("jpg", "jpeg")
         val raw: String = if (isJpeg) readXmpFromJpeg(file) else readXmpFromSidecar(file)
-        if (raw.isBlank()) return tryMigrateOldFormat(file)
-        return parseXmp(raw)
+        var data = if (raw.isBlank()) tryMigrateOldFormat(file) else parseXmp(raw)
+        // Fall back to IPTC / Windows (XPKeywords) keywords written by other apps
+        if (data.tags.isEmpty()) {
+            val extra = readExternalKeywords(file)
+            if (extra.isNotEmpty()) data = data.copy(tags = extra)
+        }
+        return data
+    }
+
+    private fun readExternalKeywords(file: File): List<String> {
+        return try {
+            val md = com.drew.imaging.ImageMetadataReader.readMetadata(file)
+            val tags = LinkedHashSet<String>()
+            md.getFirstDirectoryOfType(com.drew.metadata.iptc.IptcDirectory::class.java)?.keywords
+                ?.forEach { it.trim().takeIf(String::isNotBlank)?.let(tags::add) }
+            md.getFirstDirectoryOfType(com.drew.metadata.exif.ExifIFD0Directory::class.java)
+                ?.getString(com.drew.metadata.exif.ExifIFD0Directory.TAG_WIN_KEYWORDS)
+                ?.split(';', ',')?.forEach { it.trim().takeIf(String::isNotBlank)?.let(tags::add) }
+            tags.toList()
+        } catch (_: Throwable) { emptyList() }
     }
 
     fun write(path: String, tags: List<String>, rating: Int) {
