@@ -6,10 +6,12 @@ import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -134,6 +136,7 @@ import org.fossify.gallery.navigation.GalleryNavHost
 import org.fossify.gallery.navigation.ManageCollections
 import org.fossify.gallery.navigation.Settings
 import org.fossify.gallery.navigation.StorageAnalysis
+import org.fossify.gallery.navigation.RecycleBin
 import org.fossify.gallery.navigation.DuplicateFinder
 import org.fossify.gallery.navigation.TagBrowser
 import org.fossify.gallery.navigation.Viewer
@@ -422,6 +425,11 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
     var showRatingBrowser by remember { mutableStateOf(false) }
     var showTagBrowser by remember { mutableStateOf(false) }
     var isMediaSelectionActive by remember { mutableStateOf(false) }
+    var showAllFilesPrompt by remember { mutableStateOf(false) }
+    val allFilesLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        showAllFilesPrompt = !hasAllFilesAccess(ctx)
+    }
+    LaunchedEffect(Unit) { if (!hasAllFilesAccess(ctx)) showAllFilesPrompt = true }
 
     LaunchedEffect(Unit) {
         mainVM.initializeDatabase { mainVM.triggerMediaRefresh() }
@@ -484,6 +492,27 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
         onSelectSheet = { activeSheet = it },
         onShowRatingBrowser = { showRatingBrowser = true },
     )
+
+    if (showAllFilesPrompt) {
+        AlertDialog(
+            onDismissRequest = { showAllFilesPrompt = false },
+            title = { Text("Zugriff auf alle Dateien") },
+            text = { Text("Zum Verschieben, Kopieren, Löschen, Bearbeiten und Taggen von Medien benötigt die App den Zugriff auf alle Dateien. Lesen/Anzeigen funktioniert auch ohne.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showAllFilesPrompt = false
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        try {
+                            allFilesLauncher.launch(Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${ctx.packageName}")))
+                        } catch (_: Exception) {
+                            try { allFilesLauncher.launch(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) } catch (_: Exception) { }
+                        }
+                    }
+                }) { Text("Erlauben") }
+            },
+            dismissButton = { TextButton(onClick = { showAllFilesPrompt = false }) { Text("Später") } },
+        )
+    }
 
     if (showOmniSearch) {
         OmniSearchSheet(
@@ -728,6 +757,7 @@ private fun MainSheets(
                 MenuRow(Icons.Default.CollectionsBookmark, "Sammlungen verwalten") { onDismissSheet(); navController.navigate(ManageCollections) }
                 MenuRow(Icons.Default.Delete, "Speicher-Analyse") { onDismissSheet(); navController.navigate(StorageAnalysis) }
                 MenuRow(Icons.Default.ContentCopy, "Duplikate finden") { onDismissSheet(); navController.navigate(DuplicateFinder(currentScanFolder)) }
+                MenuRow(Icons.Default.Delete, "Papierkorb") { onDismissSheet(); navController.navigate(RecycleBin) }
             }
         }
     }
@@ -987,6 +1017,10 @@ private fun OmniSearchSheet(
         }
     }
 }
+
+private fun hasAllFilesAccess(ctx: android.content.Context): Boolean =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Environment.isExternalStorageManager()
+    else ContextCompat.checkSelfPermission(ctx, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
 
 private fun resolveContentUriToPath(uriString: String): String? {
     if (uriString.startsWith("/")) return uriString

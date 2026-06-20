@@ -27,4 +27,7 @@ data object StorageAnalysis
 data class DuplicateFinder(val folderPath: String = "")
 
 @Serializable
+data object RecycleBin
+
+@Serializable
 data class Viewer(val paths: List<String>, val startIndex: Int)

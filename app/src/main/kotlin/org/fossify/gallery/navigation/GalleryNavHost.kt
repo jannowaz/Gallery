@@ -36,6 +36,7 @@ import org.fossify.gallery.compose.screens.about.AboutScreen
 import org.fossify.gallery.compose.screens.tagbrowser.TagBrowserScreen
 import org.fossify.gallery.compose.screens.analysis.StorageAnalysisScreen
 import org.fossify.gallery.compose.screens.analysis.DuplicateFinderScreen
+import org.fossify.gallery.compose.screens.RecycleBinScreen
 import org.fossify.gallery.compose.screens.viewer.ViewerScreen
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
@@ -137,6 +138,9 @@ fun GalleryNavHost(
                     composable<DuplicateFinder> { backStackEntry ->
                         val route = backStackEntry.toRoute<DuplicateFinder>()
                         DuplicateFinderScreen(initialFolder = route.folderPath, onBack = { navController.popBackStack() })
+                    }
+                    composable<RecycleBin> {
+                        RecycleBinScreen(onBack = { navController.popBackStack() })
                     }
                 }
             }
