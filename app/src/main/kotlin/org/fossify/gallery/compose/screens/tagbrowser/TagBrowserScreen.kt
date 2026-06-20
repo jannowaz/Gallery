@@ -67,6 +67,8 @@ import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.screens.VideoThumbnail
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.EmptyState
+import org.fossify.gallery.compose.components.LibraryAlbumGrid
+import org.fossify.gallery.compose.components.AlbumGridItem
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.mediaCacheDB
@@ -78,6 +80,7 @@ import java.io.File
 fun TagBrowserScreen(
     onBack: () -> Unit,
     onTagFilterApplied: (tagPaths: Set<String>, tagName: String) -> Unit,
+    viewSettings: org.fossify.gallery.compose.screens.ViewSettings = org.fossify.gallery.compose.screens.ViewSettings(),
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -141,7 +144,16 @@ fun TagBrowserScreen(
                 EmptyState(Icons.AutoMirrored.Filled.Label, "Keine Tags gefunden", subtitle = "Tags zu Medien hinzufügen, dann erscheinen sie hier")
             } else {
                 val filteredTags = if (tagSearchQuery.isBlank()) allTags.entries.toList() else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
-                LazyColumn(Modifier.weight(1f)) {
+                if (viewSettings.viewType == org.fossify.gallery.compose.screens.ViewType.GRID) {
+                    LibraryAlbumGrid(
+                        items = filteredTags.map { AlbumGridItem(key = it.key, name = it.key, thumbnailPath = it.value.firstOrNull() ?: "", count = it.value.size, previewPaths = it.value.take(3)) },
+                        viewSettings = viewSettings,
+                        onClick = { item -> onTagFilterApplied((allTags[item.key] ?: emptyList()).toSet(), item.key); onBack() },
+                        onLongClick = { item -> selectedTags = if (item.key in selectedTags) selectedTags - item.key else selectedTags + item.key },
+                        countLabel = { "$it Dateien" },
+                        modifier = Modifier.weight(1f),
+                    )
+                } else LazyColumn(Modifier.weight(1f)) {
                     items(filteredTags, key = { it.key }) { (tag, paths) ->
                         val thumbPath = paths.firstOrNull()
                         val isVideo = thumbPath?.let { it.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS } ?: false

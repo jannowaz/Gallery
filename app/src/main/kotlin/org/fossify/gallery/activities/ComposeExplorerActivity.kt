@@ -735,6 +735,7 @@ private fun MainTabContent(
                 mainVM.setPathFilter(null)
                 mainVM.setSelectedTab(0)
             },
+            viewSettings = tabSettings.tags,
         )
     }
     }
@@ -763,7 +764,7 @@ private fun MainSheets(
         ) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Text("Mehr", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                if (selectedTab in listOf(0, 1, 2, 3, 4)) {
+                if (selectedTab in listOf(0, 1, 2, 3, 4, 5)) {
                     MenuRow(Icons.Default.GridView, "Ansicht") { onSelectSheet(ActiveSheet.VIEW_SETTINGS) }
                     HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 }
@@ -789,6 +790,7 @@ private fun MainSheets(
             2 -> if (settingsMode == SettingsMode.ALBUMS) tabSettings.explorerAlbums else tabSettings.explorerMedia
             3 -> tabSettings.collections
             4 -> tabSettings.favorites
+            5 -> tabSettings.tags
             else -> ViewSettings()
         }
         ViewSettingsSheet(
@@ -802,6 +804,7 @@ private fun MainSheets(
                     2 -> if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateExplorerAlbums(v) else viewSettingsVM.updateExplorerMedia(v)
                     3 -> viewSettingsVM.updateCollections(v)
                     4 -> viewSettingsVM.updateFavorites(v)
+                    5 -> viewSettingsVM.updateTags(v)
                 }
             },
             onDismiss = onDismissSheet,
