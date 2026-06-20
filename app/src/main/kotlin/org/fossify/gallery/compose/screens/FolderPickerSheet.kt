@@ -57,10 +57,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 
+import org.fossify.gallery.compose.util.rememberMediaStoreConsent
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.deleteMediumWithPath
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
+import org.fossify.gallery.helpers.MediaStoreOps
+import org.fossify.gallery.helpers.RefreshBus
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -94,6 +97,7 @@ fun FolderPickerSheet(
     var pendingCreateFolder by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    val consent = rememberMediaStoreConsent()
 
     suspend fun loadFolders(path: String): List<FolderItem> = withContext(Dispatchers.IO) {
         val dir = Paths.get(path)
@@ -151,44 +155,43 @@ fun FolderPickerSheet(
 
     fun performCopyMove(destPath: String) {
         conf.lastCopyMoveDestination = destPath
-        scope.launch(Dispatchers.IO) {
-            var copied = 0; var skipped = 0
-            val scanPaths = mutableListOf<String>()
-            for (srcPath in sourcePaths) {
-                try {
-                    val src = File(srcPath)
-                    val destFile = File(destPath, src.name)
-                    if (destFile.exists()) { skipped++; continue }
-                    if (isMoveOperation) {
-                        // Real move: rename within the volume, else copy + delete (rolling back the copy if delete fails)
-                        val moved = src.renameTo(destFile) || run {
-                            src.copyTo(destFile, overwrite = false)
-                            if (src.delete()) true else { destFile.delete(); false }
+        val targetRel = MediaStoreOps.relativePathFor(destPath)
+        scope.launch {
+            val srcUris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, sourcePaths) }
+            if (srcUris.isEmpty()) {
+                ctx.toast("Keine Dateien gefunden", Toast.LENGTH_LONG); onDismiss(); return@launch
+            }
+            // Moving someone else's media requires user consent via the system dialog. Copying
+            // creates a new app-owned file, which needs no consent.
+            if (isMoveOperation) {
+                val granted = try {
+                    consent.request(MediaStoreOps.writeRequest(ctx, srcUris.map { it.second }))
+                } catch (_: Exception) { false }
+                if (!granted) { ctx.toast("Abgebrochen", Toast.LENGTH_SHORT); onDismiss(); return@launch }
+            }
+            val (done, failed) = withContext(Dispatchers.IO) {
+                var ok = 0; var fail = 0
+                for ((path, uri) in srcUris) {
+                    val success = if (isMoveOperation) {
+                        MediaStoreOps.move(ctx, uri, targetRel).also {
+                            if (it) try { ctx.deleteMediumWithPath(path) } catch (_: Exception) { }
                         }
-                        if (!moved) { skipped++; continue }
-                        ctx.deleteMediumWithPath(srcPath)
-                        scanPaths.add(srcPath)               // let MediaStore drop the stale source entry
-                        scanPaths.add(destFile.absolutePath)
                     } else {
-                        src.copyTo(destFile, overwrite = false)
-                        scanPaths.add(destFile.absolutePath)
+                        MediaStoreOps.copy(ctx, uri, File(path).name, targetRel, MediaStoreOps.isVideoPath(path)) != null
                     }
-                    copied++
-                } catch (_: Exception) { skipped++ }
-            }
-            if (scanPaths.isNotEmpty()) {
-                try { android.media.MediaScannerConnection.scanFile(ctx, scanPaths.toTypedArray(), null, null) } catch (_: Exception) { }
-                org.fossify.gallery.helpers.RefreshBus.trigger()
-            }
-            val total = sourcePaths.size
-            withContext(Dispatchers.Main) {
-                val msg = when {
-                    copied == total -> if (isMoveOperation) "Verschoben" else "Kopiert"
-                    copied > 0 -> "$copied/${total} ${if (isMoveOperation) "verschoben" else "kopiert"}, $skipped übersprungen"
-                    else -> "Keine Dateien ${if (isMoveOperation) "verschoben" else "kopiert"} ($skipped übersprungen)"
+                    if (success) ok++ else fail++
                 }
-                ctx.toast(msg, Toast.LENGTH_LONG)
+                ok to fail
             }
+            RefreshBus.trigger()
+            val total = sourcePaths.size
+            val msg = when {
+                done == total -> if (isMoveOperation) "Verschoben" else "Kopiert"
+                done > 0 -> "$done/$total ${if (isMoveOperation) "verschoben" else "kopiert"}, $failed fehlgeschlagen"
+                else -> "Keine Dateien ${if (isMoveOperation) "verschoben" else "kopiert"} ($failed fehlgeschlagen)"
+            }
+            ctx.toast(msg, Toast.LENGTH_LONG)
+            onDismiss()
         }
     }
 
@@ -375,7 +378,6 @@ fun FolderPickerSheet(
                 androidx.compose.material3.TextButton(onClick = {
                     performCopyMove(dest)
                     confirmTarget = null
-                    onDismiss()
                 }) { Text(if (isMoveOperation) "Verschieben" else "Kopieren") }
             },
             dismissButton = {

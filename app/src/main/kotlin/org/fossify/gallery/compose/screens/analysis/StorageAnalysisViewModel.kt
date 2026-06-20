@@ -18,6 +18,7 @@ import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.RefreshBus
 import org.fossify.gallery.helpers.XmpWriter
+import org.fossify.gallery.models.Medium
 import java.io.File
 
 enum class FilterMode { ALL, IMAGES, VIDEOS }
@@ -66,7 +67,9 @@ class StorageAnalysisViewModel(app: Application) : AndroidViewModel(app) {
         if (selected.isEmpty()) return
         viewModelScope.launch {
             _state.update { it.copy(isTransforming = true, transformResults = emptyList()) }
-            val suggestions = engine.suggestTransformations(_state.value.results.filter { it.path in selected }, losslessOnly)
+            // Force lossless-only. Lossy re-compression (e.g. JPEG Q85) would irreversibly
+            // degrade quality while overwriting the original, so it is never performed.
+            val suggestions = engine.suggestTransformations(_state.value.results.filter { it.path in selected }, losslessOnly = true)
             if (suggestions.isEmpty()) { _state.update { it.copy(isTransforming = false) }; return@launch }
             val results = engine.executeBatch(suggestions) { _, _ -> }
             _state.update { it.copy(isTransforming = false, transformResults = results, selectedPaths = emptySet()) }
@@ -159,15 +162,18 @@ class TransformationEngine(private val context: android.content.Context) {
 
             val saved: Long
             if (sameFile) {
-                val backup = File("${s.originalPath}.bak_${System.nanoTime()}")
-                if (!original.renameTo(backup)) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Backup fehlgeschlagen") }
-                val moved = tmpFile.renameTo(finalFile) || runCatching { tmpFile.copyTo(finalFile, overwrite = true); tmpFile.delete() }.isSuccess
-                if (moved && finalFile.exists() && finalFile.length() > 0) { saved = (backup.length() - finalFile.length()).coerceAtLeast(0); backup.delete() }
-                else { backup.renameTo(original); tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Ersetzen fehlgeschlagen") }
+                // Refuse to overwrite an original in place - that has no undo and risks data loss.
+                // Lossless transforms always change the extension, so this only guards the lossy path.
+                tmpFile.delete()
+                return@withContext TransformResult(false, s.originalPath, "", 0, "In-place-Überschreiben deaktiviert")
             } else {
                 if (finalFile.exists()) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Zieldatei existiert bereits") }
                 val moved = tmpFile.renameTo(finalFile) || runCatching { tmpFile.copyTo(finalFile, overwrite = false); tmpFile.delete() }.isSuccess
-                if (moved && finalFile.exists() && finalFile.length() > 0) { saved = (s.originalSize - finalFile.length()).coerceAtLeast(0); original.delete() }
+                if (moved && finalFile.exists() && finalFile.length() > 0) {
+                    saved = (s.originalSize - finalFile.length()).coerceAtLeast(0)
+                    // Move the original to the recycle bin instead of hard-deleting it (recoverable).
+                    softDeleteOriginal(original)
+                }
                 else { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Rename failed") }
             }
 
@@ -176,13 +182,25 @@ class TransformationEngine(private val context: android.content.Context) {
                 try { XmpWriter.write(newPath, srcData.tags, srcData.rating) } catch (_: Exception) { }
             }
             if (!sameFile) {
-                try { context.mediaDB.deleteMediumPath(s.originalPath) } catch (_: Exception) { }
                 try { context.mediaCacheDB.deleteByPathSync(s.originalPath) } catch (_: Exception) { }
             }
             try { android.media.MediaScannerConnection.scanFile(context, arrayOf(s.originalPath, newPath), null, null) } catch (_: Exception) { }
             RefreshBus.trigger()
             TransformResult(true, s.originalPath, newPath, saved)
         } catch (e: Exception) { TransformResult(false, s.originalPath, "", 0, e.message) }
+    }
+
+    private fun softDeleteOriginal(original: File) {
+        try {
+            val path = original.absolutePath
+            val medium = Medium(
+                null, original.name, path, original.parent ?: "", original.lastModified(), original.lastModified(),
+                original.length(), if (path.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS) 2 else 1,
+                0, false, 0L, 0L, 0,
+            )
+            context.mediaDB.insertAllKeepingExisting(listOf(medium))
+            context.mediaDB.softDelete(path, System.currentTimeMillis())
+        } catch (_: Exception) { }
     }
 
     private fun copyExif(src: String, dst: String) {

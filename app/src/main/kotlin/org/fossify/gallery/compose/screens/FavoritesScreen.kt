@@ -64,6 +64,10 @@ fun FavoritesScreen(
     var favoriteDirs by remember { mutableStateOf<List<Directory>>(emptyList()) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
 
+    LaunchedEffect(Unit) {
+        org.fossify.gallery.helpers.RefreshBus.events.collect { refreshTrigger++ }
+    }
+
     LaunchedEffect(refreshTrigger) {
         favoriteMedia = withContext(Dispatchers.IO) {
             try { ctx.mediaDB.getFavorites() } catch (_: Exception) { emptyList() }

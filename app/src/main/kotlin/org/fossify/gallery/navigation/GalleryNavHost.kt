@@ -64,10 +64,10 @@ fun GalleryNavHost(
     val conf = ctx.config
 
     LaunchedEffect(repo) {
-        UndoManager.registerHandler(UndoType.DELETE) { action -> action.paths.forEach { repo.restoreFromRecycleBin(it) } }
+        UndoManager.registerHandler(UndoType.DELETE) { action -> action.paths.forEach { repo.restoreFromRecycleBin(it) }; org.fossify.gallery.helpers.RefreshBus.trigger() }
         UndoManager.registerHandler(UndoType.TAG_ADD) { action -> action.paths.forEach { repo.removeTag(it, action.extra["tag"] ?: "") } }
         UndoManager.registerHandler(UndoType.TAG_REMOVE) { action -> action.paths.forEach { repo.addTag(it, action.extra["tag"] ?: "") } }
-        UndoManager.registerHandler(UndoType.RATING_CHANGE) { action -> action.paths.forEach { repo.updateRating(it, action.extra["oldRating"]?.toIntOrNull() ?: 0) } }
+        UndoManager.registerHandler(UndoType.RATING_CHANGE) { action -> action.paths.forEach { repo.updateRating(it, action.extra["oldRating"]?.toIntOrNull() ?: 0) }; org.fossify.gallery.helpers.RefreshBus.trigger() }
     }
 
     GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme()) {

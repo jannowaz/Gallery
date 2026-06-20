@@ -87,6 +87,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -162,10 +164,11 @@ fun MediaScreen(
     val ctx = LocalContext.current
     val viewModel: MediaViewModel = viewModel()
     val state by viewModel.state.collectAsState()
+    val selectionSaver = remember { listSaver<Set<String>, String>(save = { it.toList() }, restore = { it.toSet() }) }
     LaunchedEffect(refreshTrigger) { if (refreshTrigger > 0) { if (state.allMedia.isNotEmpty()) viewModel.silentRefresh() else viewModel.refresh() } }
     LaunchedEffect(viewSettings.sortBy, viewSettings.sortDesc) { if (mediaOverride == null) viewModel.setSort(viewSettings.sortBy, viewSettings.sortDesc) }
     val repo = LocalMediaRepository.current
-    var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedPaths by rememberSaveable(stateSaver = selectionSaver) { mutableStateOf<Set<String>>(emptySet()) }
     val dragSelection = rememberSelectionDragState()
     var showSelectionSheet by remember { mutableStateOf(false) }
     var showRatingDialog by remember { mutableStateOf(false) }
@@ -187,17 +190,7 @@ fun MediaScreen(
     val columnCount = viewSettings.columnCount
     val isGrid = viewSettings.viewType == ViewType.GRID
     val isMosaic = viewSettings.viewType == ViewType.MOSAIC
-    val imageAspectCache = remember { mutableMapOf<String, Float>() }
-    fun getImageAspect(path: String): Float {
-        imageAspectCache[path]?.let { return it }
-        return try {
-            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeFile(path, opts)
-            val ratio = if (opts.outWidth > 0 && opts.outHeight > 0) opts.outWidth.toFloat() / opts.outHeight.toFloat() else 1f
-            imageAspectCache[path] = ratio
-            ratio
-        } catch (_: Exception) { imageAspectCache[path] = 1f; 1f }
-    }
+    val imageAspectCache = remember { mutableStateMapOf<String, Float>() }
     val baseMedia = mediaOverride ?: state.allMedia
     var ratedMedia by remember { mutableStateOf<List<Medium>?>(null) }
     var tagMedia by remember { mutableStateOf<List<Medium>?>(null) }
@@ -210,7 +203,7 @@ fun MediaScreen(
             pathFallbackMedia = withContext(Dispatchers.IO) { try { ctx.mediaDB.getNewestMedia(5000).filter { p -> (pathFilter + dirs).any { p.path.startsWith("$it/") || p.path == it } }.take(2000) } catch (_: Exception) { null } }
         } else pathFallbackMedia = null
     }
-    val unsortedMedia by remember { derivedStateOf {
+    val unsortedMedia by remember(baseMedia, ratingFilter, tagFilterPaths, pathFilter, ratedMedia, tagMedia, pathFallbackMedia) { derivedStateOf {
         var m = baseMedia
         if (ratingFilter > 0) { val db = ratedMedia; m = if (db != null && db.isNotEmpty()) db else m.filter { it.rating >= ratingFilter } }
         if (tagFilterPaths != null) {
@@ -222,7 +215,7 @@ fun MediaScreen(
         m
     } }
     val hasFilter = ratingFilter > 0 || tagFilterPaths != null || pathFilter != null
-    val displayMedia by remember { derivedStateOf {
+    val displayMedia by remember(unsortedMedia, viewSettings.sortBy, viewSettings.sortDesc) { derivedStateOf {
         val sorted = when (viewSettings.sortBy) {
             SortField.NAME -> unsortedMedia.sortedBy { it.name.lowercase() }
             SortField.DATE -> unsortedMedia.sortedBy { it.modified }
@@ -427,7 +420,12 @@ fun MediaScreen(
                             val durationText by remember(m.videoDuration) { derivedStateOf { if (showDuration) "%02d:%02d".format(m.videoDuration/60, m.videoDuration%60) else "" } }
                             val hasTag by remember(m.path) { derivedStateOf { m.path in taggedPaths } }
                             var lastBoundsUpdate by remember { mutableLongStateOf(0L) }
-                            val imageAspect = if (isVideo) 1f else getImageAspect(m.path)
+                            val imageAspect = if (isVideo) 1f else (imageAspectCache[m.path] ?: 1f)
+                            if (!isVideo) LaunchedEffect(m.path) {
+                                if (imageAspectCache[m.path] == null) {
+                                    imageAspectCache[m.path] = withContext(Dispatchers.IO) { decodeImageAspect(m.path) }
+                                }
+                            }
                             Column(Modifier.padding(itemSpacing/2).background(mediaCardColor,cornerShape).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt());val now=System.currentTimeMillis();if(now-lastBoundsUpdate>300){lastBoundsUpdate=now;dragSelection.registerItemBounds(m.path,androidx.compose.ui.geometry.Rect(p,androidx.compose.ui.geometry.Size(s.width.toFloat(),s.height.toFloat())))}}) {
                                 Box(Modifier.aspectRatio(imageAspect).selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewer(originalIdx)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path})) {
                                     if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop) else GalleryImage(path=m.path,contentDescription=m.name,modifier=Modifier.fillMaxSize().clip(cornerShape),contentScale=ContentScale.Crop,placeholderIconSize=16.dp)
@@ -510,7 +508,7 @@ fun MediaScreen(
         }
     }
     if (showRatingDialog) { val batch=selectedPaths.toList(); StarRatingDialog(currentRating=currentRating,onRate={i->currentRating=i;scope.launch(Dispatchers.IO){batch.forEach{p->repo.updateRating(p,i)};withContext(Dispatchers.Main){viewModel.silentRefresh()}};selectedPaths=emptySet();showRatingDialog=false},onDismiss={showRatingDialog=false}) }
-    if (showTagsDialog) { val batch=selectedPaths.toList(); var allTags by remember{mutableStateOf<List<String>>(emptyList())}; var tagCounts by remember{mutableStateOf<Map<String, Int>>(emptyMap())}; LaunchedEffect(Unit){withContext(Dispatchers.IO){try{val tagged=ctx.mediaCacheDB.getAllTagged();val counts=tagged.flatMap{it.tags.split(",").filter(String::isNotBlank)}.groupingBy{it}.eachCount();allTags=counts.entries.sortedByDescending{it.value}.map{it.key};tagCounts=counts}catch(_:Exception){}}}; TagInputDialog(initialTags=repo.getTags(batch.firstOrNull().orEmpty()),suggestedTags=allTags,suggestedTagCounts=tagCounts,onAddTag={scope.launch(Dispatchers.IO){batch.forEach{p->repo.addTag(p,it)}}},onRemoveTag={scope.launch(Dispatchers.IO){batch.forEach{p->repo.removeTag(p,it)}}},onDismiss={showTagsDialog=false;selectedPaths=emptySet();scope.launch(Dispatchers.IO){val t=try{ctx.mediaCacheDB.getAllTagged().map{it.fullPath}.toSet()}catch(_:Exception){emptySet()};withContext(Dispatchers.Main){taggedPaths=t}}},batchCount=batch.size) }
+    if (showTagsDialog) { val batch=selectedPaths.toList(); var allTags by remember{mutableStateOf<List<String>>(emptyList())}; var tagCounts by remember{mutableStateOf<Map<String, Int>>(emptyMap())}; var dialogInitialTags by remember{mutableStateOf<Set<String>>(emptySet())}; LaunchedEffect(Unit){dialogInitialTags=withContext(Dispatchers.IO){repo.getTags(batch.firstOrNull().orEmpty())}}; LaunchedEffect(Unit){withContext(Dispatchers.IO){try{val tagged=ctx.mediaCacheDB.getAllTagged();val counts=tagged.flatMap{it.tags.split(",").filter(String::isNotBlank)}.groupingBy{it}.eachCount();allTags=counts.entries.sortedByDescending{it.value}.map{it.key};tagCounts=counts}catch(_:Exception){}}}; TagInputDialog(initialTags=dialogInitialTags,suggestedTags=allTags,suggestedTagCounts=tagCounts,onAddTag={scope.launch(Dispatchers.IO){batch.forEach{p->repo.addTag(p,it)}}},onRemoveTag={scope.launch(Dispatchers.IO){batch.forEach{p->repo.removeTag(p,it)}}},onDismiss={showTagsDialog=false;selectedPaths=emptySet();scope.launch(Dispatchers.IO){val t=try{ctx.mediaCacheDB.getAllTagged().map{it.fullPath}.toSet()}catch(_:Exception){emptySet()};withContext(Dispatchers.Main){taggedPaths=t}}},batchCount=batch.size) }
     if (showFolderPicker) { val batch=selectedPaths.toList(); FolderPickerSheet(isMoveOperation=folderPickerIsMove,sourcePaths=batch,onDismiss={showFolderPicker=false;selectedPaths=emptySet()}) }
     if (showRenameDialog) { val batch=selectedPaths.toList(); RenameDialog(paths=batch,onDismiss={showRenameDialog=false;selectedPaths=emptySet();viewModel.refresh()}) }
 }
@@ -534,3 +532,9 @@ private fun formatFileSize(bytes: Long): String { if (bytes < 1024) return "$byt
 @Composable
 private fun MonthHeader(label:String,count:Int){Surface(Modifier.fillMaxWidth(),color=MaterialTheme.colorScheme.background){Row(Modifier.padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically){Text(label,style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.onSurface);Spacer(Modifier.width(8.dp));Text("$count",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}}
 private fun List<Medium>.groupByMonth():List<MonthGroup>{if(isEmpty())return emptyList();val f=SimpleDateFormat("MMMM yyyy",Locale.GERMANY);val g=LinkedHashMap<String,MutableList<Medium>>();forEach{m->val d=if(m.taken>0)Date(m.taken) else Date(m.modified);val k=f.format(d).replaceFirstChar{it.uppercase()};g.getOrPut(k){mutableListOf()}.add(m)};return g.map{MonthGroup(it.key,it.value)}}
+
+internal fun decodeImageAspect(path: String): Float = try {
+    val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(path, opts)
+    if (opts.outWidth > 0 && opts.outHeight > 0) opts.outWidth.toFloat() / opts.outHeight.toFloat() else 1f
+} catch (_: Exception) { 1f }

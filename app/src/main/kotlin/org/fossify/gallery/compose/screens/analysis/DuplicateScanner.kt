@@ -7,8 +7,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import org.fossify.gallery.helpers.XmpWriter
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.Paths
 import java.security.MessageDigest
 
 data class DuplicateFile(
@@ -178,22 +176,15 @@ class DuplicateScanner(private val context: Context) {
     }
 
     private fun collectMediaFiles(rootPath: String, result: MutableList<File>, imagesOnly: Boolean = false) {
-        try {
-            Files.newDirectoryStream(Paths.get(rootPath)).use { stream ->
-                for (entry in stream) {
-                    val name = entry.fileName.toString()
-                    if (name.startsWith(".")) continue
-                    if (Files.isDirectory(entry)) {
-                        collectMediaFiles(entry.toString(), result, imagesOnly)
-                    } else {
-                        val ext = name.substringAfterLast('.', "").lowercase()
-                        val match = if (imagesOnly) ext in AnalysisCriteria.IMAGE_EXTS
-                            else ext in AnalysisCriteria.VIDEO_EXTS || ext in AnalysisCriteria.IMAGE_EXTS
-                        if (match) result.add(entry.toFile())
-                    }
-                }
-            }
-        } catch (_: Exception) { }
+        // Resolve via MediaStore (filesystem directory listing is blocked under scoped storage).
+        for (p in MediaStoreEnumerator.mediaPathsUnder(context, rootPath)) {
+            val name = p.substringAfterLast('/')
+            if (name.startsWith(".")) continue
+            val ext = name.substringAfterLast('.', "").lowercase()
+            val match = if (imagesOnly) ext in AnalysisCriteria.IMAGE_EXTS
+                else ext in AnalysisCriteria.VIDEO_EXTS || ext in AnalysisCriteria.IMAGE_EXTS
+            if (match) result.add(File(p))
+        }
     }
 
     private fun partialHash(file: File): String? {

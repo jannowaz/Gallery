@@ -108,6 +108,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
     var showScanDialog by remember { mutableStateOf(false) }
     var showExtendedDialog by remember { mutableStateOf(false) }
     var showBottomActionsDialog by remember { mutableStateOf(false) }
+    var settingsVersion by remember { mutableStateOf(0) }
 
     Scaffold(
         topBar = {
@@ -117,6 +118,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+            @Suppress("UNUSED_EXPRESSION") settingsVersion // re-read config-derived labels after a change
 
             SectionLabel("Allgemein")
             SettingsSwitch("Dunkelmodus erzwingen", conf.forceDarkMode) { conf.forceDarkMode = it }
@@ -126,7 +128,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             SettingsSwitch("Standardmäßig Dateisuche", conf.searchAllFilesByDefault) { conf.searchAllFilesByDefault = it }
             SettingsSwitch("Horizontal scrollen", conf.scrollHorizontally) { conf.scrollHorizontally = it }
             SettingsSwitch("Pull to Refresh", conf.enablePullToRefresh) { conf.enablePullToRefresh = it }
-            SettingsNav("Ordnertyp", getViewTypeLabel(conf.viewTypeFolders)) { conf.viewTypeFolders = if (conf.viewTypeFolders == VIEW_TYPE_GRID) VIEW_TYPE_LIST else VIEW_TYPE_GRID }
+            SettingsNav("Ordnertyp", getViewTypeLabel(conf.viewTypeFolders)) { conf.viewTypeFolders = if (conf.viewTypeFolders == VIEW_TYPE_GRID) VIEW_TYPE_LIST else VIEW_TYPE_GRID; settingsVersion++ }
             SettingsNav("Eingeschlossene Ordner") { a?.startActivity(Intent(a, IncludedFoldersActivity::class.java)) }
             SettingsNav("Ausgeschlossene Ordner") { a?.startActivity(Intent(a, ExcludedFoldersActivity::class.java)) }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
@@ -153,6 +155,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
                     ROTATE_BY_DEVICE_ROTATION -> ROTATE_BY_ASPECT_RATIO
                     else -> ROTATE_BY_SYSTEM_SETTING
                 }
+                settingsVersion++
             }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
@@ -174,6 +177,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             SettingsSwitch("Löschbestätigung überspringen", conf.skipDeleteConfirmation) { conf.skipDeleteConfirmation = it }
             SettingsNav("Dateien laden", getFileLoadingLabel(conf.fileLoadingPriority)) {
                 conf.fileLoadingPriority = (conf.fileLoadingPriority + 1) % 3
+                settingsVersion++
             }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 

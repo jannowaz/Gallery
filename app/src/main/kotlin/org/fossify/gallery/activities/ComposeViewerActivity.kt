@@ -53,6 +53,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.RotateLeft
+import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -174,7 +176,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
         }
     }
 
-    LaunchedEffect(pagerState.currentPage) {
+    LaunchedEffect(currentPath) {
         isCurrentZoomed = false
         withContext(Dispatchers.IO) {
             isFavorite = repo.isFavorite(currentPath)
@@ -227,7 +229,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
         HorizontalPager(state = pagerState, userScrollEnabled = !isCurrentZoomed, modifier = Modifier.fillMaxSize()) { page ->
             val path = items.getOrNull(page) ?: ""
             val file = File(path)
-            if (isVideo(path)) VideoPage(
+            if (isVideo(path) && file.exists()) VideoPage(
                 path = path, scalingMode = videoScalingMode, onScalingModeChange = { videoScalingMode = it }, onBackgroundAudioChange = { backgroundAudio = it },
                 onToggleUi = { showUI = !showUI },
                 onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
@@ -239,6 +241,9 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                 onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
                 isCurrentPage = page == pagerState.currentPage,
             )
+            else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Datei nicht verfügbar", color = Color.White.copy(alpha = 0.7f))
+            }
         }
 
         // Unified contextual overlay
@@ -261,7 +266,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                 if (hasQuick || hasPersistent) {
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (hasPersistent) currentTags.forEach { tag -> val st = if (tag.length > 30) tag.take(30) + "…" else tag; Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)) { Text(st, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) } }
-                        if (hasQuick) quickTags.forEach { tag -> val h = repo.getTags(currentPath).contains(tag); Surface(shape = RoundedCornerShape(20.dp), color = if (h) MaterialTheme.colorScheme.primary.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.15f), modifier = Modifier.clickable { scope.launch(Dispatchers.IO) { if (h) repo.removeTag(currentPath, tag) else repo.addTag(currentPath, tag); tagRefreshTrigger++ } }) { val st = if (tag.length > 30) tag.take(30) + "…" else tag; Text(st, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), color = if (h) MaterialTheme.colorScheme.onPrimary else Color.White.copy(alpha = 0.9f)) } }
+                        if (hasQuick) quickTags.forEach { tag -> val h = currentTags.contains(tag); Surface(shape = RoundedCornerShape(20.dp), color = if (h) MaterialTheme.colorScheme.primary.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.15f), modifier = Modifier.clickable { scope.launch(Dispatchers.IO) { if (h) repo.removeTag(currentPath, tag) else repo.addTag(currentPath, tag); tagRefreshTrigger++ } }) { val st = if (tag.length > 30) tag.take(30) + "…" else tag; Text(st, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), color = if (h) MaterialTheme.colorScheme.onPrimary else Color.White.copy(alpha = 0.9f)) } }
                     }
                 }
             }
@@ -353,12 +358,31 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     if (showTagsDialog) {
         var allTags by remember { mutableStateOf<List<String>>(emptyList()) }
         var tagCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+        var dialogInitialTags by remember(currentPath) { mutableStateOf<Set<String>>(emptySet()) }
+        LaunchedEffect(currentPath) { dialogInitialTags = withContext(Dispatchers.IO) { repo.getTags(currentPath) } }
         LaunchedEffect(Unit) { withContext(Dispatchers.IO) { try { val tagged = ctx.mediaCacheDB.getRecentTagged(1000); val counts = tagged.flatMap { it.tags.split(",").filter(String::isNotBlank) }.groupingBy { it }.eachCount(); allTags = counts.entries.sortedByDescending { it.value }.map { it.key }; tagCounts = counts } catch (_: Exception) { } } }
-        TagInputDialog(initialTags = repo.getTags(currentPath), suggestedTags = allTags, suggestedTagCounts = tagCounts, onAddTag = { scope.launch(Dispatchers.IO) { repo.addTag(currentPath, it) } }, onRemoveTag = { scope.launch(Dispatchers.IO) { repo.removeTag(currentPath, it) } }, onDismiss = { showTagsDialog = false })
+        TagInputDialog(initialTags = dialogInitialTags, suggestedTags = allTags, suggestedTagCounts = tagCounts, onAddTag = { scope.launch(Dispatchers.IO) { repo.addTag(currentPath, it) } }, onRemoveTag = { scope.launch(Dispatchers.IO) { repo.removeTag(currentPath, it) } }, onDismiss = { showTagsDialog = false })
     }
 
     if (showFolderPicker) {
-        FolderPickerSheet(isMoveOperation = pendingFolderPickerIsMove, sourcePaths = listOf(currentPath), onDismiss = { showFolderPicker = false })
+        val movingPath = currentPath
+        val wasMove = pendingFolderPickerIsMove
+        FolderPickerSheet(isMoveOperation = pendingFolderPickerIsMove, sourcePaths = listOf(currentPath), onDismiss = {
+            showFolderPicker = false
+            if (wasMove) {
+                scope.launch {
+                    kotlinx.coroutines.delay(300)
+                    val idx = items.indexOf(movingPath)
+                    if (idx >= 0 && !File(movingPath).exists()) {
+                        if (items.size <= 1) closeWithAnimation()
+                        else {
+                            items.removeAt(idx)
+                            if (pagerState.currentPage >= items.size) pagerState.scrollToPage(items.size - 1)
+                        }
+                    }
+                }
+            }
+        })
     }
 
     if (showDeleteConfirm) {
@@ -447,7 +471,7 @@ private fun ExifSheet(path: String, onDismiss: () -> Unit) {
                         } catch (_: Exception) { }
                     }
                 }) {
-                    Icon(Icons.Default.Close, "90° CCW", modifier = Modifier.size(32.dp))
+                    Icon(Icons.Default.RotateLeft, "90° CCW", modifier = Modifier.size(32.dp))
                     Text("90° CCW", style = MaterialTheme.typography.labelSmall)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable {
@@ -462,7 +486,7 @@ private fun ExifSheet(path: String, onDismiss: () -> Unit) {
                         } catch (_: Exception) { }
                     }
                 }) {
-                    Icon(Icons.Default.Close, "90° CW", modifier = Modifier.size(32.dp))
+                    Icon(Icons.Default.RotateRight, "90° CW", modifier = Modifier.size(32.dp))
                     Text("90° CW", style = MaterialTheme.typography.labelSmall)
                 }
             }

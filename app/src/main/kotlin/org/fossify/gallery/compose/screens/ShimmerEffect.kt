@@ -43,7 +43,7 @@ fun LoadingIndicator(modifier: Modifier = Modifier) {
 
 @Composable
 fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop) {
-    var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var bitmap by remember(videoPath) { mutableStateOf<android.graphics.Bitmap?>(null) }
     LaunchedEffect(videoPath) {
         val cached = synchronized(videoThumbnailCache) { videoThumbnailCache[videoPath] }
         if (cached != null) { bitmap = cached; return@LaunchedEffect }

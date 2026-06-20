@@ -37,9 +37,10 @@ fun UndoBar(modifier: Modifier = Modifier, onActionLabel: ((UndoAction) -> Strin
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(lastAction?.timestamp) {
-        if (lastAction != null) {
+        val ts = lastAction?.timestamp
+        if (ts != null) {
             delay(5000)
-            UndoManager.clearExpired()
+            UndoManager.remove(ts)
         }
     }
 

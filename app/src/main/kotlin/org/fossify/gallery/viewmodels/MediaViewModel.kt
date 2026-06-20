@@ -92,11 +92,11 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 quickSyncNewMedia(app)
-                val media = try { app.mediaDB.getNewestMedia(4000).sortedByDescending { it.modified } } catch (_: Exception) { scanDirectories(app) }
+                val media = try { app.mediaDB.getNewestMedia(20000).sortedByDescending { it.modified } } catch (_: Exception) { scanDirectories(app) }
                 cachedAllMedia = applySort(media)
                 currentPage = 0
-                val firstPage = getPage(media, 0)
-                _state.update { it.copy(allMedia = firstPage, hasMore = media.size > pageSize) }
+                val firstPage = getPage(cachedAllMedia, 0)
+                _state.update { it.copy(allMedia = firstPage, hasMore = cachedAllMedia.size > pageSize) }
                 updateGroups()
             } catch (_: Exception) { }
         }
@@ -127,7 +127,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 val typeIdx = c.getColumnIndex(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE)
                 var scanned = 0
                 while (c.moveToNext()) {
-                    if (scanned++ >= 4000) break
+                    if (scanned++ >= 20000) break
                     var path = if (dataIdx >= 0) c.getString(dataIdx) else null
                     if (path.isNullOrBlank()) {
                         val relPath = if (relPathIdx >= 0) c.getString(relPathIdx) ?: "" else ""
@@ -154,14 +154,20 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { it.copy(isLoading = true, error = null) }
             val app = getApplication<Application>()
             val media = withContext(Dispatchers.IO) {
-                try { rescanNewMedia(app) } catch (_: Throwable) { }
-                val db = try { app.mediaDB.getNewestMedia(4000) } catch (_: Throwable) { emptyList() }
+                try { rescanNewMedia(app) } catch (t: Throwable) { android.util.Log.e("MediaVMLoad", "rescanNewMedia failed", t) }
+                val db = try { app.mediaDB.getNewestMedia(20000) } catch (t: Throwable) { android.util.Log.e("MediaVMLoad", "getNewestMedia failed", t); emptyList() }
+                android.util.Log.i("MediaVMLoad", "db=${db.size}")
                 if (db.isNotEmpty()) db.sortedByDescending { it.modified }
-                else try { scanDirectories(app) } catch (_: Throwable) { emptyList() }
+                else {
+                    val s = try { scanDirectories(app) } catch (t: Throwable) { android.util.Log.e("MediaVMLoad", "scanDirectories failed", t); emptyList() }
+                    android.util.Log.i("MediaVMLoad", "scanDirectories=${s.size}")
+                    s
+                }
             }
+            android.util.Log.i("MediaVMLoad", "final media=${media.size}")
             cachedAllMedia = applySort(media)
-            val firstPage = getPage(media, 0)
-            _state.update { it.copy(allMedia = firstPage, isLoading = false, hasMore = media.size > pageSize) }
+            val firstPage = getPage(cachedAllMedia, 0)
+            _state.update { it.copy(allMedia = firstPage, isLoading = false, hasMore = cachedAllMedia.size > pageSize) }
             updateGroups()
         }
     }
@@ -192,7 +198,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 val typeIdx = c.getColumnIndex(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE)
                 var scanned = 0
                 while (c.moveToNext()) {
-                    if (scanned++ >= 4000) break
+                    if (scanned++ >= 20000) break
                     var path = if (dataIdx >= 0) c.getString(dataIdx) else null
                     if (path.isNullOrBlank()) {
                         val relPath = if (relPathIdx >= 0) c.getString(relPathIdx) ?: "" else ""
@@ -288,7 +294,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 val sizeCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
                 val typeCol = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MEDIA_TYPE)
                 val durCol = try { c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DURATION) } catch (_: Exception) { -1 }
-                val maxItems = 4000
+                val maxItems = 20000
                 while (c.moveToNext() && allMedia.size < maxItems) {
                     val path = c.getString(dataCol) ?: continue
                     if (path in seen) continue

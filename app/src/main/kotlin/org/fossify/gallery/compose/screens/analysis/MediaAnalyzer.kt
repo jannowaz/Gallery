@@ -9,8 +9,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.Paths
 
 class MediaAnalyzer(private val context: Context) {
 
@@ -45,22 +43,14 @@ class MediaAnalyzer(private val context: Context) {
     }
 
     private fun collectMediaFilesDirect(rootPath: String, result: MutableList<String>) {
-        try {
-            Files.newDirectoryStream(Paths.get(rootPath)).use { stream ->
-                for (entry in stream) {
-                    val path = entry.toString()
-                    if (entry.fileName.toString().startsWith(".")) continue
-                    if (Files.isDirectory(entry)) {
-                        collectMediaFilesDirect(path, result)
-                    } else {
-                        val ext = path.substringAfterLast('.', "").lowercase()
-                        if (ext in MEDIA_EXTENSIONS || ext in AnalysisCriteria.VIDEO_EXTS || ext in AnalysisCriteria.IMAGE_EXTS) {
-                            result.add(path)
-                        }
-                    }
-                }
+        // Resolve via MediaStore (filesystem directory listing is blocked under scoped storage).
+        for (path in MediaStoreEnumerator.mediaPathsUnder(context, rootPath)) {
+            if (path.substringAfterLast('/').startsWith(".")) continue
+            val ext = path.substringAfterLast('.', "").lowercase()
+            if (ext in MEDIA_EXTENSIONS || ext in AnalysisCriteria.VIDEO_EXTS || ext in AnalysisCriteria.IMAGE_EXTS) {
+                result.add(path)
             }
-        } catch (_: Exception) { }
+        }
     }
 
     private fun collectMediaFilesSaf(rootUri: Uri, result: MutableList<String>) {

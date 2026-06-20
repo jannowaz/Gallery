@@ -36,7 +36,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
+import org.fossify.gallery.compose.util.rememberMediaStoreConsent
 import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.helpers.MediaStoreOps
+import org.fossify.gallery.helpers.RefreshBus
 import java.io.File
 
 @Composable
@@ -47,6 +50,7 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit) {
     var counter by remember { mutableIntStateOf(1) }
     val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
+    val consent = rememberMediaStoreConsent()
     val modes = listOf("Präfix" to "Vor den Dateinamen", "Suffix" to "Vor die Dateiendung", "Neuer Name" to "Mit Nummerierung")
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
@@ -100,29 +104,45 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit) {
         confirmButton = {
             TextButton(onClick = {
                 if (text.isBlank()) return@TextButton
-                scope.launch(Dispatchers.IO) {
-                    var renamed = 0
+                scope.launch {
                     val db = ctx.mediaDB
-                    paths.forEachIndexed { idx, path ->
-                        val file = File(path)
-                        if (!file.exists()) return@forEachIndexed
-                        val ext = file.extension
-                        val newName = when (mode) {
-                            0 -> "$text${file.name}"
-                            1 -> "${file.nameWithoutExtension}$text.$ext"
-                            2 -> "${text}_${counter + idx}.$ext"
-                            else -> file.name
-                        }
-                        val newFile = File(file.parent, newName)
-                        if (file.renameTo(newFile)) {
-                            try { db.updateMedium(path, file.parent ?: "", newName, newFile.absolutePath) } catch (_: Exception) { }
-                            renamed++
+                    data class Job(val path: String, val uri: android.net.Uri, val newName: String)
+                    val jobs = withContext(Dispatchers.IO) {
+                        paths.mapIndexedNotNull { idx, path ->
+                            val file = File(path)
+                            val ext = file.extension
+                            val newName = when (mode) {
+                                0 -> "$text${file.name}"
+                                1 -> "${file.nameWithoutExtension}$text.$ext"
+                                2 -> "${text}_${counter + idx}.$ext"
+                                else -> file.name
+                            }
+                            val uri = MediaStoreOps.uriForPath(ctx, path) ?: return@mapIndexedNotNull null
+                            Job(path, uri, newName)
                         }
                     }
-                    withContext(Dispatchers.Main) {
-                        ctx.toast("$renamed Dateien umbenannt", Toast.LENGTH_SHORT)
-                        onDismiss()
+                    if (jobs.isEmpty()) {
+                        ctx.toast("Keine Dateien gefunden", Toast.LENGTH_SHORT); onDismiss(); return@launch
                     }
+                    val granted = try {
+                        consent.request(MediaStoreOps.writeRequest(ctx, jobs.map { it.uri }))
+                    } catch (_: Exception) { false }
+                    if (!granted) { ctx.toast("Abgebrochen", Toast.LENGTH_SHORT); return@launch }
+                    val renamed = withContext(Dispatchers.IO) {
+                        var n = 0
+                        jobs.forEach { job ->
+                            if (MediaStoreOps.rename(ctx, job.uri, job.newName)) {
+                                val parent = File(job.path).parent ?: ""
+                                val newPath = File(parent, job.newName).absolutePath
+                                try { db.updateMedium(job.path, parent, job.newName, newPath) } catch (_: Exception) { }
+                                n++
+                            }
+                        }
+                        n
+                    }
+                    RefreshBus.trigger()
+                    ctx.toast("$renamed Dateien umbenannt", Toast.LENGTH_SHORT)
+                    onDismiss()
                 }
             }) { Text("Umbenennen") }
         },

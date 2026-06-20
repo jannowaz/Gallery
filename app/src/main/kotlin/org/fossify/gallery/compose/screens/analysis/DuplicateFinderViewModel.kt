@@ -10,7 +10,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MediaRepository
+import org.fossify.gallery.helpers.RefreshBus
+import org.fossify.gallery.helpers.UndoAction
+import org.fossify.gallery.helpers.UndoManager
+import org.fossify.gallery.helpers.UndoType
+import org.fossify.gallery.models.Medium
+import java.io.File
 
 data class DuplicateState(
     val isScanning: Boolean = false,
@@ -75,6 +82,10 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectAllButNewest() {
         _state.update { s ->
+            // Auto-selecting is only safe for EXACT duplicates. In SIMILAR mode the files are
+            // merely perceptually similar (not identical), so bulk-selecting would risk deleting
+            // wanted photos - require manual selection there.
+            if (s.mode != DuplicateMode.EXACT) return@update s
             val toDelete = s.groups.flatMap { g ->
                 g.files.sortedWith(compareByDescending<DuplicateFile> { it.size }.thenByDescending { it.modified }).drop(1)
             }.map { it.path }.toSet()
@@ -87,8 +98,20 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteSelected() {
         val selected = _state.value.selectedForDeletion
         if (selected.isEmpty()) return
+        val filesByPath = _state.value.groups.flatMap { it.files }.associateBy { it.path }
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { selected.forEach { repo.deleteMedium(it) } }
+            withContext(Dispatchers.IO) {
+                // Move to the in-app recycle bin instead of permanently deleting. This is
+                // recoverable and never destroys the file, even for SIMILAR matches.
+                val media = selected.mapNotNull { path ->
+                    val f = filesByPath[path] ?: return@mapNotNull null
+                    Medium(null, f.name, path, File(path).parent ?: "", f.modified, f.modified, f.size, f.mediaType, 0, false, 0L, 0L, f.rating)
+                }
+                try { if (media.isNotEmpty()) getApplication<Application>().mediaDB.insertAllKeepingExisting(media) } catch (_: Exception) { }
+                selected.forEach { repo.moveToRecycleBin(it) }
+            }
+            UndoManager.push(UndoAction(paths = selected, type = UndoType.DELETE))
+            RefreshBus.trigger()
             _state.update { s ->
                 val remaining = s.groups
                     .map { g -> g.copy(files = g.files.filter { it.path !in selected }) }

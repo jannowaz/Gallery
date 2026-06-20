@@ -71,11 +71,16 @@ fun FolderMediaScreen(
             )
         }
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            MediaScreen(
-                viewSettings = tabSettings.folderMedia,
-                mediaOverride = mediaItems ?: emptyList()
-            )
+        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            val items = mediaItems
+            if (items == null) {
+                androidx.compose.material3.CircularProgressIndicator()
+            } else {
+                MediaScreen(
+                    viewSettings = tabSettings.folderMedia,
+                    mediaOverride = items
+                )
+            }
         }
     }
 

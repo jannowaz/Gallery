@@ -128,12 +128,16 @@ fun VideoPage(
         ExoPlayer.Builder(ctx).build().apply {
             setMediaItem(MediaItem.fromUri(Uri.fromFile(File(path))))
             repeatMode = Player.REPEAT_MODE_ONE
-            prepare()
-            playWhenReady = isCurrentPage
         }
     }
     LaunchedEffect(isCurrentPage) {
-        player.playWhenReady = isCurrentPage
+        if (isCurrentPage) {
+            // Only allocate the decoder/codec once this page is actually the visible one.
+            if (player.playbackState == Player.STATE_IDLE) player.prepare()
+            player.playWhenReady = true
+        } else {
+            player.playWhenReady = false
+        }
     }
     DisposableEffect(player) {
         onDispose {

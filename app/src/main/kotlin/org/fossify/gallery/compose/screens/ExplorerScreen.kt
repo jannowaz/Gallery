@@ -36,6 +36,8 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -49,6 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -75,13 +78,13 @@ import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.Paths
 
 private data class ExplorerItem(
     val name: String, val path: String, val isDirectory: Boolean,
     val lastModified: Long = 0L, val size: Long = 0L,
     val thumbnailPath: String = "",
+    val mediaCount: Int = 0,
+    val previewPaths: List<String> = emptyList(),
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -118,18 +121,6 @@ fun ExplorerScreen(
         }
     }
 
-    suspend fun findThumbnailInFolder(folderPath: String): String = withContext(Dispatchers.IO) {
-        try {
-            Files.newDirectoryStream(Paths.get(folderPath)).use { stream ->
-                for (entry in stream) {
-                    val ext = entry.fileName.toString().substringAfterLast('.', "").lowercase()
-                    if (ext in MEDIA_EXTENSIONS) return@withContext entry.toString()
-                }
-            }
-        } catch (_: Exception) { }
-        ""
-    }
-
     val folderCardColor = when (folderSettings.displayMode) {
         DisplayMode.COMPACT, DisplayMode.NORMAL -> MaterialTheme.colorScheme.surface
         DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant
@@ -137,31 +128,36 @@ fun ExplorerScreen(
 
     suspend fun loadFolderContents(path: String) {
         val (sortedFolders, sortedFiles) = withContext(Dispatchers.IO) {
-            val dir = Paths.get(path)
-            if (!Files.isDirectory(dir)) return@withContext Pair(emptyList<ExplorerItem>(), emptyList<ExplorerItem>())
-            val folders = mutableListOf<ExplorerItem>()
-            val files = mutableListOf<ExplorerItem>()
+            val root = path.trimEnd('/')
             val deletedPaths = try { context.mediaDB.getDeletedMedia().map { it.path }.toSet() } catch (_: Exception) { emptySet() }
-            try {
-                val hidden = context.config.explorer2HiddenFolders
-                Files.newDirectoryStream(dir).use { stream ->
-                    for (entry in stream) {
-                        val name = entry.fileName.toString()
-                        if (name.startsWith(".")) continue
-                        val fPath = entry.toString()
-                        if (hidden.contains(fPath)) continue
-                        if (Files.isDirectory(entry)) {
-                            val tmb = if (folderSettings.showFolderThumbnails) findThumbnailInFolder(fPath) else ""
-                            folders.add(ExplorerItem(name = name, path = fPath, isDirectory = true, lastModified = Files.getLastModifiedTime(entry).toMillis(), thumbnailPath = tmb))
-                        } else {
-                            val ext = name.substringAfterLast('.', "").lowercase()
-                            if (ext in MEDIA_EXTENSIONS && fPath !in deletedPaths) {
-                                files.add(ExplorerItem(name = name, path = fPath, isDirectory = false, lastModified = Files.getLastModifiedTime(entry).toMillis(), size = Files.size(entry)))
-                            }
-                        }
-                    }
+            val hidden = context.config.explorer2HiddenFolders
+            // Reconstruct the folder tree from MediaStore (raw directory listing is blocked under
+            // scoped storage). Subfolders are derived from the media paths beneath the current path.
+            val entries = org.fossify.gallery.helpers.MediaStoreOps.mediaEntriesUnder(context, root)
+            val files = mutableListOf<ExplorerItem>()
+            class Agg { var thumb: String = ""; var lastModified: Long = 0L; var count: Int = 0; val previews: MutableList<String> = mutableListOf() }
+            val folderMap = LinkedHashMap<String, Agg>()
+            for (e in entries) {
+                if (e.path in deletedPaths) continue
+                val rel = e.path.removePrefix("$root/")
+                val slash = rel.indexOf('/')
+                if (slash < 0) {
+                    val ext = e.name.substringAfterLast('.', "").lowercase()
+                    if (ext in MEDIA_EXTENSIONS) files.add(ExplorerItem(name = e.name, path = e.path, isDirectory = false, lastModified = e.modified, size = e.size))
+                } else {
+                    val seg = rel.substring(0, slash)
+                    val folderPath = "$root/$seg"
+                    if (folderPath in hidden) continue
+                    val agg = folderMap.getOrPut(folderPath) { Agg() }
+                    if (agg.thumb.isEmpty()) agg.thumb = e.path
+                    if (agg.previews.size < 4) agg.previews.add(e.path)
+                    agg.count++
+                    if (e.modified > agg.lastModified) agg.lastModified = e.modified
                 }
-            } catch (_: Exception) { }
+            }
+            val folders = folderMap.map { (fp, agg) ->
+                ExplorerItem(name = fp.substringAfterLast('/'), path = fp, isDirectory = true, lastModified = agg.lastModified, thumbnailPath = if (folderSettings.showFolderThumbnails) agg.thumb else "", mediaCount = agg.count, previewPaths = agg.previews.toList())
+            }
             val sf = when (folderSettings.sortBy) {
                 SortField.NAME -> folders.sortedBy { it.name.lowercase() }
                 SortField.DATE -> folders.sortedBy { it.lastModified }
@@ -247,20 +243,32 @@ fun ExplorerScreen(
                         }
                     } else {
                         items(folderItems, key = { it.path }) { item ->
-                            Surface(Modifier.fillMaxWidth().combinedClickable(
-                                onClick = { if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); currentPath = item.path } },
-                                onLongClick = { selectedFolderPaths = selectedFolderPaths + item.path }
-                            ), color = if (item.path in selectedFolderPaths) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else folderCardColor.copy(alpha = 0.3f)) {
-                                Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).combinedClickable(
+                                    onClick = { if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); currentPath = item.path } },
+                                    onLongClick = { selectedFolderPaths = selectedFolderPaths + item.path }
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = if (item.path in selectedFolderPaths) MaterialTheme.colorScheme.primaryContainer else folderCardColor)
+                            ) {
+                                Row(Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (folderSettings.displayMode == DisplayMode.DARK) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                                        Text("${item.mediaCount} Medien", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
-                                    Spacer(Modifier.width(12.dp))
-                                    Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Icon(Icons.Default.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        if (item.previewPaths.isEmpty()) {
+                                            Box(Modifier.size(44.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceVariant))
+                                        } else {
+                                            item.previewPaths.take(3).forEach { p ->
+                                                Box(Modifier.size(44.dp).clip(RoundedCornerShape(6.dp))) {
+                                                    GalleryImage(path = p, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 12.dp, thumbnailSize = 128)
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                            HorizontalDivider(Modifier.padding(start = 68.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         }
                     }
                 }
@@ -274,9 +282,10 @@ fun ExplorerScreen(
                         }
                     }
                     val cornerShape = if (mediaSettings.roundedCorners) RoundedCornerShape(8.dp) else RoundedCornerShape(0.dp)
-                    if (mediaSettings.viewType == ViewType.GRID) {
+                    when (mediaSettings.viewType) {
+                    ViewType.GRID -> {
                         fileItems.chunked(mediaSettings.columnCount).forEach { chunk ->
-                            item {
+                            item(key = chunk.joinToString { it.path }) {
                                 Row(Modifier.fillMaxWidth().padding(mediaSettings.spacing.dp / 2)) {
                                     chunk.forEach { item ->
                                         val file = File(item.path)
@@ -300,7 +309,44 @@ fun ExplorerScreen(
                                 }
                             }
                         }
-                    } else {
+                    }
+                    ViewType.MOSAIC -> {
+                        item(key = "explorer_media_mosaic") {
+                            val aspectCache = remember { mutableStateMapOf<String, Float>() }
+                            val n = mediaSettings.columnCount.coerceAtLeast(1)
+                            val columns = remember(fileItems, n, aspectCache.size) {
+                                val heights = FloatArray(n)
+                                val buckets = Array(n) { mutableListOf<ExplorerItem>() }
+                                fileItems.forEach { fi ->
+                                    val isVid = fi.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
+                                    val ar = if (isVid) 1f else (aspectCache[fi.path] ?: 1f)
+                                    val ci = (0 until n).minByOrNull { heights[it] } ?: 0
+                                    buckets[ci].add(fi); heights[ci] += 1f / ar.coerceIn(0.3f, 3f)
+                                }
+                                buckets.map { it.toList() }
+                            }
+                            Row(Modifier.fillMaxWidth().padding(mediaSettings.spacing.dp / 2)) {
+                                columns.forEach { col ->
+                                    Column(Modifier.weight(1f)) {
+                                        col.forEach { item ->
+                                            val isVideo = item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
+                                            if (!isVideo) LaunchedEffect(item.path) {
+                                                if (aspectCache[item.path] == null) aspectCache[item.path] = withContext(Dispatchers.IO) { decodeImageAspect(item.path) }
+                                            }
+                                            val ar = (if (isVideo) 1f else (aspectCache[item.path] ?: 1f)).coerceIn(0.3f, 3f)
+                                            Box(Modifier.padding(mediaSettings.spacing.dp / 2).aspectRatio(ar).clip(cornerShape).background(MaterialTheme.colorScheme.surfaceVariant, cornerShape).clickable {
+                                                context.startActivity(Intent(context, ComposeViewerActivity::class.java).apply { putStringArrayListExtra("PATHS", ArrayList(fileItems.map { it.path })); putExtra("START_INDEX", fileItems.indexOfFirst { it.path == item.path }.coerceAtLeast(0)); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                            }) {
+                                                if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                                else GalleryImage(path = item.path, contentDescription = item.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 20.dp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else -> {
                         items(fileItems, key = { it.path }) { item ->
                             val file = File(item.path)
                                 val isVideo = item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
@@ -321,6 +367,7 @@ fun ExplorerScreen(
                             }
                             HorizontalDivider(Modifier.padding(start = 68.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         }
+                    }
                     }
                 }
             }

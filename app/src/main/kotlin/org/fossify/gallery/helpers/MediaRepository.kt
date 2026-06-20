@@ -30,6 +30,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             }
             context.mediaDB.updateFavorite(path, isFav)
         } catch (_: Exception) { }
+        RefreshBus.trigger()
     }
 
     override fun getRating(path: String): Int {

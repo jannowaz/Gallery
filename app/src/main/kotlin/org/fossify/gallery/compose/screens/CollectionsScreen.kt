@@ -90,6 +90,7 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
     var collections by remember { mutableStateOf<List<MediaCollection>>(emptyList()) }
     var editingColl by remember { mutableStateOf<MediaCollection?>(null) }
     var showEditDialog by remember { mutableStateOf(false) }
+    var deleteConfirm by remember { mutableStateOf<MediaCollection?>(null) }
 
     // Load collections on IO (Room verbietet Main-Thread)
     var loadTrigger by remember { mutableIntStateOf(0) }
@@ -97,6 +98,21 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
         collections = withContext(Dispatchers.IO) { try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() } }
     }
     fun refresh() { loadTrigger++ }
+
+    deleteConfirm?.let { coll ->
+        AlertDialog(
+            onDismissRequest = { deleteConfirm = null },
+            title = { Text("Sammlung löschen") },
+            text = { Text("\"${coll.name}\" wirklich löschen?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleteConfirm = null
+                    scope.launch(Dispatchers.IO) { try { ctx.collectionDB.delete(coll); withContext(Dispatchers.Main) { refresh() } } catch (_: Exception) { } }
+                }) { Text("Löschen", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deleteConfirm = null }) { Text("Abbrechen") } },
+        )
+    }
 
     // Edit dialog
     if (showEditDialog) {
@@ -275,7 +291,7 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                             }
                             IconButton(onClick = { editingColl = coll; showEditDialog = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Edit, "Bearbeiten", modifier = Modifier.size(18.dp)) }
                             IconButton(onClick = {
-                                scope.launch(Dispatchers.IO) { try { ctx.collectionDB.delete(coll); withContext(Dispatchers.Main) { refresh() } } catch (_: Exception) { } }
+                                deleteConfirm = coll
                             }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp)) }
                         }
                     }

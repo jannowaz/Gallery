@@ -49,9 +49,12 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.compose.util.rememberMediaStoreConsent
 import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.helpers.MediaStoreOps
 import org.fossify.gallery.helpers.RefreshBus
 import org.fossify.gallery.models.Medium
 import java.io.File
@@ -62,12 +65,30 @@ fun RecycleBinScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
     val repo = LocalMediaRepository.current
     val scope = rememberCoroutineScope()
+    val consent = rememberMediaStoreConsent()
     var items by remember { mutableStateOf<List<Medium>>(emptyList()) }
     var refresh by remember { mutableIntStateOf(0) }
     var showEmptyConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(refresh) {
         items = withContext(Dispatchers.IO) { try { ctx.mediaDB.getDeletedMedia() } catch (_: Exception) { emptyList() } }
+    }
+
+    // Permanently deletes the given paths, asking for the OS delete-consent dialog so the files are
+    // actually removed and storage freed (raw File.delete is blocked under scoped storage). The
+    // list is refreshed only after the operation completes (avoids the stale-read race).
+    fun permanentlyDelete(paths: List<String>) {
+        if (paths.isEmpty()) return
+        scope.launch {
+            val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, paths).map { it.second } }
+            if (uris.isNotEmpty()) {
+                val granted = try { consent.request(MediaStoreOps.deleteRequest(ctx, uris)) } catch (_: Exception) { false }
+                if (!granted) { ctx.toast("Abgebrochen"); return@launch }
+            }
+            withContext(Dispatchers.IO) { paths.forEach { repo.deleteMedium(it) } }
+            RefreshBus.trigger()
+            refresh++
+        }
     }
 
     BackHandler(enabled = showEmptyConfirm) { showEmptyConfirm = false }
@@ -101,12 +122,10 @@ fun RecycleBinScreen(onBack: () -> Unit) {
                             Text(File(m.path).parent ?: "", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         IconButton(onClick = {
-                            scope.launch(Dispatchers.IO) { repo.restoreFromRecycleBin(m.path); RefreshBus.trigger() }
-                            refresh++
+                            scope.launch { withContext(Dispatchers.IO) { repo.restoreFromRecycleBin(m.path) }; RefreshBus.trigger(); refresh++ }
                         }) { Icon(Icons.Default.Restore, "Wiederherstellen", tint = MaterialTheme.colorScheme.primary) }
                         IconButton(onClick = {
-                            scope.launch(Dispatchers.IO) { repo.deleteMedium(m.path) }
-                            refresh++
+                            permanentlyDelete(listOf(m.path))
                         }) { Icon(Icons.Default.DeleteForever, "Endgültig löschen", tint = MaterialTheme.colorScheme.error) }
                     }
                     HorizontalDivider(Modifier.padding(start = 76.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
@@ -124,9 +143,7 @@ fun RecycleBinScreen(onBack: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     showEmptyConfirm = false
-                    val toDelete = items.map { it.path }
-                    scope.launch(Dispatchers.IO) { toDelete.forEach { repo.deleteMedium(it) } }
-                    refresh++
+                    permanentlyDelete(items.map { it.path })
                 }) { Text("Endgültig löschen", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { showEmptyConfirm = false }) { Text("Abbrechen") } },

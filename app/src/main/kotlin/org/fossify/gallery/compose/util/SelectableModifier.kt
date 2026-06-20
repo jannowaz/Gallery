@@ -65,7 +65,7 @@ fun Modifier.selectableItem(
 ): Modifier = composed {
     this.combinedClickable(
         onClick = onClick,
-        onLongClick = null,
+        onLongClick = onLongClick,
     )
 }
 

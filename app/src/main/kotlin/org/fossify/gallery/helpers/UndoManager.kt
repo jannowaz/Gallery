@@ -42,9 +42,15 @@ object UndoManager {
 
     suspend fun undoLast() {
         val action = _actions.value.lastOrNull() ?: return
-        val handler = undoHandlers[action.type] ?: return
-        handler(action)
+        // Always drop the action afterwards, even if no handler is registered, so the undo bar
+        // never gets stuck.
+        undoHandlers[action.type]?.invoke(action)
         _actions.value = _actions.value.dropLast(1)
+    }
+
+    /** Removes a specific action (used by the auto-dismiss timer of the undo bar). */
+    fun remove(timestamp: Long) {
+        _actions.value = _actions.value.filterNot { it.timestamp == timestamp }
     }
 
     fun clear() {

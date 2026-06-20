@@ -68,7 +68,7 @@ class ComposeFolderActivity : ComponentActivity() {
 
             GalleryTheme {
                 AppProviders(repo) {
-                    FolderMediaScreen(folderPath = folderPath, tabSettings = tabSettings, viewSettingsVM = viewSettingsVM, mediaItems = mediaItems ?: emptyList(), onBack = { finish() })
+                    FolderMediaScreen(folderPath = folderPath, tabSettings = tabSettings, viewSettingsVM = viewSettingsVM, mediaItems = mediaItems, onBack = { finish() })
                 }
             }
         }
@@ -77,7 +77,7 @@ class ComposeFolderActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FolderMediaScreen(folderPath: String, tabSettings: org.fossify.gallery.compose.screens.TabViewSettings, viewSettingsVM: ViewSettingsViewModel, mediaItems: List<Medium>, onBack: () -> Unit) {
+private fun FolderMediaScreen(folderPath: String, tabSettings: org.fossify.gallery.compose.screens.TabViewSettings, viewSettingsVM: ViewSettingsViewModel, mediaItems: List<Medium>?, onBack: () -> Unit) {
     var showViewSettings by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -92,11 +92,15 @@ private fun FolderMediaScreen(folderPath: String, tabSettings: org.fossify.galle
             )
         }
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            MediaScreen(
-                viewSettings = tabSettings.folderMedia,
-                mediaOverride = mediaItems
-            )
+        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            if (mediaItems == null) {
+                androidx.compose.material3.CircularProgressIndicator()
+            } else {
+                MediaScreen(
+                    viewSettings = tabSettings.folderMedia,
+                    mediaOverride = mediaItems
+                )
+            }
         }
     }
 

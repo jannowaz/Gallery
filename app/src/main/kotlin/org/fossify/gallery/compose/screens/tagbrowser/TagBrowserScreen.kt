@@ -81,7 +81,6 @@ fun TagBrowserScreen(
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val repo = LocalMediaRepository.current
-    val hierarchy = remember { ctx.config.tagHierarchy }
 
     var allTags by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var scanning by remember { mutableStateOf(false) }
@@ -92,6 +91,7 @@ fun TagBrowserScreen(
     var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
     var tagSearchQuery by remember { mutableStateOf("") }
     var refreshTrigger by remember { mutableIntStateOf(0) }
+    val hierarchy = remember(refreshTrigger) { ctx.config.tagHierarchy }
 
     LaunchedEffect(refreshTrigger) {
         scanning = true
@@ -210,7 +210,7 @@ fun TagBrowserScreen(
                     if (selectedTags.size == 1) {
                         Spacer(Modifier.height(6.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Surface(onClick = { renameTargetTag = selectedTags.first() }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
+                            Surface(onClick = { renameTargetTag = selectedTags.sorted().firstOrNull() }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
                                 Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Umbenennen", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }
                             }
                             Surface(onClick = { pendingParentAssign = selectedTags }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
@@ -223,7 +223,7 @@ fun TagBrowserScreen(
                             Surface(onClick = { pendingParentAssign = selectedTags }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
                                 Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Parent", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }
                             }
-                            Surface(onClick = { mergeTargetTag = selectedTags.first() ?: "" }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.weight(1f)) {
+                            Surface(onClick = { mergeTargetTag = selectedTags.sorted().firstOrNull() }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.weight(1f)) {
                                 Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Merge", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onTertiaryContainer) }
                             }
                         }
@@ -258,6 +258,12 @@ fun TagBrowserScreen(
                                 tagsToDelete.forEach { tag -> newTags = newTags.split(",").filter { it.trim() != tag }.joinToString(",") }
                                 ctx.mediaCacheDB.upsertAll(listOf(mc.copy(tags = newTags)))
                             }
+                        } catch (_: Exception) { }
+                        // Drop orphaned hierarchy entries referencing the deleted tags.
+                        try {
+                            val h = ctx.config.tagHierarchy
+                            val cleaned = h.filterKeys { it !in tagsToDelete }.filterValues { it !in tagsToDelete }
+                            if (cleaned.size != h.size) ctx.config.tagHierarchy = cleaned.toMutableMap()
                         } catch (_: Exception) { }
                         withContext(Dispatchers.Main) {
                             ctx.toast("${tagsToDelete.size} Tag${if (tagsToDelete.size != 1) "s" else ""} aus $totalFiles Dateien entfernt", Toast.LENGTH_SHORT)
@@ -297,9 +303,25 @@ fun TagBrowserScreen(
                 TextButton(onClick = {
                     if (selectedParent.isNotBlank()) {
                         val h = ctx.config.tagHierarchy.toMutableMap()
-                        tagsToAssign.forEach { h[it] = selectedParent }
-                        ctx.config.tagHierarchy = h
-                        ctx.toast("Eltern-Tag gesetzt", Toast.LENGTH_SHORT)
+                        fun createsCycle(child: String, parent: String): Boolean {
+                            var cur: String? = parent
+                            val seen = HashSet<String>()
+                            while (cur != null && seen.add(cur)) {
+                                if (cur == child) return true
+                                cur = h[cur]
+                            }
+                            return false
+                        }
+                        val invalid = selectedParent in tagsToAssign || tagsToAssign.any { createsCycle(it, selectedParent) }
+                        if (invalid) {
+                            ctx.toast("Ungültiger Eltern-Tag (Zyklus)", Toast.LENGTH_SHORT)
+                        } else {
+                            tagsToAssign.forEach { h[it] = selectedParent }
+                            ctx.config.tagHierarchy = h
+                            ctx.toast("Eltern-Tag gesetzt", Toast.LENGTH_SHORT)
+                            pendingParentAssign = null; selectedTags = emptySet(); refreshTrigger++
+                            return@TextButton
+                        }
                     }
                     pendingParentAssign = null; selectedTags = emptySet()
                 }) { Text("Speichern") }
@@ -393,7 +415,7 @@ fun TagBrowserScreen(
                             cached.forEach { mc ->
                                 var newTags = mc.tags.split(",").map { it.trim() }.toMutableList()
                                 val idx = newTags.indexOf(oldName)
-                                if (idx >= 0) { newTags[idx] = target; if (target !in newTags.take(idx)) newTags = newTags.distinct().toMutableList() }
+                                if (idx >= 0) { newTags[idx] = target; newTags = newTags.distinct().toMutableList() }
                                 ctx.mediaCacheDB.upsertAll(listOf(mc.copy(tags = newTags.joinToString(","))))
                             }
                         } catch (_: Exception) { }

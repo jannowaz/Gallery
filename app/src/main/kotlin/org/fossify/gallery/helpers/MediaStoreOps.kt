@@ -1,0 +1,156 @@
+package org.fossify.gallery.helpers
+
+import android.app.PendingIntent
+import android.content.ContentUris
+import android.content.ContentValues
+import android.content.Context
+import android.net.Uri
+import android.provider.MediaStore
+import java.io.File
+
+/**
+ * Scoped-storage-safe media operations via MediaStore. On Android 11+/13+ the app cannot modify or
+ * delete media it does not own using raw java.io.File; it must resolve content URIs and (for items
+ * it doesn't own) obtain user consent through the system dialogs produced by
+ * createTrashRequest / createDeleteRequest / createWriteRequest. The actual IntentSender is launched
+ * by the Compose layer (see compose/util/MediaStoreConsent.kt).
+ */
+object MediaStoreOps {
+
+    /** Resolves the MediaStore content URI for a given absolute file path, or null if unknown. */
+    fun uriForPath(context: Context, path: String): Uri? {
+        val collection = MediaStore.Files.getContentUri("external")
+        val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.Files.FileColumns.MEDIA_TYPE)
+        try {
+            context.contentResolver.query(
+                collection, projection,
+                "${MediaStore.MediaColumns.DATA} = ?", arrayOf(path), null,
+            )?.use { c ->
+                if (c.moveToFirst()) {
+                    val id = c.getLong(c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
+                    val type = c.getInt(c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MEDIA_TYPE))
+                    val base = when (type) {
+                        MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+                        MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO -> MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+                        else -> collection
+                    }
+                    return ContentUris.withAppendedId(base, id)
+                }
+            }
+        } catch (_: Exception) { }
+        return null
+    }
+
+    fun urisForPaths(context: Context, paths: Collection<String>): List<Pair<String, Uri>> =
+        paths.mapNotNull { p -> uriForPath(context, p)?.let { p to it } }
+
+    fun trashRequest(context: Context, uris: List<Uri>): PendingIntent =
+        MediaStore.createTrashRequest(context.contentResolver, uris, true)
+
+    fun deleteRequest(context: Context, uris: List<Uri>): PendingIntent =
+        MediaStore.createDeleteRequest(context.contentResolver, uris)
+
+    fun writeRequest(context: Context, uris: List<Uri>): PendingIntent =
+        MediaStore.createWriteRequest(context.contentResolver, uris)
+
+    /** Renames the display name (and the on-disk file) of [uri]. Requires prior write consent. */
+    fun rename(context: Context, uri: Uri, newName: String): Boolean = try {
+        val values = ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, newName) }
+        context.contentResolver.update(uri, values, null, null) > 0
+    } catch (_: Exception) { false }
+
+    /**
+     * Moves [uri] into [targetRelativePath] (e.g. "Pictures/Foo") by updating RELATIVE_PATH.
+     * Requires prior write consent. Returns true on success.
+     */
+    fun move(context: Context, uri: Uri, targetRelativePath: String): Boolean = try {
+        val rel = targetRelativePath.trim('/') + "/"
+        val values = ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, rel) }
+        context.contentResolver.update(uri, values, null, null) > 0
+    } catch (_: Exception) { false }
+
+    /**
+     * Copies the content of [sourceUri] into a new MediaStore entry under [targetRelativePath].
+     * No consent needed (the new item is app-owned). Returns the new URI or null on failure.
+     */
+    fun copy(context: Context, sourceUri: Uri, displayName: String, targetRelativePath: String, isVideo: Boolean): Uri? {
+        return try {
+            val rel = targetRelativePath.trim('/') + "/"
+            val collection = if (isVideo) MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            else MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, rel)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val newUri = context.contentResolver.insert(collection, values) ?: return null
+            context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                context.contentResolver.openOutputStream(newUri)?.use { output -> input.copyTo(output) }
+                    ?: return null.also { context.contentResolver.delete(newUri, null, null) }
+            } ?: return null.also { context.contentResolver.delete(newUri, null, null) }
+            val done = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
+            context.contentResolver.update(newUri, done, null, null)
+            newUri
+        } catch (_: Exception) { null }
+    }
+
+    /** Derives the MediaStore RELATIVE_PATH for an absolute shared-storage folder path. */
+    fun relativePathFor(folderAbsolutePath: String): String {
+        val markers = listOf("/storage/emulated/0/", "/sdcard/")
+        var rel = folderAbsolutePath
+        for (m in markers) if (rel.startsWith(m)) { rel = rel.removePrefix(m); break }
+        // Fallback: strip any leading /storage/<vol>/
+        if (rel.startsWith("/storage/")) rel = rel.substringAfter("/storage/").substringAfter("/")
+        return rel.trim('/')
+    }
+
+    fun isVideoPath(path: String): Boolean =
+        path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
+
+    fun fileName(path: String): String = File(path).name
+
+    data class MediaEntry(val path: String, val name: String, val modified: Long, val size: Long)
+
+    /**
+     * Returns all image/video entries located anywhere under [rootPath] (recursive) via MediaStore.
+     * Used to reconstruct the folder tree without raw directory listing (blocked on scoped storage).
+     */
+    fun mediaEntriesUnder(context: Context, rootPath: String): List<MediaEntry> {
+        val root = rootPath.trimEnd('/')
+        if (root.isEmpty()) return emptyList()
+        val uri = MediaStore.Files.getContentUri("external")
+        val projection = arrayOf(
+            MediaStore.MediaColumns.DATA,
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.DATE_MODIFIED,
+            MediaStore.MediaColumns.SIZE,
+        )
+        val typeSel = "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
+        val escaped = root.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        val selection = "($typeSel) AND ${MediaStore.MediaColumns.DATA} LIKE ? ESCAPE '\\'"
+        val args = arrayOf(
+            MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
+            MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
+            "$escaped/%",
+        )
+        val out = ArrayList<MediaEntry>()
+        try {
+            context.contentResolver.query(uri, projection, selection, args, null)?.use { c ->
+                val dIdx = c.getColumnIndex(MediaStore.MediaColumns.DATA)
+                val nIdx = c.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+                val mIdx = c.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
+                val sIdx = c.getColumnIndex(MediaStore.MediaColumns.SIZE)
+                if (dIdx < 0) return@use
+                while (c.moveToNext()) {
+                    val p = c.getString(dIdx) ?: continue
+                    if (!p.startsWith("$root/")) continue
+                    val name = if (nIdx >= 0) c.getString(nIdx) ?: File(p).name else File(p).name
+                    val modified = if (mIdx >= 0) c.getLong(mIdx) * 1000L else 0L
+                    val size = if (sIdx >= 0) c.getLong(sIdx) else 0L
+                    out.add(MediaEntry(p, name, modified, size))
+                }
+            }
+        } catch (_: Exception) { }
+        return out
+    }
+}
