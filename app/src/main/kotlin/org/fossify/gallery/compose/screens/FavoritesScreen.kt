@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -47,6 +48,8 @@ import kotlinx.coroutines.withContext
 import org.fossify.gallery.activities.ComposeFolderActivity
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.EmptyState
+import org.fossify.gallery.compose.components.LibraryAlbumGrid
+import org.fossify.gallery.compose.components.AlbumGridItem
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.mediaDB
@@ -89,24 +92,12 @@ fun FavoritesScreen(
             Column(Modifier.fillMaxSize().padding(8.dp)) {
                 if (favoriteDirs.isNotEmpty()) {
                     Text("Ordner", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                    favoriteDirs.forEach { dir ->
-                        Surface(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp).clickable {
-                                ctx.startActivity(Intent(ctx, ComposeFolderActivity::class.java).apply { putExtra("FOLDER_PATH", dir.path) })
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        ) {
-                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
-                                Spacer(Modifier.width(12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(dir.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text("${dir.mediaCnt} Medien", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-                    }
+                    LibraryAlbumGrid(
+                        items = favoriteDirs.map { AlbumGridItem(key = it.path, name = it.name, thumbnailPath = it.tmb, count = it.mediaCnt) },
+                        viewSettings = viewSettings,
+                        onClick = { ctx.startActivity(Intent(ctx, ComposeFolderActivity::class.java).apply { putExtra("FOLDER_PATH", it.key) }) },
+                        modifier = if (favoriteMedia.isEmpty()) Modifier.weight(1f) else Modifier.heightIn(max = 320.dp),
+                    )
                     if (favoriteMedia.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 }
                 if (favoriteMedia.isNotEmpty()) {
