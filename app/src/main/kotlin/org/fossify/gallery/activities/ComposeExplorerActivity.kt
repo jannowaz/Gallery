@@ -878,19 +878,6 @@ private fun OmniSearchSheet(
     LaunchedEffect(query) { kotlinx.coroutines.delay(300); performSearch() }
     LaunchedEffect(fileTypeFilter, dateFilter) { if (query.length >= 2) performSearch() }
 
-    LaunchedEffect(ratingFilter, selectedTags, textMatchPaths) {
-        withContext(Dispatchers.IO) {
-            val sets = mutableListOf<Set<String>>()
-            if (textMatchPaths != null) sets.add(textMatchPaths!!)
-            if (ratingFilter > 0) { try { sets.add(ctx.mediaDB.getByMinRating(ratingFilter).map { it.path }.toSet()) } catch (_: Exception) { } }
-            if (selectedTags.isNotEmpty()) sets.add(allTags.filterKeys { it in selectedTags }.values.flatten().toSet())
-            val result = when { sets.isEmpty() -> null; sets.size == 1 -> sets.first(); else -> sets.reduce { a, b -> a.intersect(b) } }
-            withContext(Dispatchers.Main) {
-                onFilterChanged(result, ratingFilter, selectedTags.let { if (it.isEmpty()) null else allTags.filterKeys { t -> t in it }.values.flatten().toSet() }, selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", "), fileTypeFilter, dateFilter)
-            }
-        }
-    }
-
     val hasAnyFilter = ratingFilter > 0 || selectedTags.isNotEmpty() || fileTypeFilter > 0 || dateFilter > 0
     val hasResults = textMatchPaths != null && textMatchPaths!!.isNotEmpty()
     val mc = textMatchPaths?.size ?: 0

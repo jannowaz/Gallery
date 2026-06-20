@@ -68,6 +68,7 @@ import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.favoritesDB
 import org.fossify.gallery.extensions.getFavoriteFromPath
 import org.fossify.gallery.extensions.mediaCacheDB
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.BOTTOM_ACTION_CHANGE_ORIENTATION
 import org.fossify.gallery.helpers.BOTTOM_ACTION_COPY
 import org.fossify.gallery.helpers.BOTTOM_ACTION_DELETE
@@ -476,6 +477,7 @@ private fun startTagScan(ctx: android.content.Context, scope: kotlinx.coroutines
                         if (xmp.tags.isNotEmpty()) foundTags++
                         if (xmp.rating > 0) foundRatings++
                         batch.add(MediaCache(fullPath = p, tags = xmp.tags.joinToString(","), rating = xmp.rating, lastScanned = System.currentTimeMillis()))
+                        if (xmp.rating > 0) try { ctx.mediaDB.updateRating(p, xmp.rating) } catch (_: Exception) { }
                         if (batch.size >= 500) { ctx.mediaCacheDB.upsertAll(batch); batch.clear() }
                     } catch (_: Exception) { }
                 }

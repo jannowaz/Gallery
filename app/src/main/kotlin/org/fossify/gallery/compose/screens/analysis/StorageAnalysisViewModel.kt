@@ -14,6 +14,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.fossify.gallery.extensions.mediaCacheDB
+import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.helpers.RefreshBus
+import org.fossify.gallery.helpers.XmpWriter
 import java.io.File
 
 enum class FilterMode { ALL, IMAGES, VIDEOS }
@@ -118,15 +122,15 @@ class TransformationEngine(private val context: android.content.Context) {
 
     suspend fun execute(s: TransformSuggestion): TransformResult = withContext(Dispatchers.IO) {
         try {
-            val tmpFile = File(context.cacheDir, "transform_${System.nanoTime()}.tmp")
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(s.originalPath, bounds)
-            val decodeOpts = BitmapFactory.Options().apply {
-                var sample = 1
-                while ((bounds.outWidth / sample) > 8192 || (bounds.outHeight / sample) > 8192) sample *= 2
-                inSampleSize = sample
-            }
-            val bitmap = BitmapFactory.decodeFile(s.originalPath, decodeOpts) ?: return@withContext TransformResult(false, s.originalPath, "", 0, "Decode failed")
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@withContext TransformResult(false, s.originalPath, "", 0, "Decode failed")
+            // Never silently downsample (that would break the lossless promise); skip images too large to decode safely.
+            if (bounds.outWidth.toLong() * bounds.outHeight > 50_000_000L) return@withContext TransformResult(false, s.originalPath, "", 0, "Bild zu groß")
+
+            val srcData = try { XmpWriter.read(s.originalPath) } catch (_: Exception) { null }
+            val tmpFile = File(context.cacheDir, "transform_${System.nanoTime()}.tmp")
+            val bitmap = BitmapFactory.decodeFile(s.originalPath) ?: return@withContext TransformResult(false, s.originalPath, "", 0, "Decode failed")
             val (format, quality) = when (s.targetFormat) {
                 "png" -> Bitmap.CompressFormat.PNG to 100
                 "jpeg" -> Bitmap.CompressFormat.JPEG to 85
@@ -138,8 +142,8 @@ class TransformationEngine(private val context: android.content.Context) {
             if (!tmpFile.exists() || tmpFile.length() == 0L) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Encode failed") }
             if (tmpFile.length() >= s.originalSize) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Keine Ersparnis") }
 
-            // Preserve EXIF metadata for JPEG output (best-effort)
-            if (s.targetFormat == "jpeg") {
+            // Preserve EXIF metadata for formats that support it (best-effort)
+            if (s.targetFormat == "jpeg" || s.targetFormat == "webp") {
                 try { copyExif(s.originalPath, tmpFile.absolutePath) } catch (_: Exception) { }
             }
 
@@ -153,29 +157,31 @@ class TransformationEngine(private val context: android.content.Context) {
             val finalFile = File(newPath)
             val sameFile = finalFile.absolutePath == original.absolutePath
 
+            val saved: Long
             if (sameFile) {
-                // Replace in place: keep original as a backup until the new file is verified
                 val backup = File("${s.originalPath}.bak_${System.nanoTime()}")
                 if (!original.renameTo(backup)) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Backup fehlgeschlagen") }
                 val moved = tmpFile.renameTo(finalFile) || runCatching { tmpFile.copyTo(finalFile, overwrite = true); tmpFile.delete() }.isSuccess
-                if (moved && finalFile.exists() && finalFile.length() > 0) {
-                    val saved = (backup.length() - finalFile.length()).coerceAtLeast(0)
-                    backup.delete()
-                    TransformResult(true, s.originalPath, newPath, saved)
-                } else {
-                    backup.renameTo(original)
-                    tmpFile.delete()
-                    TransformResult(false, s.originalPath, "", 0, "Ersetzen fehlgeschlagen")
-                }
+                if (moved && finalFile.exists() && finalFile.length() > 0) { saved = (backup.length() - finalFile.length()).coerceAtLeast(0); backup.delete() }
+                else { backup.renameTo(original); tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Ersetzen fehlgeschlagen") }
             } else {
                 if (finalFile.exists()) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Zieldatei existiert bereits") }
                 val moved = tmpFile.renameTo(finalFile) || runCatching { tmpFile.copyTo(finalFile, overwrite = false); tmpFile.delete() }.isSuccess
-                if (moved && finalFile.exists() && finalFile.length() > 0) {
-                    val saved = (s.originalSize - finalFile.length()).coerceAtLeast(0)
-                    original.delete()
-                    TransformResult(true, s.originalPath, newPath, saved)
-                } else { tmpFile.delete(); TransformResult(false, s.originalPath, "", 0, "Rename failed") }
+                if (moved && finalFile.exists() && finalFile.length() > 0) { saved = (s.originalSize - finalFile.length()).coerceAtLeast(0); original.delete() }
+                else { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Rename failed") }
             }
+
+            // Carry app tags/rating onto the new file and keep DB/MediaStore consistent
+            if (srcData != null && (srcData.tags.isNotEmpty() || srcData.rating > 0)) {
+                try { XmpWriter.write(newPath, srcData.tags, srcData.rating) } catch (_: Exception) { }
+            }
+            if (!sameFile) {
+                try { context.mediaDB.deleteMediumPath(s.originalPath) } catch (_: Exception) { }
+                try { context.mediaCacheDB.deleteByPathSync(s.originalPath) } catch (_: Exception) { }
+            }
+            try { android.media.MediaScannerConnection.scanFile(context, arrayOf(s.originalPath, newPath), null, null) } catch (_: Exception) { }
+            RefreshBus.trigger()
+            TransformResult(true, s.originalPath, newPath, saved)
         } catch (e: Exception) { TransformResult(false, s.originalPath, "", 0, e.message) }
     }
 
