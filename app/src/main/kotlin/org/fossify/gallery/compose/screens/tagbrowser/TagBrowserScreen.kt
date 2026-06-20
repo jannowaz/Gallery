@@ -66,6 +66,7 @@ import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.screens.VideoThumbnail
 import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.mediaCacheDB
@@ -137,9 +138,7 @@ fun TagBrowserScreen(
             if (scanning) {
                 Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             } else if (allTags.isEmpty()) {
-                Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
-                    Text("Keine Tags gefunden", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                EmptyState(Icons.AutoMirrored.Filled.Label, "Keine Tags gefunden", subtitle = "Tags zu Medien hinzufügen, dann erscheinen sie hier")
             } else {
                 val filteredTags = if (tagSearchQuery.isBlank()) allTags.entries.toList() else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
                 LazyColumn(Modifier.weight(1f)) {

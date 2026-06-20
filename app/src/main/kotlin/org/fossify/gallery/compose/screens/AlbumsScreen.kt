@@ -71,6 +71,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.gallery.compose.components.FolderTile
+import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.extensions.config
@@ -120,13 +121,7 @@ fun AlbumsScreen(
             if (state.isLoading) {
                 MediaSkeleton(columns = viewSettings.columnCount)
             } else if (state.directories.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.Folder, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
-                        Spacer(Modifier.height(16.dp))
-                        Text("Keine Alben", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                    }
-                }
+                EmptyState(Icons.Default.Folder, "Keine Alben")
             } else if (isGrid) {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(viewSettings.columnCount),

@@ -64,6 +64,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
+import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.extensions.collectionDB
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.mediaCacheDB
@@ -259,15 +260,7 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
             IconButton(onClick = { editingColl = null; showEditDialog = true }) { Icon(Icons.Default.Add, "Neue Sammlung") }
         }
         if (collections.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.CollectionsBookmark, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
-                    Spacer(Modifier.height(16.dp))
-                    Text("Keine Sammlungen", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Tippe auf + um eine zu erstellen", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            EmptyState(Icons.Default.CollectionsBookmark, "Keine Sammlungen", subtitle = "Tippe auf + um eine zu erstellen")
         } else {
             LazyColumn(reverseLayout = true, contentPadding = PaddingValues(8.dp)) {
                 items(collections, key = { it.id }) { coll ->

@@ -46,6 +46,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.activities.ComposeFolderActivity
 import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.mediaDB
@@ -83,15 +84,7 @@ fun FavoritesScreen(
 
     Box(modifier = modifier.fillMaxSize()) {
         if (favoriteMedia.isEmpty() && favoriteDirs.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Star, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
-                    Spacer(Modifier.height(16.dp))
-                    Text("Keine Favoriten", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Tippe auf den Stern bei Medien oder Ordnern", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                }
-            }
+            EmptyState(Icons.Default.Star, "Keine Favoriten", subtitle = "Tippe auf den Stern bei Medien oder Ordnern")
         } else {
             Column(Modifier.fillMaxSize().padding(8.dp)) {
                 if (favoriteDirs.isNotEmpty()) {

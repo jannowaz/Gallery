@@ -259,11 +259,12 @@ fun MediaScreen(
             }
             state.isLoading && !hasFilter && mediaOverride == null -> MediaSkeleton(columns = columnCount)
             displayMedia.isEmpty() -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Search,null,Modifier.size(64.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=0.4f)); Spacer(Modifier.height(16.dp))
-                    Text(if(hasFilter)"Keine Ergebnisse" else "Keine Medien gefunden",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=TextAlign.Center)
-                    if(hasFilter){Spacer(Modifier.height(8.dp));Surface(Modifier.clickable{onClearFilter()},color=MaterialTheme.colorScheme.primaryContainer,shape=RoundedCornerShape(16.dp)){Text("Filter aufheben",Modifier.padding(horizontal=12.dp,vertical=6.dp),style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onPrimaryContainer)}}
-                }}
+                EmptyState(
+                    icon = Icons.Default.Search,
+                    title = if (hasFilter) "Keine Ergebnisse" else "Keine Medien gefunden",
+                    actionLabel = if (hasFilter) "Filter aufheben" else null,
+                    onAction = if (hasFilter) onClearFilter else null,
+                )
             }
             isGrid -> {
                 Column {
