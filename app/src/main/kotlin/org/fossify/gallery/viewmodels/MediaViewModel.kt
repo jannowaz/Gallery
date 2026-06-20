@@ -46,6 +46,30 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private var currentPage = 0
     private val pageSize = 500
     private var cachedAllMedia: List<Medium> = emptyList()
+    private var sortField = org.fossify.gallery.compose.screens.SortField.DATE
+    private var sortDesc = true
+
+    private fun applySort(list: List<Medium>): List<Medium> {
+        val sorted = when (sortField) {
+            org.fossify.gallery.compose.screens.SortField.NAME -> list.sortedBy { it.name.lowercase() }
+            org.fossify.gallery.compose.screens.SortField.DATE -> list.sortedBy { it.modified }
+            org.fossify.gallery.compose.screens.SortField.SIZE -> list.sortedBy { it.size }
+            org.fossify.gallery.compose.screens.SortField.RATING -> list.sortedBy { it.rating }
+        }
+        return if (sortDesc) sorted.reversed() else sorted
+    }
+
+    fun setSort(field: org.fossify.gallery.compose.screens.SortField, desc: Boolean) {
+        if (field == sortField && desc == sortDesc) return
+        sortField = field
+        sortDesc = desc
+        if (cachedAllMedia.isNotEmpty()) {
+            cachedAllMedia = applySort(cachedAllMedia)
+            currentPage = 0
+            _state.update { it.copy(allMedia = getPage(cachedAllMedia, 0), hasMore = cachedAllMedia.size > pageSize) }
+            updateGroups()
+        }
+    }
 
     init { load() }
 
@@ -69,7 +93,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 quickSyncNewMedia(app)
                 val media = try { app.mediaDB.getNewestMedia(4000).sortedByDescending { it.modified } } catch (_: Exception) { scanDirectories(app) }
-                cachedAllMedia = media
+                cachedAllMedia = applySort(media)
                 currentPage = 0
                 val firstPage = getPage(media, 0)
                 _state.update { it.copy(allMedia = firstPage, hasMore = media.size > pageSize) }
@@ -134,7 +158,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                     if (db.isNotEmpty()) db.sortedByDescending { it.modified } else scanDirectories(app)
                 } catch (_: Exception) { scanDirectories(app) }
             }
-            cachedAllMedia = media
+            cachedAllMedia = applySort(media)
             val firstPage = getPage(media, 0)
             _state.update { it.copy(allMedia = firstPage, isLoading = false, hasMore = media.size > pageSize) }
             updateGroups()

@@ -74,10 +74,7 @@ class MediaAnalyzer(private val context: Context) {
                     val name = child.name ?: continue
                     val ext = name.substringAfterLast('.', "").lowercase()
                     if (ext in MEDIA_EXTENSIONS || ext in AnalysisCriteria.VIDEO_EXTS || ext in AnalysisCriteria.IMAGE_EXTS) {
-                        val path = child.uri.toString()
-                        if (!path.startsWith("content://")) {
-                            result.add(path)
-                        }
+                        result.add(child.uri.toString())
                     }
                 }
             }

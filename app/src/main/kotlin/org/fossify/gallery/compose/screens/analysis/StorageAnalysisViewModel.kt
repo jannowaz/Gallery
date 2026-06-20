@@ -119,7 +119,14 @@ class TransformationEngine(private val context: android.content.Context) {
     suspend fun execute(s: TransformSuggestion): TransformResult = withContext(Dispatchers.IO) {
         try {
             val tmpFile = File(context.cacheDir, "transform_${System.nanoTime()}.tmp")
-            val bitmap = BitmapFactory.decodeFile(s.originalPath) ?: return@withContext TransformResult(false, s.originalPath, "", 0, "Decode failed")
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(s.originalPath, bounds)
+            val decodeOpts = BitmapFactory.Options().apply {
+                var sample = 1
+                while ((bounds.outWidth / sample) > 8192 || (bounds.outHeight / sample) > 8192) sample *= 2
+                inSampleSize = sample
+            }
+            val bitmap = BitmapFactory.decodeFile(s.originalPath, decodeOpts) ?: return@withContext TransformResult(false, s.originalPath, "", 0, "Decode failed")
             val (format, quality) = when (s.targetFormat) {
                 "png" -> Bitmap.CompressFormat.PNG to 100
                 "jpeg" -> Bitmap.CompressFormat.JPEG to 85

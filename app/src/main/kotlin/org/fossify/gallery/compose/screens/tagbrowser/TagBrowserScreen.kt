@@ -252,7 +252,7 @@ fun TagBrowserScreen(
                             pathsForTag.forEach { p -> repo.removeTag(p, tag) }
                         }
                         try {
-                            val cached = ctx.mediaCacheDB.getAllTagged().filter { mc -> tagsToDelete.any { mc.tags.contains(it) } }
+                            val cached = ctx.mediaCacheDB.getAllTagged().filter { mc -> mc.tags.split(",").map { it.trim() }.any { it in tagsToDelete } }
                             cached.forEach { mc ->
                                 var newTags = mc.tags
                                 tagsToDelete.forEach { tag -> newTags = newTags.split(",").filter { it.trim() != tag }.joinToString(",") }
@@ -348,7 +348,7 @@ fun TagBrowserScreen(
                             }
                         }
                         try {
-                            val cached = ctx.mediaCacheDB.getAllTagged().filter { it.tags.let { t -> sources.any { s -> t.contains(s) } } }
+                            val cached = ctx.mediaCacheDB.getAllTagged().filter { mc -> mc.tags.split(",").map { it.trim() }.any { it in sources } }
                             cached.forEach { mc ->
                                 var newTags = mc.tags
                                 sources.forEach { src -> newTags = newTags.split(",").filter { it.trim() != src }.joinToString(",") }
@@ -389,7 +389,7 @@ fun TagBrowserScreen(
                         val paths = allTags[oldName] ?: emptyList()
                         paths.forEach { p -> repo.addTag(p, target); repo.removeTag(p, oldName) }
                         try {
-                            val cached = ctx.mediaCacheDB.getAllTagged().filter { it.tags.contains(oldName) }
+                            val cached = ctx.mediaCacheDB.getAllTagged().filter { mc -> mc.tags.split(",").map { it.trim() }.any { it == oldName } }
                             cached.forEach { mc ->
                                 var newTags = mc.tags.split(",").map { it.trim() }.toMutableList()
                                 val idx = newTags.indexOf(oldName)

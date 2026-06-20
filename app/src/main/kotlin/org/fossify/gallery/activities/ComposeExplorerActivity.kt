@@ -201,7 +201,8 @@ class ComposeExplorerActivity : ComponentActivity() {
 
     private fun hasMediaPermissions(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
         } else {
             ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
         }
@@ -641,9 +642,9 @@ private fun MainTabContent(
                 }
                 val included = coll.getIncludedPaths()
                 val excluded = coll.getExcludedPaths()
-                val incPaths = included.mapNotNull { it.removePrefix("content:").takeIf(String::isNotEmpty) ?: it }
+                val incPaths = included.mapNotNull { resolveContentUriToPath(it) }
                     .filter { it.isNotEmpty() }.toSet()
-                val excPaths = excluded.mapNotNull { it.removePrefix("content:").takeIf(String::isNotEmpty) ?: it }
+                val excPaths = excluded.mapNotNull { resolveContentUriToPath(it) }
                     .filter { it.isNotEmpty() }.toSet()
                 mainVM.setPathFilter(when {
                     incPaths.isNotEmpty() && excPaths.isNotEmpty() -> {

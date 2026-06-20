@@ -177,6 +177,7 @@ fun FolderPickerSheet(
         conf.lastCopyMoveDestination = destPath
         scope.launch(Dispatchers.IO) {
             var copied = 0; var skipped = 0
+            val newPaths = mutableListOf<String>()
             for (srcPath in sourcePaths) {
                 try {
                     val src = File(srcPath)
@@ -184,8 +185,13 @@ fun FolderPickerSheet(
                     if (destFile.exists()) { skipped++; continue }
                     src.copyTo(destFile, overwrite = false)
                     if (isMoveOperation) { src.delete(); ctx.deleteMediumWithPath(srcPath) }
+                    newPaths.add(destFile.absolutePath)
                     copied++
                 } catch (_: Exception) { skipped++ }
+            }
+            if (newPaths.isNotEmpty()) {
+                try { android.media.MediaScannerConnection.scanFile(ctx, newPaths.toTypedArray(), null, null) } catch (_: Exception) { }
+                org.fossify.gallery.helpers.RefreshBus.trigger()
             }
             val total = sourcePaths.size
             withContext(Dispatchers.Main) {
@@ -274,7 +280,7 @@ fun FolderPickerSheet(
                 // Breadcrumb + directory listing
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     if (navStack.size > 1) {
-                        IconButton(onClick = { navStack.removeLast(); currentPath = navStack.last() }, modifier = Modifier.size(32.dp)) {
+                        IconButton(onClick = { navStack.removeAt(navStack.lastIndex); currentPath = navStack.last() }, modifier = Modifier.size(32.dp)) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                         }
                     } else {

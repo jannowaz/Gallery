@@ -108,6 +108,7 @@ fun ExplorerScreen(
         navStack.removeLastOrNull()
         currentPath = navStack.lastOrNull() ?: internalStoragePath
     }
+    BackHandler(enabled = hasFolderSelection) { selectedFolderPaths = emptySet() }
 
     LaunchedEffect(internalStoragePath) {
         if (internalStoragePath != currentPath) {
@@ -150,7 +151,7 @@ fun ExplorerScreen(
                         val fPath = entry.toString()
                         if (hidden.contains(fPath)) continue
                         if (Files.isDirectory(entry)) {
-                            val tmb = findThumbnailInFolder(fPath)
+                            val tmb = if (folderSettings.showFolderThumbnails) findThumbnailInFolder(fPath) else ""
                             folders.add(ExplorerItem(name = name, path = fPath, isDirectory = true, lastModified = Files.getLastModifiedTime(entry).toMillis(), thumbnailPath = tmb))
                         } else {
                             val ext = name.substringAfterLast('.', "").lowercase()
@@ -185,7 +186,7 @@ fun ExplorerScreen(
         isLoading = false
     }
 
-    LaunchedEffect(currentPath) { onPathChange(currentPath) }
+    LaunchedEffect(currentPath) { onPathChange(currentPath); selectedFolderPaths = emptySet() }
 
     Column(modifier = modifier.fillMaxSize()) {
         // Breadcrumb navigation bar

@@ -161,6 +161,7 @@ fun MediaScreen(
     val viewModel: MediaViewModel = viewModel()
     val state by viewModel.state.collectAsState()
     LaunchedEffect(refreshTrigger) { if (refreshTrigger > 0) { if (state.allMedia.isNotEmpty()) viewModel.silentRefresh() else viewModel.refresh() } }
+    LaunchedEffect(viewSettings.sortBy, viewSettings.sortDesc) { if (mediaOverride == null) viewModel.setSort(viewSettings.sortBy, viewSettings.sortDesc) }
     val repo = LocalMediaRepository.current
     var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     val dragSelection = rememberSelectionDragState()
