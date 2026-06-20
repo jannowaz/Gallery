@@ -590,7 +590,7 @@ private fun MainTabContent(
         }
     }
 
-    HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { tab ->
+    HorizontalPager(state = pagerState, beyondViewportPageCount = 1, modifier = Modifier.fillMaxSize()) { tab ->
         when (tab) {
         0 -> MediaScreen(
             viewSettings = tabSettings.media,

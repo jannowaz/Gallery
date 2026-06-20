@@ -32,16 +32,24 @@ object XmpWriter {
     }
 
     private fun parseXmp(raw: String): XmpData {
-        val tags = mutableListOf<String>()
-        val subjectMatch = Regex("<dc:subject>\\s*<rdf:Bag>\\s*(.*?)\\s*</rdf:Bag>\\s*</dc:subject>", RegexOption.DOT_MATCHES_ALL)
-            .find(raw)
-        if (subjectMatch != null) {
-            val bagContent = subjectMatch.groupValues[1]
-            val tagRegex = Regex("<rdf:li>([^<]+)</rdf:li>")
-            tagRegex.findAll(bagContent).forEach { tags.add(it.groupValues[1]) }
+        val tags = LinkedHashSet<String>()
+        val liRegex = Regex("<rdf:li[^>]*>([^<]+)</rdf:li>")
+        // Standard keywords: dc:subject (rdf:Bag or rdf:Seq, with or without attributes)
+        Regex("<dc:subject[^>]*>(.*?)</dc:subject>", RegexOption.DOT_MATCHES_ALL).findAll(raw).forEach { m ->
+            liRegex.findAll(m.groupValues[1]).forEach { tags.add(it.groupValues[1].trim()) }
         }
-        val rating = Regex("<xmp:Rating>(\\d+)</xmp:Rating>").find(raw)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-        return XmpData(tags = tags, rating = rating)
+        // Lightroom hierarchical keywords — keep the leaf after the last '|'
+        Regex("hierarchicalSubject[^>]*>(.*?)</[A-Za-z0-9]+:hierarchicalSubject>", RegexOption.DOT_MATCHES_ALL).findAll(raw).forEach { m ->
+            liRegex.findAll(m.groupValues[1]).forEach { tags.add(it.groupValues[1].substringAfterLast('|').trim()) }
+        }
+        // Microsoft Photo keyword lists
+        Regex("LastKeyword(?:XMP|IPTC)[^>]*>(.*?)</[A-Za-z0-9]+:LastKeyword(?:XMP|IPTC)>", RegexOption.DOT_MATCHES_ALL).findAll(raw).forEach { m ->
+            liRegex.findAll(m.groupValues[1]).forEach { tags.add(it.groupValues[1].substringAfterLast('|').trim()) }
+        }
+        val rating = Regex("<xmp:Rating>(\\d+)</xmp:Rating>").find(raw)?.groupValues?.get(1)?.toIntOrNull()
+            ?: Regex("xmp:Rating=\"(\\d+)\"").find(raw)?.groupValues?.get(1)?.toIntOrNull()
+            ?: 0
+        return XmpData(tags = tags.filter { it.isNotBlank() }, rating = rating)
     }
 
     private fun tryMigrateOldFormat(file: File): XmpData {
