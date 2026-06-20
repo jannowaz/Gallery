@@ -1,7 +1,10 @@
 package org.fossify.gallery.compose.screens.viewer
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -30,6 +33,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -47,6 +52,15 @@ class ZoomState(private val scope: CoroutineScope) {
 
     val isZoomed: Boolean get() = scale > 1.01f
 
+    var interacting by mutableStateOf(false)
+        private set
+    private var hideJob: Job? = null
+    private fun markInteracting() {
+        interacting = true
+        hideJob?.cancel()
+        hideJob = scope.launch { delay(900); interacting = false }
+    }
+
     private val zoomLevels = listOf(1f, 2f, 4f)
 
     private fun clampOffset(candidate: Offset, s: Float, size: IntSize): Offset {
@@ -57,6 +71,7 @@ class ZoomState(private val scope: CoroutineScope) {
 
     fun onTransform(centroid: Offset, pan: Offset, zoom: Float, size: IntSize) {
         viewSize = size
+        markInteracting()
         val newScale = (scale * zoom).coerceIn(ZOOM_MIN, ZOOM_MAX)
         val center = Offset(size.width / 2f, size.height / 2f)
         val d = centroid - center
@@ -68,6 +83,7 @@ class ZoomState(private val scope: CoroutineScope) {
 
     fun cycleZoom(tap: Offset, size: IntSize) {
         viewSize = size
+        markInteracting()
         val target = zoomLevels.firstOrNull { it > scale + 0.01f } ?: 1f
         val center = Offset(size.width / 2f, size.height / 2f)
         val d = tap - center
@@ -133,36 +149,28 @@ fun Modifier.zoomable(state: ZoomState, onSingleTap: () -> Unit): Modifier = thi
     }
 
 @Composable
-fun ZoomMinimap(state: ZoomState, modifier: Modifier = Modifier, boxWidth: Dp = 84.dp) {
+fun ZoomMinimap(state: ZoomState, modifier: Modifier = Modifier, boxWidth: Dp = 56.dp) {
     val size = state.viewSize
-    if (!state.isZoomed || size.width == 0 || size.height == 0) return
-    val aspect = size.width.toFloat() / size.height.toFloat()
-    val boxH = boxWidth / aspect
-    val scale = state.scale
-    val fracW = (1f / scale).coerceIn(0f, 1f)
-    val fracH = (1f / scale).coerceIn(0f, 1f)
-    val centerFracX = (0.5f - state.offset.x / (scale * size.width)).coerceIn(fracW / 2f, 1f - fracW / 2f)
-    val centerFracY = (0.5f - state.offset.y / (scale * size.height)).coerceIn(fracH / 2f, 1f - fracH / 2f)
-
-    Box(
-        modifier
-            .size(boxWidth, boxH)
-            .clip(RoundedCornerShape(6.dp))
-            .background(Color.Black.copy(alpha = 0.45f))
-    ) {
-        androidx.compose.foundation.Canvas(Modifier.size(boxWidth, boxH)) {
-            val w = this.size.width
-            val h = this.size.height
-            val rw = w * fracW
-            val rh = h * fracH
-            val left = w * centerFracX - rw / 2f
-            val top = h * centerFracY - rh / 2f
-            drawRect(
-                color = Color.White,
-                topLeft = Offset(left, top),
-                size = androidx.compose.ui.geometry.Size(rw, rh),
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()),
-            )
+    val visible = state.isZoomed && state.interacting && size.width > 0 && size.height > 0
+    AnimatedVisibility(visible = visible, modifier = modifier, enter = fadeIn(), exit = fadeOut()) {
+        val aspect = (size.width / size.height.toFloat()).coerceAtLeast(0.01f)
+        val boxH = boxWidth / aspect
+        val scale = state.scale
+        val fracW = (1f / scale).coerceIn(0f, 1f)
+        val fracH = (1f / scale).coerceIn(0f, 1f)
+        val centerFracX = (0.5f - state.offset.x / (scale * size.width)).coerceIn(fracW / 2f, 1f - fracW / 2f)
+        val centerFracY = (0.5f - state.offset.y / (scale * size.height)).coerceIn(fracH / 2f, 1f - fracH / 2f)
+        Box(Modifier.size(boxWidth, boxH).clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.22f))) {
+            androidx.compose.foundation.Canvas(Modifier.size(boxWidth, boxH)) {
+                val w = this.size.width
+                val h = this.size.height
+                drawRect(
+                    color = Color.White.copy(alpha = 0.85f),
+                    topLeft = Offset(w * centerFracX - w * fracW / 2f, h * centerFracY - h * fracH / 2f),
+                    size = androidx.compose.ui.geometry.Size(w * fracW, h * fracH),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx()),
+                )
+            }
         }
     }
 }
