@@ -82,8 +82,9 @@ fun FolderPickerSheet(
 ) {
     val ctx = LocalContext.current
     val conf = ctx.config
-    val rootPath = conf.internalStoragePath
-    val navStack = remember { mutableStateListOf(conf.lastCopyMoveDestination.ifEmpty { rootPath }) }
+    val rootPath = conf.internalStoragePath.ifBlank { android.os.Environment.getExternalStorageDirectory().absolutePath }
+    val startPath = conf.lastCopyMoveDestination.takeIf { it.isNotBlank() && Files.isDirectory(Paths.get(it)) } ?: rootPath
+    val navStack = remember { mutableStateListOf(startPath) }
     var currentPath by remember { mutableStateOf(navStack.last()) }
     var folders by remember { mutableStateOf<List<FolderItem>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
