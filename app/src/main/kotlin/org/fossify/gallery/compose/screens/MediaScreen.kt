@@ -116,6 +116,7 @@ import org.fossify.gallery.activities.ComposeVideoPlayerActivity
 import org.fossify.gallery.activities.ComposeViewerActivity
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.EmptyState
+import org.fossify.gallery.compose.components.SelectionBar
 import org.fossify.gallery.compose.components.RenameDialog
 import org.fossify.gallery.compose.components.UndoBar
 import org.fossify.gallery.compose.components.SelectionRow
@@ -484,9 +485,13 @@ fun MediaScreen(
             }
         }
         AnimatedVisibility(visible=hasSelection,enter=slideInVertically(initialOffsetY={it})+fadeIn(animationSpec=spring(dampingRatio=0.7f)),exit=slideOutVertically(targetOffsetY={it})+fadeOut(),modifier=Modifier.align(Alignment.BottomCenter)) {
-            Surface(modifier=Modifier.fillMaxWidth().clickable{showSelectionSheet=true},color=MaterialTheme.colorScheme.surfaceVariant,shape=RoundedCornerShape(topStart=16.dp,topEnd=16.dp),shadowElevation=8.dp) {
-                Row(Modifier.padding(horizontal=20.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically){Text("${selectedPaths.size} ausgewählt",style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold,modifier=Modifier.weight(1f));Text("Alle",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary,modifier=Modifier.padding(end=4.dp).clickable{selectedPaths=(if(hasFilter)displayMedia.map{it.path} else viewModel.allMediaPaths()).toSet()});Text("Inv.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary,modifier=Modifier.padding(end=8.dp).clickable{val s=(if(hasFilter)displayMedia.map{it.path} else viewModel.allMediaPaths()).toSet();selectedPaths=s-selectedPaths});Icon(Icons.Default.Close,"Auswahl aufheben",Modifier.size(20.dp).clickable{selectedPaths=emptySet()},tint=MaterialTheme.colorScheme.onSurfaceVariant)}
-            }
+            SelectionBar(
+                count = selectedPaths.size,
+                onClear = { selectedPaths = emptySet() },
+                onSelectAll = { selectedPaths = (if (hasFilter) displayMedia.map { it.path } else viewModel.allMediaPaths()).toSet() },
+                onInvert = { val all = (if (hasFilter) displayMedia.map { it.path } else viewModel.allMediaPaths()).toSet(); selectedPaths = all - selectedPaths },
+                onMoreActions = { showSelectionSheet = true },
+            )
         }
         SnackbarHost(hostState=snackbarHostState,modifier=Modifier.align(Alignment.BottomCenter))
         UndoBar(modifier = Modifier.align(Alignment.BottomCenter))
