@@ -130,6 +130,7 @@ import org.fossify.gallery.compose.screens.ViewSettingsSheet
 import org.fossify.gallery.compose.screens.ViewSettingsViewModel
 import org.fossify.gallery.compose.screens.VideoThumbnail
 import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.compose.components.BottomSearchBar
 import org.fossify.gallery.compose.screens.tagbrowser.TagBrowserScreen
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.navigation.GalleryNavHost
@@ -469,11 +470,16 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
             }
         },
         bottomBar = {
-            MainBottomBar(
-                selectedTab = uiState.selectedTab,
-                onTabSelected = { mainVM.setSelectedTab(it) },
-                onSwipeUp = { showOmniSearch = true },
-            )
+            Column {
+                if (!isMediaSelectionActive) {
+                    BottomSearchBar(onClick = { showOmniSearch = true })
+                }
+                MainBottomBar(
+                    selectedTab = uiState.selectedTab,
+                    onTabSelected = { mainVM.setSelectedTab(it) },
+                    onSwipeUp = { showOmniSearch = true },
+                )
+            }
         }
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
