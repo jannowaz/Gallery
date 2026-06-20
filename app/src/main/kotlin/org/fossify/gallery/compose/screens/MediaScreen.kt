@@ -522,18 +522,24 @@ fun MediaScreen(
 
 @Composable
 private fun FilterBreadcrumbs(ratingFilter:Int,activeTagName:String?,activePathName:String?,activeCollectionName:String?,resultCount:Int,onClearRating:()->Unit,onClearTag:()->Unit,onClearPath:()->Unit,onClearAll:()->Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=6.dp).horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.CenterVertically) {
-        if(activeCollectionName!=null) FilterChip("Sammlung: $activeCollectionName"){onClearPath()}
-        if(activePathName!=null) FilterChip("Pfad: $activePathName"){onClearPath()}
-        if(activeTagName!=null) FilterChip(activeTagName.take(24).let{if(activeTagName.length>24)"$it…" else it}){onClearTag()}
-        if(ratingFilter>0) FilterChip("★ ${ratingFilter}+"){onClearRating()}
+    Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=6.dp).horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
+        if(activeCollectionName!=null) ActiveFilterChip("Sammlung: $activeCollectionName"){onClearPath()}
+        if(activePathName!=null) ActiveFilterChip("Pfad: $activePathName"){onClearPath()}
+        if(activeTagName!=null) ActiveFilterChip(activeTagName.take(24).let{if(activeTagName.length>24)"$it…" else it}){onClearTag()}
+        if(ratingFilter>0) ActiveFilterChip("★ ${ratingFilter}+"){onClearRating()}
         Text("$resultCount Ergebnisse",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.width(4.dp))
-        Surface(onClick=onClearAll,shape=RoundedCornerShape(12.dp),color=MaterialTheme.colorScheme.errorContainer.copy(alpha=0.5f)){Row(Modifier.padding(horizontal=8.dp,vertical=4.dp),verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Close,"Alle Filter aufheben",Modifier.size(14.dp),tint=MaterialTheme.colorScheme.onErrorContainer);Spacer(Modifier.width(4.dp));Text("Alle",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onErrorContainer)}}
+        androidx.compose.material3.AssistChip(onClick=onClearAll,label={Text("Alle aufheben")},leadingIcon={Icon(Icons.Default.Close,null,Modifier.size(18.dp))})
     }
 }
 @Composable
-private fun FilterChip(label:String,onRemove:()->Unit){Surface(onClick=onRemove,shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.primaryContainer){Row(Modifier.padding(start=10.dp,end=6.dp,top=4.dp,bottom=4.dp),verticalAlignment=Alignment.CenterVertically){Text(label,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onPrimaryContainer);Spacer(Modifier.width(2.dp));Icon(Icons.Default.Close,"$label entfernen",Modifier.size(14.dp),tint=MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha=0.7f))}}}
+private fun ActiveFilterChip(label:String,onRemove:()->Unit){
+    androidx.compose.material3.InputChip(
+        selected=true,
+        onClick=onRemove,
+        label={Text(label)},
+        trailingIcon={Icon(Icons.Default.Close,"$label entfernen",Modifier.size(18.dp))},
+    )
+}
 
 private fun formatFileSize(bytes: Long): String { if (bytes < 1024) return "$bytes B"; val kb = bytes / 1024; if (kb < 1024) return "${kb} KB"; val mb = kb / 1024; if (mb < 1024) return "${mb} MB"; return "%.1f GB".format(mb / 1024.0) }
 @Composable
