@@ -55,6 +55,7 @@ class DuplicateScanner(private val context: Context) {
 
         val byHash = HashMap<String, MutableList<File>>()
         var hashed = 0
+        var lastPercent = -1
         for ((size, group) in bySize) {
             // Pre-filter with a cheap partial hash (first 64 KB) so we only fully hash real collisions
             val byPartial = HashMap<String, MutableList<File>>()
@@ -63,7 +64,7 @@ class DuplicateScanner(private val context: Context) {
                 if (ph != null) byPartial.getOrPut(ph) { mutableListOf() }.add(file)
                 hashed++
                 val percent = if (totalCandidates > 0) (hashed * 100) / totalCandidates else 100
-                emit(DuplicateProgress.Hashing(percent, hashed, totalCandidates))
+                if (percent != lastPercent) { lastPercent = percent; emit(DuplicateProgress.Hashing(percent, hashed, totalCandidates)) }
             }
             for ((_, sub) in byPartial) {
                 if (sub.size < 2) continue

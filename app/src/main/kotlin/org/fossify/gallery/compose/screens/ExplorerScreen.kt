@@ -282,7 +282,7 @@ fun ExplorerScreen(
                                         val isVideo = item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
                                         val mediaBg = when (mediaSettings.displayMode) { DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant else -> MaterialTheme.colorScheme.surface }
                                         Box(Modifier.weight(1f).padding(mediaSettings.spacing.dp / 2).background(mediaBg, cornerShape).clickable {
-                                            context.startActivity(Intent(context, ComposeViewerActivity::class.java).apply { putStringArrayListExtra("PATHS", arrayListOf(item.path)); putExtra("START_INDEX", 0); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                            context.startActivity(Intent(context, ComposeViewerActivity::class.java).apply { putStringArrayListExtra("PATHS", ArrayList(fileItems.map { it.path })); putExtra("START_INDEX", fileItems.indexOfFirst { it.path == item.path }.coerceAtLeast(0)); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
                                         }) {
                                             Column {
                                                 Box(Modifier.aspectRatio(1f).clip(cornerShape)) {
@@ -304,7 +304,7 @@ fun ExplorerScreen(
                             val file = File(item.path)
                                 val isVideo = item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
                             Surface(Modifier.fillMaxWidth().clickable {
-                                context.startActivity(Intent(context, ComposeViewerActivity::class.java).apply { putStringArrayListExtra("PATHS", arrayListOf(item.path)); putExtra("START_INDEX", 0); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                context.startActivity(Intent(context, ComposeViewerActivity::class.java).apply { putStringArrayListExtra("PATHS", ArrayList(fileItems.map { it.path })); putExtra("START_INDEX", fileItems.indexOfFirst { it.path == item.path }.coerceAtLeast(0)); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
                             }, color = Color.Transparent) {
                                 Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))) {
@@ -359,11 +359,9 @@ fun ExplorerScreen(
     }
 }
 
-private fun formatFileSize(bytes: Long): String {
-    if (bytes < 1024) return "$bytes B"
-    val kb = bytes / 1024
-    if (kb < 1024) return "${kb} KB"
-    val mb = kb / 1024
-    if (mb < 1024) return "${mb} MB"
-    return "%.1f GB".format(mb / 1024.0)
+private fun formatFileSize(bytes: Long): String = when {
+    bytes >= 1_000_000_000 -> "%.1f GB".format(bytes / 1_000_000_000.0)
+    bytes >= 1_000_000 -> "%.1f MB".format(bytes / 1_000_000.0)
+    bytes >= 1_000 -> "%.0f KB".format(bytes / 1_000.0)
+    else -> "$bytes B"
 }

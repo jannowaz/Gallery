@@ -132,7 +132,7 @@ class MetadataSyncWorker(
                 .addTag("${WORK_NAME}_now")
                 .setInitialDelay(3, TimeUnit.SECONDS)
                 .build()
-            WorkManager.getInstance(context).enqueue(workRequest)
+            WorkManager.getInstance(context).enqueueUniqueWork("${WORK_NAME}_now", ExistingWorkPolicy.REPLACE, workRequest)
         }
 
         fun scheduleFullScan(context: Context) {
@@ -141,7 +141,7 @@ class MetadataSyncWorker(
                 .setInitialDelay(1, TimeUnit.SECONDS)
                 .setInputData(Data.Builder().putBoolean("full_scan", true).build())
                 .build()
-            WorkManager.getInstance(context).enqueue(workRequest)
+            WorkManager.getInstance(context).enqueueUniqueWork("${WORK_NAME}_full", ExistingWorkPolicy.REPLACE, workRequest)
         }
 
         fun scheduleFolderScan(context: Context, folderPath: String) {
@@ -150,7 +150,7 @@ class MetadataSyncWorker(
                 .setInitialDelay(500, TimeUnit.MILLISECONDS)
                 .setInputData(Data.Builder().putString("folder_path", folderPath).putBoolean("full_scan", true).build())
                 .build()
-            WorkManager.getInstance(context).enqueue(workRequest)
+            WorkManager.getInstance(context).enqueueUniqueWork("${WORK_NAME}_folder", ExistingWorkPolicy.REPLACE, workRequest)
         }
     }
 }

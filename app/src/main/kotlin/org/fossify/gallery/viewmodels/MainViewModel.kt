@@ -169,7 +169,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             || grouping and GROUP_BY_LAST_MODIFIED_MONTHLY != 0
 
                 val curMedia = when (directory.path) {
-                    FAVORITES -> context.mediaDB.getFavorites() as ArrayList<Medium>
+                    FAVORITES -> ArrayList(context.mediaDB.getFavorites())
                     RECYCLE_BIN -> context.getUpdatedDeletedMedia()
                     else -> fetcher.getFilesFrom(
                         curPath = directory.path,

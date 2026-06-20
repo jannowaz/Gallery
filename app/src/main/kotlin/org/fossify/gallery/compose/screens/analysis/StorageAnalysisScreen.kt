@@ -203,7 +203,7 @@ fun StorageAnalysisScreen(onBack: () -> Unit) {
     if (showConfirmDialog) {
         val selCount = state.selectedPaths.size
         val selWaste = state.results.filter { it.path in state.selectedPaths }.sumOf { it.wastedBytes }
-        val losslessCount = state.results.filter { it.path in state.selectedPaths && it.imageFormat in listOf("bmp", "dib", "tiff", "tif") || (it.imageFormat == "png" && it.bpp <= 1.5f) }.size
+        val losslessCount = state.results.filter { it.path in state.selectedPaths && (it.imageFormat in listOf("bmp", "dib", "tiff", "tif") || (it.imageFormat == "png" && it.bpp <= 1.5f)) }.size
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
             title = { Text("Optimierung bestätigen") },

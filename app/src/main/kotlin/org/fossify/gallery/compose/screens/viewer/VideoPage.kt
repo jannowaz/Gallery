@@ -190,14 +190,14 @@ fun VideoPage(
         AnimatedVisibility(visible = showControls, enter = fadeIn(), exit = fadeOut()) {
             Box(Modifier.fillMaxSize()) {
                 IconButton(
-                    onClick = { if (isPlaying) player.pause() else player.play() },
+                    onClick = { if (isPlaying) player.pause() else player.play(); resetAutoHide() },
                     modifier = Modifier.align(Alignment.Center).size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f))
                 ) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play/Pause", tint = Color.White, modifier = Modifier.size(28.dp)) }
 
                 val speedIdx = speeds.indexOf(playbackSpeed)
                 val nextSpeed = speeds[(speedIdx + 1) % speeds.size]
                 Column(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) {
-                    TextButton(onClick = { playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed) }, modifier = Modifier.size(48.dp)) {
+                    TextButton(onClick = { playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed); resetAutoHide() }, modifier = Modifier.size(48.dp)) {
                         Text("${playbackSpeed}x", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                     }
                     TextButton(onClick = { backgroundAudio = !backgroundAudio; onBackgroundAudioChange(backgroundAudio) }, modifier = Modifier.size(48.dp)) { Text(if (backgroundAudio) "🎧" else "📢", style = MaterialTheme.typography.labelSmall) }
