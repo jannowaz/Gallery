@@ -49,6 +49,10 @@ class ZoomState(private val scope: CoroutineScope) {
         private set
     var viewSize by mutableStateOf(IntSize.Zero)
         private set
+    var contentAspect by mutableFloatStateOf(0f)
+        private set
+
+    fun updateContentAspect(a: Float) { if (a > 0f) contentAspect = a }
 
     val isZoomed: Boolean get() = scale > 1.01f
 
@@ -64,8 +68,14 @@ class ZoomState(private val scope: CoroutineScope) {
     private val zoomLevels = listOf(1f, 2f, 4f)
 
     private fun clampOffset(candidate: Offset, s: Float, size: IntSize): Offset {
-        val maxX = (s - 1f) * size.width / 2f
-        val maxY = (s - 1f) * size.height / 2f
+        val w = size.width.toFloat(); val h = size.height.toFloat()
+        var dispW = w; var dispH = h
+        if (contentAspect > 0f && w > 0f && h > 0f) {
+            val viewAspect = w / h
+            if (contentAspect > viewAspect) { dispW = w; dispH = w / contentAspect } else { dispH = h; dispW = h * contentAspect }
+        }
+        val maxX = ((s * dispW - w) / 2f).coerceAtLeast(0f)
+        val maxY = ((s * dispH - h) / 2f).coerceAtLeast(0f)
         return Offset(candidate.x.coerceIn(-maxX, maxX), candidate.y.coerceIn(-maxY, maxY))
     }
 

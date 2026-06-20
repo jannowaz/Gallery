@@ -15,6 +15,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
 @Composable
@@ -32,6 +34,16 @@ fun ImagePage(
 
     LaunchedEffect(isCurrentPage) { if (!isCurrentPage) zoom.reset() }
     LaunchedEffect(zoom.isZoomed, isCurrentPage) { if (isCurrentPage) onZoomChange(zoom.isZoomed) }
+    LaunchedEffect(path) {
+        val a = withContext(Dispatchers.IO) {
+            try {
+                val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeFile(file.absolutePath, o)
+                if (o.outWidth > 0 && o.outHeight > 0) o.outWidth.toFloat() / o.outHeight else 0f
+            } catch (_: Exception) { 0f }
+        }
+        if (a > 0f) zoom.updateContentAspect(a)
+    }
 
     Box(Modifier.fillMaxSize().clipToBounds().then(modifier)) {
         AsyncImage(

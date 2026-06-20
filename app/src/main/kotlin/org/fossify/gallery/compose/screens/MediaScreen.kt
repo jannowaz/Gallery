@@ -76,6 +76,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -294,7 +295,11 @@ fun MediaScreen(
                     }
                     }
                     val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
-                    val gridState = rememberLazyGridState()
+                    val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
+                    LaunchedEffect(gridState) {
+                        snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
+                            .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
+                    }
                     var showOverlays by remember { mutableStateOf(true) }
                     val isScrolling by remember { derivedStateOf { gridState.isScrollInProgress } }
                     val shouldLoadMore by remember { derivedStateOf {

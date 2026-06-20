@@ -169,9 +169,13 @@ class ComposeExplorerActivity : ComponentActivity() {
         }
     }
 
+    @Volatile private var lastObserverMs = 0L
     private val mediaObserver = object : ContentObserver(null) {
         override fun onChange(selfChange: Boolean, uri: Uri?) {
             super.onChange(selfChange, uri)
+            val now = System.currentTimeMillis()
+            if (now - lastObserverMs < 1500) return
+            lastObserverMs = now
             RefreshBus.trigger()
             MediaSyncWorker.scheduleIncrementalSync(this@ComposeExplorerActivity)
         }

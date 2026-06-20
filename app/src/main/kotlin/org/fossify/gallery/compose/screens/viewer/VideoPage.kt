@@ -111,7 +111,12 @@ fun VideoPage(
     LaunchedEffect(path) {
         withContext(Dispatchers.IO) {
             frameMutex.withLock {
-                try { retriever.setDataSource(path); retrieverReady = true } catch (_: Exception) { }
+                try {
+                    retriever.setDataSource(path); retrieverReady = true
+                    val w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toFloatOrNull() ?: 0f
+                    val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toFloatOrNull() ?: 0f
+                    if (w > 0f && h > 0f) zoom.updateContentAspect(w / h)
+                } catch (_: Exception) { }
             }
         }
     }
