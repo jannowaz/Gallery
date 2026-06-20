@@ -176,6 +176,11 @@ fun MediaScreen(
     var heroRect by remember { mutableStateOf<android.graphics.Rect?>(null) }
     var taggedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     val ratingOverrides = remember { mutableStateMapOf<String, Int>() }
+    var selectedCommonTags by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(selectedPaths) {
+        selectedCommonTags = if (selectedPaths.isEmpty()) emptySet()
+        else withContext(Dispatchers.IO) { selectedPaths.map { repo.getTags(it) }.reduceOrNull { a, b -> a intersect b } ?: emptySet() }
+    }
     LaunchedEffect(Unit) { taggedPaths = withContext(Dispatchers.IO) { try { ctx.mediaCacheDB.getAllTagged().map { it.fullPath }.toSet() } catch (_: Exception) { emptySet() } } }
     val columnCount = viewSettings.columnCount
     val isGrid = viewSettings.viewType == ViewType.GRID
@@ -203,7 +208,7 @@ fun MediaScreen(
             pathFallbackMedia = withContext(Dispatchers.IO) { try { ctx.mediaDB.getNewestMedia(5000).filter { p -> (pathFilter + dirs).any { p.path.startsWith("$it/") || p.path == it } }.take(2000) } catch (_: Exception) { null } }
         } else pathFallbackMedia = null
     }
-    val unsortedMedia by derivedStateOf {
+    val unsortedMedia by remember { derivedStateOf {
         var m = baseMedia
         if (ratingFilter > 0) { val db = ratedMedia; m = if (db != null && db.isNotEmpty()) db else m.filter { it.rating >= ratingFilter } }
         if (tagFilterPaths != null) {
@@ -213,9 +218,9 @@ fun MediaScreen(
         }
         if (pathFilter != null) { val dirs=pathFilter.filter{File(it).isDirectory}.toSet(); val filtered=m.filter{p->p.path in pathFilter||dirs.any{p.path.startsWith("$it/")}}; val fb=pathFallbackMedia; m = if(fb!=null && fb.size>filtered.size) fb else filtered }
         m
-    }
+    } }
     val hasFilter = ratingFilter > 0 || tagFilterPaths != null || pathFilter != null
-    val displayMedia by derivedStateOf {
+    val displayMedia by remember { derivedStateOf {
         val sorted = when (viewSettings.sortBy) {
             SortField.NAME -> unsortedMedia.sortedBy { it.name.lowercase() }
             SortField.DATE -> unsortedMedia.sortedBy { it.modified }
@@ -223,7 +228,7 @@ fun MediaScreen(
             SortField.RATING -> if(viewSettings.sortDesc) unsortedMedia.sortedWith(compareByDescending<Medium>{it.rating}.thenByDescending{it.modified}) else unsortedMedia.sortedWith(compareBy<Medium>{it.rating}.thenBy{it.modified})
         }
         if (viewSettings.sortDesc && viewSettings.sortBy != SortField.RATING) sorted.reversed() else sorted
-    }
+    } }
     val pathIndexMap = remember(displayMedia) { displayMedia.withIndex().associate { it.value.path to it.index } }
     val cornerShape = if (viewSettings.roundedCorners) RoundedCornerShape(8.dp) else RoundedCornerShape(0.dp)
     val itemSpacing = viewSettings.spacing.dp
@@ -270,7 +275,7 @@ fun MediaScreen(
                     if (quickTags.isNotEmpty() && !hasSelection) {
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             quickTags.forEach { tag ->
-                                val active = selectedPaths.isNotEmpty() && selectedPaths.all { p -> repo.getTags(p).contains(tag) }
+                                val active = tag in selectedCommonTags
                                 Surface(
                                     onClick = {
                                         val targets = if (selectedPaths.isNotEmpty()) selectedPaths else displayMedia.take(100).map { it.path }.toSet()
@@ -372,7 +377,7 @@ fun MediaScreen(
                     if (hasFilter) FilterBreadcrumbs(ratingFilter,activeTagName,activePathName,activeCollectionName,displayMedia.size,onClearRatingFilter,onClearTagFilter,onClearPathFilter,onClearFilter)
                     val quickTagsM = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
                     AnimatedVisibility(visible = quickTagsM.isNotEmpty() && !hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
-                    if (quickTagsM.isNotEmpty() && !hasSelection) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { quickTagsM.forEach { tag -> val active = selectedPaths.isNotEmpty() && selectedPaths.all { p -> repo.getTags(p).contains(tag) }; Surface(onClick = { val targets = if (selectedPaths.isNotEmpty()) selectedPaths else displayMedia.take(100).map { it.path }.toSet(); scope.launch(Dispatchers.IO) { targets.forEach { p -> if (repo.getTags(p).contains(tag)) repo.removeTag(p, tag) else repo.addTag(p, tag) }; withContext(Dispatchers.Main) { taggedPaths = withContext(Dispatchers.IO) { try { ctx.mediaCacheDB.getAllTagged().map { it.fullPath }.toSet() } catch (_: Exception) { emptySet() } } } } }, shape = RoundedCornerShape(16.dp), color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
+                    if (quickTagsM.isNotEmpty() && !hasSelection) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { quickTagsM.forEach { tag -> val active = tag in selectedCommonTags; Surface(onClick = { val targets = if (selectedPaths.isNotEmpty()) selectedPaths else displayMedia.take(100).map { it.path }.toSet(); scope.launch(Dispatchers.IO) { targets.forEach { p -> if (repo.getTags(p).contains(tag)) repo.removeTag(p, tag) else repo.addTag(p, tag) }; withContext(Dispatchers.Main) { taggedPaths = withContext(Dispatchers.IO) { try { ctx.mediaCacheDB.getAllTagged().map { it.fullPath }.toSet() } catch (_: Exception) { emptySet() } } } } }, shape = RoundedCornerShape(16.dp), color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
                     }
                     val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
                     val mosaicState = rememberLazyStaggeredGridState()

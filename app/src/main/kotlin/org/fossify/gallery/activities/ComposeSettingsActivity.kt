@@ -43,6 +43,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -413,7 +414,7 @@ private fun BottomActionsDialog(current: Int, onDismiss: () -> Unit, onSave: (In
 private fun ClearCacheNav(ctx: android.content.Context, scope: kotlinx.coroutines.CoroutineScope) {
     val a = ctx as? Activity
     var cacheSize by remember { mutableStateOf("") }
-    scope.launch(Dispatchers.IO) { cacheSize = a?.cacheDir?.let { dir -> if (dir.exists()) dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }.let { bytes -> if (bytes > 1_000_000) "${bytes / 1_000_000} MB" else "${bytes / 1_000} KB" } else "" } ?: "" }
+    LaunchedEffect(Unit) { cacheSize = withContext(Dispatchers.IO) { a?.cacheDir?.let { dir -> if (dir.exists()) dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }.let { bytes -> if (bytes > 1_000_000) "${bytes / 1_000_000} MB" else "${bytes / 1_000} KB" } else "" } ?: "" } }
     SettingsNav("Cache leeren", cacheSize.ifEmpty { "0 KB" }) {
         scope.launch(Dispatchers.IO) { a?.cacheDir?.deleteRecursively(); withContext(Dispatchers.Main) { cacheSize = "0 KB" } }
     }

@@ -40,6 +40,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         val current = XmpWriter.read(path)
         XmpWriter.write(path, current.tags, rating)
         try { context.mediaDB.updateRating(path, rating) } catch (_: Exception) { }
+        syncCache(path, current.tags.joinToString(","), rating)
     }
 
     override fun getTags(path: String): Set<String> {
@@ -69,7 +70,11 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     }
 
     override fun deleteMedium(path: String) {
-        try { context.mediaDB.deleteMediumPath(path); File(path).delete() } catch (_: Exception) { }
+        try { context.mediaDB.deleteMediumPath(path) } catch (_: Exception) { }
+        try { context.favoritesDB.deleteFavoritePath(path) } catch (_: Exception) { }
+        try { context.mediaCacheDB.deleteByPathSync(path) } catch (_: Exception) { }
+        try { File("$path.xmp").delete() } catch (_: Exception) { }
+        try { File(path).delete() } catch (_: Exception) { }
     }
 
     fun moveToRecycleBin(path: String) {

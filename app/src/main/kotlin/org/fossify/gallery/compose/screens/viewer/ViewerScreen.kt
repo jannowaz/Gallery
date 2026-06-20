@@ -71,6 +71,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -118,10 +119,11 @@ fun ViewerScreen(
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(initialPage = startIndex, pageCount = { paths.size })
+    val items = remember { paths.toMutableStateList() }
+    val pagerState = rememberPagerState(initialPage = startIndex.coerceIn(0, (paths.size - 1).coerceAtLeast(0)), pageCount = { items.size })
     var showUI by remember { mutableStateOf(true) }
     var showActionSheet by remember { mutableStateOf(false) }
-    val currentPath = paths.getOrNull(pagerState.currentPage) ?: ""
+    val currentPath = items.getOrNull(pagerState.currentPage) ?: ""
     val currentIsVideo = isVideo(currentPath)
     val repo = LocalMediaRepository.current
     var isFavorite by remember { mutableStateOf(false) }
@@ -171,7 +173,7 @@ fun ViewerScreen(
                     }
                 }
         ) { page ->
-            val path = paths.getOrNull(page) ?: ""
+            val path = items.getOrNull(page) ?: ""
             val file = File(path)
             if (isVideo(path)) VideoPage(
                 path = path, scalingMode = videoScalingMode,
@@ -197,8 +199,8 @@ fun ViewerScreen(
                     modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
                         .background(Color.Black.copy(alpha = 0.4f), CircleShape).size(44.dp)
                 ) { Icon(Icons.Default.Close, "Schließen", tint = Color.White) }
-                if (paths.size > 1) Text(
-                    "${pagerState.currentPage + 1} / ${paths.size}",
+                if (items.size > 1) Text(
+                    "${pagerState.currentPage + 1} / ${items.size}",
                     color = Color.White,
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp)
                         .background(Color.Black.copy(alpha = 0.4f), CircleShape)
@@ -289,7 +291,19 @@ fun ViewerScreen(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("Löschen") },
             text = { Text("\"${File(currentPath).name}\" in den Papierkorb verschieben?") },
-            confirmButton = { TextButton(onClick = { showDeleteConfirm = false; ctx.config.lastViewedPath = currentPath; scope.launch(Dispatchers.IO) { repo.moveToRecycleBin(currentPath) }; onClose() }) { Text("Löschen", color = MaterialTheme.colorScheme.error) } },
+            confirmButton = { TextButton(onClick = {
+                showDeleteConfirm = false
+                val idx = pagerState.currentPage
+                val p = items.getOrNull(idx)
+                if (p != null) {
+                    ctx.config.lastViewedPath = p
+                    scope.launch(Dispatchers.IO) { repo.moveToRecycleBin(p) }
+                    if (items.size <= 1) onClose() else {
+                        items.removeAt(idx)
+                        if (idx >= items.size) scope.launch { pagerState.scrollToPage(items.size - 1) }
+                    }
+                }
+            }) { Text("Löschen", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Abbrechen") } },
         )
     }

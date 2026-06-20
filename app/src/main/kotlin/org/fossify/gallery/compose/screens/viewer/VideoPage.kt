@@ -60,6 +60,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.extensions.config
@@ -104,8 +106,16 @@ fun VideoPage(
     LaunchedEffect(zoom.isZoomed, isCurrentPage) { if (isCurrentPage) onZoomChange(zoom.isZoomed) }
 
     val retriever = remember(path) { MediaMetadataRetriever() }
+    val frameMutex = remember { kotlinx.coroutines.sync.Mutex() }
+    var retrieverReady by remember(path) { mutableStateOf(false) }
+    LaunchedEffect(path) {
+        withContext(Dispatchers.IO) {
+            frameMutex.withLock {
+                try { retriever.setDataSource(path); retrieverReady = true } catch (_: Exception) { }
+            }
+        }
+    }
     DisposableEffect(path) {
-        retriever.setDataSource(path)
         onDispose { try { retriever.release() } catch (_: Exception) { } }
     }
 
@@ -214,11 +224,15 @@ fun VideoPage(
                                 if (now - lastFrameRequestMs > 90) {
                                     lastFrameRequestMs = now
                                     scope.launch(Dispatchers.IO) {
-                                        try {
-                                            val ms = (fraction * player.duration).toLong()
-                                            val bmp = retriever.getFrameAtTime(ms * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
-                                            withContext(Dispatchers.Main) { scrubPreviewBitmap = bmp }
-                                        } catch (_: Exception) { }
+                                        frameMutex.withLock {
+                                            try {
+                                                if (retrieverReady) {
+                                                    val ms = (fraction * player.duration).toLong()
+                                                    val bmp = retriever.getFrameAtTime(ms * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
+                                                    withContext(Dispatchers.Main) { scrubPreviewBitmap = bmp }
+                                                }
+                                            } catch (_: Exception) { }
+                                        }
                                     }
                                 }
                             },

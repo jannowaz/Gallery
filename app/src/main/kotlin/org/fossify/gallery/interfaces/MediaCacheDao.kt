@@ -26,6 +26,9 @@ interface MediaCacheDao {
     @Query("SELECT * FROM media_cache WHERE full_path = :path LIMIT 1")
     suspend fun getByPath(path: String): MediaCache?
 
+    @Query("DELETE FROM media_cache WHERE full_path = :path")
+    fun deleteByPathSync(path: String)
+
     @Upsert
     suspend fun upsertAll(cache: List<MediaCache>)
 }
