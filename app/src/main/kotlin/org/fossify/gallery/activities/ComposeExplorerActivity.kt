@@ -41,6 +41,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -50,6 +54,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.ContentCopy
@@ -432,6 +437,7 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
     val scope = rememberCoroutineScope()
     var activeSheet by remember { mutableStateOf<ActiveSheet?>(null) }
     var showOmniSearch by remember { mutableStateOf(false) }
+    var omniQuery by remember { mutableStateOf("") }
     var showRatingBrowser by remember { mutableStateOf(false) }
     var showTagBrowser by remember { mutableStateOf(false) }
     var isMediaSelectionActive by remember { mutableStateOf(false) }
@@ -532,10 +538,12 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
     }
 
     if (showOmniSearch) {
-        OmniSearchSheet(
-            onDismiss = { showOmniSearch = false },
+        OmniSearchPanel(
+            query = omniQuery,
+            onQueryChange = { omniQuery = it },
+            onDismiss = { showOmniSearch = false; omniQuery = "" },
             storagePath = android.os.Environment.getExternalStorageDirectory().absolutePath,
-            onNavigate = { path -> mainVM.setExplorerPath(path); showOmniSearch = false; mainVM.setSelectedTab(2) },
+            onNavigate = { path -> mainVM.setExplorerPath(path); showOmniSearch = false; omniQuery = ""; mainVM.setSelectedTab(2) },
             onFilterChanged = { textPaths, rating, tagPaths, tagName, _, _ ->
                 mainVM.setRatingFilter(rating)
                 mainVM.setPathFilter(textPaths, if (textPaths != null) "Suche" else null)
@@ -842,7 +850,9 @@ private fun MenuRow(icon: ImageVector, label: String, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun OmniSearchSheet(
+private fun OmniSearchPanel(
+    query: String,
+    onQueryChange: (String) -> Unit,
     onDismiss: () -> Unit,
     storagePath: String,
     onNavigate: (String) -> Unit,
@@ -850,7 +860,6 @@ private fun OmniSearchSheet(
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var query by remember { mutableStateOf("") }
     var ratingFilter by remember { mutableIntStateOf(0) }
     var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
     var allTags by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
@@ -862,6 +871,9 @@ private fun OmniSearchSheet(
     var dateFilter by remember { mutableIntStateOf(0) }
     var showFilters by remember { mutableStateOf(false) }
     val searchCache = remember { mutableMapOf<String, Set<String>>() }
+    val searchFocusRequester = remember { FocusRequester() }
+    val searchKeyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(150); try { searchFocusRequester.requestFocus(); searchKeyboard?.show() } catch (_: Exception) {} }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -910,21 +922,16 @@ private fun OmniSearchSheet(
     val hasResults = textMatchPaths != null && textMatchPaths!!.isNotEmpty()
     val mc = textMatchPaths?.size ?: 0
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false), containerColor = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).heightIn(max = 560.dp)) {
-            // Search bar
-            OutlinedTextField(value = query, onValueChange = { query = it; textMatchPaths = null },
-                placeholder = { Text("Dateiname, Ordner oder Tag\u2026") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                leadingIcon = { Icon(Icons.Default.Search, "Suchen", modifier = Modifier.size(20.dp)) },
-                trailingIcon = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (query.isNotEmpty()) IconButton(onClick = { query = ""; textMatchPaths = null; folderResults = emptyList(); tagResults = emptyList() }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, "Leeren", Modifier.size(16.dp)) }
-                        if (isSearching) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    }
-                },
-                colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.1f)),
-                shape = RoundedCornerShape(12.dp),
-            )
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
+            // Header (input is the bottom search pill)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", modifier = Modifier.size(22.dp)) }
+                Spacer(Modifier.width(4.dp))
+                Text(if (query.isBlank()) "Suche" else "\u201E$query\u201C", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (isSearching) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                if (query.isNotEmpty()) IconButton(onClick = { onQueryChange(""); textMatchPaths = null; folderResults = emptyList(); tagResults = emptyList() }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, "Leeren", Modifier.size(16.dp)) }
+            }
 
             Spacer(Modifier.height(6.dp))
 
@@ -984,7 +991,7 @@ private fun OmniSearchSheet(
                 }
             } else if (hasResults || folderResults.isNotEmpty() || tagResults.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp)); HorizontalDivider(); Spacer(Modifier.height(4.dp))
-                LazyColumn(Modifier.heightIn(max = 280.dp)) {
+                LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
                     if (folderResults.isNotEmpty()) {
                         item { Text("Ordner", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 4.dp)) }
                         items(folderResults.take(5), key = { it.second }) { (name, path) ->
@@ -1029,6 +1036,17 @@ private fun OmniSearchSheet(
                     }
                 }
             }
+            // Bottom search input (above the keyboard, auto-focused) – type directly here
+            OutlinedTextField(
+                value = query,
+                onValueChange = { onQueryChange(it); textMatchPaths = null },
+                placeholder = { Text("Dateiname, Ordner oder Tag\u2026") },
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Default.Search, "Suchen", modifier = Modifier.size(20.dp)) },
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp).focusRequester(searchFocusRequester),
+                colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.1f)),
+                shape = RoundedCornerShape(24.dp),
+            )
         }
     }
 }
