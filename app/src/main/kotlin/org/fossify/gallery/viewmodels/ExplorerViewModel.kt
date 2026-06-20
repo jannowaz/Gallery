@@ -26,6 +26,8 @@ data class ExplorerUiState(
     val activeTagFilter: Set<String>? = null,
     val activeTagName: String? = null,
     val activePathFilter: Set<String>? = null,
+    val activePathName: String? = null,
+    val activeCollectionName: String? = null,
     val mediaRefreshTrigger: Int = 0,
     val preFilterTab: Int = -1,
     val dbInitialized: Boolean = false,
@@ -53,11 +55,12 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
     fun setExplorerPath(path: String) { _state.update { it.copy(explorerPath = path) } }
     fun setRatingFilter(rating: Int) { _state.update { it.copy(activeRatingFilter = rating) } }
     fun setTagFilter(tagPaths: Set<String>?, tagName: String?) { _state.update { it.copy(activeTagFilter = tagPaths, activeTagName = tagName) } }
-    fun setPathFilter(paths: Set<String>?) { _state.update { it.copy(activePathFilter = paths) } }
+    fun setPathFilter(paths: Set<String>?, name: String? = null) { _state.update { it.copy(activePathFilter = paths, activePathName = name) } }
+    fun setCollectionName(name: String?) { _state.update { it.copy(activeCollectionName = name) } }
     fun setPreFilterTab(tab: Int) { _state.update { it.copy(preFilterTab = tab) } }
 
     fun clearFilters() {
-        _state.update { it.copy(activeRatingFilter = 0, activeTagFilter = null, activeTagName = null, activePathFilter = null, preFilterTab = -1) }
+        _state.update { it.copy(activeRatingFilter = 0, activeTagFilter = null, activeTagName = null, activePathFilter = null, activePathName = null, activeCollectionName = null, preFilterTab = -1) }
     }
 
     fun triggerMediaRefresh() {

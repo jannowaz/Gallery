@@ -217,11 +217,16 @@ class ComposeExplorerActivity : ComponentActivity() {
     }
 
     private fun getMediaPermissionStrings(): Array<String> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
+        val perms = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            perms.add(Manifest.permission.READ_MEDIA_IMAGES)
+            perms.add(Manifest.permission.READ_MEDIA_VIDEO)
+            perms.add(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            perms.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) perms.add(Manifest.permission.ACCESS_MEDIA_LOCATION)
+        return perms.toTypedArray()
     }
 }
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -521,7 +526,8 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
             onNavigate = { path -> mainVM.setExplorerPath(path); showOmniSearch = false; mainVM.setSelectedTab(2) },
             onFilterChanged = { textPaths, rating, tagPaths, tagName, _, _ ->
                 mainVM.setRatingFilter(rating)
-                mainVM.setPathFilter(textPaths)
+                mainVM.setPathFilter(textPaths, if (textPaths != null) "Suche" else null)
+                mainVM.setCollectionName(null)
                 mainVM.setTagFilter(tagPaths, tagName)
                 if (rating > 0 || tagPaths != null || textPaths != null) mainVM.setSelectedTab(0)
             },
@@ -624,11 +630,13 @@ private fun MainTabContent(
             tagFilterPaths = state.activeTagFilter,
             pathFilter = state.activePathFilter,
             activeTagName = state.activeTagName,
+            activePathName = state.activePathName,
+            activeCollectionName = state.activeCollectionName,
             refreshTrigger = state.mediaRefreshTrigger,
             onClearFilter = { mainVM.clearFilters() },
             onClearRatingFilter = { mainVM.setRatingFilter(0) },
             onClearTagFilter = { mainVM.setTagFilter(null, null) },
-            onClearPathFilter = { mainVM.setPathFilter(null) },
+            onClearPathFilter = { mainVM.setPathFilter(null); mainVM.setCollectionName(null) },
             onNavigateToViewer = { paths, startIndex -> navController.navigate(Viewer(paths, startIndex)) },
             scrollToPath = state.lastViewedPath,
             onClearScrollToPath = { mainVM.clearLastViewedPath() },
@@ -652,6 +660,7 @@ private fun MainTabContent(
         3 -> CollectionsScreen(
             onCollectionClick = { coll ->
                 mainVM.setPreFilterTab(3)
+                mainVM.setCollectionName(coll.name)
                 mainVM.setRatingFilter(coll.ratingFilter)
                 if (coll.tagFilter.isNotBlank()) {
                     scope.launch(Dispatchers.IO) {
