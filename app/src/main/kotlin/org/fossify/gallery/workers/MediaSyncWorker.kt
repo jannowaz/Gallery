@@ -125,7 +125,7 @@ class MediaSyncWorker(
                 .addTag("media_sync_incremental")
                 .setInitialDelay(2, TimeUnit.SECONDS)
                 .build()
-            WorkManager.getInstance(context).enqueue(workRequest)
+            WorkManager.getInstance(context).enqueueUniqueWork("media_sync_incremental", ExistingWorkPolicy.REPLACE, workRequest)
         }
     }
 }

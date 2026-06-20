@@ -6,6 +6,8 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import org.fossify.gallery.extensions.favoritesDB
+import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.mediaDB
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -24,9 +26,14 @@ class RecycleBinCleanupWorker(
             for (medium in expired) {
                 try {
                     val file = File(medium.path)
-                    if (file.exists()) file.delete()
-                    applicationContext.mediaDB.deleteMediumPath(medium.path)
-                    deletedCount++
+                    val gone = !file.exists() || file.delete()
+                    if (gone) {
+                        applicationContext.mediaDB.deleteMediumPath(medium.path)
+                        try { applicationContext.favoritesDB.deleteFavoritePath(medium.path) } catch (_: Exception) { }
+                        try { applicationContext.mediaCacheDB.deleteByPathSync(medium.path) } catch (_: Exception) { }
+                        try { File("${medium.path}.xmp").delete() } catch (_: Exception) { }
+                        deletedCount++
+                    }
                 } catch (_: Exception) { }
             }
 

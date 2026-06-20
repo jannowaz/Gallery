@@ -165,8 +165,6 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
 
             SectionLabel("Papierkorb")
             SettingsSwitch("In Papierkorb verschieben", conf.useRecycleBin) { conf.useRecycleBin = it }
-            SettingsSwitch("Bei Ordnern anzeigen", conf.showRecycleBinAtFolders) { conf.showRecycleBinAtFolders = it }
-            SettingsSwitch("Papierkorb zuletzt", conf.showRecycleBinLast) { conf.showRecycleBinLast = it }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
             SectionLabel("Dateien")
@@ -285,7 +283,7 @@ internal fun SectionLabel(text: String) {
 
 @Composable
 internal fun SettingsSwitch(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    var internalChecked by remember { mutableStateOf(checked) }
+    var internalChecked by remember(checked) { mutableStateOf(checked) }
     Card(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
