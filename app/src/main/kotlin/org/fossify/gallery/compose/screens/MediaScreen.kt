@@ -121,6 +121,7 @@ import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.compose.components.StarRatingDialog
 import org.fossify.gallery.compose.components.TagInputDialog
 import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.compose.theme.RatingStarColor
 import org.fossify.gallery.compose.util.dragSelectionGesture
 import org.fossify.gallery.compose.util.rememberSelectionDragState
 import org.fossify.gallery.compose.util.selectableItem
@@ -342,7 +343,7 @@ fun MediaScreen(
                                                 Icon(
                                                     if (i <= m.rating) Icons.Default.Star else Icons.Default.StarBorder,
                                                     contentDescription = "Bewertung $i",
-                                                    tint = if (i <= m.rating) Color(0xFFFFD700) else Color.White.copy(alpha = 0.35f),
+                                                    tint = if (i <= m.rating) RatingStarColor else Color.White.copy(alpha = 0.35f),
                                                     modifier = Modifier.size(11.dp)
                                                 )
                                             }
@@ -433,7 +434,7 @@ fun MediaScreen(
                                     val overlayAlphaM by androidx.compose.animation.core.animateFloatAsState(targetValue = 1f, animationSpec = tween(350), label = "overlayFadeM")
                                     Box(Modifier.fillMaxSize().graphicsLayer { alpha = overlayAlphaM }, contentAlignment = Alignment.BottomCenter) {
                                         Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(bottom = 3.dp)) {
-                                            for (i in 1..5) { Icon(if (i <= m.rating) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = "Bewertung $i", tint = if (i <= m.rating) Color(0xFFFFD700) else Color.White.copy(alpha = 0.35f), modifier = Modifier.size(11.dp)) }
+                                            for (i in 1..5) { Icon(if (i <= m.rating) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = "Bewertung $i", tint = if (i <= m.rating) RatingStarColor else Color.White.copy(alpha = 0.35f), modifier = Modifier.size(11.dp)) }
                                         }
                                     }
                                         if(hasTag) Box(Modifier.align(Alignment.TopEnd).padding(4.dp).background(Color.Black.copy(alpha=0.5f),RoundedCornerShape(4.dp)).padding(horizontal=4.dp,vertical=1.dp)) { Icon(Icons.Default.Label,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(10.dp)) }

@@ -67,7 +67,7 @@ private val DarkColorScheme = darkColorScheme(
     surfaceVariant = md_theme_dark_surfaceVariant,
     onSurfaceVariant = md_theme_dark_onSurfaceVariant,
     outline = md_theme_light_outline_dark,
-    outlineVariant = md_theme_dark_onSurfaceVariant,
+    outlineVariant = md_theme_dark_outlineVariant,
 )
 
 @Composable

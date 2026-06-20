@@ -65,6 +65,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.compose.theme.RatingStarColor
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -293,7 +294,7 @@ private fun DuplicateGroupCard(
                         if (file.rating > 0 || file.tags.isNotEmpty()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 if (file.rating > 0) {
-                                    Icon(Icons.Default.Star, null, tint = Color(0xFFFFD700), modifier = Modifier.size(12.dp))
+                                    Icon(Icons.Default.Star, null, tint = RatingStarColor, modifier = Modifier.size(12.dp))
                                     Text("${file.rating}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     if (file.tags.isNotEmpty()) Spacer(Modifier.width(6.dp))
                                 }

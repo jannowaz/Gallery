@@ -3,8 +3,15 @@ package org.fossify.gallery.compose.theme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Shapes
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+
+/**
+ * Fixed brand accent for the rating stars. Kept as one token (not a per-file hex literal) so the
+ * "filled star" colour is identical everywhere and independent of the dynamic colour scheme.
+ */
+val RatingStarColor = Color(0xFFFFD700)
 
 /**
  * Central design tokens. Use these instead of ad-hoc dp literals so spacing and corner radii are
