@@ -71,6 +71,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.gallery.compose.components.FolderTile
+import org.fossify.gallery.compose.components.LibraryAlbumGrid
+import org.fossify.gallery.compose.components.AlbumGridItem
 import org.fossify.gallery.compose.components.SelectionBar
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.GalleryImage
@@ -119,78 +121,36 @@ fun AlbumsScreen(
         DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant
     }
 
+    var albumPreviews by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
+    LaunchedEffect(sortedDirs, isGrid) {
+        if (!isGrid) {
+            albumPreviews = withContext(Dispatchers.IO) {
+                sortedDirs.associate { dir -> dir.path to (try { ctx.mediaDB.getMediaFromPath(dir.path).map { it.path }.take(4) } catch (_: Exception) { emptyList() }) }
+            }
+        }
+    }
+    val albumItems = remember(sortedDirs, albumPreviews) {
+        sortedDirs.map { AlbumGridItem(key = it.path, name = it.name, thumbnailPath = it.tmb, count = it.mediaCnt, previewPaths = albumPreviews[it.path] ?: emptyList()) }
+    }
+
     Box(Modifier.fillMaxSize()) {
         Column(modifier = modifier.fillMaxSize()) {
             if (state.isLoading) {
                 MediaSkeleton(columns = viewSettings.columnCount)
             } else if (state.directories.isEmpty()) {
                 EmptyState(Icons.Default.Folder, "Keine Alben")
-            } else if (isGrid) {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(viewSettings.columnCount),
-                    reverseLayout = viewSettings.anchorBottom,
-                    contentPadding = PaddingValues(itemSpacing / 2),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    items(sortedDirs, key = { it.path }) { dir ->
-                        Box(Modifier.padding(itemSpacing / 2).combinedClickable(
-                            onClick = { if (hasSelection) selectedPaths = if (dir.path in selectedPaths) selectedPaths - dir.path else selectedPaths + dir.path else onFolderClick(dir) },
-                            onLongClick = { selectedPaths = selectedPaths + dir.path }
-                        )) {
-                            FolderTile(
-                                name = dir.name,
-                                thumbnailPath = dir.tmb,
-                                showThumbnail = viewSettings.showFolderThumbnails,
-                                roundedCorners = viewSettings.roundedCorners,
-                                containerColor = containerColor
-                            )
-                            if (dir.path in selectedPaths) {
-                                Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)))
-                                Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp).background(MaterialTheme.colorScheme.primary, CircleShape), contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                }
-                            }
-                        }
-                    }
-                }
             } else {
-                LazyColumn(reverseLayout = viewSettings.anchorBottom, modifier = Modifier.weight(1f)) {
-                    items(sortedDirs, key = { it.path }) { dir ->
-                        val isFav = dir.path in favorites
-                        var previewPaths by remember { mutableStateOf<List<String>>(emptyList()) }
-                        LaunchedEffect(dir.path) {
-                            withContext(Dispatchers.IO) {
-                                try { previewPaths = ctx.mediaDB.getMediaFromPath(dir.path).map { it.path }.take(4) } catch (_: Exception) { }
-                            }
-                        }
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).combinedClickable(
-                                onClick = { if (hasSelection) selectedPaths = if (dir.path in selectedPaths) selectedPaths - dir.path else selectedPaths + dir.path else onFolderClick(dir) },
-                                onLongClick = { selectedPaths = selectedPaths + dir.path }
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = if (dir.path in selectedPaths) MaterialTheme.colorScheme.primaryContainer else containerColor)
-                        ) {
-                            Row(Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(dir.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (viewSettings.displayMode == DisplayMode.DARK) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                                    Text("${dir.mediaCnt} Medien", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    if (previewPaths.isEmpty()) {
-                                        Box(Modifier.size(44.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceVariant))
-                                    } else {
-                                        previewPaths.take(3).forEach { p ->
-                                            Box(Modifier.size(44.dp).clip(RoundedCornerShape(6.dp))) {
-                                                GalleryImage(path = p, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 12.dp, thumbnailSize = 128)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                LibraryAlbumGrid(
+                    items = albumItems,
+                    viewSettings = viewSettings,
+                    onClick = { item ->
+                        if (hasSelection) selectedPaths = if (item.key in selectedPaths) selectedPaths - item.key else selectedPaths + item.key
+                        else sortedDirs.find { it.path == item.key }?.let(onFolderClick)
+                    },
+                    onLongClick = { item -> selectedPaths = selectedPaths + item.key },
+                    selectedKeys = selectedPaths,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
 
