@@ -839,7 +839,7 @@ private fun OmniSearchSheet(
                     while (c.moveToNext()) { val path = c.getString(dataCol) ?: continue; val name = c.getString(nameCol) ?: ""; if (qParts.all { it in "${name} ${path}".lowercase() } && java.io.File(path).exists()) matched.add(path) }
                 }
             } catch (_: Exception) { }
-            try { listOf(storagePath, "/storage/emulated/0/DCIM", "/storage/emulated/0/Pictures", "/storage/emulated/0/Download").distinct().filter { java.io.File(it).isDirectory }.forEach { r -> java.io.File(r).listFiles()?.forEach { f -> if (f.isDirectory && !f.name.startsWith(".") && qParts.all { it in f.name.lowercase() }) folders.add(f.name to f.absolutePath) } } } catch (_: Exception) { }
+            try { ctx.directoryDB.getAll().forEach { d -> val lp = d.path.lowercase(); if (qParts.all { it in lp }) folders.add(d.name to d.path) } } catch (_: Exception) { }
             if (allTags.isNotEmpty()) qParts.forEach { qp -> allTags.entries.forEach { (tag, paths) -> if (tag.lowercase().contains(qp) && tags.none { it.first == tag }) tags.add(tag to paths.size) } }
             withContext(Dispatchers.Main) { textMatchPaths = matched.takeIf { it.isNotEmpty() }?.also { searchCache[cacheKey] = it }; folderResults = folders.sortedBy { it.first }.take(15); tagResults = tags.sortedByDescending { it.second }.take(15); isSearching = false }
         }

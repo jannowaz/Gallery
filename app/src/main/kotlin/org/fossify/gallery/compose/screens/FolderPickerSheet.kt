@@ -58,6 +58,7 @@ import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.deleteMediumWithPath
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
 import java.io.File
@@ -117,46 +118,20 @@ fun FolderPickerSheet(
         if (query.length < 2) return@withContext emptyList()
         val qParts = query.lowercase().split(" ").filter { it.isNotBlank() }
         if (qParts.isEmpty()) return@withContext emptyList()
-        val roots = listOf(
-            rootPath,
-            "/storage/emulated/0/DCIM",
-            "/storage/emulated/0/Download",
-            "/storage/emulated/0/Pictures",
-            "/storage/emulated/0/Movies",
-            "/storage/emulated/0/Music",
-        ).distinct().filter { Files.isDirectory(Paths.get(it)) }
-
+        // Search the already-indexed folder DB instead of walking the filesystem (instant)
+        val dirs = try { ctx.directoryDB.getAll() } catch (_: Exception) { emptyList() }
         val results = mutableListOf<Pair<Int, FolderItem>>()
-        val visited = mutableSetOf<String>()
-
-        fun scanDir(dirPath: String, depth: Int, maxDepth: Int = 4) {
-            if (depth > maxDepth || dirPath in visited) return
-            visited.add(dirPath)
-            try {
-                Files.newDirectoryStream(Paths.get(dirPath)).use { stream ->
-                    for (entry in stream) {
-                        if (!Files.isDirectory(entry)) continue
-                        val name = entry.fileName.toString()
-                        if (name.startsWith(".")) continue
-                        val fPath = entry.toString()
-                        val lowerPath = fPath.lowercase()
-                        var score = 0
-                        for (part in qParts) {
-                            val idx = lowerPath.indexOf(part)
-                            if (idx < 0) { score = -1; break }
-                            score += maxOf(0, 100 - idx)
-                        }
-                        if (score > 0) {
-                            val mc = try { Files.newDirectoryStream(entry).use { s -> s.count { !it.fileName.toString().startsWith(".") } } } catch (_: Exception) { 0 }
-                            results.add(score to FolderItem(name = name, path = fPath, isDirectory = true, mediaCount = mc, matchScore = score))
-                        }
-                        if (depth < maxDepth) scanDir(fPath, depth + 1, maxDepth)
-                    }
-                }
-            } catch (_: Exception) { }
+        for (d in dirs) {
+            val lowerPath = d.path.lowercase()
+            var score = 0
+            for (part in qParts) {
+                val idx = lowerPath.indexOf(part)
+                if (idx < 0) { score = -1; break }
+                score += maxOf(0, 100 - idx)
+            }
+            if (score > 0) results.add(score to FolderItem(name = d.name, path = d.path, isDirectory = true, mediaCount = d.mediaCnt, matchScore = score))
         }
-        roots.forEach { scanDir(it, 0, 3) }
-        results.sortedByDescending { it.first }.take(50).map { it.second }
+        results.sortedByDescending { it.first }.take(80).map { it.second }
     }
 
     LaunchedEffect(currentPath) {
