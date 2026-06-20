@@ -288,7 +288,7 @@ fun MediaScreen(
                         }
                     }
                     }
-                    val grouped = if (mediaOverride != null || hasFilter) remember(displayMedia) { displayMedia.groupByMonth() } else state.monthGroups
+                    val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
                     val gridState = rememberLazyGridState()
                     var showOverlays by remember { mutableStateOf(true) }
                     val isScrolling by remember { derivedStateOf { gridState.isScrollInProgress } }
@@ -374,7 +374,7 @@ fun MediaScreen(
                     AnimatedVisibility(visible = quickTagsM.isNotEmpty() && !hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
                     if (quickTagsM.isNotEmpty() && !hasSelection) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { quickTagsM.forEach { tag -> val active = selectedPaths.isNotEmpty() && selectedPaths.all { p -> repo.getTags(p).contains(tag) }; Surface(onClick = { val targets = if (selectedPaths.isNotEmpty()) selectedPaths else displayMedia.take(100).map { it.path }.toSet(); scope.launch(Dispatchers.IO) { targets.forEach { p -> if (repo.getTags(p).contains(tag)) repo.removeTag(p, tag) else repo.addTag(p, tag) }; withContext(Dispatchers.Main) { taggedPaths = withContext(Dispatchers.IO) { try { ctx.mediaCacheDB.getAllTagged().map { it.fullPath }.toSet() } catch (_: Exception) { emptySet() } } } } }, shape = RoundedCornerShape(16.dp), color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
                     }
-                    val grouped = if (mediaOverride != null || hasFilter) remember(displayMedia) { displayMedia.groupByMonth() } else state.monthGroups
+                    val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
                     val mosaicState = rememberLazyStaggeredGridState()
                     var showOverlaysStag by remember { mutableStateOf(true) }
                     val isScrollingStag by remember { derivedStateOf { mosaicState.isScrollInProgress } }
@@ -441,7 +441,7 @@ fun MediaScreen(
                 }
             }
             else -> {
-                val grouped = if (mediaOverride != null || hasFilter) remember(displayMedia) { displayMedia.groupByMonth() } else state.monthGroups
+                val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
                 Box(Modifier.dragSelectionGesture(dragSelection) { path -> selectedPaths = selectedPaths + path }) {
                 LazyColumn(reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
                     grouped.forEach { (label, groupItems) ->

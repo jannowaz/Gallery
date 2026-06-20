@@ -35,6 +35,12 @@ interface MediumDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insertAllKeepingExisting(media: List<Medium>)
 
+    @Query("SELECT full_path FROM media")
+    fun getAllPaths(): List<String>
+
+    @Query("DELETE FROM media WHERE full_path IN (:paths)")
+    fun deleteByPaths(paths: List<String>)
+
     @Delete
     fun deleteMedia(vararg medium: Medium)
 

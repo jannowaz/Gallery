@@ -22,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -31,6 +32,7 @@ import org.fossify.gallery.compose.screens.MediaScreen
 import org.fossify.gallery.compose.screens.ViewSettingsSheet
 import org.fossify.gallery.compose.screens.ViewSettingsViewModel
 import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import org.fossify.gallery.models.Medium
@@ -45,12 +47,16 @@ fun FolderMediaScreen(
     onBack: () -> Unit,
 ) {
     val viewSettingsVM: ViewSettingsViewModel = viewModel()
+    val ctx = LocalContext.current
     val tabSettings by viewSettingsVM.settings.collectAsState()
     var mediaItems by remember { mutableStateOf<List<Medium>?>(null) }
     var showViewSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(folderPath) {
-        mediaItems = withContext(Dispatchers.IO) { scanFolderMedia(folderPath) }
+        mediaItems = withContext(Dispatchers.IO) {
+            val deleted = try { ctx.mediaDB.getDeletedMedia().map { it.path }.toSet() } catch (_: Exception) { emptySet() }
+            scanFolderMedia(folderPath, deleted)
+        }
     }
 
     Scaffold(
@@ -83,7 +89,7 @@ fun FolderMediaScreen(
     }
 }
 
-private fun scanFolderMedia(path: String): List<Medium> {
+private fun scanFolderMedia(path: String, deletedPaths: Set<String>): List<Medium> {
     val result = mutableListOf<Medium>()
     try {
         Files.newDirectoryStream(Paths.get(path)).use { stream ->
@@ -93,6 +99,7 @@ private fun scanFolderMedia(path: String): List<Medium> {
                 val ext = name.substringAfterLast('.', "").lowercase()
                 if (ext in MEDIA_EXTENSIONS) {
                     val fPath = entry.toString()
+                    if (fPath in deletedPaths) continue
                     result.add(Medium(
                         id = null, name = name, path = fPath, parentPath = path,
                         modified = Files.getLastModifiedTime(entry).toMillis(),

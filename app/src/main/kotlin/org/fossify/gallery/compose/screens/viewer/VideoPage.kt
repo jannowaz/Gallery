@@ -98,6 +98,7 @@ fun VideoPage(
     var scrubFraction by remember { mutableFloatStateOf(-1f) }
     var scrubPreviewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var lastFrameRequestMs by remember { mutableLongStateOf(0L) }
+    var positionMs by remember(path) { mutableLongStateOf(0L) }
 
     LaunchedEffect(isCurrentPage) { if (!isCurrentPage) zoom.reset() }
     LaunchedEffect(zoom.isZoomed, isCurrentPage) { if (isCurrentPage) onZoomChange(zoom.isZoomed) }
@@ -119,13 +120,21 @@ fun VideoPage(
     LaunchedEffect(isCurrentPage) {
         player.playWhenReady = isCurrentPage
     }
-    val bgAudio by rememberUpdatedState(backgroundAudio)
     DisposableEffect(player) {
         onDispose {
             player.playWhenReady = false
             player.pause()
-            if (!bgAudio) player.release()
+            player.release()
         }
+    }
+
+    val lifecycleOwner = ctx as? androidx.lifecycle.LifecycleOwner
+    DisposableEffect(lifecycleOwner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) player.pause()
+        }
+        lifecycleOwner?.lifecycle?.addObserver(obs)
+        onDispose { lifecycleOwner?.lifecycle?.removeObserver(obs) }
     }
 
     val listener = remember { object : Player.Listener { override fun onIsPlayingChanged(p: Boolean) { isPlaying = p } } }
@@ -137,6 +146,12 @@ fun VideoPage(
     val spv = remember { androidx.media3.ui.PlayerView(ctx).apply { useController = false } }
     LaunchedEffect(player) { spv.player = player }
     LaunchedEffect(scalingMode) { spv.resizeMode = scalingMode }
+    LaunchedEffect(isCurrentPage, isPlaying) {
+        while (isCurrentPage) {
+            positionMs = player.currentPosition
+            delay(500)
+        }
+    }
 
     fun resetAutoHide() {
         autoHideJob?.cancel()
@@ -186,7 +201,7 @@ fun VideoPage(
                         Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Color.Black.copy(alpha = 0.6f)).padding(horizontal = 12.dp, vertical = 8.dp).navigationBarsPadding(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        val posMs = if (seekPos >= 0) seekPos else player.currentPosition.toFloat()
+                        val posMs = if (seekPos >= 0) seekPos else positionMs.toFloat()
                         Text("%02d:%02d".format((posMs / 1000).toInt() / 60, (posMs / 1000).toInt() % 60), style = MaterialTheme.typography.labelSmall, color = Color.White)
                         Slider(
                             value = if (player.duration > 0) posMs / player.duration else 0f,

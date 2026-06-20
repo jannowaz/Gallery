@@ -89,12 +89,10 @@ fun FavoritesScreen(
                 }
             }
         } else {
-            LazyColumn(contentPadding = PaddingValues(8.dp)) {
+            Column(Modifier.fillMaxSize().padding(8.dp)) {
                 if (favoriteDirs.isNotEmpty()) {
-                    item {
-                        Text("Ordner", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                    }
-                    items(favoriteDirs, key = { it.path }) { dir ->
+                    Text("Ordner", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                    favoriteDirs.forEach { dir ->
                         Surface(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp).clickable {
                                 ctx.startActivity(Intent(ctx, ComposeFolderActivity::class.java).apply { putExtra("FOLDER_PATH", dir.path) })
@@ -112,17 +110,11 @@ fun FavoritesScreen(
                             }
                         }
                     }
-                    if (favoriteMedia.isNotEmpty()) {
-                        item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
-                    }
+                    if (favoriteMedia.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 }
                 if (favoriteMedia.isNotEmpty()) {
-                    item {
-                        Text("Medien", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                    }
-                    item {
-                        MediaScreen(viewSettings = viewSettings, mediaOverride = favoriteMedia, onNavigateToViewer = onNavigateToViewer)
-                    }
+                    Text("Medien", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                    MediaScreen(modifier = Modifier.weight(1f), viewSettings = viewSettings, mediaOverride = favoriteMedia, onNavigateToViewer = onNavigateToViewer)
                 }
             }
         }

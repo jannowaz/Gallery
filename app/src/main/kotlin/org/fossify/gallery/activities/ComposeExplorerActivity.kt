@@ -169,10 +169,8 @@ class ComposeExplorerActivity : ComponentActivity() {
     private val mediaObserver = object : ContentObserver(null) {
         override fun onChange(selfChange: Boolean, uri: Uri?) {
             super.onChange(selfChange, uri)
-            if (uri != null) {
-                RefreshBus.trigger()
-                MediaSyncWorker.scheduleIncrementalSync(this@ComposeExplorerActivity)
-            }
+            RefreshBus.trigger()
+            MediaSyncWorker.scheduleIncrementalSync(this@ComposeExplorerActivity)
         }
     }
 

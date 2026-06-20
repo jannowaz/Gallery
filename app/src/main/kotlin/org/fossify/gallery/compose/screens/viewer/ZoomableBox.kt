@@ -3,6 +3,11 @@ package org.fossify.gallery.compose.screens.viewer
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
@@ -20,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -107,8 +113,22 @@ fun Modifier.zoomable(state: ZoomState, onSingleTap: () -> Unit): Modifier = thi
         )
     }
     .pointerInput(Unit) {
-        detectTransformGestures { centroid, pan, zoom, _ ->
-            state.onTransform(centroid, pan, zoom, size)
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false)
+            do {
+                val event = awaitPointerEvent()
+                val pressedCount = event.changes.count { it.pressed }
+                // At scale 1 a single finger must pass through to the pager; only handle
+                // transforms when already zoomed or when at least two fingers are down (pinch).
+                if (state.isZoomed || pressedCount >= 2) {
+                    val zoom = event.calculateZoom()
+                    val pan = event.calculatePan()
+                    if (zoom != 1f || pan != androidx.compose.ui.geometry.Offset.Zero) {
+                        state.onTransform(event.calculateCentroid(), pan, zoom, size)
+                        event.changes.forEach { if (it.positionChanged()) it.consume() }
+                    }
+                }
+            } while (event.changes.any { it.pressed })
         }
     }
 

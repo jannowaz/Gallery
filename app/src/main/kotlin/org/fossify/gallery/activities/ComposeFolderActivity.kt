@@ -38,6 +38,7 @@ import org.fossify.gallery.compose.screens.ViewSettingsSheet
 import org.fossify.gallery.compose.screens.ViewSettingsViewModel
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
 import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
@@ -59,7 +60,10 @@ class ComposeFolderActivity : ComponentActivity() {
             var mediaItems by remember { mutableStateOf<List<Medium>?>(null) }
 
             LaunchedEffect(folderPath) {
-                mediaItems = withContext(Dispatchers.IO) { scanFolderMedia(folderPath) }
+                mediaItems = withContext(Dispatchers.IO) {
+                    val deleted = try { this@ComposeFolderActivity.mediaDB.getDeletedMedia().map { it.path }.toSet() } catch (_: Exception) { emptySet() }
+                    scanFolderMedia(folderPath, deleted)
+                }
             }
 
             GalleryTheme {
@@ -106,7 +110,7 @@ private fun FolderMediaScreen(folderPath: String, tabSettings: org.fossify.galle
     }
 }
 
-private fun scanFolderMedia(path: String): List<Medium> {
+private fun scanFolderMedia(path: String, deletedPaths: Set<String>): List<Medium> {
     val result = mutableListOf<Medium>()
     try {
         Files.newDirectoryStream(Paths.get(path)).use { stream ->
@@ -116,6 +120,7 @@ private fun scanFolderMedia(path: String): List<Medium> {
                 val ext = name.substringAfterLast('.', "").lowercase()
                 if (ext in MEDIA_EXTENSIONS) {
                     val fPath = entry.toString()
+                    if (fPath in deletedPaths) continue
                     result.add(Medium(
                         id = null, name = name, path = fPath, parentPath = path,
                         modified = Files.getLastModifiedTime(entry).toMillis(),
