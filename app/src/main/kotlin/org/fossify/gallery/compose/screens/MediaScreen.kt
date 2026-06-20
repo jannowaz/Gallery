@@ -115,6 +115,7 @@ import org.fossify.commons.extensions.toast
 import org.fossify.gallery.activities.ComposeVideoPlayerActivity
 import org.fossify.gallery.activities.ComposeViewerActivity
 import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.RenameDialog
 import org.fossify.gallery.compose.components.UndoBar
 import org.fossify.gallery.compose.components.SelectionRow
@@ -253,7 +254,7 @@ fun MediaScreen(
         Box(modifier = modifier.fillMaxSize()) {
         when {
             mediaOverride != null && mediaOverride.isEmpty() -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Keine Medien in diesem Ordner", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                EmptyState(Icons.Default.Search, "Keine Medien in diesem Ordner")
             }
             state.isLoading && !hasFilter && mediaOverride == null -> MediaSkeleton(columns = columnCount)
             displayMedia.isEmpty() -> {

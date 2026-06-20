@@ -51,6 +51,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
 import org.fossify.gallery.extensions.mediaDB
@@ -106,9 +107,7 @@ fun RecycleBinScreen(onBack: () -> Unit) {
         }
     ) { padding ->
         if (items.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("Papierkorb ist leer", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            EmptyState(Icons.Default.DeleteForever, "Papierkorb ist leer", modifier = Modifier.padding(padding))
         } else {
             LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(8.dp)) {
                 items(items, key = { it.path }) { m ->

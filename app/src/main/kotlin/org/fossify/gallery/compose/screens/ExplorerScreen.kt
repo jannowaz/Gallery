@@ -71,6 +71,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.activities.ComposeViewerActivity
 import org.fossify.gallery.compose.components.FolderTile
+import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.extensions.config
@@ -200,9 +201,7 @@ fun ExplorerScreen(
         if (isLoading) {
             MediaSkeleton(columns = 3)
         } else if (folderItems.isEmpty() && fileItems.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Keine Elemente", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-            }
+            EmptyState(Icons.Default.Folder, "Keine Elemente", subtitle = "Dieser Ordner enthält keine Medien")
         } else {
             LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(4.dp)) {
                 if (folderItems.isNotEmpty()) {
