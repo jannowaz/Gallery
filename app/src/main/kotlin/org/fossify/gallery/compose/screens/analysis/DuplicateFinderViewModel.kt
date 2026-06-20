@@ -75,7 +75,9 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectAllButNewest() {
         _state.update { s ->
-            val toDelete = s.groups.flatMap { g -> g.files.sortedByDescending { it.modified }.drop(1) }.map { it.path }.toSet()
+            val toDelete = s.groups.flatMap { g ->
+                g.files.sortedWith(compareByDescending<DuplicateFile> { it.size }.thenByDescending { it.modified }).drop(1)
+            }.map { it.path }.toSet()
             s.copy(selectedForDeletion = toDelete)
         }
     }

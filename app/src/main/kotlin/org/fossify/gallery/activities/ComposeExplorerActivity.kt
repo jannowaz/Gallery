@@ -439,13 +439,13 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
         when {
             showTagBrowser -> showTagBrowser = false
             showOmniSearch -> showOmniSearch = false
-            uiState.activeTagFilter != null -> { mainVM.setTagFilter(null, null); mainVM.setSelectedTab(1) }
+            uiState.activeTagFilter != null -> { val backTab = if (uiState.preFilterTab >= 0) uiState.preFilterTab else 1; mainVM.setTagFilter(null, null); mainVM.setSelectedTab(backTab) }
             uiState.activePathFilter != null -> {
                 val backTab = if (uiState.preFilterTab >= 0) uiState.preFilterTab else 1
                 mainVM.clearFilters()
                 mainVM.setSelectedTab(backTab)
             }
-            uiState.activeRatingFilter > 0 -> { mainVM.setRatingFilter(0); mainVM.setSelectedTab(1) }
+            uiState.activeRatingFilter > 0 -> { val backTab = if (uiState.preFilterTab >= 0) uiState.preFilterTab else 1; mainVM.setRatingFilter(0); mainVM.setSelectedTab(backTab) }
             uiState.selectedTab != 1 -> mainVM.setSelectedTab(1)
             else -> onFinish()
         }

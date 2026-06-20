@@ -302,7 +302,7 @@ fun MediaScreen(
                         val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
                         lastVisible >= info.totalItemsCount - 6 && info.totalItemsCount > 0
                     } }
-                    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) viewModel.loadMore() }
+                    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore && !hasFilter) viewModel.loadMore() }
                     LaunchedEffect(isScrolling) {
                         if (isScrolling) showOverlays = false
                         else { delay(300); showOverlays = true }
@@ -387,7 +387,7 @@ fun MediaScreen(
                         val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
                         lastVisible >= info.totalItemsCount - 6 && info.totalItemsCount > 0
                     } }
-                    LaunchedEffect(shouldLoadMoreStag) { if (shouldLoadMoreStag) viewModel.loadMore() }
+                    LaunchedEffect(shouldLoadMoreStag) { if (shouldLoadMoreStag && !hasFilter) viewModel.loadMore() }
                     LaunchedEffect(isScrollingStag) {
                         if (isScrollingStag) showOverlaysStag = false
                         else { delay(300); showOverlaysStag = true }
@@ -494,10 +494,10 @@ fun MediaScreen(
             }
         }
     }
-    if (showRatingDialog) { val batch=selectedPaths.toList(); StarRatingDialog(currentRating=currentRating,onRate={i->currentRating=i;scope.launch(Dispatchers.IO){batch.forEach{p->repo.updateRating(p,i)}};showRatingDialog=false},onDismiss={showRatingDialog=false}) }
-    if (showTagsDialog) { val batch=selectedPaths.toList(); var allTags by remember{mutableStateOf<List<String>>(emptyList())}; var tagCounts by remember{mutableStateOf<Map<String, Int>>(emptyMap())}; LaunchedEffect(Unit){withContext(Dispatchers.IO){try{val tagged=ctx.mediaCacheDB.getAllTagged();val counts=tagged.flatMap{it.tags.split(",").filter(String::isNotBlank)}.groupingBy{it}.eachCount();allTags=counts.entries.sortedByDescending{it.value}.map{it.key};tagCounts=counts}catch(_:Exception){}}}; TagInputDialog(initialTags=repo.getTags(batch.first()),suggestedTags=allTags,suggestedTagCounts=tagCounts,onAddTag={scope.launch(Dispatchers.IO){batch.forEach{p->repo.addTag(p,it)}}},onRemoveTag={scope.launch(Dispatchers.IO){batch.forEach{p->repo.removeTag(p,it)}}},onDismiss={showTagsDialog=false},batchCount=batch.size) }
+    if (showRatingDialog) { val batch=selectedPaths.toList(); StarRatingDialog(currentRating=currentRating,onRate={i->currentRating=i;scope.launch(Dispatchers.IO){batch.forEach{p->repo.updateRating(p,i)};withContext(Dispatchers.Main){viewModel.silentRefresh()}};selectedPaths=emptySet();showRatingDialog=false},onDismiss={showRatingDialog=false}) }
+    if (showTagsDialog) { val batch=selectedPaths.toList(); var allTags by remember{mutableStateOf<List<String>>(emptyList())}; var tagCounts by remember{mutableStateOf<Map<String, Int>>(emptyMap())}; LaunchedEffect(Unit){withContext(Dispatchers.IO){try{val tagged=ctx.mediaCacheDB.getAllTagged();val counts=tagged.flatMap{it.tags.split(",").filter(String::isNotBlank)}.groupingBy{it}.eachCount();allTags=counts.entries.sortedByDescending{it.value}.map{it.key};tagCounts=counts}catch(_:Exception){}}}; TagInputDialog(initialTags=repo.getTags(batch.firstOrNull().orEmpty()),suggestedTags=allTags,suggestedTagCounts=tagCounts,onAddTag={scope.launch(Dispatchers.IO){batch.forEach{p->repo.addTag(p,it)}}},onRemoveTag={scope.launch(Dispatchers.IO){batch.forEach{p->repo.removeTag(p,it)}}},onDismiss={showTagsDialog=false;selectedPaths=emptySet();scope.launch(Dispatchers.IO){val t=try{ctx.mediaCacheDB.getAllTagged().map{it.fullPath}.toSet()}catch(_:Exception){emptySet()};withContext(Dispatchers.Main){taggedPaths=t}}},batchCount=batch.size) }
     if (showFolderPicker) { val batch=selectedPaths.toList(); FolderPickerSheet(isMoveOperation=folderPickerIsMove,sourcePaths=batch,onDismiss={showFolderPicker=false;selectedPaths=emptySet()}) }
-    if (showRenameDialog) { val batch=selectedPaths.toList(); RenameDialog(paths=batch,onDismiss={showRenameDialog=false;viewModel.refresh()}) }
+    if (showRenameDialog) { val batch=selectedPaths.toList(); RenameDialog(paths=batch,onDismiss={showRenameDialog=false;selectedPaths=emptySet();viewModel.refresh()}) }
 }
 
 @Composable
