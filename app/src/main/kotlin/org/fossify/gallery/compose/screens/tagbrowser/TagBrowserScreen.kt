@@ -144,64 +144,23 @@ fun TagBrowserScreen(
                 EmptyState(Icons.AutoMirrored.Filled.Label, "Keine Tags gefunden", subtitle = "Tags zu Medien hinzufügen, dann erscheinen sie hier")
             } else {
                 val filteredTags = if (tagSearchQuery.isBlank()) allTags.entries.toList() else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
-                if (viewSettings.viewType == org.fossify.gallery.compose.screens.ViewType.GRID) {
-                    LibraryAlbumGrid(
-                        items = filteredTags.map { AlbumGridItem(key = it.key, name = it.key, thumbnailPath = it.value.firstOrNull() ?: "", count = it.value.size, previewPaths = it.value.take(3)) },
-                        viewSettings = viewSettings,
-                        onClick = { item -> onTagFilterApplied((allTags[item.key] ?: emptyList()).toSet(), item.key); onBack() },
-                        onLongClick = { item -> selectedTags = if (item.key in selectedTags) selectedTags - item.key else selectedTags + item.key },
-                        countLabel = { "$it Dateien" },
-                        modifier = Modifier.weight(1f),
-                    )
-                } else LazyColumn(Modifier.weight(1f)) {
-                    items(filteredTags, key = { it.key }) { (tag, paths) ->
-                        val thumbPath = paths.firstOrNull()
-                        val isVideo = thumbPath?.let { it.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS } ?: false
-                        val isSelected = tag in selectedTags
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(
-                                onClick = {
-                                    onTagFilterApplied(paths.toSet(), tag)
-                                    onBack()
-                                },
-                                onLongClick = { selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag }
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            )
-                        ) {
-                            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surface)) {
-                                    if (thumbPath != null && File(thumbPath).exists()) {
-                                        if (isVideo) {
-                                            VideoThumbnail(videoPath = thumbPath, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                        } else {
-                                            GalleryImage(path = thumbPath, contentDescription = tag, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 16.dp)
-                                        }
-                                    } else {
-                                        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                                            Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
-                                        }
-                                    }
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(tag, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    val parent = hierarchy[tag]
-                                    val children = hierarchy.filter { it.value == tag }.keys
-                                    val parts = mutableListOf("${paths.size} Dateien")
-                                    if (parent != null) parts.add("← $parent")
-                                    if (children.isNotEmpty()) parts.add("→ ${children.size} Kinder")
-                                    Text(parts.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
-                                if (isSelected) {
-                                    Icon(Icons.Default.Close, "Ausgewählt", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                                }
-                            }
-                        }
-                    }
-                }
+                LibraryAlbumGrid(
+                    items = filteredTags.map { AlbumGridItem(key = it.key, name = it.key, thumbnailPath = it.value.firstOrNull() ?: "", count = it.value.size, previewPaths = it.value.take(3)) },
+                    viewSettings = viewSettings,
+                    onClick = { item -> onTagFilterApplied((allTags[item.key] ?: emptyList()).toSet(), item.key); onBack() },
+                    onLongClick = { item -> selectedTags = if (item.key in selectedTags) selectedTags - item.key else selectedTags + item.key },
+                    countLabel = { "$it Dateien" },
+                    selectedKeys = selectedTags,
+                    subtitle = { item ->
+                        val parent = hierarchy[item.key]
+                        val children = hierarchy.filter { it.value == item.key }.keys
+                        val parts = mutableListOf("${item.count} Dateien")
+                        if (parent != null) parts.add("← $parent")
+                        if (children.isNotEmpty()) parts.add("→ ${children.size} Kinder")
+                        parts.joinToString(" · ")
+                    },
+                    modifier = Modifier.weight(1f),
+                )
                 if (selectedTags.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     HorizontalDivider()

@@ -19,14 +19,19 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +63,8 @@ fun LibraryAlbumGrid(
     modifier: Modifier = Modifier,
     onLongClick: ((AlbumGridItem) -> Unit)? = null,
     countLabel: (Int) -> String = { "$it Medien" },
+    selectedKeys: Set<String> = emptySet(),
+    subtitle: ((AlbumGridItem) -> String)? = null,
 ) {
     val s = LocalSpacing.current
     val containerColor = when (viewSettings.displayMode) {
@@ -69,24 +76,29 @@ fun LibraryAlbumGrid(
     if (viewSettings.viewType == ViewType.LIST) {
         LazyColumn(modifier.fillMaxSize()) {
             items(items, key = { it.key }) { item ->
+                val selected = item.key in selectedKeys
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = s.md, vertical = s.xs).clickableItem(item, onClick, onLongClick),
                     shape = RoundedCornerShape(Radius.md),
-                    colors = CardDefaults.cardColors(containerColor = containerColor),
+                    colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else containerColor),
                 ) {
                     Row(Modifier.padding(s.md).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (viewSettings.displayMode == DisplayMode.DARK) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                            Text(countLabel(item.count), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(subtitle?.invoke(item) ?: countLabel(item.count), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        val previews = item.previewPaths.ifEmpty { if (item.thumbnailPath.isNotEmpty()) listOf(item.thumbnailPath) else emptyList() }
-                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                            if (previews.isEmpty()) {
-                                Box(Modifier.size(44.dp).clip(RoundedCornerShape(Radius.xs)).background(MaterialTheme.colorScheme.surfaceVariant))
-                            } else {
-                                previews.take(3).forEach { p ->
-                                    Box(Modifier.size(44.dp).clip(RoundedCornerShape(Radius.xs))) {
-                                        GalleryImage(path = p, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 12.dp, thumbnailSize = 128)
+                        if (selected) {
+                            Icon(Icons.Default.Check, "Ausgewählt", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = s.sm).size(20.dp))
+                        } else {
+                            val previews = item.previewPaths.ifEmpty { if (item.thumbnailPath.isNotEmpty()) listOf(item.thumbnailPath) else emptyList() }
+                            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                if (previews.isEmpty()) {
+                                    Box(Modifier.size(44.dp).clip(RoundedCornerShape(Radius.xs)).background(MaterialTheme.colorScheme.surfaceVariant))
+                                } else {
+                                    previews.take(3).forEach { p ->
+                                        Box(Modifier.size(44.dp).clip(RoundedCornerShape(Radius.xs))) {
+                                            GalleryImage(path = p, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 12.dp, thumbnailSize = 128)
+                                        }
                                     }
                                 }
                             }
@@ -110,6 +122,12 @@ fun LibraryAlbumGrid(
                         roundedCorners = viewSettings.roundedCorners,
                         containerColor = containerColor,
                     )
+                    if (item.key in selectedKeys) {
+                        Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)))
+                        Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp).background(MaterialTheme.colorScheme.primary, CircleShape), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        }
+                    }
                 }
             }
         }
