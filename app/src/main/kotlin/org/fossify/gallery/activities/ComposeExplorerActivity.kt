@@ -821,7 +821,7 @@ private fun OmniSearchSheet(
         if (qParts.isEmpty()) { textMatchPaths = null; isSearching = false; return }
         scope.launch(Dispatchers.IO) {
             val cacheKey = "${query}_${fileTypeFilter}_${dateFilter}"
-            searchCache[cacheKey]?.let { textMatchPaths = it; isSearching = false; return@launch }
+            searchCache[cacheKey]?.let { c -> textMatchPaths = c.filter { java.io.File(it).exists() }.toSet(); isSearching = false; return@launch }
             if (searchCache.size > 30) searchCache.clear()
             val matched = mutableSetOf<String>()
             val folders = mutableListOf<Pair<String, String>>()
@@ -832,9 +832,10 @@ private fun OmniSearchSheet(
                 val selParts = mutableListOf<String>(); val argsList = mutableListOf<String>()
                 when (fileTypeFilter) { 1 -> { selParts.add("${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"); argsList.add(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString()) } 2 -> { selParts.add("${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"); argsList.add(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()) } else -> { selParts.add("(${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?)"); argsList.addAll(arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())) } }
                 when (dateFilter) { 1 -> { val t = (System.currentTimeMillis() - 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } 2 -> { val t = (System.currentTimeMillis() - 7 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } 3 -> { val t = (System.currentTimeMillis() - 30 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } 4 -> { val t = (System.currentTimeMillis() - 365 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } }
+                qParts.forEach { qp -> selParts.add("(${android.provider.MediaStore.MediaColumns.DATA} LIKE ? OR ${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?)"); argsList.add("%$qp%"); argsList.add("%$qp%") }
                 ctx.contentResolver.query(uri, proj, selParts.joinToString(" AND "), argsList.toTypedArray(), null)?.use { c ->
                     val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA); val nameCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
-                    while (c.moveToNext()) { val path = c.getString(dataCol) ?: continue; val name = c.getString(nameCol) ?: ""; if (qParts.all { it in "${name} ${path}".lowercase() }) matched.add(path) }
+                    while (c.moveToNext()) { val path = c.getString(dataCol) ?: continue; val name = c.getString(nameCol) ?: ""; if (qParts.all { it in "${name} ${path}".lowercase() } && java.io.File(path).exists()) matched.add(path) }
                 }
             } catch (_: Exception) { }
             try { listOf(storagePath, "/storage/emulated/0/DCIM", "/storage/emulated/0/Pictures", "/storage/emulated/0/Download").distinct().filter { java.io.File(it).isDirectory }.forEach { r -> java.io.File(r).listFiles()?.forEach { f -> if (f.isDirectory && !f.name.startsWith(".") && qParts.all { it in f.name.lowercase() }) folders.add(f.name to f.absolutePath) } } } catch (_: Exception) { }

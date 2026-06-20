@@ -51,18 +51,26 @@ class DuplicateScanner(private val context: Context) {
         }
 
         val bySize = files.groupBy { it.length() }.filter { it.value.size > 1 }
-        val candidates = bySize.values.flatten()
-        val totalCandidates = candidates.size
+        val totalCandidates = bySize.values.sumOf { it.size }
 
         val byHash = HashMap<String, MutableList<File>>()
         var hashed = 0
-        for ((_, group) in bySize) {
+        for ((size, group) in bySize) {
+            // Pre-filter with a cheap partial hash (first 64 KB) so we only fully hash real collisions
+            val byPartial = HashMap<String, MutableList<File>>()
             for (file in group) {
-                val hash = hashFile(file)
-                if (hash != null) byHash.getOrPut("${file.length()}_$hash") { mutableListOf() }.add(file)
+                val ph = partialHash(file)
+                if (ph != null) byPartial.getOrPut(ph) { mutableListOf() }.add(file)
                 hashed++
                 val percent = if (totalCandidates > 0) (hashed * 100) / totalCandidates else 100
                 emit(DuplicateProgress.Hashing(percent, hashed, totalCandidates))
+            }
+            for ((_, sub) in byPartial) {
+                if (sub.size < 2) continue
+                for (file in sub) {
+                    val full = hashFile(file)
+                    if (full != null) byHash.getOrPut("${size}_$full") { mutableListOf() }.add(file)
+                }
             }
         }
 
@@ -185,6 +193,18 @@ class DuplicateScanner(private val context: Context) {
                 }
             }
         } catch (_: Exception) { }
+    }
+
+    private fun partialHash(file: File): String? {
+        return try {
+            val digest = MessageDigest.getInstance("MD5")
+            file.inputStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                val read = input.read(buffer)
+                if (read > 0) digest.update(buffer, 0, read)
+            }
+            digest.digest().joinToString("") { "%02x".format(it) }
+        } catch (_: Exception) { null }
     }
 
     private fun hashFile(file: File): String? {

@@ -324,6 +324,8 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(scrollIndex = index, scrollOffset = offset) }
     }
 
+    fun allMediaPaths(): List<String> = cachedAllMedia.map { it.path }
+
     private fun updateGroups() {
         val media = _state.value.allMedia
         _state.update { it.copy(monthGroups = groupByMonth(media)) }
