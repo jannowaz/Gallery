@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.provider.MediaStore
 import android.widget.Toast
+import org.fossify.gallery.workers.MetadataSyncWorker
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -231,7 +232,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
             SectionLabel("Tags & Bewertungen")
-            SettingsNav("Tags & Bewertungen aus Dateien lesen") { startTagScan(ctx, scope) { showScanDialog = it } }
+            SettingsNav("Tags & Bewertungen aus Dateien lesen") { MetadataSyncWorker.scheduleFullScan(ctx); Toast.makeText(ctx, "Scan gestartet – Fortschritt in der Benachrichtigung", Toast.LENGTH_SHORT).show() }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
             SectionLabel("Daten verwalten")
