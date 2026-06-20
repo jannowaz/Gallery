@@ -462,8 +462,10 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(onClick = { activeSheet = ActiveSheet.MORE_MENU }) {
-                Icon(Icons.Default.MoreVert, "Mehr")
+            if (!isMediaSelectionActive) {
+                FloatingActionButton(onClick = { activeSheet = ActiveSheet.MORE_MENU }) {
+                    Icon(Icons.Default.MoreVert, "Mehr")
+                }
             }
         },
         bottomBar = {
