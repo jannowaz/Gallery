@@ -136,6 +136,7 @@ import org.fossify.gallery.compose.screens.ViewSettingsViewModel
 import org.fossify.gallery.compose.screens.VideoThumbnail
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.BottomSearchBar
+import org.fossify.gallery.compose.components.BottomSearchField
 import org.fossify.gallery.compose.screens.tagbrowser.TagBrowserScreen
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.navigation.GalleryNavHost
@@ -436,8 +437,13 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
     val albumsViewModel: AlbumsViewModel = viewModel()
     val scope = rememberCoroutineScope()
     var activeSheet by remember { mutableStateOf<ActiveSheet?>(null) }
-    var showOmniSearch by remember { mutableStateOf(false) }
     var omniQuery by remember { mutableStateOf("") }
+    var searchFocused by remember { mutableStateOf(false) }
+    val searchFocusRequester = remember { FocusRequester() }
+    val searchFocusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val searchKeyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val searchActive = searchFocused || omniQuery.isNotBlank()
+    val closeSearch: () -> Unit = { omniQuery = ""; searchFocused = false; searchFocusManager.clearFocus(); searchKeyboard?.hide() }
     var showRatingBrowser by remember { mutableStateOf(false) }
     var showTagBrowser by remember { mutableStateOf(false) }
     var isMediaSelectionActive by remember { mutableStateOf(false) }
@@ -451,10 +457,10 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
         mainVM.initializeDatabase { mainVM.triggerMediaRefresh() }
     }
 
-    BackHandler(enabled = uiState.activeRatingFilter > 0 || uiState.activeTagFilter != null || uiState.activePathFilter != null || showTagBrowser || showOmniSearch || (uiState.selectedTab != 1 && !isMediaSelectionActive)) {
+    BackHandler(enabled = uiState.activeRatingFilter > 0 || uiState.activeTagFilter != null || uiState.activePathFilter != null || showTagBrowser || searchActive || (uiState.selectedTab != 1 && !isMediaSelectionActive)) {
         when {
             showTagBrowser -> showTagBrowser = false
-            showOmniSearch -> showOmniSearch = false
+            searchActive -> closeSearch()
             uiState.activeTagFilter != null -> { val backTab = if (uiState.preFilterTab >= 0) uiState.preFilterTab else 1; mainVM.setTagFilter(null, null); mainVM.setSelectedTab(backTab) }
             uiState.activePathFilter != null -> {
                 val backTab = if (uiState.preFilterTab >= 0) uiState.preFilterTab else 1
@@ -476,15 +482,23 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
             }
         },
         bottomBar = {
-            Column {
+            Column(Modifier.imePadding()) {
                 if (!isMediaSelectionActive) {
-                    BottomSearchBar(onClick = { showOmniSearch = true })
+                    BottomSearchField(
+                        value = omniQuery,
+                        onValueChange = { omniQuery = it },
+                        focusRequester = searchFocusRequester,
+                        onFocusChanged = { searchFocused = it },
+                        onClear = closeSearch,
+                    )
                 }
-                MainBottomBar(
-                    selectedTab = uiState.selectedTab,
-                    onTabSelected = { mainVM.setSelectedTab(it) },
-                    onSwipeUp = { showOmniSearch = true },
-                )
+                if (!searchActive && !isMediaSelectionActive) {
+                    MainBottomBar(
+                        selectedTab = uiState.selectedTab,
+                        onTabSelected = { mainVM.setSelectedTab(it) },
+                        onSwipeUp = { searchFocusRequester.requestFocus() },
+                    )
+                }
             }
         }
     ) { padding ->
@@ -500,6 +514,22 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                 navController = navController,
                 onMediaSelectionChanged = { isMediaSelectionActive = it },
             )
+            if (searchActive) {
+                OmniSearchPanel(
+                    query = omniQuery,
+                    onQueryChange = { omniQuery = it },
+                    onDismiss = closeSearch,
+                    storagePath = android.os.Environment.getExternalStorageDirectory().absolutePath,
+                    onNavigate = { path -> mainVM.setExplorerPath(path); closeSearch(); mainVM.setSelectedTab(2) },
+                    onFilterChanged = { textPaths, rating, tagPaths, tagName, _, _ ->
+                        mainVM.setRatingFilter(rating)
+                        mainVM.setPathFilter(textPaths, if (textPaths != null) "Suche" else null)
+                        mainVM.setCollectionName(null)
+                        mainVM.setTagFilter(tagPaths, tagName)
+                        if (rating > 0 || tagPaths != null || textPaths != null) mainVM.setSelectedTab(0)
+                    },
+                )
+            }
         }
     }
 
@@ -534,23 +564,6 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                 }) { Text("Erlauben") }
             },
             dismissButton = { TextButton(onClick = { showAllFilesPrompt = false }) { Text("Später") } },
-        )
-    }
-
-    if (showOmniSearch) {
-        OmniSearchPanel(
-            query = omniQuery,
-            onQueryChange = { omniQuery = it },
-            onDismiss = { showOmniSearch = false; omniQuery = "" },
-            storagePath = android.os.Environment.getExternalStorageDirectory().absolutePath,
-            onNavigate = { path -> mainVM.setExplorerPath(path); showOmniSearch = false; omniQuery = ""; mainVM.setSelectedTab(2) },
-            onFilterChanged = { textPaths, rating, tagPaths, tagName, _, _ ->
-                mainVM.setRatingFilter(rating)
-                mainVM.setPathFilter(textPaths, if (textPaths != null) "Suche" else null)
-                mainVM.setCollectionName(null)
-                mainVM.setTagFilter(tagPaths, tagName)
-                if (rating > 0 || tagPaths != null || textPaths != null) mainVM.setSelectedTab(0)
-            },
         )
     }
 
@@ -871,9 +884,6 @@ private fun OmniSearchPanel(
     var dateFilter by remember { mutableIntStateOf(0) }
     var showFilters by remember { mutableStateOf(false) }
     val searchCache = remember { mutableMapOf<String, Set<String>>() }
-    val searchFocusRequester = remember { FocusRequester() }
-    val searchKeyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    LaunchedEffect(Unit) { kotlinx.coroutines.delay(150); try { searchFocusRequester.requestFocus(); searchKeyboard?.show() } catch (_: Exception) {} }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -923,18 +933,7 @@ private fun OmniSearchPanel(
     val mc = textMatchPaths?.size ?: 0
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
-            // Header (input is the bottom search pill)
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", modifier = Modifier.size(22.dp)) }
-                Spacer(Modifier.width(4.dp))
-                Text(if (query.isBlank()) "Suche" else "\u201E$query\u201C", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                if (isSearching) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                if (query.isNotEmpty()) IconButton(onClick = { onQueryChange(""); textMatchPaths = null; folderResults = emptyList(); tagResults = emptyList() }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, "Leeren", Modifier.size(16.dp)) }
-            }
-
-            Spacer(Modifier.height(6.dp))
-
+        Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
             // Filter toggle bar
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 Surface(onClick = { showFilters = !showFilters }, shape = RoundedCornerShape(12.dp), color = if (showFilters || hasAnyFilter) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
@@ -1036,17 +1035,6 @@ private fun OmniSearchPanel(
                     }
                 }
             }
-            // Bottom search input (above the keyboard, auto-focused) – type directly here
-            OutlinedTextField(
-                value = query,
-                onValueChange = { onQueryChange(it); textMatchPaths = null },
-                placeholder = { Text("Dateiname, Ordner oder Tag\u2026") },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Search, "Suchen", modifier = Modifier.size(20.dp)) },
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp).focusRequester(searchFocusRequester),
-                colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.1f)),
-                shape = RoundedCornerShape(24.dp),
-            )
         }
     }
 }
