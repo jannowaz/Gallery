@@ -271,14 +271,14 @@ fun MediaScreen(
                 Column {
                     if (hasFilter) FilterBreadcrumbs(ratingFilter,activeTagName,activePathName,activeCollectionName,displayMedia.size,onClearRatingFilter,onClearTagFilter,onClearPathFilter,onClearFilter)
                     val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
-                    AnimatedVisibility(visible = quickTags.isNotEmpty() && !hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
-                    if (quickTags.isNotEmpty() && !hasSelection) {
+                    AnimatedVisibility(visible = quickTags.isNotEmpty() && hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
+                    if (quickTags.isNotEmpty() && hasSelection) {
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             quickTags.forEach { tag ->
                                 val active = tag in selectedCommonTags
                                 Surface(
                                     onClick = {
-                                        val targets = if (selectedPaths.isNotEmpty()) selectedPaths else displayMedia.take(100).map { it.path }.toSet()
+                                        val targets = selectedPaths
                                         scope.launch(Dispatchers.IO) {
                                             targets.forEach { p -> if (repo.getTags(p).contains(tag)) repo.removeTag(p, tag) else repo.addTag(p, tag) }
                                             withContext(Dispatchers.Main) { taggedPaths = withContext(Dispatchers.IO) { try { ctx.mediaCacheDB.getAllTagged().map { it.fullPath }.toSet() } catch (_: Exception) { emptySet() } } }
@@ -375,8 +375,8 @@ fun MediaScreen(
                 Column {
                     if (hasFilter) FilterBreadcrumbs(ratingFilter,activeTagName,activePathName,activeCollectionName,displayMedia.size,onClearRatingFilter,onClearTagFilter,onClearPathFilter,onClearFilter)
                     val quickTagsM = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
-                    AnimatedVisibility(visible = quickTagsM.isNotEmpty() && !hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
-                    if (quickTagsM.isNotEmpty() && !hasSelection) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { quickTagsM.forEach { tag -> val active = tag in selectedCommonTags; Surface(onClick = { val targets = if (selectedPaths.isNotEmpty()) selectedPaths else displayMedia.take(100).map { it.path }.toSet(); scope.launch(Dispatchers.IO) { targets.forEach { p -> if (repo.getTags(p).contains(tag)) repo.removeTag(p, tag) else repo.addTag(p, tag) }; withContext(Dispatchers.Main) { taggedPaths = withContext(Dispatchers.IO) { try { ctx.mediaCacheDB.getAllTagged().map { it.fullPath }.toSet() } catch (_: Exception) { emptySet() } } } } }, shape = RoundedCornerShape(16.dp), color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
+                    AnimatedVisibility(visible = quickTagsM.isNotEmpty() && hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
+                    if (quickTagsM.isNotEmpty() && hasSelection) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { quickTagsM.forEach { tag -> val active = tag in selectedCommonTags; Surface(onClick = { val targets = selectedPaths; scope.launch(Dispatchers.IO) { targets.forEach { p -> if (repo.getTags(p).contains(tag)) repo.removeTag(p, tag) else repo.addTag(p, tag) }; withContext(Dispatchers.Main) { taggedPaths = withContext(Dispatchers.IO) { try { ctx.mediaCacheDB.getAllTagged().map { it.fullPath }.toSet() } catch (_: Exception) { emptySet() } } } } }, shape = RoundedCornerShape(16.dp), color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
                     }
                     val grouped = remember(displayMedia) { displayMedia.groupByMonth() }
                     val mosaicState = rememberLazyStaggeredGridState()
