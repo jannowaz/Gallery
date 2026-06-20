@@ -16,6 +16,8 @@ data class TabViewSettings(
     val explorerMedia: ViewSettings = ViewSettings(),
     val folderMedia: ViewSettings = ViewSettings(),
     val favorites: ViewSettings = ViewSettings(columnCount = 3, displayMode = DisplayMode.NORMAL),
+    val collections: ViewSettings = ViewSettings(columnCount = 3, displayMode = DisplayMode.NORMAL),
+    val tags: ViewSettings = ViewSettings(columnCount = 3, displayMode = DisplayMode.NORMAL),
 )
 
 class ViewSettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -53,6 +55,24 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
     fun updateFavorites(s: ViewSettings) {
         _settings.value = _settings.value.copy(favorites = s)
         persistFavorites(s)
+    }
+
+    fun updateCollections(s: ViewSettings) {
+        _settings.value = _settings.value.copy(collections = s)
+        val ctx = getApplication<Application>().applicationContext
+        ctx.config.collectionsViewType = s.viewType.value
+        ctx.config.collectionsColumnCnt = s.columnCount
+        ctx.config.fileRoundedCorners = s.roundedCorners
+        ctx.config.thumbnailSpacing = s.spacing
+    }
+
+    fun updateTags(s: ViewSettings) {
+        _settings.value = _settings.value.copy(tags = s)
+        val ctx = getApplication<Application>().applicationContext
+        ctx.config.tagsViewType = s.viewType.value
+        ctx.config.tagsColumnCnt = s.columnCount
+        ctx.config.fileRoundedCorners = s.roundedCorners
+        ctx.config.thumbnailSpacing = s.spacing
     }
 
     fun updateFolderMedia(s: ViewSettings) {
@@ -121,6 +141,20 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
                 roundedCorners = c.fileRoundedCorners,
                 sortBy = SortField.from(c.folderSortBy),
                 sortDesc = c.folderSortDesc,
+                spacing = c.thumbnailSpacing,
+                showFolderThumbnails = c.showFolderThumbnails,
+            ),
+            collections = ViewSettings(
+                viewType = ViewType.from(c.collectionsViewType),
+                columnCount = c.collectionsColumnCnt.coerceIn(2, 6),
+                roundedCorners = c.fileRoundedCorners,
+                spacing = c.thumbnailSpacing,
+                showFolderThumbnails = c.showFolderThumbnails,
+            ),
+            tags = ViewSettings(
+                viewType = ViewType.from(c.tagsViewType),
+                columnCount = c.tagsColumnCnt.coerceIn(2, 6),
+                roundedCorners = c.fileRoundedCorners,
                 spacing = c.thumbnailSpacing,
                 showFolderThumbnails = c.showFolderThumbnails,
             ),

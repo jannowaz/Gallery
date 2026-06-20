@@ -19,12 +19,32 @@ class Config(context: Context) : BaseConfig(context) {
     companion object {
         private const val VIEWER_AUTO_HIDE_MS = "viewer_auto_hide_ms"
         private const val USE_DYNAMIC_COLORS = "use_dynamic_colors"
+        private const val COLLECTIONS_VIEW_TYPE = "collections_view_type"
+        private const val COLLECTIONS_COLUMN_CNT = "collections_column_cnt"
+        private const val TAGS_VIEW_TYPE = "tags_view_type"
+        private const val TAGS_COLUMN_CNT = "tags_column_cnt"
         fun newInstance(context: Context) = Config(context)
     }
 
     var useDynamicColors: Boolean
         get() = prefs.getBoolean(USE_DYNAMIC_COLORS, true)
         set(value) = prefs.edit().putBoolean(USE_DYNAMIC_COLORS, value).apply()
+
+    var collectionsViewType: Int
+        get() = prefs.getInt(COLLECTIONS_VIEW_TYPE, 0)
+        set(value) = prefs.edit().putInt(COLLECTIONS_VIEW_TYPE, value).apply()
+
+    var collectionsColumnCnt: Int
+        get() = prefs.getInt(COLLECTIONS_COLUMN_CNT, 3)
+        set(value) = prefs.edit().putInt(COLLECTIONS_COLUMN_CNT, value).apply()
+
+    var tagsViewType: Int
+        get() = prefs.getInt(TAGS_VIEW_TYPE, 0)
+        set(value) = prefs.edit().putInt(TAGS_VIEW_TYPE, value).apply()
+
+    var tagsColumnCnt: Int
+        get() = prefs.getInt(TAGS_COLUMN_CNT, 3)
+        set(value) = prefs.edit().putInt(TAGS_COLUMN_CNT, value).apply()
 
     var directorySorting: Int
         get(): Int = prefs.getInt(DIRECTORY_SORT_ORDER, SORT_BY_DATE_MODIFIED or SORT_DESCENDING)
