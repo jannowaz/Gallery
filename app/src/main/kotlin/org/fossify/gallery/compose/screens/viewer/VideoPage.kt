@@ -8,15 +8,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -49,11 +46,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -80,14 +75,14 @@ fun VideoPage(
     scalingMode: Int,
     onScalingModeChange: (Int) -> Unit,
     onBackgroundAudioChange: (Boolean) -> Unit = {},
+    onToggleUi: () -> Unit = {},
+    onZoomChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
     isCurrentPage: Boolean = true,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offsetX by remember { mutableFloatStateOf(0f) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
+    val zoom = rememberZoomState()
     var showControls by remember { mutableStateOf(false) }
     var isPlaying by remember { mutableStateOf(true) }
     var playbackSpeed by remember { mutableFloatStateOf(1f) }
@@ -103,6 +98,9 @@ fun VideoPage(
     var scrubFraction by remember { mutableFloatStateOf(-1f) }
     var scrubPreviewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var lastFrameRequestMs by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(isCurrentPage) { if (!isCurrentPage) zoom.reset() }
+    LaunchedEffect(zoom.isZoomed, isCurrentPage) { if (isCurrentPage) onZoomChange(zoom.isZoomed) }
 
     val retriever = remember(path) { MediaMetadataRetriever() }
     DisposableEffect(path) {
@@ -156,38 +154,13 @@ fun VideoPage(
         AndroidView(factory = { spv }, modifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
-                scaleX = scale; scaleY = scale
-                translationX = offsetX; translationY = offsetY
+                scaleX = zoom.scale; scaleY = zoom.scale
+                translationX = zoom.offset.x; translationY = zoom.offset.y
             }
-            .pointerInput(Unit) {
-                detectTransformGestures { centroid, pan, zoom, _ ->
-                    val newScale = (scale * zoom).coerceIn(0.5f, 5f)
-                    scale = newScale
-                    if (newScale > 1f) {
-                        val maxX = (newScale - 1f) * size.width / 2f
-                        val maxY = (newScale - 1f) * size.height / 2f
-                        offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX)
-                        offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
-                    } else {
-                        offsetX = 0f; offsetY = 0f
-                    }
-                }
-            }
+            .zoomable(zoom, onSingleTap = { showControls = !showControls; resetAutoHide(); onToggleUi() })
         )
 
-        Box(Modifier.fillMaxSize().pointerInput(Unit) {
-            detectTapGestures(
-                onTap = { showControls = !showControls; resetAutoHide() },
-                onDoubleTap = { tapPos ->
-                    if (scale > 1.1f) {
-                        scale = 1f; offsetX = 0f; offsetY = 0f
-                    } else {
-                        val next = when (scalingMode) { SCALING_FIT -> SCALING_ZOOM; SCALING_ZOOM -> SCALING_FIT; else -> SCALING_FIT }
-                        onScalingModeChange(next)
-                    }
-                }
-            )
-        })
+        ZoomMinimap(zoom, modifier = Modifier.align(Alignment.TopEnd).padding(top = 72.dp, end = 12.dp))
 
         AnimatedVisibility(visible = showControls, enter = fadeIn(), exit = fadeOut()) {
             Box(Modifier.fillMaxSize()) {

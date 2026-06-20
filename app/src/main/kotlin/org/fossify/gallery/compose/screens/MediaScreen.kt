@@ -82,6 +82,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -174,6 +175,7 @@ fun MediaScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var heroRect by remember { mutableStateOf<android.graphics.Rect?>(null) }
     var taggedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val ratingOverrides = remember { mutableStateMapOf<String, Int>() }
     LaunchedEffect(Unit) { taggedPaths = withContext(Dispatchers.IO) { try { ctx.mediaCacheDB.getAllTagged().map { it.fullPath }.toSet() } catch (_: Exception) { emptySet() } } }
     val columnCount = viewSettings.columnCount
     val isGrid = viewSettings.viewType == ViewType.GRID
@@ -209,7 +211,7 @@ fun MediaScreen(
             if (tagged != null && tagged.isNotEmpty()) { m = m.filter { it.path in tagged.map { it.path }.toSet() }; if (m.isEmpty()) m = tagged }
             else { m = m.filter { it.path in tagFilterPaths }; if (m.isEmpty()) { m = tagFilterPaths.mapNotNull { val f=File(it); if(f.exists()) Medium(null,f.name,f.absolutePath,f.parent?:"",f.lastModified(),f.lastModified(),f.length(),if(VIDEO_EXTENSIONS.any{e->it.endsWith(e,true)})2 else 1,0,false,0L,0L,0) else null } } }
         }
-        if (pathFilter != null) { val dirs=pathFilter.filter{File(it).isDirectory}.toSet(); m=m.filter{p->p.path in pathFilter||dirs.any{p.path.startsWith("$it/")}}; if(m.isEmpty()&&pathFallbackMedia!=null) m=pathFallbackMedia!! }
+        if (pathFilter != null) { val dirs=pathFilter.filter{File(it).isDirectory}.toSet(); val filtered=m.filter{p->p.path in pathFilter||dirs.any{p.path.startsWith("$it/")}}; val fb=pathFallbackMedia; m = if(fb!=null && fb.size>filtered.size) fb else filtered }
         m
     }
     val hasFilter = ratingFilter > 0 || tagFilterPaths != null || pathFilter != null
@@ -286,7 +288,7 @@ fun MediaScreen(
                         }
                     }
                     }
-                    val grouped = if (mediaOverride != null) remember(displayMedia.size) { displayMedia.groupByMonth() } else state.monthGroups
+                    val grouped = if (mediaOverride != null || hasFilter) remember(displayMedia) { displayMedia.groupByMonth() } else state.monthGroups
                     val gridState = rememberLazyGridState()
                     var showOverlays by remember { mutableStateOf(true) }
                     val isScrolling by remember { derivedStateOf { gridState.isScrollInProgress } }
@@ -332,12 +334,13 @@ fun MediaScreen(
                                     val overlayAlpha by androidx.compose.animation.core.animateFloatAsState(targetValue = 1f, animationSpec = tween(350), label = "overlayFade")
                                     Box(Modifier.fillMaxSize().graphicsLayer { alpha = overlayAlpha }, contentAlignment = Alignment.BottomCenter) {
                                         Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(bottom = 3.dp)) {
+                                            val curRating = ratingOverrides[m.path] ?: m.rating
                                             for (i in 1..5) {
                                                 Icon(
-                                                    if (i <= m.rating) Icons.Default.Star else Icons.Default.StarBorder,
+                                                    if (i <= curRating) Icons.Default.Star else Icons.Default.StarBorder,
                                                     contentDescription = "Bewertung $i",
-                                                    tint = if (i <= m.rating) Color(0xFFFFD700) else Color.White.copy(alpha = 0.35f),
-                                                    modifier = Modifier.size(11.dp).clickable { scope.launch(Dispatchers.IO) { repo.updateRating(m.path, if (m.rating == i) 0 else i); m.rating = if (m.rating == i) 0 else i } }
+                                                    tint = if (i <= curRating) Color(0xFFFFD700) else Color.White.copy(alpha = 0.35f),
+                                                    modifier = Modifier.size(11.dp).clickable { val nr = if (curRating == i) 0 else i; ratingOverrides[m.path] = nr; m.rating = nr; scope.launch(Dispatchers.IO) { repo.updateRating(m.path, nr) } }
                                                 )
                                             }
                                         }
@@ -371,7 +374,7 @@ fun MediaScreen(
                     AnimatedVisibility(visible = quickTagsM.isNotEmpty() && !hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
                     if (quickTagsM.isNotEmpty() && !hasSelection) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { quickTagsM.forEach { tag -> val active = selectedPaths.isNotEmpty() && selectedPaths.all { p -> repo.getTags(p).contains(tag) }; Surface(onClick = { val targets = if (selectedPaths.isNotEmpty()) selectedPaths else displayMedia.take(100).map { it.path }.toSet(); scope.launch(Dispatchers.IO) { targets.forEach { p -> if (repo.getTags(p).contains(tag)) repo.removeTag(p, tag) else repo.addTag(p, tag) }; withContext(Dispatchers.Main) { taggedPaths = withContext(Dispatchers.IO) { try { ctx.mediaCacheDB.getAllTagged().map { it.fullPath }.toSet() } catch (_: Exception) { emptySet() } } } } }, shape = RoundedCornerShape(16.dp), color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
                     }
-                    val grouped = if (mediaOverride != null) remember(displayMedia.size) { displayMedia.groupByMonth() } else state.monthGroups
+                    val grouped = if (mediaOverride != null || hasFilter) remember(displayMedia) { displayMedia.groupByMonth() } else state.monthGroups
                     val mosaicState = rememberLazyStaggeredGridState()
                     var showOverlaysStag by remember { mutableStateOf(true) }
                     val isScrollingStag by remember { derivedStateOf { mosaicState.isScrollInProgress } }
@@ -418,7 +421,8 @@ fun MediaScreen(
                                     val overlayAlphaM by androidx.compose.animation.core.animateFloatAsState(targetValue = 1f, animationSpec = tween(350), label = "overlayFadeM")
                                     Box(Modifier.fillMaxSize().graphicsLayer { alpha = overlayAlphaM }, contentAlignment = Alignment.BottomCenter) {
                                         Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(bottom = 3.dp)) {
-                                            for (i in 1..5) { Icon(if (i <= m.rating) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = "Bewertung $i", tint = if (i <= m.rating) Color(0xFFFFD700) else Color.White.copy(alpha = 0.35f), modifier = Modifier.size(11.dp).clickable { scope.launch(Dispatchers.IO) { repo.updateRating(m.path, if (m.rating == i) 0 else i); m.rating = if (m.rating == i) 0 else i } }) }
+                                            val curRatingM = ratingOverrides[m.path] ?: m.rating
+                                            for (i in 1..5) { Icon(if (i <= curRatingM) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = "Bewertung $i", tint = if (i <= curRatingM) Color(0xFFFFD700) else Color.White.copy(alpha = 0.35f), modifier = Modifier.size(11.dp).clickable { val nr = if (curRatingM == i) 0 else i; ratingOverrides[m.path] = nr; m.rating = nr; scope.launch(Dispatchers.IO) { repo.updateRating(m.path, nr) } }) }
                                         }
                                     }
                                         if(hasTag) Box(Modifier.align(Alignment.TopEnd).padding(4.dp).background(Color.Black.copy(alpha=0.5f),RoundedCornerShape(4.dp)).padding(horizontal=4.dp,vertical=1.dp)) { Icon(Icons.Default.Label,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(10.dp)) }
@@ -437,7 +441,7 @@ fun MediaScreen(
                 }
             }
             else -> {
-                val grouped = if (mediaOverride != null) remember(displayMedia.size) { displayMedia.groupByMonth() } else state.monthGroups
+                val grouped = if (mediaOverride != null || hasFilter) remember(displayMedia) { displayMedia.groupByMonth() } else state.monthGroups
                 Box(Modifier.dragSelectionGesture(dragSelection) { path -> selectedPaths = selectedPaths + path }) {
                 LazyColumn(reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
                     grouped.forEach { (label, groupItems) ->

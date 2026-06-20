@@ -69,13 +69,13 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DuplicateFinderScreen(onBack: () -> Unit) {
+fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "") {
     val vm: DuplicateFinderViewModel = viewModel()
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
     var showConfirmDialog by remember { mutableStateOf(false) }
     val defaultPath = Environment.getExternalStorageDirectory().absolutePath
-    var currentFolder by remember { mutableStateOf(defaultPath) }
+    var currentFolder by remember { mutableStateOf(initialFolder.ifBlank { defaultPath }) }
 
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) currentFolder = duplicateUriToPath(uri) ?: uri.toString()
@@ -115,7 +115,24 @@ fun DuplicateFinderScreen(onBack: () -> Unit) {
                 }
                 Spacer(Modifier.width(8.dp))
                 Button(onClick = { vm.startScan(currentFolder) }, enabled = !state.isScanning) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (state.isScanning) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(if (state.isScanning) "Scannt…" else "Suchen")
+                }
+            }
+
+            Text(
+                currentFolder,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = state.mode == DuplicateMode.EXACT,
                     onClick = { vm.setMode(DuplicateMode.EXACT) },
@@ -149,14 +166,6 @@ fun DuplicateFinderScreen(onBack: () -> Unit) {
                         steps = 19,
                         enabled = !state.isScanning,
                     )
-                }
-            }
-
-            if (state.isScanning) {
-                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                        Spacer(Modifier.width(8.dp))
-                    }
-                    Text(if (state.isScanning) "Scannt…" else "Suchen")
                 }
             }
 
@@ -222,7 +231,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit) {
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
             title = { Text("Löschen bestätigen") },
-            text = { Text("$count Dateien in den Papierkorb verschieben? (${dupFormatBytes(selSize)})") },
+            text = { Text("$count Dateien endgültig löschen? (${dupFormatBytes(selSize)} werden freigegeben)") },
             confirmButton = { TextButton(onClick = { showConfirmDialog = false; vm.deleteSelected() }) { Text("Löschen", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { showConfirmDialog = false }) { Text("Abbrechen") } },
         )

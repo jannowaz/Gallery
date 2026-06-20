@@ -480,6 +480,7 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
         settingsMode = settingsMode,
         viewSettingsVM = viewSettingsVM,
         navController = navController,
+        currentScanFolder = if (uiState.selectedTab == 2) uiState.explorerPath else "",
         onDismissSheet = { activeSheet = null },
         onSelectSheet = { activeSheet = it },
         onShowRatingBrowser = { showRatingBrowser = true },
@@ -618,6 +619,7 @@ private fun MainTabContent(
             internalStoragePath = state.explorerPath,
             folderSettings = tabSettings.explorerAlbums,
             mediaSettings = tabSettings.explorerMedia,
+            onPathChange = { mainVM.setExplorerPath(it) },
         )
         3 -> CollectionsScreen(
             onCollectionClick = { coll ->
@@ -701,6 +703,7 @@ private fun MainSheets(
     settingsMode: SettingsMode,
     viewSettingsVM: ViewSettingsViewModel,
     navController: NavHostController,
+    currentScanFolder: String = "",
     onDismissSheet: () -> Unit,
     onSelectSheet: (ActiveSheet) -> Unit,
     onShowRatingBrowser: () -> Unit,
@@ -725,7 +728,7 @@ private fun MainSheets(
                 MenuRow(Icons.Default.Settings, "Einstellungen") { onDismissSheet(); navController.navigate(Settings) }
                 MenuRow(Icons.Default.CollectionsBookmark, "Sammlungen verwalten") { onDismissSheet(); navController.navigate(ManageCollections) }
                 MenuRow(Icons.Default.Delete, "Speicher-Analyse") { onDismissSheet(); navController.navigate(StorageAnalysis) }
-                MenuRow(Icons.Default.ContentCopy, "Duplikate finden") { onDismissSheet(); navController.navigate(DuplicateFinder) }
+                MenuRow(Icons.Default.ContentCopy, "Duplikate finden") { onDismissSheet(); navController.navigate(DuplicateFinder(currentScanFolder)) }
             }
         }
     }

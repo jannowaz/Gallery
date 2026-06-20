@@ -158,6 +158,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     var backgroundAudio by remember { mutableStateOf(false) }
     var showExif by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var isCurrentZoomed by remember { mutableStateOf(false) }
 
     BackHandler(enabled = showActionSheet || showExif || showDeleteConfirm || showVideoSettings || showTagsDialog || showFolderPicker) {
         when {
@@ -171,6 +172,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     }
 
     LaunchedEffect(pagerState.currentPage) {
+        isCurrentZoomed = false
         withContext(Dispatchers.IO) {
             isFavorite = repo.isFavorite(currentPath)
             currentRating = try { repo.getMediaFromPath(currentPath).firstOrNull()?.rating ?: 0 } catch (_: Exception) { 0 }
@@ -219,13 +221,20 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
             }
         }
     }) {
-        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()
-            .pointerInput(Unit) { detectTapGestures(onTap = { showActionSheet = true }) }
-        ) { page ->
+        HorizontalPager(state = pagerState, userScrollEnabled = !isCurrentZoomed, modifier = Modifier.fillMaxSize()) { page ->
             val path = paths.getOrNull(page) ?: ""
             val file = File(path)
-            if (isVideo(path)) VideoPage(path = path, scalingMode = videoScalingMode, onScalingModeChange = { videoScalingMode = it }, onBackgroundAudioChange = { backgroundAudio = it }, isCurrentPage = page == pagerState.currentPage)
-            else if (file.exists()) ImagePage(path = path, file = file, onClose = closeWithAnimation)
+            if (isVideo(path)) VideoPage(
+                path = path, scalingMode = videoScalingMode, onScalingModeChange = { videoScalingMode = it }, onBackgroundAudioChange = { backgroundAudio = it },
+                onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
+                isCurrentPage = page == pagerState.currentPage,
+            )
+            else if (file.exists()) ImagePage(
+                path = path, file = file, onClose = closeWithAnimation,
+                onToggleUi = { showActionSheet = true },
+                onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
+                isCurrentPage = page == pagerState.currentPage,
+            )
         }
 
         // Unified contextual overlay
@@ -233,11 +242,15 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
         LaunchedEffect(currentPath, tagRefreshTrigger) { currentTags = withContext(Dispatchers.IO) { repo.getTags(currentPath) } }
         val showOverlay = showRatingOverlay || (showQuickTags && quickTags.isNotEmpty()) || showPersistentTags
         AnimatedVisibility(visible = showOverlay, modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (currentIsVideo) 56.dp else 0.dp), enter = fadeIn(), exit = fadeOut()) {
-            Column(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.65f))) {
+            Column(Modifier.fillMaxWidth()) {
                 if (showRatingOverlay) {
-                    Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        for (i in 1..5) { IconButton(onClick = { val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) { Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, "Bewertung $i", tint = if (i <= currentRating) MaterialTheme.colorScheme.tertiary else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp)) } }
-                        IconButton(onClick = { showRatingOverlay = false; ctx.config.viewerShowRatingBar = false }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, "Ausblenden", tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
+                    Box(Modifier.fillMaxWidth().padding(top = 6.dp), contentAlignment = Alignment.Center) {
+                        Surface(shape = RoundedCornerShape(24.dp), color = Color.Black.copy(alpha = 0.32f)) {
+                            Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                for (i in 1..5) { IconButton(onClick = { val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) { Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, "Bewertung $i", tint = if (i <= currentRating) MaterialTheme.colorScheme.tertiary else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp)) } }
+                                IconButton(onClick = { showRatingOverlay = false; ctx.config.viewerShowRatingBar = false }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, "Ausblenden", tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
+                            }
+                        }
                     }
                 }
                 val hasQuick = showQuickTags && quickTags.isNotEmpty(); val hasPersistent = showPersistentTags && currentTags.isNotEmpty()

@@ -134,8 +134,9 @@ fun GalleryNavHost(
                     composable<StorageAnalysis> {
                         StorageAnalysisScreen(onBack = { navController.popBackStack() })
                     }
-                    composable<DuplicateFinder> {
-                        DuplicateFinderScreen(onBack = { navController.popBackStack() })
+                    composable<DuplicateFinder> { backStackEntry ->
+                        val route = backStackEntry.toRoute<DuplicateFinder>()
+                        DuplicateFinderScreen(initialFolder = route.folderPath, onBack = { navController.popBackStack() })
                     }
                 }
             }

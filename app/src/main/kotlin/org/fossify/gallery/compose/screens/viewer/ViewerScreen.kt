@@ -138,7 +138,9 @@ fun ViewerScreen(
     var backgroundAudio by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showVideoSettings by remember { mutableStateOf(false) }
+    var isCurrentZoomed by remember { mutableStateOf(false) }
     LaunchedEffect(pagerState.currentPage) {
+        isCurrentZoomed = false
         withContext(Dispatchers.IO) {
             isFavorite = repo.isFavorite(currentPath)
             currentRating = try { repo.getMediaFromPath(currentPath).firstOrNull()?.rating ?: 0 } catch (_: Exception) { 0 }
@@ -161,9 +163,12 @@ fun ViewerScreen(
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         HorizontalPager(
             state = pagerState,
+            userScrollEnabled = !isCurrentZoomed,
             modifier = Modifier.fillMaxSize()
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures(onVerticalDrag = { _, drag -> if (drag < -30f) showActionSheet = true })
+                .pointerInput(isCurrentZoomed) {
+                    if (!isCurrentZoomed) {
+                        detectVerticalDragGestures(onVerticalDrag = { _, drag -> if (drag < -30f) showActionSheet = true })
+                    }
                 }
         ) { page ->
             val path = paths.getOrNull(page) ?: ""
@@ -172,8 +177,16 @@ fun ViewerScreen(
                 path = path, scalingMode = videoScalingMode,
                 onScalingModeChange = { videoScalingMode = it },
                 onBackgroundAudioChange = { backgroundAudio = it },
+                onToggleUi = { showUI = !showUI },
+                onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
+                isCurrentPage = page == pagerState.currentPage,
             )
-            else if (file.exists()) ImagePage(path = path, file = file, onClose = onClose)
+            else if (file.exists()) ImagePage(
+                path = path, file = file, onClose = onClose,
+                onToggleUi = { showUI = !showUI },
+                onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
+                isCurrentPage = page == pagerState.currentPage,
+            )
         }
 
         // Top bar
@@ -200,14 +213,16 @@ fun ViewerScreen(
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (currentIsVideo) 56.dp else 0.dp),
             enter = fadeIn(), exit = fadeOut(),
         ) {
-            Box(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.65f)).padding(8.dp), contentAlignment = Alignment.Center) {
-                Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-                    for (i in 1..5) {
-                        IconButton(onClick = { val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) {
-                            Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, "Bewertung $i", tint = if (i <= currentRating) MaterialTheme.colorScheme.tertiary else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))
+            Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+                Surface(shape = RoundedCornerShape(24.dp), color = Color.Black.copy(alpha = 0.32f)) {
+                    Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 6.dp)) {
+                        for (i in 1..5) {
+                            IconButton(onClick = { val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) {
+                                Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, "Bewertung $i", tint = if (i <= currentRating) MaterialTheme.colorScheme.tertiary else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))
+                            }
                         }
+                        IconButton(onClick = { showRatingOverlay = false; ctx.config.viewerShowRatingBar = false }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, "Ausblenden", tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
                     }
-                    IconButton(onClick = { showRatingOverlay = false; ctx.config.viewerShowRatingBar = false }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, "Ausblenden", tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
                 }
             }
         }

@@ -3,6 +3,8 @@ package org.fossify.gallery.compose.screens.analysis
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.ExifInterface
+import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -117,24 +119,71 @@ class TransformationEngine(private val context: android.content.Context) {
     suspend fun execute(s: TransformSuggestion): TransformResult = withContext(Dispatchers.IO) {
         try {
             val tmpFile = File(context.cacheDir, "transform_${System.nanoTime()}.tmp")
-            val opts = BitmapFactory.Options()
-            val bitmap = BitmapFactory.decodeFile(s.originalPath, opts) ?: return@withContext TransformResult(false, s.originalPath, "", 0, "Decode failed")
+            val bitmap = BitmapFactory.decodeFile(s.originalPath) ?: return@withContext TransformResult(false, s.originalPath, "", 0, "Decode failed")
             val (format, quality) = when (s.targetFormat) {
                 "png" -> Bitmap.CompressFormat.PNG to 100
                 "jpeg" -> Bitmap.CompressFormat.JPEG to 85
-                "webp" -> Bitmap.CompressFormat.WEBP to 80
+                "webp" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSLESS to 100 else Bitmap.CompressFormat.PNG to 100
                 else -> Bitmap.CompressFormat.JPEG to 85
             }
             tmpFile.outputStream().use { bitmap.compress(format, quality, it) }
             bitmap.recycle()
+            if (!tmpFile.exists() || tmpFile.length() == 0L) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Encode failed") }
             if (tmpFile.length() >= s.originalSize) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Keine Ersparnis") }
-            val newExt = if (s.targetFormat == "jpeg") "jpg" else s.targetFormat
-            val newPath = s.originalPath.replaceAfterLast('.', newExt)
+
+            // Preserve EXIF metadata for JPEG output (best-effort)
+            if (s.targetFormat == "jpeg") {
+                try { copyExif(s.originalPath, tmpFile.absolutePath) } catch (_: Exception) { }
+            }
+
+            val original = File(s.originalPath)
+            val actualExt = when (s.targetFormat) {
+                "jpeg" -> "jpg"
+                "webp" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) "webp" else "png"
+                else -> s.targetFormat
+            }
+            val newPath = s.originalPath.replaceAfterLast('.', actualExt)
             val finalFile = File(newPath)
-            if (tmpFile.renameTo(finalFile)) {
-                File(s.originalPath).delete()
-                TransformResult(true, s.originalPath, newPath, s.originalSize - finalFile.length())
-            } else { tmpFile.delete(); TransformResult(false, s.originalPath, "", 0, "Rename failed") }
+            val sameFile = finalFile.absolutePath == original.absolutePath
+
+            if (sameFile) {
+                // Replace in place: keep original as a backup until the new file is verified
+                val backup = File("${s.originalPath}.bak_${System.nanoTime()}")
+                if (!original.renameTo(backup)) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Backup fehlgeschlagen") }
+                val moved = tmpFile.renameTo(finalFile) || runCatching { tmpFile.copyTo(finalFile, overwrite = true); tmpFile.delete() }.isSuccess
+                if (moved && finalFile.exists() && finalFile.length() > 0) {
+                    val saved = (backup.length() - finalFile.length()).coerceAtLeast(0)
+                    backup.delete()
+                    TransformResult(true, s.originalPath, newPath, saved)
+                } else {
+                    backup.renameTo(original)
+                    tmpFile.delete()
+                    TransformResult(false, s.originalPath, "", 0, "Ersetzen fehlgeschlagen")
+                }
+            } else {
+                if (finalFile.exists()) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Zieldatei existiert bereits") }
+                val moved = tmpFile.renameTo(finalFile) || runCatching { tmpFile.copyTo(finalFile, overwrite = false); tmpFile.delete() }.isSuccess
+                if (moved && finalFile.exists() && finalFile.length() > 0) {
+                    val saved = (s.originalSize - finalFile.length()).coerceAtLeast(0)
+                    original.delete()
+                    TransformResult(true, s.originalPath, newPath, saved)
+                } else { tmpFile.delete(); TransformResult(false, s.originalPath, "", 0, "Rename failed") }
+            }
         } catch (e: Exception) { TransformResult(false, s.originalPath, "", 0, e.message) }
+    }
+
+    private fun copyExif(src: String, dst: String) {
+        val tags = listOf(
+            ExifInterface.TAG_DATETIME, ExifInterface.TAG_DATETIME_ORIGINAL, ExifInterface.TAG_DATETIME_DIGITIZED,
+            ExifInterface.TAG_MAKE, ExifInterface.TAG_MODEL, ExifInterface.TAG_ORIENTATION,
+            ExifInterface.TAG_F_NUMBER, ExifInterface.TAG_EXPOSURE_TIME, ExifInterface.TAG_FOCAL_LENGTH,
+            ExifInterface.TAG_GPS_LATITUDE, ExifInterface.TAG_GPS_LATITUDE_REF,
+            ExifInterface.TAG_GPS_LONGITUDE, ExifInterface.TAG_GPS_LONGITUDE_REF, ExifInterface.TAG_GPS_ALTITUDE, ExifInterface.TAG_GPS_ALTITUDE_REF,
+            ExifInterface.TAG_WHITE_BALANCE,
+        )
+        val from = ExifInterface(src)
+        val to = ExifInterface(dst)
+        tags.forEach { t -> from.getAttribute(t)?.let { to.setAttribute(t, it) } }
+        to.saveAttributes()
     }
 }

@@ -11,9 +11,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.helpers.MediaRepository
-import org.fossify.gallery.helpers.UndoAction
-import org.fossify.gallery.helpers.UndoManager
-import org.fossify.gallery.helpers.UndoType
 
 data class DuplicateState(
     val isScanning: Boolean = false,
@@ -89,8 +86,7 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
         val selected = _state.value.selectedForDeletion
         if (selected.isEmpty()) return
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { selected.forEach { repo.moveToRecycleBin(it) } }
-            UndoManager.push(UndoAction(paths = selected, type = UndoType.DELETE))
+            withContext(Dispatchers.IO) { selected.forEach { repo.deleteMedium(it) } }
             _state.update { s ->
                 val remaining = s.groups
                     .map { g -> g.copy(files = g.files.filter { it.path !in selected }) }

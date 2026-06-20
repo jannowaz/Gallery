@@ -84,30 +84,42 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             val newMedia = mutableListOf<Medium>()
             val uri = android.provider.MediaStore.Files.getContentUri("external")
             val proj = arrayOf(
-                android.provider.MediaStore.MediaColumns.DATA, android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
-                android.provider.MediaStore.MediaColumns.DATE_MODIFIED, android.provider.MediaStore.MediaColumns.SIZE,
+                android.provider.MediaStore.MediaColumns.DATA,
+                android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
+                android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
+                android.provider.MediaStore.MediaColumns.DATE_MODIFIED,
+                android.provider.MediaStore.MediaColumns.SIZE,
                 android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE,
             )
             val sel = "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
             val args = arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
-            ctx.contentResolver.query(uri, proj, sel, args, "${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} DESC LIMIT 100")?.use { c ->
-                val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
-                val nameCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
-                val dateCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATE_MODIFIED)
-                val sizeCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.SIZE)
-                val typeCol = c.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE)
+            val storageRoot = android.os.Environment.getExternalStorageDirectory().absolutePath
+            ctx.contentResolver.query(uri, proj, sel, args, "${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} DESC LIMIT 200")?.use { c ->
+                val dataIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.DATA)
+                val relPathIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.RELATIVE_PATH)
+                val nameIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                val dateIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.DATE_MODIFIED)
+                val sizeIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.SIZE)
+                val typeIdx = c.getColumnIndex(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE)
                 while (c.moveToNext()) {
-                    val path = c.getString(dataCol) ?: continue
-                    if (path in existingPaths) continue
-                    val name = c.getString(nameCol) ?: ""
-                    val modified = c.getLong(dateCol) * 1000L
-                    val size = c.getLong(sizeCol)
-                    val mediaType = c.getInt(typeCol)
+                    var path = if (dataIdx >= 0) c.getString(dataIdx) else null
+                    if (path.isNullOrBlank()) {
+                        val relPath = if (relPathIdx >= 0) c.getString(relPathIdx) ?: "" else ""
+                        val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "" else ""
+                        path = "$storageRoot/$relPath$name"
+                    }
+                    if (path.isNullOrBlank() || path in existingPaths) continue
+                    val name = File(path).name
+                    val modified = if (dateIdx >= 0) c.getLong(dateIdx) * 1000L else System.currentTimeMillis()
+                    val size = if (sizeIdx >= 0) c.getLong(sizeIdx) else 0L
+                    val mediaType = if (typeIdx >= 0) c.getInt(typeIdx) else 1
                     val type = if (mediaType == android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) 2 else 1
                     newMedia.add(Medium(null, name, path, File(path).parent ?: "", modified, modified, size, type, 0, false, 0L, 0L, 0))
                 }
             }
-            if (newMedia.isNotEmpty()) ctx.mediaDB.insertAll(newMedia)
+            val deletedPaths = try { ctx.mediaDB.getDeletedMedia().map { it.path }.toSet() } catch (_: Exception) { emptySet() }
+            newMedia.addAll(recentDiskMedia(existingPaths + newMedia.map { it.path } + deletedPaths))
+            if (newMedia.isNotEmpty()) ctx.mediaDB.insertAllKeepingExisting(newMedia)
         } catch (_: Exception) { }
     }
 
@@ -135,30 +147,43 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             val newMedia = mutableListOf<Medium>()
             val uri = android.provider.MediaStore.Files.getContentUri("external")
             val proj = arrayOf(
-                android.provider.MediaStore.MediaColumns.DATA, android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
-                android.provider.MediaStore.MediaColumns.DATE_MODIFIED, android.provider.MediaStore.MediaColumns.SIZE,
-                android.provider.MediaStore.MediaColumns.MIME_TYPE, android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE,
+                android.provider.MediaStore.MediaColumns._ID,
+                android.provider.MediaStore.MediaColumns.DATA,
+                android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
+                android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
+                android.provider.MediaStore.MediaColumns.DATE_MODIFIED,
+                android.provider.MediaStore.MediaColumns.SIZE,
+                android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE,
             )
             val sel = "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
             val args = arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
-            ctx.contentResolver.query(uri, proj, sel, args, "${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} DESC LIMIT 2000")?.use { c ->
-                val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
-                val nameCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
-                val dateCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATE_MODIFIED)
-                val sizeCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.SIZE)
-                val typeCol = c.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE)
+            val storageRoot = android.os.Environment.getExternalStorageDirectory().absolutePath
+            ctx.contentResolver.query(uri, proj, sel, args, "${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} DESC LIMIT 3000")?.use { c ->
+                val dataIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.DATA)
+                val relPathIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.RELATIVE_PATH)
+                val nameIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                val dateIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.DATE_MODIFIED)
+                val sizeIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.SIZE)
+                val typeIdx = c.getColumnIndex(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE)
                 while (c.moveToNext()) {
-                    val path = c.getString(dataCol) ?: continue
-                    if (path in existingPaths) continue
-                    val name = c.getString(nameCol) ?: ""
-                    val modified = c.getLong(dateCol) * 1000L
-                    val size = c.getLong(sizeCol)
-                    val mediaType = c.getInt(typeCol)
+                    var path = if (dataIdx >= 0) c.getString(dataIdx) else null
+                    if (path.isNullOrBlank()) {
+                        val relPath = if (relPathIdx >= 0) c.getString(relPathIdx) ?: "" else ""
+                        val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "" else ""
+                        path = "$storageRoot/$relPath$name"
+                    }
+                    if (path.isNullOrBlank() || path in existingPaths) continue
+                    val name = File(path).name
+                    val modified = if (dateIdx >= 0) c.getLong(dateIdx) * 1000L else System.currentTimeMillis()
+                    val size = if (sizeIdx >= 0) c.getLong(sizeIdx) else 0L
+                    val mediaType = if (typeIdx >= 0) c.getInt(typeIdx) else 1
                     val type = if (mediaType == android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) 2 else 1
                     newMedia.add(Medium(null, name, path, File(path).parent ?: "", modified, modified, size, type, 0, false, 0L, 0L, 0))
                 }
             }
-            if (newMedia.isNotEmpty()) ctx.mediaDB.insertAll(newMedia)
+            val deletedPaths = try { ctx.mediaDB.getDeletedMedia().map { it.path }.toSet() } catch (_: Exception) { emptySet() }
+            newMedia.addAll(recentDiskMedia(existingPaths + newMedia.map { it.path } + deletedPaths))
+            if (newMedia.isNotEmpty()) ctx.mediaDB.insertAllKeepingExisting(newMedia)
         } catch (_: Exception) { }
     }
 
@@ -182,6 +207,36 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         val end = minOf(start + pageSize, media.size)
         if (start >= media.size) return emptyList()
         return media.subList(start, end)
+    }
+
+    private fun recentDiskMedia(knownPaths: Set<String>): List<Medium> {
+        val result = mutableListOf<Medium>()
+        val exts = videoExts + imageExts
+        try {
+            val root = Environment.getExternalStorageDirectory()
+            val dirs = listOf(
+                File(root, "DCIM/Camera"),
+                File(root, "DCIM"),
+                File(root, "Pictures"),
+                File(root, "Pictures/Screenshots"),
+                File(root, "Pictures/Screenshot"),
+                File(root, "Movies"),
+                File(root, "Download"),
+            ).filter { it.isDirectory }
+            for (dir in dirs) {
+                val files = dir.listFiles() ?: continue
+                for (f in files) {
+                    if (!f.isFile || f.name.startsWith(".")) continue
+                    val p = f.absolutePath
+                    if (p in knownPaths) continue
+                    val ext = f.extension.lowercase()
+                    if (ext !in exts) continue
+                    val modified = f.lastModified()
+                    result.add(Medium(null, f.name, p, f.parent ?: "", modified, modified, f.length(), if (ext in videoExts) 2 else 1, 0, false, 0L, 0L, 0))
+                }
+            }
+        } catch (_: Exception) { }
+        return result
     }
 
     private fun scanDirectories(ctx: android.content.Context): List<Medium> {

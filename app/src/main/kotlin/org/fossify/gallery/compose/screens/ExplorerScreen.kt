@@ -71,6 +71,7 @@ import org.fossify.gallery.compose.components.FolderTile
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import java.io.File
@@ -90,6 +91,7 @@ fun ExplorerScreen(
     modifier: Modifier = Modifier,
     folderSettings: ViewSettings = ViewSettings(),
     mediaSettings: ViewSettings = ViewSettings(),
+    onPathChange: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -105,6 +107,14 @@ fun ExplorerScreen(
     BackHandler(enabled = navStack.size > 1) {
         navStack.removeLastOrNull()
         currentPath = navStack.lastOrNull() ?: internalStoragePath
+    }
+
+    LaunchedEffect(internalStoragePath) {
+        if (internalStoragePath != currentPath) {
+            navStack.clear()
+            navStack.add(internalStoragePath)
+            currentPath = internalStoragePath
+        }
     }
 
     suspend fun findThumbnailInFolder(folderPath: String): String = withContext(Dispatchers.IO) {
@@ -130,6 +140,7 @@ fun ExplorerScreen(
             if (!Files.isDirectory(dir)) return@withContext Pair(emptyList<ExplorerItem>(), emptyList<ExplorerItem>())
             val folders = mutableListOf<ExplorerItem>()
             val files = mutableListOf<ExplorerItem>()
+            val deletedPaths = try { context.mediaDB.getDeletedMedia().map { it.path }.toSet() } catch (_: Exception) { emptySet() }
             try {
                 val hidden = context.config.explorer2HiddenFolders
                 Files.newDirectoryStream(dir).use { stream ->
@@ -143,7 +154,7 @@ fun ExplorerScreen(
                             folders.add(ExplorerItem(name = name, path = fPath, isDirectory = true, lastModified = Files.getLastModifiedTime(entry).toMillis(), thumbnailPath = tmb))
                         } else {
                             val ext = name.substringAfterLast('.', "").lowercase()
-                            if (ext in MEDIA_EXTENSIONS) {
+                            if (ext in MEDIA_EXTENSIONS && fPath !in deletedPaths) {
                                 files.add(ExplorerItem(name = name, path = fPath, isDirectory = false, lastModified = Files.getLastModifiedTime(entry).toMillis(), size = Files.size(entry)))
                             }
                         }
@@ -173,6 +184,8 @@ fun ExplorerScreen(
         loadFolderContents(currentPath)
         isLoading = false
     }
+
+    LaunchedEffect(currentPath) { onPathChange(currentPath) }
 
     Column(modifier = modifier.fillMaxSize()) {
         // Breadcrumb navigation bar

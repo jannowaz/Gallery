@@ -142,7 +142,7 @@ $tagXml
             val existingXmp: SegmentPos? = run {
                 val idx = findSequence(scanBuf, xmpHeader)
                 if (idx >= 0) {
-                    val start = idx - 29
+                    val start = idx - 4
                     if (start >= 0 && scanBuf[start] == 0xFF.toByte() && scanBuf[start + 1] == 0xE1.toByte()) {
                         val segLen = ((scanBuf[start + 2].toInt() and 0xFF) shl 8) or (scanBuf[start + 3].toInt() and 0xFF)
                         SegmentPos(start, 2 + segLen)
@@ -195,10 +195,22 @@ $tagXml
                 }
             }
 
-            // Atomic rename
+            // Safe replace: keep the original as a backup until the new file is in place
             if (tempFile.exists() && tempFile.length() > 0) {
-                file.delete()
-                tempFile.renameTo(file)
+                val backup = File("${file.absolutePath}.bak")
+                if (file.renameTo(backup)) {
+                    if (tempFile.renameTo(file)) {
+                        backup.delete()
+                    } else {
+                        backup.renameTo(file)
+                        tempFile.delete()
+                    }
+                } else if (!tempFile.renameTo(file)) {
+                    tempFile.inputStream().use { ins -> file.outputStream().use { outs -> ins.copyTo(outs) } }
+                    tempFile.delete()
+                }
+            } else {
+                tempFile.delete()
             }
         } catch (_: Exception) { }
     }

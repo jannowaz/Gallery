@@ -63,7 +63,7 @@ class MediaSyncWorker(
             }
 
             if (mediums.isNotEmpty()) {
-                applicationContext.mediaDB.insertAll(mediums)
+                applicationContext.mediaDB.insertAllKeepingExisting(mediums)
                 val dirs = mediums.map { it.parentPath }.distinct()
                 dirs.forEach { dirPath ->
                     val dirMedia = mediums.filter { it.parentPath == dirPath }

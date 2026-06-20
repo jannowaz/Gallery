@@ -42,6 +42,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                             .addMigrations(MIGRATION_9_10)
                             .addMigrations(MIGRATION_10_11)
                             .addMigrations(MIGRATION_11_12)
+                            .addMigrations(MIGRATION_12_13)
                             .addMigrations(MIGRATION_13_14)
                             .build()
                     }
@@ -107,6 +108,12 @@ abstract class GalleryDatabase : RoomDatabase() {
         private         val MIGRATION_11_12 = object : Migration(11, 12) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE media ADD COLUMN rating INTEGER default 0 NOT NULL")
+            }
+        }
+
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE TABLE IF NOT EXISTS `media_cache` (`full_path` TEXT NOT NULL, `tags` TEXT NOT NULL, `rating` INTEGER NOT NULL, `last_scanned` INTEGER NOT NULL, PRIMARY KEY(`full_path`))")
             }
         }
 
