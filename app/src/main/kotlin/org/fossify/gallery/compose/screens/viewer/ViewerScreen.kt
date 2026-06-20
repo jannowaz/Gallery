@@ -309,7 +309,7 @@ fun ViewerScreen(
     }
 
     if (showVideoSettings) {
-        AlertDialog(onDismissRequest = { showVideoSettings = false }, title = { Text("Anzeigemodus") }, text = { Column { listOf("Passend" to 0, "Fullscreen" to 2, "Breite füllen" to 3).forEach { (l, m) -> TextButton(onClick = { videoScalingMode = m; showVideoSettings = false }, modifier = Modifier.fillMaxWidth()) { Text(l, color = if (videoScalingMode == m) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) } } } }, confirmButton = { TextButton(onClick = { showVideoSettings = false }) { Text("Schließen") } })
+        AlertDialog(onDismissRequest = { showVideoSettings = false }, title = { Text("Anzeigemodus") }, text = { Column { listOf("Passend" to 0, "Vollbild (Zoom)" to 4, "Strecken" to 3).forEach { (l, m) -> TextButton(onClick = { videoScalingMode = m; showVideoSettings = false }, modifier = Modifier.fillMaxWidth()) { Text(l, color = if (videoScalingMode == m) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) } } } }, confirmButton = { TextButton(onClick = { showVideoSettings = false }) { Text("Schließen") } })
     }
 
     if (showTagsDialog) {

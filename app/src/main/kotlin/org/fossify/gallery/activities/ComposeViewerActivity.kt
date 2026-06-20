@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
@@ -228,12 +229,13 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
             val file = File(path)
             if (isVideo(path)) VideoPage(
                 path = path, scalingMode = videoScalingMode, onScalingModeChange = { videoScalingMode = it }, onBackgroundAudioChange = { backgroundAudio = it },
+                onToggleUi = { showUI = !showUI },
                 onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
                 isCurrentPage = page == pagerState.currentPage,
             )
             else if (file.exists()) ImagePage(
                 path = path, file = file, onClose = closeWithAnimation,
-                onToggleUi = { showActionSheet = true },
+                onToggleUi = { showUI = !showUI },
                 onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
                 isCurrentPage = page == pagerState.currentPage,
             )
@@ -269,7 +271,13 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
         AnimatedVisibility(visible = showUI, enter = fadeIn(), exit = fadeOut()) {
             Box(Modifier.fillMaxSize()) {
                 IconButton(onClick = closeWithAnimation, modifier = Modifier.align(Alignment.TopStart).padding(16.dp).background(Color.Black.copy(alpha = 0.4f), CircleShape).size(44.dp)) { Icon(Icons.Default.Close, "Schließen", tint = Color.White) }
-                if (!currentIsVideo) { IconButton(onClick = { showExif = !showExif }, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).background(Color.Black.copy(alpha = 0.4f), CircleShape).size(44.dp)) { Icon(Icons.Default.Info, "EXIF", tint = Color.White) } }
+                Row(Modifier.align(Alignment.TopEnd).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (!currentIsVideo) {
+                        IconButton(onClick = { showExif = !showExif }, modifier = Modifier.background(Color.Black.copy(alpha = 0.4f), CircleShape).size(44.dp)) { Icon(Icons.Default.Info, "EXIF", tint = Color.White) }
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    IconButton(onClick = { showActionSheet = true }, modifier = Modifier.background(Color.Black.copy(alpha = 0.4f), CircleShape).size(44.dp)) { Icon(Icons.Default.MoreVert, "Aktionen", tint = Color.White) }
+                }
                 if (items.size > 1) Text("${pagerState.currentPage + 1} / ${items.size}", color = Color.White, modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp).background(Color.Black.copy(alpha = 0.4f), CircleShape).padding(horizontal = 16.dp, vertical = 8.dp))
             }
         }
@@ -323,6 +331,8 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
                                     val parentDir = File(currentPath).parentFile ?: ctx.cacheDir
                                     val outFile = File(parentDir, "frame_${System.currentTimeMillis()}.jpg")
                                     outFile.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 95, it) }; bmp.recycle()
+                                    try { android.media.MediaScannerConnection.scanFile(ctx, arrayOf(outFile.absolutePath), null, null) } catch (_: Exception) { }
+                                    org.fossify.gallery.helpers.RefreshBus.trigger()
                                     withContext(Dispatchers.Main) { ctx.toast("Frame gespeichert: ${outFile.name}", Toast.LENGTH_SHORT) }
                                 } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", Toast.LENGTH_SHORT) } }
                             }
@@ -337,7 +347,7 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     }
 
     if (showVideoSettings) {
-        AlertDialog(onDismissRequest = { showVideoSettings = false }, title = { Text("Anzeigemodus") }, text = { Column { listOf("Passend" to 0, "Fullscreen" to 2, "Breite füllen" to 3).forEach { (l, m) -> TextButton(onClick = { videoScalingMode = m; showVideoSettings = false }, modifier = Modifier.fillMaxWidth()) { Text(l, color = if (videoScalingMode == m) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) } } } }, confirmButton = { TextButton(onClick = { showVideoSettings = false }) { Text("Schließen") } })
+        AlertDialog(onDismissRequest = { showVideoSettings = false }, title = { Text("Anzeigemodus") }, text = { Column { listOf("Passend" to 0, "Vollbild (Zoom)" to 4, "Strecken" to 3).forEach { (l, m) -> TextButton(onClick = { videoScalingMode = m; showVideoSettings = false }, modifier = Modifier.fillMaxWidth()) { Text(l, color = if (videoScalingMode == m) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) } } } }, confirmButton = { TextButton(onClick = { showVideoSettings = false }) { Text("Schließen") } })
     }
 
     if (showTagsDialog) {

@@ -200,7 +200,6 @@ fun VideoPage(
                     TextButton(onClick = { playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed); resetAutoHide() }, modifier = Modifier.size(48.dp)) {
                         Text("${playbackSpeed}x", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                     }
-                    TextButton(onClick = { backgroundAudio = !backgroundAudio; onBackgroundAudioChange(backgroundAudio) }, modifier = Modifier.size(48.dp)) { Text(if (backgroundAudio) "🎧" else "📢", style = MaterialTheme.typography.labelSmall) }
                     TextButton(onClick = { isMuted = !isMuted; player.volume = if (isMuted) 0f else 1f }, modifier = Modifier.size(48.dp)) { Text(if (isMuted) "🔇" else "🔊", style = MaterialTheme.typography.labelSmall) }
                     TextButton(onClick = { trimMode = !trimMode; if (trimMode && trimEndMs < 0f) trimEndMs = player.duration.toFloat() }, modifier = Modifier.size(48.dp)) { Text(if (trimMode) "✂" else "⚡", style = MaterialTheme.typography.labelSmall, color = Color.White) }
                 }
@@ -271,11 +270,23 @@ fun VideoPage(
                                         val outFile = File(path.replaceBeforeLast('.', path.substringBeforeLast('.') + "_trimmed"))
                                         val extractor = android.media.MediaExtractor(); extractor.setDataSource(path)
                                         val muxer = android.media.MediaMuxer(outFile.absolutePath, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-                                        extractor.selectTrack(0); val trackIndex = muxer.addTrack(extractor.getTrackFormat(0)); muxer.start()
+                                        val trackCount = extractor.trackCount
+                                        val indexMap = IntArray(trackCount) { -1 }
+                                        for (i in 0 until trackCount) { extractor.selectTrack(i); indexMap[i] = muxer.addTrack(extractor.getTrackFormat(i)) }
+                                        muxer.start()
                                         extractor.seekTo(start, android.media.MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-                                        val buf = java.nio.ByteBuffer.allocate(256 * 1024); val info = android.media.MediaCodec.BufferInfo()
-                                        while (true) { info.offset = 0; info.size = extractor.readSampleData(buf, 0); if (info.size < 0 || extractor.sampleTime > end) break; info.presentationTimeUs = extractor.sampleTime - start; info.flags = extractor.sampleFlags; muxer.writeSampleData(trackIndex, buf, info); extractor.advance() }
+                                        val buf = java.nio.ByteBuffer.allocate(1 shl 20); val info = android.media.MediaCodec.BufferInfo()
+                                        while (true) {
+                                            info.offset = 0; info.size = extractor.readSampleData(buf, 0)
+                                            if (info.size < 0) break
+                                            val t = extractor.sampleTime
+                                            if (t > end) break
+                                            info.presentationTimeUs = t - start; info.flags = extractor.sampleFlags
+                                            muxer.writeSampleData(indexMap[extractor.sampleTrackIndex], buf, info); extractor.advance()
+                                        }
                                         muxer.stop(); muxer.release(); extractor.release()
+                                        try { android.media.MediaScannerConnection.scanFile(ctx, arrayOf(outFile.absolutePath), null, null) } catch (_: Exception) { }
+                                        org.fossify.gallery.helpers.RefreshBus.trigger()
                                         withContext(Dispatchers.Main) { ctx.toast("Gespeichert: ${outFile.name}", android.widget.Toast.LENGTH_SHORT) }
                                     } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", android.widget.Toast.LENGTH_SHORT) } }
                                 }
