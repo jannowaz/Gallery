@@ -666,6 +666,7 @@ private fun MainTabContent(
             onSelectionActiveChanged = onMediaSelectionChanged,
         )
         3 -> CollectionsScreen(
+            viewSettings = tabSettings.collections,
             onCollectionClick = { coll ->
                 mainVM.setPreFilterTab(3)
                 mainVM.setCollectionName(coll.name)
@@ -762,7 +763,7 @@ private fun MainSheets(
         ) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Text("Mehr", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                if (selectedTab in listOf(0, 1, 2, 4)) {
+                if (selectedTab in listOf(0, 1, 2, 3, 4)) {
                     MenuRow(Icons.Default.GridView, "Ansicht") { onSelectSheet(ActiveSheet.VIEW_SETTINGS) }
                     HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 }
@@ -786,6 +787,7 @@ private fun MainSheets(
             0 -> tabSettings.media
             1 -> if (settingsMode == SettingsMode.ALBUMS) tabSettings.albums else tabSettings.folderMedia
             2 -> if (settingsMode == SettingsMode.ALBUMS) tabSettings.explorerAlbums else tabSettings.explorerMedia
+            3 -> tabSettings.collections
             4 -> tabSettings.favorites
             else -> ViewSettings()
         }
@@ -798,6 +800,7 @@ private fun MainSheets(
                     0 -> viewSettingsVM.updateMedia(v)
                     1 -> if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateAlbums(v) else viewSettingsVM.updateFolderMedia(v)
                     2 -> if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateExplorerAlbums(v) else viewSettingsVM.updateExplorerMedia(v)
+                    3 -> viewSettingsVM.updateCollections(v)
                     4 -> viewSettingsVM.updateFavorites(v)
                 }
             },

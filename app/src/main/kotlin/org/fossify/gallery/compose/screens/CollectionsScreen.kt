@@ -65,7 +65,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.components.EmptyState
+import org.fossify.gallery.compose.components.LibraryAlbumGrid
+import org.fossify.gallery.compose.components.AlbumGridItem
 import org.fossify.gallery.extensions.collectionDB
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.models.MediaCollection
@@ -85,7 +88,7 @@ private fun pathDisplayName(uri: String): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifier: Modifier = Modifier) {
+fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifier: Modifier = Modifier, viewSettings: ViewSettings = ViewSettings()) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var collections by remember { mutableStateOf<List<MediaCollection>>(emptyList()) }
@@ -99,6 +102,39 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
         collections = withContext(Dispatchers.IO) { try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() } }
     }
     fun refresh() { loadTrigger++ }
+
+    var albumItems by remember { mutableStateOf<List<AlbumGridItem>>(emptyList()) }
+    var actionColl by remember { mutableStateOf<MediaCollection?>(null) }
+    LaunchedEffect(collections) {
+        albumItems = withContext(Dispatchers.IO) {
+            collections.map { coll ->
+                val folders = coll.getIncludedPaths()
+                val media = folders.flatMap { try { ctx.mediaDB.getMediaFromPath(it) } catch (_: Exception) { emptyList() } }
+                AlbumGridItem(
+                    key = coll.id.toString(),
+                    name = coll.name,
+                    thumbnailPath = media.firstOrNull()?.path ?: "",
+                    count = media.size,
+                    previewPaths = media.take(3).map { it.path },
+                )
+            }
+        }
+    }
+
+    actionColl?.let { coll ->
+        AlertDialog(
+            onDismissRequest = { actionColl = null },
+            title = { Text(coll.name) },
+            text = {
+                Column {
+                    TextButton(onClick = { editingColl = coll; showEditDialog = true; actionColl = null }, modifier = Modifier.fillMaxWidth()) { Text("Bearbeiten") }
+                    TextButton(onClick = { deleteConfirm = coll; actionColl = null }, modifier = Modifier.fillMaxWidth()) { Text("Löschen", color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { actionColl = null }) { Text("Abbrechen") } },
+        )
+    }
 
     deleteConfirm?.let { coll ->
         AlertDialog(
@@ -262,34 +298,13 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
         if (collections.isEmpty()) {
             EmptyState(Icons.Default.CollectionsBookmark, "Keine Sammlungen", subtitle = "Tippe auf + um eine zu erstellen")
         } else {
-            LazyColumn(reverseLayout = true, contentPadding = PaddingValues(8.dp)) {
-                items(collections, key = { it.id }) { coll ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clickable { onCollectionClick(coll) },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.CollectionsBookmark, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(coll.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                val parts = mutableListOf<String>()
-                                if (coll.ratingFilter > 0) parts.add("★ ${coll.ratingFilter}+")
-                                if (coll.tagFilter.isNotBlank()) { val t = coll.tagFilter.split(",").filter { it.isNotBlank() }; if (t.size <= 2) parts.addAll(t) else parts.add("${t.size} Tags") }
-                                if (coll.searchQuery.isNotBlank()) parts.add("\"${coll.searchQuery}\"")
-                                if (parts.isNotEmpty()) Text(parts.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            IconButton(onClick = { editingColl = coll; showEditDialog = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Edit, "Bearbeiten", modifier = Modifier.size(18.dp)) }
-                            IconButton(onClick = {
-                                deleteConfirm = coll
-                            }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Delete, "Löschen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp)) }
-                        }
-                    }
-                }
-            }
+            LibraryAlbumGrid(
+                items = albumItems,
+                viewSettings = viewSettings,
+                onClick = { item -> collections.find { it.id.toString() == item.key }?.let(onCollectionClick) },
+                onLongClick = { item -> actionColl = collections.find { it.id.toString() == item.key } },
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
