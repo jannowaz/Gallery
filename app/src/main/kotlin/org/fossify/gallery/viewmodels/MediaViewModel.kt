@@ -118,7 +118,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             val sel = "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
             val args = arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
             val storageRoot = android.os.Environment.getExternalStorageDirectory().absolutePath
-            ctx.contentResolver.query(uri, proj, sel, args, "${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} DESC LIMIT 200")?.use { c ->
+            ctx.contentResolver.query(uri, proj, sel, args, "${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} DESC")?.use { c ->
                 val dataIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.DATA)
                 val relPathIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.RELATIVE_PATH)
                 val nameIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
@@ -182,7 +182,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             val sel = "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
             val args = arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
             val storageRoot = android.os.Environment.getExternalStorageDirectory().absolutePath
-            ctx.contentResolver.query(uri, proj, sel, args, "${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} DESC LIMIT 3000")?.use { c ->
+            ctx.contentResolver.query(uri, proj, sel, args, "${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} DESC")?.use { c ->
                 val dataIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.DATA)
                 val relPathIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.RELATIVE_PATH)
                 val nameIdx = c.getColumnIndex(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
@@ -278,7 +278,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             )
             val sel = "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
             val args = arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
-            ctx.contentResolver.query(uri, proj, sel, args, "${MediaStore.MediaColumns.DATE_MODIFIED} DESC LIMIT 4000")?.use { c ->
+            ctx.contentResolver.query(uri, proj, sel, args, "${MediaStore.MediaColumns.DATE_MODIFIED} DESC")?.use { c ->
                 val dataCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
                 val nameCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                 val dateCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)

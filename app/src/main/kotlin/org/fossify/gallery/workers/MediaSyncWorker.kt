@@ -64,10 +64,6 @@ class MediaSyncWorker(
 
             if (mediums.isNotEmpty()) {
                 applicationContext.mediaDB.insertAllKeepingExisting(mediums)
-                // Prune DB rows for files that no longer exist in MediaStore
-                val storePaths = mediums.mapTo(HashSet()) { it.path }
-                val missing = applicationContext.mediaDB.getAllPaths().filter { it !in storePaths }
-                if (missing.isNotEmpty()) missing.chunked(500).forEach { applicationContext.mediaDB.deleteByPaths(it) }
                 val dirs = mediums.map { it.parentPath }.distinct()
                 dirs.forEach { dirPath ->
                     val dirMedia = mediums.filter { it.parentPath == dirPath }
