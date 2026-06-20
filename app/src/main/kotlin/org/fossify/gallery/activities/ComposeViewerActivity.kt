@@ -127,7 +127,7 @@ class ComposeViewerActivity : ComponentActivity() {
         val conf = config
         setContent {
             val repo = remember { MediaRepository(this@ComposeViewerActivity) }
-            GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme()) { AppProviders(repo) { ViewerScreen(paths = paths, startIndex = startIdx, onClose = { finish() }) } }
+            GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme(), dynamicColor = conf.useDynamicColors) { AppProviders(repo) { ViewerScreen(paths = paths, startIndex = startIdx, onClose = { finish() }) } }
         }
     }
 }

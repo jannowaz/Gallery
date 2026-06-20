@@ -70,7 +70,7 @@ fun GalleryNavHost(
         UndoManager.registerHandler(UndoType.RATING_CHANGE) { action -> action.paths.forEach { repo.updateRating(it, action.extra["oldRating"]?.toIntOrNull() ?: 0) }; org.fossify.gallery.helpers.RefreshBus.trigger() }
     }
 
-    GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme()) {
+    GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme(), dynamicColor = conf.useDynamicColors) {
         AppProviders(repo) {
             SharedTransitionLayout(modifier = modifier) {
                 CompositionLocalProvider(LocalSharedTransitionScope provides this) {

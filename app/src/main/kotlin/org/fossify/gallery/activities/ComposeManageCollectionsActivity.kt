@@ -84,7 +84,7 @@ class ComposeManageCollectionsActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            GalleryTheme(darkTheme = config.forceDarkMode || isSystemInDarkTheme()) {
+            GalleryTheme(darkTheme = config.forceDarkMode || isSystemInDarkTheme(), dynamicColor = config.useDynamicColors) {
                 ManageCollectionsScreen(
                     onBack = { finish() },
                     onCollectionClick = { coll ->

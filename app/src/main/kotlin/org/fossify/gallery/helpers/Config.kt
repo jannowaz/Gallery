@@ -18,8 +18,13 @@ import java.util.Locale
 class Config(context: Context) : BaseConfig(context) {
     companion object {
         private const val VIEWER_AUTO_HIDE_MS = "viewer_auto_hide_ms"
+        private const val USE_DYNAMIC_COLORS = "use_dynamic_colors"
         fun newInstance(context: Context) = Config(context)
     }
+
+    var useDynamicColors: Boolean
+        get() = prefs.getBoolean(USE_DYNAMIC_COLORS, true)
+        set(value) = prefs.edit().putBoolean(USE_DYNAMIC_COLORS, value).apply()
 
     var directorySorting: Int
         get(): Int = prefs.getInt(DIRECTORY_SORT_ORDER, SORT_BY_DATE_MODIFIED or SORT_DESCENDING)

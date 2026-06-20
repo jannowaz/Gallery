@@ -27,12 +27,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.fossify.gallery.compose.theme.GalleryTheme
+import org.fossify.gallery.extensions.config
 
 class ComposeAboutActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { GalleryTheme { AboutScreen(onBack = { finish() }) } }
+        setContent { GalleryTheme(darkTheme = this@ComposeAboutActivity.config.forceDarkMode || androidx.compose.foundation.isSystemInDarkTheme(), dynamicColor = this@ComposeAboutActivity.config.useDynamicColors) { AboutScreen(onBack = { finish() }) } }
     }
 }
 

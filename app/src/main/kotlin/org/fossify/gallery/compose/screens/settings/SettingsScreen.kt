@@ -122,6 +122,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
 
             SectionLabel("Allgemein")
             SettingsSwitch("Dunkelmodus erzwingen", conf.forceDarkMode) { conf.forceDarkMode = it }
+            SettingsSwitch("Dynamische Farben (Material You)", conf.useDynamicColors) { conf.useDynamicColors = it }
             SettingsSwitch("Versteckte Dateien anzeigen", conf.showHiddenMedia) { conf.showHiddenMedia = it }
             SettingsSwitch("Animierte GIFs abspielen", conf.animateGifs) { conf.animateGifs = it }
             SettingsSwitch("Maximale Helligkeit", conf.maxBrightness) { conf.maxBrightness = it }

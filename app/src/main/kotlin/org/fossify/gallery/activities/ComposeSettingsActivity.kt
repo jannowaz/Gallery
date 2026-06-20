@@ -104,7 +104,7 @@ class ComposeSettingsActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val conf = this.config
-        setContent { GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme()) { SettingsScreen() } }
+        setContent { GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme(), dynamicColor = conf.useDynamicColors) { SettingsScreen() } }
     }
 }
 

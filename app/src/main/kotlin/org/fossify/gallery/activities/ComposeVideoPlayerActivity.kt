@@ -84,7 +84,7 @@ class ComposeVideoPlayerActivity : ComponentActivity() {
         val conf = config
         setContent {
             val repo = remember { MediaRepository(this@ComposeVideoPlayerActivity) }
-            GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme()) {
+            GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme(), dynamicColor = conf.useDynamicColors) {
                 AppProviders(repo) {
                     VideoPlayerScreen(videoPath = videoPath, onClose = { finish(); overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out) })
                 }

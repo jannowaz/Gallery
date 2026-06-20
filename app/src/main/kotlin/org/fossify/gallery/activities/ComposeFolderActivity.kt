@@ -38,6 +38,7 @@ import org.fossify.gallery.compose.screens.ViewSettingsSheet
 import org.fossify.gallery.compose.screens.ViewSettingsViewModel
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
+import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
 import org.fossify.gallery.helpers.MediaRepository
@@ -66,7 +67,7 @@ class ComposeFolderActivity : ComponentActivity() {
                 }
             }
 
-            GalleryTheme {
+            GalleryTheme(darkTheme = this@ComposeFolderActivity.config.forceDarkMode || androidx.compose.foundation.isSystemInDarkTheme(), dynamicColor = this@ComposeFolderActivity.config.useDynamicColors) {
                 AppProviders(repo) {
                     FolderMediaScreen(folderPath = folderPath, tabSettings = tabSettings, viewSettingsVM = viewSettingsVM, mediaItems = mediaItems, onBack = { finish() })
                 }
