@@ -656,12 +656,14 @@ private fun MainTabContent(
                 })
             },
             viewSettings = tabSettings.albums,
+            onSelectionActiveChanged = onMediaSelectionChanged,
         )
         2 -> ExplorerScreen(
             internalStoragePath = state.explorerPath,
             folderSettings = tabSettings.explorerAlbums,
             mediaSettings = tabSettings.explorerMedia,
             onPathChange = { mainVM.setExplorerPath(it) },
+            onSelectionActiveChanged = onMediaSelectionChanged,
         )
         3 -> CollectionsScreen(
             onCollectionClick = { coll ->

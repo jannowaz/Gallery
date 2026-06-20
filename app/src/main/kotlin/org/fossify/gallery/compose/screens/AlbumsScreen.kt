@@ -71,6 +71,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.gallery.compose.components.FolderTile
+import org.fossify.gallery.compose.components.SelectionBar
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.SelectionRow
@@ -90,6 +91,7 @@ fun AlbumsScreen(
     onFolderClick: (Directory) -> Unit,
     modifier: Modifier = Modifier,
     viewSettings: ViewSettings = ViewSettings(),
+    onSelectionActiveChanged: (Boolean) -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val state by viewModel.state.collectAsState()
@@ -97,6 +99,7 @@ fun AlbumsScreen(
     var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showSelectionSheet by remember { mutableStateOf(false) }
     val hasSelection = selectedPaths.isNotEmpty()
+    LaunchedEffect(hasSelection) { onSelectionActiveChanged(hasSelection) }
     BackHandler(enabled = hasSelection) { selectedPaths = emptySet() }
 
     val sortedDirs = remember(state.directories, viewSettings.sortBy, viewSettings.sortDesc) {
@@ -197,17 +200,11 @@ fun AlbumsScreen(
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter),
         ) {
-            Surface(
-                modifier = Modifier.fillMaxWidth().clickable { showSelectionSheet = true },
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-                shadowElevation = 8.dp,
-            ) {
-                Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("${selectedPaths.size} ausgewählt", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    Icon(Icons.Default.Close, "Auswahl aufheben", Modifier.size(20.dp).clickable { selectedPaths = emptySet() }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            SelectionBar(
+                count = selectedPaths.size,
+                onClear = { selectedPaths = emptySet() },
+                onMoreActions = { showSelectionSheet = true },
+            )
         }
     }
 

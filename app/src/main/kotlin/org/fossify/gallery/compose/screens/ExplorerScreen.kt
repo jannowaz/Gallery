@@ -72,6 +72,7 @@ import kotlinx.coroutines.withContext
 import org.fossify.gallery.activities.ComposeViewerActivity
 import org.fossify.gallery.compose.components.FolderTile
 import org.fossify.gallery.compose.components.EmptyState
+import org.fossify.gallery.compose.components.SelectionBar
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.extensions.config
@@ -96,6 +97,7 @@ fun ExplorerScreen(
     folderSettings: ViewSettings = ViewSettings(),
     mediaSettings: ViewSettings = ViewSettings(),
     onPathChange: (String) -> Unit = {},
+    onSelectionActiveChanged: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -107,6 +109,7 @@ fun ExplorerScreen(
     var selectedFolderPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showFolderSheet by remember { mutableStateOf(false) }
     val hasFolderSelection = selectedFolderPaths.isNotEmpty()
+    LaunchedEffect(hasFolderSelection) { onSelectionActiveChanged(hasFolderSelection) }
 
     BackHandler(enabled = navStack.size > 1) {
         navStack.removeLastOrNull()
@@ -377,12 +380,11 @@ fun ExplorerScreen(
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(animationSpec = spring(dampingRatio = 0.7f)),
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
         ) {
-            Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)).clickable { showFolderSheet = true }.padding(horizontal = 20.dp, vertical = 14.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("${selectedFolderPaths.size} ausgewählt", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    Icon(Icons.Default.Close, "Auswahl aufheben", Modifier.size(20.dp).clickable { selectedFolderPaths = emptySet() }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            SelectionBar(
+                count = selectedFolderPaths.size,
+                onClear = { selectedFolderPaths = emptySet() },
+                onMoreActions = { showFolderSheet = true },
+            )
         }
     }
 

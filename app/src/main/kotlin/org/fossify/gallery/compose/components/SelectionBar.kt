@@ -30,10 +30,10 @@ import org.fossify.gallery.compose.theme.Radius
 fun SelectionBar(
     count: Int,
     onClear: () -> Unit,
-    onSelectAll: () -> Unit,
-    onInvert: () -> Unit,
     onMoreActions: () -> Unit,
     modifier: Modifier = Modifier,
+    onSelectAll: (() -> Unit)? = null,
+    onInvert: (() -> Unit)? = null,
 ) {
     val s = LocalSpacing.current
     Surface(
@@ -55,8 +55,8 @@ fun SelectionBar(
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f).padding(start = s.xs),
             )
-            TextButton(onClick = onSelectAll) { Text("Alle") }
-            TextButton(onClick = onInvert) { Text("Umkehren") }
+            if (onSelectAll != null) TextButton(onClick = onSelectAll) { Text("Alle") }
+            if (onInvert != null) TextButton(onClick = onInvert) { Text("Umkehren") }
             FilledTonalIconButton(onClick = onMoreActions) {
                 Icon(Icons.Default.MoreHoriz, "Aktionen")
             }
