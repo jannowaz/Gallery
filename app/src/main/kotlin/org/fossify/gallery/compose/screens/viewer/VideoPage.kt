@@ -103,8 +103,7 @@ fun VideoPage(
     var trimEndMs by remember { mutableFloatStateOf(-1f) }
 
     var scrubFraction by remember { mutableFloatStateOf(-1f) }
-    var scrubPreviewBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var lastFrameRequestMs by remember { mutableLongStateOf(0L) }
+    var frameCache by remember(path) { mutableStateOf<List<Bitmap>>(emptyList()) }
     var positionMs by remember(path) { mutableLongStateOf(0L) }
 
     LaunchedEffect(isCurrentPage) { if (!isCurrentPage) zoom.reset() }
@@ -124,9 +123,37 @@ fun VideoPage(
                 } catch (_: Exception) { }
             }
         }
+        // Pre-extract a sparse set of scaled scrub thumbnails once (after the player has settled), so
+        // the seek preview never has to decode in real time — real-time decoding contends with
+        // ExoPlayer's decoder and frequently returns nothing. While seeking, the nearest cached frame
+        // is shown.
+        if (retrieverReady) {
+            delay(400)
+            val frames = withContext(Dispatchers.IO) {
+                frameMutex.withLock {
+                    val dur = try { retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L } catch (_: Exception) { 0L }
+                    if (dur <= 0L) return@withLock emptyList<Bitmap>()
+                    val n = 24
+                    val out = ArrayList<Bitmap>(n)
+                    for (i in 0 until n) {
+                        val t = dur * i / (n - 1)
+                        val bmp = try {
+                            if (android.os.Build.VERSION.SDK_INT >= 27) retriever.getScaledFrameAtTime(t * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 256, 144)
+                            else retriever.getFrameAtTime(t * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        } catch (_: Exception) { null }
+                        if (bmp != null) out.add(bmp)
+                    }
+                    out
+                }
+            }
+            frameCache = frames
+        }
     }
     DisposableEffect(path) {
-        onDispose { try { retriever.release() } catch (_: Exception) { } }
+        onDispose {
+            try { frameCache.forEach { it.recycle() } } catch (_: Exception) { }
+            try { retriever.release() } catch (_: Exception) { }
+        }
     }
 
     val player = remember(path) {
@@ -221,21 +248,6 @@ fun VideoPage(
                                 scrubFraction = fraction
                                 player.seekTo((fraction * player.duration).toLong())
                                 onInteract()
-                                val now = System.currentTimeMillis()
-                                if (now - lastFrameRequestMs > 90) {
-                                    lastFrameRequestMs = now
-                                    scope.launch(Dispatchers.IO) {
-                                        frameMutex.withLock {
-                                            try {
-                                                if (retrieverReady) {
-                                                    val ms = (fraction * player.duration).toLong()
-                                                    val bmp = retriever.getFrameAtTime(ms * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                                                    withContext(Dispatchers.Main) { scrubPreviewBitmap = bmp }
-                                                }
-                                            } catch (_: Exception) { }
-                                        }
-                                    }
-                                }
                             },
                             onValueChangeFinished = { seekPos = -1f; scrubFraction = -1f },
                             modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
@@ -243,12 +255,13 @@ fun VideoPage(
                         )
                         Text("%02d:%02d".format((player.duration / 1000) / 60, (player.duration / 1000) % 60), style = MaterialTheme.typography.labelSmall, color = Color.White)
                     }
-                    // Frame preview
-                    if (scrubFraction >= 0f && scrubPreviewBitmap != null) {
+                    // Frame preview — show the nearest pre-extracted thumbnail.
+                    if (scrubFraction >= 0f && frameCache.isNotEmpty()) {
+                        val previewBmp = frameCache[(scrubFraction * (frameCache.size - 1)).toInt().coerceIn(0, frameCache.size - 1)]
                         Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 84.dp), contentAlignment = Alignment.Center) {
                             Surface(shape = RoundedCornerShape(Radius.sm), color = Color.Black.copy(alpha = 0.85f)) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Image(bitmap = scrubPreviewBitmap!!.asImageBitmap(), contentDescription = null, modifier = Modifier.size(width = 160.dp, height = 90.dp), contentScale = ContentScale.Crop)
+                                    Image(bitmap = previewBmp.asImageBitmap(), contentDescription = null, modifier = Modifier.size(width = 160.dp, height = 90.dp), contentScale = ContentScale.Crop)
                                     Text("%02d:%02d".format(((scrubFraction * player.duration) / 1000).toInt() / 60, ((scrubFraction * player.duration) / 1000).toInt() % 60), color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(4.dp))
                                 }
                             }
