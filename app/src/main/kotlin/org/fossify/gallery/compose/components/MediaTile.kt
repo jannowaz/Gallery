@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Visibility
@@ -108,6 +109,12 @@ fun MediaTile(
                 VideoThumbnail(videoPath = medium.path, modifier = Modifier.fillMaxSize().clip(cornerShape), contentScale = ContentScale.Crop)
             } else {
                 GalleryImage(path = medium.path, contentDescription = medium.name, modifier = Modifier.fillMaxSize().clip(cornerShape), contentScale = ContentScale.Crop, placeholderIconSize = 16.dp)
+            }
+
+            if (isVideo) {
+                Box(Modifier.align(Alignment.Center).size(32.dp).background(Color.Black.copy(alpha = 0.35f), CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.PlayArrow, null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(22.dp))
+                }
             }
 
             if (showOverlays) {

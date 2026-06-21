@@ -208,6 +208,8 @@ fun ViewerScreen(
                 onScalingModeChange = { videoScalingMode = it },
                 onBackgroundAudioChange = { backgroundAudio = it },
                 onToggleUi = { showUI = !showUI },
+                showUi = showUI,
+                onInteract = { uiInteractionTick++ },
                 onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
                 isCurrentPage = page == pagerState.currentPage,
             )
@@ -237,13 +239,21 @@ fun ViewerScreen(
             }
         }
 
+        // Soft bottom scrim for control legibility, anchored to the screen bottom so it never floats
+        // with a hard edge even when the controls are lifted above the video seek bar.
+        AnimatedVisibility(
+            visible = showUI,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn(), exit = fadeOut(),
+        ) {
+            Box(Modifier.fillMaxWidth().height(200.dp).background(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.6f))))
+        }
+
         // Bottom overlays in one column: rating bar (persistent) above the action bar (with the UI),
-        // so they never overlap and the rating bar slides smoothly when the UI is toggled. The whole
-        // group is lifted above the video controls for videos.
-        val bottomGroupOffset by androidx.compose.animation.core.animateDpAsState(
-            targetValue = if (currentIsVideo && showUI) 64.dp else 0.dp,
-            label = "viewerBottomOffset",
-        )
+        // so they never overlap and the rating bar slides smoothly when the UI is toggled. For videos
+        // the group sits permanently above the seek bar (constant offset) so they never overlap even
+        // mid-animation.
+        val bottomGroupOffset = if (currentIsVideo) 64.dp else 0.dp
         Column(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = bottomGroupOffset),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -263,7 +273,7 @@ fun ViewerScreen(
                 }
             }
             AnimatedVisibility(visible = showUI, enter = fadeIn(), exit = fadeOut()) {
-                Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.55f)))) {
+                Box(Modifier.fillMaxWidth()) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,

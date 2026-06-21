@@ -85,18 +85,17 @@ fun VideoPage(
     onBackgroundAudioChange: (Boolean) -> Unit = {},
     onToggleUi: () -> Unit = {},
     onZoomChange: (Boolean) -> Unit = {},
+    showUi: Boolean = true,
+    onInteract: () -> Unit = {},
     modifier: Modifier = Modifier,
     isCurrentPage: Boolean = true,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val zoom = rememberZoomState()
-    var showControls by remember { mutableStateOf(true) }
     var isPlaying by remember { mutableStateOf(true) }
     var playbackSpeed by remember { mutableFloatStateOf(1f) }
     val speeds = listOf(0.5f, 1f, 1.5f, 2f, 3f)
-    val autoHideMs = ctx.config.viewerAutoHideMs
-    var autoHideJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var backgroundAudio by remember { mutableStateOf(false) }
     var isMuted by remember { mutableStateOf(false) }
     var trimMode by remember { mutableStateOf(false) }
@@ -178,18 +177,6 @@ fun VideoPage(
         }
     }
 
-    fun resetAutoHide() {
-        autoHideJob?.cancel()
-        if (showControls) {
-            autoHideJob = scope.launch {
-                delay(autoHideMs.toLong())
-                showControls = false
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) { resetAutoHide() }
-
     Box(Modifier.fillMaxSize().clipToBounds().background(Color.Black).then(modifier)) {
         AndroidView(factory = { spv }, modifier = Modifier
             .fillMaxSize()
@@ -197,26 +184,26 @@ fun VideoPage(
                 scaleX = zoom.scale; scaleY = zoom.scale
                 translationX = zoom.offset.x; translationY = zoom.offset.y
             }
-            .zoomable(zoom, onSingleTap = { showControls = !showControls; resetAutoHide(); onToggleUi() })
+            .zoomable(zoom, onSingleTap = { onToggleUi() })
         )
 
         ZoomMinimap(zoom, modifier = Modifier.align(Alignment.TopEnd).padding(top = 72.dp, end = 12.dp))
 
-        AnimatedVisibility(visible = showControls, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = showUi, enter = fadeIn(), exit = fadeOut()) {
             Box(Modifier.fillMaxSize()) {
                 IconButton(
-                    onClick = { if (isPlaying) player.pause() else player.play(); resetAutoHide() },
+                    onClick = { if (isPlaying) player.pause() else player.play(); onInteract() },
                     modifier = Modifier.align(Alignment.Center).size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f))
                 ) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(R.string.cd_play_pause), tint = Color.White, modifier = Modifier.size(28.dp)) }
 
                 val speedIdx = speeds.indexOf(playbackSpeed)
                 val nextSpeed = speeds[(speedIdx + 1) % speeds.size]
                 Column(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) {
-                    TextButton(onClick = { playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed); resetAutoHide() }, modifier = Modifier.size(48.dp)) {
+                    TextButton(onClick = { playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed); onInteract() }, modifier = Modifier.size(48.dp)) {
                         Text("${playbackSpeed}x", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                     }
-                    IconButton(onClick = { isMuted = !isMuted; player.volume = if (isMuted) 0f else 1f; resetAutoHide() }, modifier = Modifier.size(48.dp)) { Icon(if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, stringResource(R.string.set_mute_videos), tint = Color.White, modifier = Modifier.size(22.dp)) }
-                    IconButton(onClick = { trimMode = !trimMode; if (trimMode && trimEndMs < 0f) trimEndMs = player.duration.toFloat(); resetAutoHide() }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.ContentCut, stringResource(R.string.trim_save), tint = if (trimMode) MaterialTheme.colorScheme.primary else Color.White, modifier = Modifier.size(22.dp)) }
+                    IconButton(onClick = { isMuted = !isMuted; player.volume = if (isMuted) 0f else 1f; onInteract() }, modifier = Modifier.size(48.dp)) { Icon(if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, stringResource(R.string.set_mute_videos), tint = Color.White, modifier = Modifier.size(22.dp)) }
+                    IconButton(onClick = { trimMode = !trimMode; if (trimMode && trimEndMs < 0f) trimEndMs = player.duration.toFloat(); onInteract() }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.ContentCut, stringResource(R.string.trim_save), tint = if (trimMode) MaterialTheme.colorScheme.primary else Color.White, modifier = Modifier.size(22.dp)) }
                 }
 
                 if (player.duration > 0) {
@@ -233,7 +220,7 @@ fun VideoPage(
                                 seekPos = fraction * player.duration
                                 scrubFraction = fraction
                                 player.seekTo((fraction * player.duration).toLong())
-                                resetAutoHide()
+                                onInteract()
                                 val now = System.currentTimeMillis()
                                 if (now - lastFrameRequestMs > 90) {
                                     lastFrameRequestMs = now
@@ -242,7 +229,7 @@ fun VideoPage(
                                             try {
                                                 if (retrieverReady) {
                                                     val ms = (fraction * player.duration).toLong()
-                                                    val bmp = retriever.getFrameAtTime(ms * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
+                                                    val bmp = retriever.getFrameAtTime(ms * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                                                     withContext(Dispatchers.Main) { scrubPreviewBitmap = bmp }
                                                 }
                                             } catch (_: Exception) { }

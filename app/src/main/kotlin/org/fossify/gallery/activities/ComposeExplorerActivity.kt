@@ -807,7 +807,7 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                 visible = searchActive,
                 modifier = Modifier.align(Alignment.BottomCenter),
                 enter = slideInVertically(animationSpec = tween(250)) { it } + fadeIn(tween(200)),
-                exit = slideOutVertically(animationSpec = tween(200)) { it } + fadeOut(tween(150)),
+                exit = fadeOut(tween(150)),
             ) {
                 OmniSearchPanel(
                     modifier = Modifier.fillMaxHeight(0.6f),
@@ -1151,7 +1151,7 @@ private fun OmniSearchPanel(
         modifier.fillMaxWidth(),
         shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomEnd = 0.dp, bottomStart = 0.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
-        shadowElevation = 8.dp,
+        shadowElevation = 2.dp,
     ) {
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
             // Filter toggle bar
