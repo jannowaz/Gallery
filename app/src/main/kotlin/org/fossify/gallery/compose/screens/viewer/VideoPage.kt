@@ -258,7 +258,7 @@ fun VideoPage(
                     }
                     // Frame preview
                     if (scrubFraction >= 0f && scrubPreviewBitmap != null) {
-                        Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 60.dp), contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 84.dp), contentAlignment = Alignment.Center) {
                             Surface(shape = RoundedCornerShape(Radius.sm), color = Color.Black.copy(alpha = 0.85f)) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Image(bitmap = scrubPreviewBitmap!!.asImageBitmap(), contentDescription = null, modifier = Modifier.size(width = 160.dp, height = 90.dp), contentScale = ContentScale.Crop)

@@ -125,6 +125,17 @@ fun ExplorerScreen(
         DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant
     }
 
+    // Query MediaStore once for every entry under the storage root, then derive each folder view by
+    // filtering this cache in memory. Avoids a slow MediaStore round-trip on every navigation.
+    val storageRoot = remember { android.os.Environment.getExternalStorageDirectory().absolutePath }
+    var allEntries by remember { mutableStateOf<List<org.fossify.gallery.helpers.MediaStoreOps.MediaEntry>?>(null) }
+    LaunchedEffect(Unit) {
+        allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.mediaEntriesUnder(context, storageRoot) }
+        org.fossify.gallery.helpers.RefreshBus.events.collect {
+            allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.mediaEntriesUnder(context, storageRoot) }
+        }
+    }
+
     suspend fun loadFolderContents(path: String) {
         val (sortedFolders, sortedFiles) = withContext(Dispatchers.IO) {
             val root = path.trimEnd('/')
@@ -132,7 +143,10 @@ fun ExplorerScreen(
             val hidden = context.config.explorer2HiddenFolders
             // Reconstruct the folder tree from MediaStore (raw directory listing is blocked under
             // scoped storage). Subfolders are derived from the media paths beneath the current path.
-            val entries = org.fossify.gallery.helpers.MediaStoreOps.mediaEntriesUnder(context, root)
+            val cache = allEntries
+            val entries = if (cache != null && root.startsWith(storageRoot))
+                cache.filter { it.path.startsWith("$root/") }
+            else org.fossify.gallery.helpers.MediaStoreOps.mediaEntriesUnder(context, root)
             val files = mutableListOf<ExplorerItem>()
             class Agg { var thumb: String = ""; var lastModified: Long = 0L; var count: Int = 0; val previews: MutableList<String> = mutableListOf() }
             val folderMap = LinkedHashMap<String, Agg>()
@@ -175,7 +189,8 @@ fun ExplorerScreen(
         fileItems = sortedFiles
     }
 
-    LaunchedEffect(currentPath, folderSettings.sortBy, folderSettings.sortDesc, mediaSettings.sortBy, mediaSettings.sortDesc) {
+    LaunchedEffect(currentPath, allEntries, folderSettings.sortBy, folderSettings.sortDesc, mediaSettings.sortBy, mediaSettings.sortDesc) {
+        if (currentPath.startsWith(storageRoot) && allEntries == null) { isLoading = true; return@LaunchedEffect }
         isLoading = true
         loadFolderContents(currentPath)
         isLoading = false

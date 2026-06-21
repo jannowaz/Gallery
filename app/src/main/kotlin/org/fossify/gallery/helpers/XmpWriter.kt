@@ -25,7 +25,26 @@ object XmpWriter {
             val extra = readExternalKeywords(file)
             if (extra.isNotEmpty()) data = data.copy(tags = extra)
         }
-        return data
+        return data.copy(tags = data.tags.map(::sanitizeTag).filter { it.isNotBlank() }.distinct())
+    }
+
+    /**
+     * Some files store keywords as a UTF-16LE byte array that other readers render as a
+     * space-separated list of decimal byte values (e.g. "100 0 97 0 115 0 103" → "das…"). Decode
+     * those back into the real text and strip any stray UTF-16 null padding.
+     */
+    private fun sanitizeTag(raw: String): String {
+        var t = raw.trim()
+        val tokens = t.split(Regex(" +"))
+        if (tokens.size >= 2 && tokens.contains("0") && tokens.all { tok -> tok.toIntOrNull()?.let { it in 0..255 } == true }) {
+            runCatching {
+                val bytes = tokens.map { it.toInt().toByte() }.toByteArray()
+                val decoded = String(bytes, Charsets.UTF_16LE).trim('\u0000', ' ')
+                if (decoded.isNotBlank()) t = decoded
+            }
+        }
+        if (t.contains('\u0000')) t = t.replace("\u0000", "")
+        return t.trim()
     }
 
     private val IMAGE_META_EXTS = setOf("jpg", "jpeg", "tiff", "tif", "png", "webp", "heic", "heif")

@@ -237,52 +237,53 @@ fun ViewerScreen(
             }
         }
 
-        // Rating overlay (inside main Box)
-        AnimatedVisibility(
-            visible = showRatingOverlay,
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = (if (currentIsVideo) 56.dp else 0.dp) + (if (showUI) 64.dp else 0.dp)),
-            enter = fadeIn(), exit = fadeOut(),
+        // Bottom overlays in one column: rating bar (persistent) above the action bar (with the UI),
+        // so they never overlap and the rating bar slides smoothly when the UI is toggled. The whole
+        // group is lifted above the video controls for videos.
+        val bottomGroupOffset by androidx.compose.animation.core.animateDpAsState(
+            targetValue = if (currentIsVideo && showUI) 64.dp else 0.dp,
+            label = "viewerBottomOffset",
+        )
+        Column(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = bottomGroupOffset),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
-                Surface(shape = RoundedCornerShape(Radius.xl), color = Color.Black.copy(alpha = 0.32f)) {
-                    Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 6.dp)) {
-                        for (i in 1..5) {
-                            IconButton(onClick = { val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) {
-                                Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))
+            AnimatedVisibility(visible = showRatingOverlay, enter = fadeIn(), exit = fadeOut()) {
+                Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+                    Surface(shape = RoundedCornerShape(Radius.xl), color = Color.Black.copy(alpha = 0.32f)) {
+                        Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 6.dp)) {
+                            for (i in 1..5) {
+                                IconButton(onClick = { uiInteractionTick++; val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) {
+                                    Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))
+                                }
                             }
+                            IconButton(onClick = { showRatingOverlay = false; ctx.config.viewerShowRatingBar = false }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, stringResource(R.string.action_hide), tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
                         }
-                        IconButton(onClick = { showRatingOverlay = false; ctx.config.viewerShowRatingBar = false }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, stringResource(R.string.action_hide), tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
                     }
                 }
             }
-        }
-
-        // Visible bottom action bar — primary actions without needing the swipe-up gesture.
-        AnimatedVisibility(
-            visible = showUI,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = if (currentIsVideo) 72.dp else 0.dp),
-            enter = fadeIn(), exit = fadeOut(),
-        ) {
-            Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.55f)))) {
-                Row(
-                    Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(onClick = {
-                        uiInteractionTick++
-                        val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath))
-                        ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, ctx.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-                    }) { Icon(Icons.Default.Share, stringResource(R.string.action_share), tint = Color.White) }
-                    IconButton(onClick = {
-                        uiInteractionTick++
-                        val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { repo.toggleFavorite(currentPath, f) }
-                    }) { Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), tint = if (isFavorite) MaterialTheme.colorScheme.primary else Color.White) }
-                    if (!currentIsVideo) {
-                        IconButton(onClick = { uiInteractionTick++; (ctx as? android.app.Activity)?.openEditor(currentPath) }) { Icon(Icons.Default.Edit, stringResource(R.string.edit), tint = Color.White) }
+            AnimatedVisibility(visible = showUI, enter = fadeIn(), exit = fadeOut()) {
+                Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.55f)))) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(onClick = {
+                            uiInteractionTick++
+                            val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath))
+                            ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, ctx.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }) { Icon(Icons.Default.Share, stringResource(R.string.action_share), tint = Color.White) }
+                        IconButton(onClick = {
+                            uiInteractionTick++
+                            val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { repo.toggleFavorite(currentPath, f) }
+                        }) { Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), tint = if (isFavorite) MaterialTheme.colorScheme.primary else Color.White) }
+                        if (!currentIsVideo) {
+                            IconButton(onClick = { uiInteractionTick++; (ctx as? android.app.Activity)?.openEditor(currentPath) }) { Icon(Icons.Default.Edit, stringResource(R.string.edit), tint = Color.White) }
+                        }
+                        IconButton(onClick = { uiInteractionTick++; deleteCurrent() }) { Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = Color.White) }
+                        IconButton(onClick = { uiInteractionTick++; showActionSheet = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions), tint = Color.White) }
                     }
-                    IconButton(onClick = { uiInteractionTick++; deleteCurrent() }) { Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = Color.White) }
-                    IconButton(onClick = { uiInteractionTick++; showActionSheet = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions), tint = Color.White) }
                 }
             }
         }

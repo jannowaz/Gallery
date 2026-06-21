@@ -764,7 +764,7 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
     ) {
     Scaffold(
         floatingActionButton = {
-            if (!isMediaSelectionActive) {
+            if (!isMediaSelectionActive && !searchActive) {
                 FloatingActionButton(onClick = { scope.launch { drawerState.open() } }) {
                     Icon(Icons.Default.Menu, stringResource(R.string.nav_more))
                 }
