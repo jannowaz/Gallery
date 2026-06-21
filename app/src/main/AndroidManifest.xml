@@ -46,6 +46,8 @@
     <application
         android:name="org.fossify.gallery.App"
         android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:appCategory="image"
         android:largeHeap="true"
         android:icon="@mipmap/ic_launcher"
@@ -84,10 +86,6 @@
                 <data android:mimeType="vnd.android.cursor.dir/video" />
             </intent-filter>
         </activity>
-
-        <activity
-            android:name=".activities.ComposeFolderActivity"
-            android:exported="false" />
 
         <activity
             android:name=".activities.ComposeViewerActivity"
@@ -327,6 +325,14 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="org.fossify.REFRESH_MEDIA" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".receivers.CancelMetadataScanReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.fossify.gallery.CANCEL_METADATA_SCAN" />
             </intent-filter>
         </receiver>
 

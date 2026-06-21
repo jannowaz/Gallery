@@ -37,10 +37,30 @@ object XmpWriter {
             md.getFirstDirectoryOfType(com.drew.metadata.iptc.IptcDirectory::class.java)?.keywords
                 ?.forEach { it.trim().takeIf(String::isNotBlank)?.let(tags::add) }
             md.getFirstDirectoryOfType(com.drew.metadata.exif.ExifIFD0Directory::class.java)
-                ?.getString(com.drew.metadata.exif.ExifIFD0Directory.TAG_WIN_KEYWORDS)
+                ?.let { decodeXpKeywords(it) }
                 ?.split(';', ',')?.forEach { it.trim().takeIf(String::isNotBlank)?.let(tags::add) }
             tags.toList()
         } catch (_: Throwable) { emptyList() }
+    }
+
+    /**
+     * Windows XPKeywords (EXIF 0x9C9E) is stored as a UTF-16LE byte array. metadata-extractor's
+     * getString() renders it as a space-separated list of raw byte values (e.g. "65 0 110 0 ..."),
+     * so decode the raw bytes instead. Falls back to decoding the numeric string if that's all we get.
+     */
+    private fun decodeXpKeywords(ifd0: com.drew.metadata.exif.ExifIFD0Directory): String? {
+        val tag = com.drew.metadata.exif.ExifIFD0Directory.TAG_WIN_KEYWORDS
+        ifd0.getByteArray(tag)?.let { raw ->
+            return try { String(raw, Charsets.UTF_16LE).trim('\u0000', ' ') } catch (_: Exception) { null }
+        }
+        val s = ifd0.getString(tag) ?: return null
+        if (Regex("^\\s*\\d+(\\s+\\d+)+\\s*$").matches(s)) {
+            return try {
+                val bytes = s.trim().split(Regex("\\s+")).map { it.toInt().toByte() }.toByteArray()
+                String(bytes, Charsets.UTF_16LE).trim('\u0000', ' ')
+            } catch (_: Exception) { null }
+        }
+        return s
     }
 
     fun write(path: String, tags: List<String>, rating: Int) {

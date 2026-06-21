@@ -1,4 +1,6 @@
 package org.fossify.gallery.compose.components
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -52,11 +54,11 @@ fun BottomSearchField(
         tonalElevation = 2.dp,
     ) {
         Row(Modifier.padding(horizontal = s.lg, vertical = s.md), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Search, contentDescription = "Suchen", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.cd_search), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(s.md))
             Box(Modifier.weight(1f)) {
                 if (value.isEmpty()) {
-                    Text("Medien, Ordner & Tags durchsuchen", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.search_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 BasicTextField(
                     value = value,
@@ -70,7 +72,7 @@ fun BottomSearchField(
             if (searching) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
             } else if (value.isNotEmpty()) {
-                Icon(Icons.Default.Close, "Leeren", modifier = Modifier.size(20.dp).clickable { onClear() }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Default.Close, stringResource(R.string.action_empty), modifier = Modifier.size(20.dp).clickable { onClear() }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

@@ -93,6 +93,7 @@ fun GalleryNavHost(
                         FolderMediaScreen(
                             folderPath = route.folderPath,
                             onBack = { navController.popBackStack() },
+                            onNavigateToViewer = { paths, startIndex -> navController.navigate(Viewer(paths, startIndex)) },
                         )
                     }
                     composable<Viewer> { backStackEntry ->

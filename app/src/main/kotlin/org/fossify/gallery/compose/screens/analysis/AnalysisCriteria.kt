@@ -1,4 +1,5 @@
 package org.fossify.gallery.compose.screens.analysis
+import org.fossify.gallery.R
 
 import android.content.Context
 import android.net.Uri
@@ -91,10 +92,10 @@ object AnalysisCriteria {
         var wastedBytes = 0L
 
         if (isVideo) {
-            reasons.addAll(analyzeVideo(size, width, height, durationMs, bitrateKbps, codec))
+            reasons.addAll(analyzeVideo(context, size, width, height, durationMs, bitrateKbps, codec))
             wastedBytes = estimateVideoWaste(size, width, height, durationMs, bitrateKbps)
         } else {
-            reasons.addAll(analyzeImage(size, ext, width, height, bpp))
+            reasons.addAll(analyzeImage(context, size, ext, width, height, bpp))
             wastedBytes = estimateImageWaste(size, ext, width, height, bpp)
         }
 
@@ -110,7 +111,8 @@ object AnalysisCriteria {
         )
     }
 
-    private fun analyzeVideo(size: Long, width: Int, height: Int, durationMs: Long, bitrateKbps: Long, codec: String?): List<String> {
+    private fun analyzeVideo(context: Context?, size: Long, width: Int, height: Int, durationMs: Long, bitrateKbps: Long, codec: String?): List<String> {
+        val context = context ?: return emptyList()
         val reasons = mutableListOf<String>()
         val pixels = width * height
         val t = thresholds
@@ -124,40 +126,41 @@ object AnalysisCriteria {
         }
         val ytRef = when (label) { "4K" -> 68_000L; "1440p" -> 24_000L; "1080p" -> 12_000L; "720p" -> 7_500L; else -> 2_500L }
         if (bitrateKbps > limitKbps) {
-            reasons.add("Bitrate ${formatKbps(bitrateKbps)} bei $label – YouTube empfiehlt ${formatKbps(ytRef)} (${"%.0f".format(bitrateKbps.toDouble() / ytRef)}× höher)")
+            reasons.add(context.getString(R.string.reason_video_bitrate, formatKbps(bitrateKbps), label, formatKbps(ytRef), "%.0f".format(bitrateKbps.toDouble() / ytRef)))
         }
         if (durationMs > 0) {
             val mbPerMin = (size.toDouble() / (durationMs / 60000.0)) / 1_000_000
-            if (mbPerMin > t.videoMbPerMin) reasons.add("${"%.0f".format(mbPerMin)} MB/Min (${formatKbps((mbPerMin * 8 * 1_000_000 / 60).toLong())}) – sehr ineffizient (Grenze: ${t.videoMbPerMin} MB/Min)")
+            if (mbPerMin > t.videoMbPerMin) reasons.add(context.getString(R.string.reason_video_mbmin, "%.0f".format(mbPerMin), formatKbps((mbPerMin * 8 * 1_000_000 / 60).toLong()), t.videoMbPerMin))
         }
         if (codec != null && codec in listOf("video/mp4v-es", "video/3gpp", "video/x-ms-wmv")) {
-            reasons.add("Veralteter Codec: $codec (H.264/H.265 wäre 50–70% kleiner)")
+            reasons.add(context.getString(R.string.reason_video_codec, codec))
         }
-        if (size > t.maxFileSize) reasons.add("Einzeldatei > ${t.maxFileSize / 1_000_000} MB")
-        if (width > 3840 || height > 2160) reasons.add("Auflösung ${width}×${height} – 4K auf Handy-Display nicht unterscheidbar von 1080p")
+        if (size > t.maxFileSize) reasons.add(context.getString(R.string.reason_single_file, t.maxFileSize / 1_000_000))
+        if (width > 3840 || height > 2160) reasons.add(context.getString(R.string.reason_video_resolution, width, height))
         return reasons
     }
 
-    private fun analyzeImage(size: Long, format: String, width: Int, height: Int, bpp: Float): List<String> {
+    private fun analyzeImage(context: Context?, size: Long, format: String, width: Int, height: Int, bpp: Float): List<String> {
+        val context = context ?: return emptyList()
         val reasons = mutableListOf<String>()
         val mp = (width * height) / 1_000_000
         val t = thresholds
         when (format) {
-            "bmp", "dib" -> reasons.add("BMP: ${"%.1f".format(bpp)} BPP unkomprimiert – jedes Pixel einzeln gespeichert. PNG = gleiche Qualität, ~95% kleiner")
+            "bmp", "dib" -> reasons.add(context.getString(R.string.reason_img_bmp, "%.1f".format(bpp)))
             "png" -> {
-                if (bpp > t.imagePngBpp) reasons.add("PNG: ${"%.1f".format(bpp)} BPP – vermutlich Foto, nicht Grafik. JPEG Q85 = kaum sichtbarer Unterschied, ~85% kleiner")
-                else if (bpp > 0.8f) reasons.add("PNG: ${"%.1f".format(bpp)} BPP – WebP-lossless = pixel-identisch, ~30% kleiner")
+                if (bpp > t.imagePngBpp) reasons.add(context.getString(R.string.reason_img_png_photo, "%.1f".format(bpp)))
+                else if (bpp > 0.8f) reasons.add(context.getString(R.string.reason_img_png_webp, "%.1f".format(bpp)))
             }
-            "tiff", "tif" -> reasons.add("TIFF: unkomprimiertes Druckformat – PNG = gleiche Qualität, ~95% kleiner")
+            "tiff", "tif" -> reasons.add(context.getString(R.string.reason_img_tiff))
             "jpeg", "jpg" -> {
-                if (bpp > t.imageJpegBpp) reasons.add("JPEG: ${"%.2f".format(bpp)} BPP – Qualität zu hoch (Q~100). Q85 = ${"%.2f".format(0.2f)} BPP, visuell identisch, ~60% kleiner")
-                else if (bpp > 0.3f) reasons.add("JPEG: ${"%.2f".format(bpp)} BPP – WebP 80% = gleiche Qualität, ~30% kleiner")
+                if (bpp > t.imageJpegBpp) reasons.add(context.getString(R.string.reason_img_jpeg_high, "%.2f".format(bpp), "%.2f".format(0.2f)))
+                else if (bpp > 0.3f) reasons.add(context.getString(R.string.reason_img_jpeg_webp, "%.2f".format(bpp)))
             }
         }
-        if (mp > t.maxMegapixels) reasons.add("Auflösung $mp MP (${width}×${height}) – überdimensioniert für Handy. 12 MP = schon Retina auf 6.7\"")
-        if (width > 7680) reasons.add("Breite ${width}px – Panorama ohne sichtbaren Gewinn")
-        if (height > 7680) reasons.add("Höhe ${height}px – kein Display kann das nativ darstellen")
-        if (size > t.maxFileSize) reasons.add("Einzeldatei > ${t.maxFileSize / 1_000_000} MB")
+        if (mp > t.maxMegapixels) reasons.add(context.getString(R.string.reason_img_megapixels, mp, width, height))
+        if (width > 7680) reasons.add(context.getString(R.string.reason_img_width, width))
+        if (height > 7680) reasons.add(context.getString(R.string.reason_img_height, height))
+        if (size > t.maxFileSize) reasons.add(context.getString(R.string.reason_single_file, t.maxFileSize / 1_000_000))
         return reasons
     }
 

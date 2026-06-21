@@ -1,4 +1,7 @@
 package org.fossify.gallery.compose.components
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
+import org.fossify.gallery.compose.theme.Radius
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
@@ -37,7 +40,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
-import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.helpers.MediaStoreOps
 import org.fossify.gallery.helpers.RefreshBus
 import java.io.File
@@ -45,13 +48,14 @@ import java.io.File
 @Composable
 fun RenameDialog(paths: List<String>, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
+    val repo = LocalMediaRepository.current
     var mode by remember { mutableIntStateOf(0) }
     var text by remember { mutableStateOf("") }
     var counter by remember { mutableIntStateOf(1) }
     val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
     val consent = rememberMediaStoreConsent()
-    val modes = listOf("Präfix" to "Vor den Dateinamen", "Suffix" to "Vor die Dateiendung", "Neuer Name" to "Mit Nummerierung")
+    val modes = listOf(stringResource(R.string.rename_prefix) to stringResource(R.string.rename_prefix_desc), stringResource(R.string.rename_suffix) to stringResource(R.string.rename_suffix_desc), stringResource(R.string.rename_numbered) to stringResource(R.string.rename_numbered_desc))
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
@@ -64,7 +68,7 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit) {
                     modes.forEachIndexed { idx, (title, _) ->
                         Surface(
                             onClick = { mode = idx },
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(Radius.sm),
                             color = if (mode == idx) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                             modifier = Modifier.weight(1f),
                         ) {
@@ -80,18 +84,18 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit) {
                     label = { Text(modes[mode].second) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(Radius.md),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant),
                 )
                 if (mode == 2) {
                     Spacer(Modifier.height(4.dp))
-                    Text("Start-Nummer: $counter", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.start_number, counter), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Spacer(Modifier.height(6.dp))
                 if (text.isNotBlank()) {
                     val preview1 = generatePreview(paths.firstOrNull() ?: "", text, mode, counter)
                     val preview2 = generatePreview(paths.lastOrNull() ?: "", text, mode, counter + paths.size - 1)
-                    Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), modifier = Modifier.fillMaxWidth()) {
+                    Surface(shape = RoundedCornerShape(Radius.sm), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(8.dp)) {
                             Text("${File(paths.firstOrNull() ?: "").name} → $preview1", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("${File(paths.lastOrNull() ?: "").name} → $preview2", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -105,7 +109,6 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit) {
             TextButton(onClick = {
                 if (text.isBlank()) return@TextButton
                 scope.launch {
-                    val db = ctx.mediaDB
                     data class Job(val path: String, val uri: android.net.Uri, val newName: String)
                     val jobs = withContext(Dispatchers.IO) {
                         paths.mapIndexedNotNull { idx, path ->
@@ -122,31 +125,31 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit) {
                         }
                     }
                     if (jobs.isEmpty()) {
-                        ctx.toast("Keine Dateien gefunden", Toast.LENGTH_SHORT); onDismiss(); return@launch
+                        ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); onDismiss(); return@launch
                     }
                     val granted = try {
                         consent.request(MediaStoreOps.writeRequest(ctx, jobs.map { it.uri }))
                     } catch (_: Exception) { false }
-                    if (!granted) { ctx.toast("Abgebrochen", Toast.LENGTH_SHORT); return@launch }
+                    if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); return@launch }
                     val renamed = withContext(Dispatchers.IO) {
                         var n = 0
                         jobs.forEach { job ->
                             if (MediaStoreOps.rename(ctx, job.uri, job.newName)) {
                                 val parent = File(job.path).parent ?: ""
                                 val newPath = File(parent, job.newName).absolutePath
-                                try { db.updateMedium(job.path, parent, job.newName, newPath) } catch (_: Exception) { }
+                                try { repo.updateMediumPath(job.path, parent, job.newName, newPath) } catch (_: Exception) { }
                                 n++
                             }
                         }
                         n
                     }
                     RefreshBus.trigger()
-                    ctx.toast("$renamed Dateien umbenannt", Toast.LENGTH_SHORT)
+                    ctx.toast(ctx.getString(R.string.files_renamed, renamed), Toast.LENGTH_SHORT)
                     onDismiss()
                 }
-            }) { Text("Umbenennen") }
+            }) { Text(stringResource(R.string.action_rename)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 

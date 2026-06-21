@@ -46,14 +46,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -62,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -73,12 +73,13 @@ import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.gallery.compose.components.FolderTile
 import org.fossify.gallery.compose.components.LibraryAlbumGrid
 import org.fossify.gallery.compose.components.AlbumGridItem
-import org.fossify.gallery.compose.components.SelectionBar
+import org.fossify.gallery.compose.components.SelectionAppBar
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.GalleryImage
-import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.extensions.config
-import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.R
+import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.models.Directory
 import org.fossify.gallery.viewmodels.AlbumsViewModel
 import org.fossify.gallery.workers.MetadataSyncWorker
@@ -96,13 +97,19 @@ fun AlbumsScreen(
     onSelectionActiveChanged: (Boolean) -> Unit = {},
 ) {
     val ctx = LocalContext.current
+    val repo = LocalMediaRepository.current
     val state by viewModel.state.collectAsState()
     var favorites by remember { mutableStateOf(ctx.config.favoriteFolders) }
     var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var showSelectionSheet by remember { mutableStateOf(false) }
     val hasSelection = selectedPaths.isNotEmpty()
     LaunchedEffect(hasSelection) { onSelectionActiveChanged(hasSelection) }
     BackHandler(enabled = hasSelection) { selectedPaths = emptySet() }
+    var selectionBarHeightPx by remember { mutableIntStateOf(0) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val contentTopInset by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (hasSelection) with(density) { selectionBarHeightPx.toDp() } else 0.dp,
+        label = "albumsSelectionInset",
+    )
 
     val sortedDirs = remember(state.directories, viewSettings.sortBy, viewSettings.sortDesc) {
         val sorted = when (viewSettings.sortBy) {
@@ -125,7 +132,7 @@ fun AlbumsScreen(
     LaunchedEffect(sortedDirs, isGrid) {
         if (!isGrid) {
             albumPreviews = withContext(Dispatchers.IO) {
-                sortedDirs.associate { dir -> dir.path to (try { ctx.mediaDB.getMediaFromPath(dir.path).map { it.path }.take(4) } catch (_: Exception) { emptyList() }) }
+                sortedDirs.associate { dir -> dir.path to repo.getMediaFromPath(dir.path).map { it.path }.take(4) }
             }
         }
     }
@@ -134,11 +141,11 @@ fun AlbumsScreen(
     }
 
     Box(Modifier.fillMaxSize()) {
-        Column(modifier = modifier.fillMaxSize()) {
+        Column(modifier = modifier.fillMaxSize().padding(top = contentTopInset)) {
             if (state.isLoading) {
                 MediaSkeleton(columns = viewSettings.columnCount)
             } else if (state.directories.isEmpty()) {
-                EmptyState(Icons.Default.Folder, "Keine Alben")
+                EmptyState(Icons.Default.Folder, stringResource(R.string.no_albums))
             } else {
                 LibraryAlbumGrid(
                     items = albumItems,
@@ -156,45 +163,23 @@ fun AlbumsScreen(
 
         AnimatedVisibility(
             visible = hasSelection,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(animationSpec = spring(dampingRatio = 0.7f)),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = slideInVertically { -it } + fadeIn(),
+            exit = slideOutVertically { -it } + fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            SelectionBar(
+            val selPath = selectedPaths.firstOrNull() ?: ""
+            val isFav = selPath in favorites
+            SelectionAppBar(
+                modifier = Modifier.onGloballyPositioned { selectionBarHeightPx = it.size.height },
                 count = selectedPaths.size,
-                onClear = { selectedPaths = emptySet() },
-                onMoreActions = { showSelectionSheet = true },
+                onClose = { selectedPaths = emptySet() },
+                actions = {
+                    IconButton(onClick = { selectedPaths.firstOrNull()?.let { p -> sortedDirs.find { it.path == p }?.let { d -> onFolderClick(d) } }; selectedPaths = emptySet() }) { Icon(Icons.Default.Folder, stringResource(R.string.action_open)) }
+                    IconButton(onClick = { if (isFav) ctx.config.removeFavoriteFolder(selPath) else ctx.config.addFavoriteFolder(selPath); favorites = ctx.config.favoriteFolders; selectedPaths = emptySet() }) { Icon(if (isFav) Icons.Default.Star else Icons.Default.StarBorder, stringResource(if (isFav) R.string.action_unfavorite else R.string.action_favorite)) }
+                    IconButton(onClick = { selectedPaths.firstOrNull()?.let { (ctx as? android.app.Activity)?.let { a -> PropertiesDialog(a, it, true) } } }) { Icon(Icons.Default.Info, stringResource(R.string.action_info)) }
+                    IconButton(onClick = { selectedPaths.firstOrNull()?.let { path -> MetadataSyncWorker.scheduleFolderScan(ctx, path); ctx.toast(ctx.getString(R.string.scan_started, File(path).name), Toast.LENGTH_SHORT) }; selectedPaths = emptySet() }) { Icon(Icons.AutoMirrored.Filled.Label, stringResource(R.string.action_scan_metadata)) }
+                },
             )
-        }
-    }
-
-    if (showSelectionSheet) {
-        ModalBottomSheet(onDismissRequest = { showSelectionSheet = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("${selectedPaths.size} ausgewählt", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    IconButton(onClick = { selectedPaths = emptySet(); showSelectionSheet = false }) { Icon(Icons.Default.Close, "Auswahl schließen", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-                }
-                Spacer(Modifier.height(12.dp))
-                SelectionRow(Icons.Default.Folder, "Öffnen") { selectedPaths.firstOrNull()?.let { p -> sortedDirs.find { it.path == p }?.let { onFolderClick(it) } }; showSelectionSheet = false; selectedPaths = emptySet() }
-                SelectionRow(Icons.Default.Info, "Info") { selectedPaths.firstOrNull()?.let { (ctx as? android.app.Activity)?.let { a -> PropertiesDialog(a, it, true) } }; showSelectionSheet = false }
-                HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                SelectionRow(Icons.AutoMirrored.Filled.Label, "Tags & Bewertungen scannen") {
-                    selectedPaths.firstOrNull()?.let { path ->
-                        MetadataSyncWorker.scheduleFolderScan(ctx, path)
-                        ctx.toast("Scan für \"${File(path).name}\" gestartet", Toast.LENGTH_SHORT)
-                    }
-                    showSelectionSheet = false; selectedPaths = emptySet()
-                }
-                HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                val selPath = selectedPaths.firstOrNull() ?: ""
-                val isFav = selPath in favorites
-                SelectionRow(if (isFav) Icons.Default.Star else Icons.Default.StarBorder, if (isFav) "Aus Favoriten entfernen" else "Favorisieren") {
-                    if (isFav) ctx.config.removeFavoriteFolder(selPath) else ctx.config.addFavoriteFolder(selPath)
-                    favorites = ctx.config.favoriteFolders; showSelectionSheet = false; selectedPaths = emptySet()
-                }
-                Spacer(Modifier.height(24.dp))
-            }
         }
     }
 }

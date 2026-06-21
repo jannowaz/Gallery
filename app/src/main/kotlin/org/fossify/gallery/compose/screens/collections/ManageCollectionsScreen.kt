@@ -1,4 +1,5 @@
 package org.fossify.gallery.compose.screens.collections
+import org.fossify.gallery.compose.theme.Radius
 
 import android.content.Intent
 import android.net.Uri
@@ -68,7 +69,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.R
-import org.fossify.gallery.extensions.collectionDB
+import org.fossify.gallery.compose.components.ConfirmDestructive
+import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.models.MediaCollection
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,6 +80,7 @@ fun ManageCollectionsScreen(
     onCollectionClick: (MediaCollection) -> Unit
 ) {
     val ctx = LocalContext.current
+    val repo = LocalMediaRepository.current
     val scope = rememberCoroutineScope()
     var collections by remember { mutableStateOf<List<MediaCollection>>(emptyList()) }
     var showEditDialog by remember { mutableStateOf(false) }
@@ -87,27 +90,25 @@ fun ManageCollectionsScreen(
     var loadTrigger by remember { mutableIntStateOf(0) }
     LaunchedEffect(loadTrigger) {
         collections = withContext(Dispatchers.IO) {
-            try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() }
+            repo.getCollections()
         }
     }
     fun refresh() { loadTrigger++ }
 
     if (showDeleteConfirm != null) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = null },
-            title = { Text(stringResource(R.string.delete_collection)) },
-            text = { Text(stringResource(R.string.delete_collection_confirm, showDeleteConfirm!!.name)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    val c = showDeleteConfirm!!
-                    showDeleteConfirm = null
-                    scope.launch(Dispatchers.IO) {
-                        try { ctx.collectionDB.delete(c); withContext(Dispatchers.Main) { refresh() } }
-                        catch (_: Exception) { withContext(Dispatchers.Main) { ctx.toast(R.string.delete_error) } }
-                    }
-                }) { Text(stringResource(org.fossify.commons.R.string.delete), color = MaterialTheme.colorScheme.error) }
+        ConfirmDestructive(
+            title = stringResource(R.string.delete_collection),
+            text = stringResource(R.string.delete_collection_confirm, showDeleteConfirm!!.name),
+            confirmLabel = stringResource(org.fossify.commons.R.string.delete),
+            onConfirm = {
+                val c = showDeleteConfirm!!
+                showDeleteConfirm = null
+                scope.launch(Dispatchers.IO) {
+                    try { repo.deleteCollection(c); withContext(Dispatchers.Main) { refresh() } }
+                    catch (_: Exception) { withContext(Dispatchers.Main) { ctx.toast(R.string.delete_error) } }
+                }
             },
-            dismissButton = { TextButton(onClick = { showDeleteConfirm = null }) { Text(stringResource(org.fossify.commons.R.string.cancel)) } }
+            onDismiss = { showDeleteConfirm = null },
         )
     }
 
@@ -118,8 +119,8 @@ fun ManageCollectionsScreen(
             onSave = { col ->
                 scope.launch(Dispatchers.IO) {
                     try {
-                        ctx.collectionDB.insert(col)
-                        collections = try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() }
+                        repo.insertCollection(col)
+                        collections = repo.getCollections()
                         withContext(Dispatchers.Main) { showEditDialog = false }
                     } catch (e: Exception) {
                         withContext(Dispatchers.Main) { ctx.toast("${ctx.getString(R.string.error_prefix)}: ${e.message}", Toast.LENGTH_LONG) }
@@ -135,7 +136,7 @@ fun ManageCollectionsScreen(
                 title = { Text(stringResource(R.string.collections)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -168,7 +169,7 @@ fun ManageCollectionsScreen(
                 items(collections, key = { it.id }) { coll ->
                     Card(
                         modifier = Modifier.fillMaxWidth().clickable { onCollectionClick(coll) },
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(Radius.md),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                     ) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -277,7 +278,7 @@ private fun EditCollectionDialog(
                 }
                 Surface(
                     onClick = { inclPicker.launch(null) },
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(Radius.sm),
                     color = MaterialTheme.colorScheme.surfaceVariant
                 ) {
                     Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -299,7 +300,7 @@ private fun EditCollectionDialog(
                 }
                 Surface(
                     onClick = { exclPicker.launch(null) },
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(Radius.sm),
                     color = MaterialTheme.colorScheme.surfaceVariant
                 ) {
                     Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {

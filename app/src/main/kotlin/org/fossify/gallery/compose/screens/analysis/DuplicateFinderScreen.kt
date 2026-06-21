@@ -1,4 +1,7 @@
 package org.fossify.gallery.compose.screens.analysis
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
+import org.fossify.gallery.compose.theme.Radius
 
 import android.content.Intent
 import android.net.Uri
@@ -85,11 +88,11 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "") {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Duplikate finden", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück") } },
+                title = { Text(stringResource(R.string.nav_find_duplicates), fontWeight = FontWeight.Bold) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 actions = {
                     if (state.groups.isNotEmpty()) {
-                        TextButton(onClick = { vm.selectAllButNewest() }) { Text("Alte markieren") }
+                        TextButton(onClick = { vm.selectAllButNewest() }) { Text(stringResource(R.string.select_old)) }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -100,14 +103,14 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "") {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     modifier = Modifier.weight(1f).clickable { folderPicker.launch(null) },
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(Radius.md),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                 ) {
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.FolderOpen, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            currentFolder.substringAfterLast('/').ifEmpty { "Interner Speicher" },
+                            currentFolder.substringAfterLast('/').ifEmpty { stringResource(R.string.internal_storage) },
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
@@ -120,7 +123,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "") {
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                         Spacer(Modifier.width(8.dp))
                     }
-                    Text(if (state.isScanning) "Scannt…" else "Suchen")
+                    Text(if (state.isScanning) stringResource(R.string.scanning_short) else stringResource(R.string.cd_search))
                 }
             }
 
@@ -138,17 +141,17 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "") {
                     selected = state.mode == DuplicateMode.EXACT,
                     onClick = { vm.setMode(DuplicateMode.EXACT) },
                     enabled = !state.isScanning,
-                    label = { Text("Exakt") },
+                    label = { Text(stringResource(R.string.dup_mode_exact)) },
                 )
                 FilterChip(
                     selected = state.mode == DuplicateMode.SIMILAR,
                     onClick = { vm.setMode(DuplicateMode.SIMILAR) },
                     enabled = !state.isScanning,
-                    label = { Text("Ähnlich") },
+                    label = { Text(stringResource(R.string.dup_mode_similar)) },
                 )
             }
             Text(
-                if (state.mode == DuplicateMode.SIMILAR) "Findet visuell ähnliche Bilder (Format-unabhängig, leicht verändert)" else "Findet byte-identische Dateien (Bilder & Videos)",
+                if (state.mode == DuplicateMode.SIMILAR) stringResource(R.string.dup_desc_similar) else stringResource(R.string.dup_desc_exact),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
@@ -157,7 +160,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "") {
             if (state.mode == DuplicateMode.SIMILAR) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Toleranz", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.tolerance), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
                         Text("${state.similarThreshold} · ${thresholdLabel(state.similarThreshold)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                     }
                     Slider(
@@ -186,11 +189,11 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "") {
 
                 if (state.selectedForDeletion.isNotEmpty()) {
                     val selSize = state.groups.flatMap { it.files }.filter { it.path in state.selectedForDeletion }.sumOf { it.size }
-                    Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(12.dp)) {
+                    Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(Radius.md)) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("${state.selectedForDeletion.size} markiert · ${dupFormatBytes(selSize)}", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { showConfirmDialog = true }) { Text("Löschen", color = MaterialTheme.colorScheme.error) }
-                            TextButton(onClick = { vm.clearSelection() }) { Text("Clear") }
+                            TextButton(onClick = { showConfirmDialog = true }) { Text(stringResource(org.fossify.commons.R.string.delete), color = MaterialTheme.colorScheme.error) }
+                            TextButton(onClick = { vm.clearSelection() }) { Text(stringResource(R.string.action_empty)) }
                         }
                     }
                 }
@@ -218,7 +221,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "") {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.ContentCopy, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
                         Spacer(Modifier.height(16.dp))
-                        Text("Keine Duplikate gefunden", style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(R.string.no_duplicates_found), style = MaterialTheme.typography.bodyLarge)
                         Text("${state.totalScanned} Dateien geprüft", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -231,10 +234,10 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "") {
         val selSize = state.groups.flatMap { it.files }.filter { it.path in state.selectedForDeletion }.sumOf { it.size }
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
-            title = { Text("Löschen bestätigen") },
+            title = { Text(stringResource(R.string.confirm_delete_title)) },
             text = { Text("$count Dateien endgültig löschen? (${dupFormatBytes(selSize)} werden freigegeben)") },
-            confirmButton = { TextButton(onClick = { showConfirmDialog = false; vm.deleteSelected() }) { Text("Löschen", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { showConfirmDialog = false }) { Text("Abbrechen") } },
+            confirmButton = { TextButton(onClick = { showConfirmDialog = false; vm.deleteSelected() }) { Text(stringResource(org.fossify.commons.R.string.delete), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { showConfirmDialog = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }
@@ -249,7 +252,7 @@ private fun DuplicateGroupCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(Radius.md),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
     ) {
         Column(Modifier.padding(12.dp)) {
@@ -262,7 +265,7 @@ private fun DuplicateGroupCard(
             group.files.forEachIndexed { index, file ->
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(64.dp)) {
-                        GalleryImage(path = file.path, contentDescription = file.name, modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)))
+                        GalleryImage(path = file.path, contentDescription = file.name, modifier = Modifier.size(64.dp).clip(RoundedCornerShape(Radius.sm)))
                         if (file.mediaType == 2) {
                             Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
                                 Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(24.dp))
@@ -275,8 +278,8 @@ private fun DuplicateGroupCard(
                             Text(file.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                             if (index == 0) {
                                 Spacer(Modifier.width(6.dp))
-                                Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)) {
-                                    Text("neueste", Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                Surface(shape = RoundedCornerShape(Radius.xs), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)) {
+                                    Text(stringResource(R.string.newest), Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
                         }
@@ -305,7 +308,7 @@ private fun DuplicateGroupCard(
                         }
                     }
                     IconButton(onClick = { onView(file.path) }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.Visibility, "Ansehen", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Visibility, stringResource(R.string.cd_preview), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     }
                     Checkbox(checked = file.path in selected, onCheckedChange = { onToggle(file.path) })
                 }

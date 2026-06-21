@@ -1,4 +1,7 @@
 package org.fossify.gallery.compose.screens.analysis
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
+import org.fossify.gallery.compose.theme.Radius
 
 import android.content.Intent
 import android.net.Uri
@@ -86,11 +89,11 @@ fun StorageAnalysisScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Speicher-Analyse", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück") } },
+                title = { Text(stringResource(R.string.nav_storage_analysis), fontWeight = FontWeight.Bold) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 actions = {
                     if (state.results.isNotEmpty()) {
-                        IconButton(onClick = { vm.selectAll() }) { Icon(Icons.Default.CheckCircle, "Alle auswählen") }
+                        IconButton(onClick = { vm.selectAll() }) { Icon(Icons.Default.CheckCircle, stringResource(R.string.action_select_all)) }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -102,14 +105,14 @@ fun StorageAnalysisScreen(onBack: () -> Unit) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     modifier = Modifier.weight(1f).clickable { folderPicker.launch(null) },
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(Radius.md),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                 ) {
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.FolderOpen, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            currentFolder.substringAfterLast('/').ifEmpty { "Interner Speicher" },
+                            currentFolder.substringAfterLast('/').ifEmpty { stringResource(R.string.internal_storage) },
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -126,7 +129,7 @@ fun StorageAnalysisScreen(onBack: () -> Unit) {
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                         Spacer(Modifier.width(8.dp))
                     }
-                    Text(if (state.isScanning) "Scannt..." else "Analysieren")
+                    Text(if (state.isScanning) stringResource(R.string.scanning_short) else stringResource(R.string.analyze))
                 }
             }
 
@@ -149,9 +152,9 @@ fun StorageAnalysisScreen(onBack: () -> Unit) {
                     Column(Modifier.padding(12.dp)) {
                         Text("${filtered.size} Dateien · ${formatBytes(totalWasted)} verschwendet", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                         Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            FilterChip(selected = state.filterMode == FilterMode.ALL, onClick = { vm.setFilterMode(FilterMode.ALL) }, label = { Text("Alle") })
-                            FilterChip(selected = state.filterMode == FilterMode.IMAGES, onClick = { vm.setFilterMode(FilterMode.IMAGES) }, label = { Text("Bilder") })
-                            FilterChip(selected = state.filterMode == FilterMode.VIDEOS, onClick = { vm.setFilterMode(FilterMode.VIDEOS) }, label = { Text("Videos") })
+                            FilterChip(selected = state.filterMode == FilterMode.ALL, onClick = { vm.setFilterMode(FilterMode.ALL) }, label = { Text(stringResource(R.string.filter_all)) })
+                            FilterChip(selected = state.filterMode == FilterMode.IMAGES, onClick = { vm.setFilterMode(FilterMode.IMAGES) }, label = { Text(stringResource(R.string.images)) })
+                            FilterChip(selected = state.filterMode == FilterMode.VIDEOS, onClick = { vm.setFilterMode(FilterMode.VIDEOS) }, label = { Text(stringResource(R.string.videos)) })
                         }
                     }
                 }
@@ -159,11 +162,11 @@ fun StorageAnalysisScreen(onBack: () -> Unit) {
                 // Action bar
                 if (state.selectedPaths.isNotEmpty()) {
                     val selSize = state.results.filter { it.path in state.selectedPaths }.sumOf { it.wastedBytes }
-                    Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(12.dp)) {
+                    Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(Radius.md)) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("${state.selectedPaths.size} ausgewählt · ${formatBytes(selSize)} sparen", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { showConfirmDialog = true }) { Text("Optimieren") }
-                            TextButton(onClick = { vm.clearSelection() }) { Text("Clear") }
+                            TextButton(onClick = { showConfirmDialog = true }) { Text(stringResource(R.string.optimize)) }
+                            TextButton(onClick = { vm.clearSelection() }) { Text(stringResource(R.string.action_empty)) }
                         }
                     }
                 }
@@ -191,7 +194,7 @@ fun StorageAnalysisScreen(onBack: () -> Unit) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.CheckCircle, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
                         Spacer(Modifier.height(16.dp))
-                        Text("Alles optimal!", style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(R.string.all_optimal), style = MaterialTheme.typography.bodyLarge)
                         Text("${state.totalFiles} Dateien analysiert, keine Optimierung nötig", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -206,26 +209,26 @@ fun StorageAnalysisScreen(onBack: () -> Unit) {
         val losslessCount = state.results.filter { it.path in state.selectedPaths && (it.imageFormat in listOf("bmp", "dib", "tiff", "tif") || (it.imageFormat == "png" && it.bpp <= 1.5f)) }.size
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
-            title = { Text("Optimierung bestätigen") },
+            title = { Text(stringResource(R.string.optimize_confirm_title)) },
             text = {
                 Column {
                     Text("$selCount Dateien optimieren? Geschätzte Ersparnis: ${formatBytes(selWaste)}.")
                     Spacer(Modifier.height(8.dp))
-                    Text("Lossless: $losslessCount Dateien (BMP→PNG, TIFF→PNG, PNG→WebP) – 100% Qualität erhalten", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Text(stringResource(R.string.opt_lossless_detail, losslessCount), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     val lossyCount = selCount - losslessCount
                     if (lossyCount > 0) {
                         Spacer(Modifier.height(4.dp))
-                        Text("Lossy: $lossyCount Dateien (JPEG/PNG Rekompression) – minimale Qualitätseinbuße", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                        Text(stringResource(R.string.opt_lossy_detail, lossyCount), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showConfirmDialog = false; vm.executeTransforms(losslessOnly = true) }) { Text("Nur Lossless") }
+                TextButton(onClick = { showConfirmDialog = false; vm.executeTransforms(losslessOnly = true) }) { Text(stringResource(R.string.lossless_only)) }
             },
             dismissButton = {
                 Row {
-                    TextButton(onClick = { showConfirmDialog = false; vm.executeTransforms(losslessOnly = false) }) { Text("Alle", color = MaterialTheme.colorScheme.error) }
-                    TextButton(onClick = { showConfirmDialog = false }) { Text("Abbrechen") }
+                    TextButton(onClick = { showConfirmDialog = false; vm.executeTransforms(losslessOnly = false) }) { Text(stringResource(R.string.filter_all), color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = { showConfirmDialog = false }) { Text(stringResource(R.string.cancel)) }
                 }
             }
         )
@@ -238,9 +241,9 @@ fun StorageAnalysisScreen(onBack: () -> Unit) {
         val saved = state.transformResults.sumOf { it.savedBytes }
         AlertDialog(
             onDismissRequest = { vm.clearTransformResults() },
-            title = { Text("Optimierung abgeschlossen") },
+            title = { Text(stringResource(R.string.optimize_done_title)) },
             text = { Text("$success erfolgreich, $failed fehlgeschlagen. ${formatBytes(saved)} gespart.") },
-            confirmButton = { TextButton(onClick = { vm.clearTransformResults() }) { Text("OK") } }
+            confirmButton = { TextButton(onClick = { vm.clearTransformResults() }) { Text(stringResource(org.fossify.commons.R.string.ok)) } }
         )
     }
 }
@@ -249,7 +252,7 @@ fun StorageAnalysisScreen(onBack: () -> Unit) {
 private fun AnalysisCard(item: AnalysisResult, isSelected: Boolean, onClick: () -> Unit, onView: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(Radius.md),
         colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
     ) {
         Column(Modifier.padding(12.dp)) {
@@ -261,7 +264,7 @@ private fun AnalysisCard(item: AnalysisResult, isSelected: Boolean, onClick: () 
                 Spacer(Modifier.width(8.dp))
                 Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 IconButton(onClick = onView, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.Visibility, "Vorschau", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Visibility, stringResource(R.string.cd_preview), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.width(4.dp))
                 Text(formatBytes(item.fileSize), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

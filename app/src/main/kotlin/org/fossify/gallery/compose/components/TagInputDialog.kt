@@ -1,4 +1,7 @@
 package org.fossify.gallery.compose.components
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
+import org.fossify.gallery.compose.theme.Radius
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -76,7 +79,7 @@ fun TagInputDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Tags", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.action_tags), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 if (batchCount > 1) Text("$batchCount Dateien", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
@@ -91,10 +94,10 @@ fun TagInputDialog(
                                 label = { Text(tag, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium) },
                                 trailingIcon = {
                                     IconButton(onClick = { tags.remove(tag); onRemoveTag(tag) }, modifier = Modifier.size(18.dp)) {
-                                        Icon(Icons.Default.Close, "Entfernen", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Icon(Icons.Default.Close, stringResource(R.string.action_remove), modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 },
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(Radius.sm),
                                 colors = InputChipDefaults.inputChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer, labelColor = MaterialTheme.colorScheme.onPrimaryContainer),
                             )
                         }
@@ -105,11 +108,11 @@ fun TagInputDialog(
                     OutlinedTextField(
                         value = tagInput,
                         onValueChange = { tagInput = it; showSuggestions = it.isNotEmpty() || suggestedTags.any { s -> s !in tags } },
-                        label = { Text("Tag hinzufügen") },
-                        placeholder = { Text("z.B. Urlaub, Familie, ...") },
+                        label = { Text(stringResource(R.string.add_tag)) },
+                        placeholder = { Text(stringResource(R.string.tags_example_hint)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(Radius.md),
                         colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { addCurrentTag() }),
@@ -145,6 +148,6 @@ fun TagInputDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Fertig") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_done)) } },
     )
 }

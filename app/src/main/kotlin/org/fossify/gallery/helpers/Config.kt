@@ -23,12 +23,24 @@ class Config(context: Context) : BaseConfig(context) {
         private const val COLLECTIONS_COLUMN_CNT = "collections_column_cnt"
         private const val TAGS_VIEW_TYPE = "tags_view_type"
         private const val TAGS_COLUMN_CNT = "tags_column_cnt"
+        private const val PINNED_FAV_FOLDERS = "pinned_fav_folders"
+        private const val PINNED_COLLECTIONS = "pinned_collections"
         fun newInstance(context: Context) = Config(context)
     }
 
     var useDynamicColors: Boolean
         get() = prefs.getBoolean(USE_DYNAMIC_COLORS, true)
         set(value) = prefs.edit().putBoolean(USE_DYNAMIC_COLORS, value).apply()
+
+    /** Folder paths pinned as quick-nav previews under "Favoriten" in the navigation drawer. */
+    var pinnedFavoriteFolders: Set<String>
+        get() = prefs.getStringSet(PINNED_FAV_FOLDERS, emptySet()) ?: emptySet()
+        set(value) = prefs.edit().putStringSet(PINNED_FAV_FOLDERS, value).apply()
+
+    /** Collection ids pinned as quick-nav previews under "Sammlungen" in the navigation drawer. */
+    var pinnedCollections: Set<String>
+        get() = prefs.getStringSet(PINNED_COLLECTIONS, emptySet()) ?: emptySet()
+        set(value) = prefs.edit().putStringSet(PINNED_COLLECTIONS, value).apply()
 
     var collectionsViewType: Int
         get() = prefs.getInt(COLLECTIONS_VIEW_TYPE, 0)

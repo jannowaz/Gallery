@@ -1,4 +1,7 @@
 package org.fossify.gallery.compose.screens.viewer
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
+import org.fossify.gallery.compose.theme.Radius
 
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
@@ -201,7 +204,7 @@ fun VideoPage(
                 IconButton(
                     onClick = { if (isPlaying) player.pause() else player.play(); resetAutoHide() },
                     modifier = Modifier.align(Alignment.Center).size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f))
-                ) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play/Pause", tint = Color.White, modifier = Modifier.size(28.dp)) }
+                ) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(R.string.cd_play_pause), tint = Color.White, modifier = Modifier.size(28.dp)) }
 
                 val speedIdx = speeds.indexOf(playbackSpeed)
                 val nextSpeed = speeds[(speedIdx + 1) % speeds.size]
@@ -253,7 +256,7 @@ fun VideoPage(
                     // Frame preview
                     if (scrubFraction >= 0f && scrubPreviewBitmap != null) {
                         Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 60.dp), contentAlignment = Alignment.Center) {
-                            Surface(shape = RoundedCornerShape(8.dp), color = Color.Black.copy(alpha = 0.85f)) {
+                            Surface(shape = RoundedCornerShape(Radius.sm), color = Color.Black.copy(alpha = 0.85f)) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Image(bitmap = scrubPreviewBitmap!!.asImageBitmap(), contentDescription = null, modifier = Modifier.size(width = 160.dp, height = 90.dp), contentScale = ContentScale.Crop)
                                     Text("%02d:%02d".format(((scrubFraction * player.duration) / 1000).toInt() / 60, ((scrubFraction * player.duration) / 1000).toInt() % 60), color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(4.dp))
@@ -265,11 +268,11 @@ fun VideoPage(
                     if (trimMode) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = { trimStartMs = player.currentPosition.toFloat() }) {
-                                Text("Start: %02d:%02d".format((trimStartMs / 1000).toInt() / 60, (trimStartMs / 1000).toInt() % 60), color = Color(0xFF64B5F6), style = MaterialTheme.typography.labelSmall)
+                                Text(stringResource(R.string.trim_start).format((trimStartMs / 1000).toInt() / 60, (trimStartMs / 1000).toInt() % 60), color = Color(0xFF64B5F6), style = MaterialTheme.typography.labelSmall)
                             }
                             Spacer(Modifier.weight(1f))
                             TextButton(onClick = { trimEndMs = player.currentPosition.toFloat() }) {
-                                Text("Ende: %02d:%02d".format((trimEndMs / 1000).toInt() / 60, (trimEndMs / 1000).toInt() % 60), color = Color(0xFFEF5350), style = MaterialTheme.typography.labelSmall)
+                                Text(stringResource(R.string.trim_end).format((trimEndMs / 1000).toInt() / 60, (trimEndMs / 1000).toInt() % 60), color = Color(0xFFEF5350), style = MaterialTheme.typography.labelSmall)
                             }
                             Spacer(Modifier.weight(1f))
                             TextButton(onClick = {
@@ -296,10 +299,10 @@ fun VideoPage(
                                         muxer.stop(); muxer.release(); extractor.release()
                                         try { android.media.MediaScannerConnection.scanFile(ctx, arrayOf(outFile.absolutePath), null, null) } catch (_: Exception) { }
                                         org.fossify.gallery.helpers.RefreshBus.trigger()
-                                        withContext(Dispatchers.Main) { ctx.toast("Gespeichert: ${outFile.name}", android.widget.Toast.LENGTH_SHORT) }
-                                    } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", android.widget.Toast.LENGTH_SHORT) } }
+                                        withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.saved_as, outFile.name), android.widget.Toast.LENGTH_SHORT) }
+                                    } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.error_generic, e.message), android.widget.Toast.LENGTH_SHORT) } }
                                 }
-                            }) { Text("✂ Speichern", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold) }
+                            }) { Text(stringResource(R.string.trim_save), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold) }
                         }
                     }
                 }

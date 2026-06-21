@@ -1,4 +1,5 @@
 package org.fossify.gallery.compose.screens.analysis
+import org.fossify.gallery.R
 
 import android.app.Application
 import android.graphics.Bitmap
@@ -129,7 +130,7 @@ class TransformationEngine(private val context: android.content.Context) {
             BitmapFactory.decodeFile(s.originalPath, bounds)
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@withContext TransformResult(false, s.originalPath, "", 0, "Decode failed")
             // Never silently downsample (that would break the lossless promise); skip images too large to decode safely.
-            if (bounds.outWidth.toLong() * bounds.outHeight > 50_000_000L) return@withContext TransformResult(false, s.originalPath, "", 0, "Bild zu groß")
+            if (bounds.outWidth.toLong() * bounds.outHeight > 50_000_000L) return@withContext TransformResult(false, s.originalPath, "", 0, context.getString(R.string.opt_err_image_too_large))
 
             val srcData = try { XmpWriter.read(s.originalPath) } catch (_: Exception) { null }
             val tmpFile = File(context.cacheDir, "transform_${System.nanoTime()}.tmp")
@@ -143,7 +144,7 @@ class TransformationEngine(private val context: android.content.Context) {
             tmpFile.outputStream().use { bitmap.compress(format, quality, it) }
             bitmap.recycle()
             if (!tmpFile.exists() || tmpFile.length() == 0L) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Encode failed") }
-            if (tmpFile.length() >= s.originalSize) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Keine Ersparnis") }
+            if (tmpFile.length() >= s.originalSize) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, context.getString(R.string.opt_err_no_savings)) }
 
             // Preserve EXIF metadata for formats that support it (best-effort)
             if (s.targetFormat == "jpeg" || s.targetFormat == "webp") {
@@ -165,9 +166,9 @@ class TransformationEngine(private val context: android.content.Context) {
                 // Refuse to overwrite an original in place - that has no undo and risks data loss.
                 // Lossless transforms always change the extension, so this only guards the lossy path.
                 tmpFile.delete()
-                return@withContext TransformResult(false, s.originalPath, "", 0, "In-place-Überschreiben deaktiviert")
+                return@withContext TransformResult(false, s.originalPath, "", 0, context.getString(R.string.opt_err_inplace_disabled))
             } else {
-                if (finalFile.exists()) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Zieldatei existiert bereits") }
+                if (finalFile.exists()) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, context.getString(R.string.opt_err_target_exists)) }
                 val moved = tmpFile.renameTo(finalFile) || runCatching { tmpFile.copyTo(finalFile, overwrite = false); tmpFile.delete() }.isSuccess
                 if (moved && finalFile.exists() && finalFile.length() > 0) {
                     saved = (s.originalSize - finalFile.length()).coerceAtLeast(0)

@@ -1,4 +1,6 @@
 package org.fossify.gallery.compose.components
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -69,7 +71,7 @@ fun UndoBar(modifier: Modifier = Modifier, onActionLabel: ((UndoAction) -> Strin
                 Text(label, color = MaterialTheme.colorScheme.inverseOnSurface, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
                 TextButton(onClick = { scope.launch { UndoManager.undoLast() } }) {
-                    Text("Rückgängig", color = MaterialTheme.colorScheme.inversePrimary, style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.undo), color = MaterialTheme.colorScheme.inversePrimary, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }

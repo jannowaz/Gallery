@@ -1,4 +1,6 @@
 package org.fossify.gallery.compose.screens
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -60,8 +62,8 @@ fun ViewSettingsSheet(
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).verticalScroll(rememberScrollState())) {
             // Header
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Ansicht", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Schließen") }
+                Text(stringResource(R.string.view_settings_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, stringResource(R.string.cd_close)) }
             }
             if (modeOptions != null && onToggleMode != null) {
                 Spacer(Modifier.height(4.dp))
@@ -79,7 +81,7 @@ fun ViewSettingsSheet(
             Spacer(Modifier.height(8.dp))
 
             // View Type
-            Text("Darstellung", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.view_appearance), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     ViewType.entries.forEachIndexed { i, vt ->
@@ -87,13 +89,13 @@ fun ViewSettingsSheet(
                             selected = local.viewType == vt,
                             onClick = { local = local.copy(viewType = vt); onSettingsChange(local) },
                             shape = SegmentedButtonDefaults.itemShape(i, ViewType.entries.size)
-                        ) { Text(when(vt) { ViewType.GRID -> "Kacheln"; ViewType.LIST -> "Liste"; ViewType.MOSAIC -> "Mosaik" }) }
+                        ) { Text(when(vt) { ViewType.GRID -> stringResource(R.string.view_type_grid); ViewType.LIST -> stringResource(R.string.view_type_list); ViewType.MOSAIC -> stringResource(R.string.view_type_mosaic) }) }
                     }
             }
 
             // Column Count
             Spacer(Modifier.height(12.dp))
-            Text("Spalten", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.columns), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (c in 2..6) {
@@ -110,7 +112,7 @@ fun ViewSettingsSheet(
             // Display Mode
             if (showDisplayMode) {
                 Spacer(Modifier.height(12.dp))
-                Text("Anzeigemodus", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.display_mode), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(4.dp))
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     DisplayMode.entries.forEachIndexed { i, dm ->
@@ -118,7 +120,7 @@ fun ViewSettingsSheet(
                             selected = local.displayMode == dm,
                             onClick = { local = local.copy(displayMode = dm); onSettingsChange(local) },
                             shape = SegmentedButtonDefaults.itemShape(i, DisplayMode.entries.size)
-                        ) { Text(when(dm) { DisplayMode.COMPACT -> "Kompakt"; DisplayMode.NORMAL -> "Normal"; DisplayMode.DARK -> "Dark" }) }
+                        ) { Text(when(dm) { DisplayMode.COMPACT -> stringResource(R.string.display_compact); DisplayMode.NORMAL -> stringResource(R.string.display_normal); DisplayMode.DARK -> stringResource(R.string.display_dark) }) }
                     }
                 }
             }
@@ -128,7 +130,7 @@ fun ViewSettingsSheet(
             Spacer(Modifier.height(8.dp))
 
             // Sort
-            Text("Sortierung", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.sorting), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 val sortFields = if (isAlbumMode) SortField.entries.filter { it != SortField.RATING } else SortField.entries
@@ -137,32 +139,32 @@ fun ViewSettingsSheet(
                         selected = local.sortBy == sf,
                         onClick = { local = local.copy(sortBy = sf); onSettingsChange(local) },
                         shape = SegmentedButtonDefaults.itemShape(i, sortFields.size)
-                    ) { Text(when(sf) { SortField.NAME -> "Name"; SortField.DATE -> "Datum"; SortField.SIZE -> "Größe"; SortField.RATING -> "Rating" }) }
+                    ) { Text(when(sf) { SortField.NAME -> stringResource(R.string.sort_name); SortField.DATE -> stringResource(R.string.sort_date); SortField.SIZE -> stringResource(R.string.sort_size); SortField.RATING -> stringResource(R.string.sort_rating) }) }
                 }
             }
 
             // Toggles
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Absteigend", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.sort_descending), style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.weight(1f))
                 Switch(checked = local.sortDesc, onCheckedChange = { local = local.copy(sortDesc = it); onSettingsChange(local) })
             }
             if (!isAlbumMode) {
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Dateinamen anzeigen", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.show_filenames), style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.weight(1f))
                 Switch(checked = local.showFileNames, onCheckedChange = { local = local.copy(showFileNames = it); onSettingsChange(local) })
             }
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Abgerundete Ecken", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.rounded_corners), style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.weight(1f))
                 Switch(checked = local.roundedCorners, onCheckedChange = { local = local.copy(roundedCorners = it); onSettingsChange(local) })
             }
             if (showDisplayMode) {
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Ordner-Vorschau", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.folder_preview), style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.weight(1f))
                     Switch(checked = local.showFolderThumbnails, onCheckedChange = { local = local.copy(showFolderThumbnails = it); onSettingsChange(local) })
                 }
@@ -170,7 +172,7 @@ fun ViewSettingsSheet(
             // Spacing
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Abstand", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.spacing), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 IconButton(onClick = { val v = (local.spacing - 1).coerceAtLeast(2); local = local.copy(spacing = v); onSettingsChange(local) }, modifier = Modifier.size(32.dp)) {
                     Text("-", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 }
@@ -180,7 +182,7 @@ fun ViewSettingsSheet(
                 }
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Unten ankern", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.anchor_bottom), style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.weight(1f))
                 Switch(checked = local.anchorBottom, onCheckedChange = { local = local.copy(anchorBottom = it); onSettingsChange(local) })
             }
@@ -190,17 +192,20 @@ fun ViewSettingsSheet(
             Spacer(Modifier.height(12.dp))
             HorizontalDivider()
             Spacer(Modifier.height(4.dp))
-            Text("Overlays auf Thumbnails", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.thumbnail_overlays), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Gilt für alle Ansichten", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
             val ovCtx = LocalContext.current
+            var showRatingOv by remember { mutableStateOf(ovCtx.config.showRatingOnThumbnails) }
+            var showVideoDurOv by remember { mutableStateOf(ovCtx.config.showVideoDurationOnThumbnails) }
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Bewertung anzeigen", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.show_rating), style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.weight(1f))
-                Switch(checked = ovCtx.config.showRatingOnThumbnails, onCheckedChange = { ovCtx.config.showRatingOnThumbnails = it })
+                Switch(checked = showRatingOv, onCheckedChange = { showRatingOv = it; ovCtx.config.showRatingOnThumbnails = it })
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Videodauer anzeigen", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.show_video_duration), style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.weight(1f))
-                Switch(checked = ovCtx.config.showVideoDurationOnThumbnails, onCheckedChange = { ovCtx.config.showVideoDurationOnThumbnails = it })
+                Switch(checked = showVideoDurOv, onCheckedChange = { showVideoDurOv = it; ovCtx.config.showVideoDurationOnThumbnails = it })
             }
 
             Spacer(Modifier.height(24.dp))

@@ -1,4 +1,6 @@
 package org.fossify.gallery.compose.screens.folderscreen
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,7 +34,6 @@ import org.fossify.gallery.compose.screens.MediaScreen
 import org.fossify.gallery.compose.screens.ViewSettingsSheet
 import org.fossify.gallery.compose.screens.ViewSettingsViewModel
 import org.fossify.gallery.compose.theme.LocalMediaRepository
-import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import org.fossify.gallery.models.Medium
@@ -45,16 +46,18 @@ import java.nio.file.Paths
 fun FolderMediaScreen(
     folderPath: String,
     onBack: () -> Unit,
+    onNavigateToViewer: (List<String>, Int) -> Unit = { _, _ -> },
 ) {
     val viewSettingsVM: ViewSettingsViewModel = viewModel()
     val ctx = LocalContext.current
+    val repo = LocalMediaRepository.current
     val tabSettings by viewSettingsVM.settings.collectAsState()
     var mediaItems by remember { mutableStateOf<List<Medium>?>(null) }
     var showViewSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(folderPath) {
         mediaItems = withContext(Dispatchers.IO) {
-            val deleted = try { ctx.mediaDB.getDeletedMedia().map { it.path }.toSet() } catch (_: Exception) { emptySet() }
+            val deleted = repo.getDeletedPaths()
             scanFolderMedia(folderPath, deleted)
         }
     }
@@ -63,9 +66,9 @@ fun FolderMediaScreen(
         topBar = {
             TopAppBar(
                 title = { Text(File(folderPath).name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück") } },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 actions = {
-                    IconButton(onClick = { showViewSettings = true }) { Icon(Icons.Default.GridView, "Ansicht") }
+                    IconButton(onClick = { showViewSettings = true }) { Icon(Icons.Default.GridView, stringResource(R.string.view_settings_title)) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
@@ -78,7 +81,8 @@ fun FolderMediaScreen(
             } else {
                 MediaScreen(
                     viewSettings = tabSettings.folderMedia,
-                    mediaOverride = items
+                    mediaOverride = items,
+                    onNavigateToViewer = onNavigateToViewer,
                 )
             }
         }

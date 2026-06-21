@@ -1,4 +1,5 @@
 package org.fossify.gallery.compose.screens.viewer
+import org.fossify.gallery.compose.theme.Radius
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -170,7 +171,7 @@ fun ZoomMinimap(state: ZoomState, modifier: Modifier = Modifier, boxWidth: Dp = 
         val fracH = (1f / scale).coerceIn(0f, 1f)
         val centerFracX = (0.5f - state.offset.x / (scale * size.width)).coerceIn(fracW / 2f, 1f - fracW / 2f)
         val centerFracY = (0.5f - state.offset.y / (scale * size.height)).coerceIn(fracH / 2f, 1f - fracH / 2f)
-        Box(Modifier.size(boxWidth, boxH).clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.22f))) {
+        Box(Modifier.size(boxWidth, boxH).clip(RoundedCornerShape(Radius.sm)).background(Color.Black.copy(alpha = 0.22f))) {
             androidx.compose.foundation.Canvas(Modifier.size(boxWidth, boxH)) {
                 val w = this.size.width
                 val h = this.size.height

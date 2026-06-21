@@ -1,4 +1,7 @@
 package org.fossify.gallery.compose.components
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
+import org.fossify.gallery.compose.theme.RatingStarColor
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -26,21 +29,21 @@ fun StarRatingDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Bewertung") },
+        title = { Text(stringResource(R.string.rating_title)) },
         text = {
             Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
                 for (i in 1..5) {
                     IconButton(onClick = { onRate(if (currentRating == i) 0 else i) }, modifier = Modifier.size(48.dp)) {
                         Icon(
                             imageVector = if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder,
-                            contentDescription = "Bewertung $i",
-                            tint = MaterialTheme.colorScheme.tertiary,
+                            contentDescription = stringResource(R.string.cd_rating_star, i),
+                            tint = RatingStarColor,
                             modifier = Modifier.size(36.dp)
                         )
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(org.fossify.commons.R.string.ok)) } }
     )
 }

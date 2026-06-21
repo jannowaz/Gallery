@@ -1,4 +1,7 @@
 package org.fossify.gallery.compose.screens.settings
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
+import org.fossify.gallery.compose.theme.Radius
 
 import android.app.Activity
 import android.content.Context
@@ -62,12 +65,9 @@ import org.fossify.commons.helpers.VIEW_TYPE_LIST
 import org.fossify.gallery.activities.IncludedFoldersActivity
 import org.fossify.gallery.activities.ExcludedFoldersActivity
 import org.fossify.gallery.activities.SettingsActivity
-import org.fossify.gallery.extensions.collectionDB
+import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.extensions.config
-import org.fossify.gallery.extensions.favoritesDB
-import org.fossify.gallery.extensions.getFavoriteFromPath
-import org.fossify.gallery.extensions.mediaCacheDB
-import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.BOTTOM_ACTION_CHANGE_ORIENTATION
 import org.fossify.gallery.helpers.BOTTOM_ACTION_COPY
 import org.fossify.gallery.helpers.BOTTOM_ACTION_DELETE
@@ -105,52 +105,51 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
     val a = ctx as? Activity
     val conf = ctx.config
     val scope = rememberCoroutineScope()
-    var showScanDialog by remember { mutableStateOf(false) }
     var showExtendedDialog by remember { mutableStateOf(false) }
     var showBottomActionsDialog by remember { mutableStateOf(false) }
     var settingsVersion by remember { mutableStateOf(0) }
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Einstellungen", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück") } },
+            TopAppBar(title = { Text(stringResource(R.string.nav_settings), fontWeight = FontWeight.Bold) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface))
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
             @Suppress("UNUSED_EXPRESSION") settingsVersion // re-read config-derived labels after a change
 
-            SectionLabel("Allgemein")
-            SettingsSwitch("Dunkelmodus erzwingen", conf.forceDarkMode) { conf.forceDarkMode = it }
-            SettingsSwitch("Dynamische Farben (Material You)", conf.useDynamicColors) { conf.useDynamicColors = it }
-            SettingsSwitch("Versteckte Dateien anzeigen", conf.showHiddenMedia) { conf.showHiddenMedia = it }
-            SettingsSwitch("Animierte GIFs abspielen", conf.animateGifs) { conf.animateGifs = it }
-            SettingsSwitch("Maximale Helligkeit", conf.maxBrightness) { conf.maxBrightness = it }
-            SettingsSwitch("Standardmäßig Dateisuche", conf.searchAllFilesByDefault) { conf.searchAllFilesByDefault = it }
-            SettingsSwitch("Horizontal scrollen", conf.scrollHorizontally) { conf.scrollHorizontally = it }
-            SettingsSwitch("Pull to Refresh", conf.enablePullToRefresh) { conf.enablePullToRefresh = it }
-            SettingsNav("Ordnertyp", getViewTypeLabel(conf.viewTypeFolders)) { conf.viewTypeFolders = if (conf.viewTypeFolders == VIEW_TYPE_GRID) VIEW_TYPE_LIST else VIEW_TYPE_GRID; settingsVersion++ }
-            SettingsNav("Eingeschlossene Ordner") { a?.startActivity(Intent(a, IncludedFoldersActivity::class.java)) }
-            SettingsNav("Ausgeschlossene Ordner") { a?.startActivity(Intent(a, ExcludedFoldersActivity::class.java)) }
+            SectionLabel(stringResource(R.string.set_general))
+            SettingsSwitch(stringResource(R.string.set_force_dark), conf.forceDarkMode) { conf.forceDarkMode = it }
+            SettingsSwitch(stringResource(R.string.set_dynamic_colors), conf.useDynamicColors) { conf.useDynamicColors = it }
+            SettingsSwitch(stringResource(R.string.set_show_hidden), conf.showHiddenMedia) { conf.showHiddenMedia = it }
+            SettingsSwitch(stringResource(R.string.set_animate_gifs), conf.animateGifs) { conf.animateGifs = it }
+            SettingsSwitch(stringResource(R.string.set_max_brightness), conf.maxBrightness) { conf.maxBrightness = it }
+            SettingsSwitch(stringResource(R.string.set_search_all_files), conf.searchAllFilesByDefault) { conf.searchAllFilesByDefault = it }
+            SettingsSwitch(stringResource(R.string.set_scroll_horizontally), conf.scrollHorizontally) { conf.scrollHorizontally = it }
+            SettingsSwitch(stringResource(R.string.set_pull_refresh), conf.enablePullToRefresh) { conf.enablePullToRefresh = it }
+            SettingsNav(stringResource(R.string.set_folder_type), getViewTypeLabel(ctx, conf.viewTypeFolders)) { conf.viewTypeFolders = if (conf.viewTypeFolders == VIEW_TYPE_GRID) VIEW_TYPE_LIST else VIEW_TYPE_GRID; settingsVersion++ }
+            SettingsNav(stringResource(R.string.set_included_folders)) { a?.startActivity(Intent(a, IncludedFoldersActivity::class.java)) }
+            SettingsNav(stringResource(R.string.set_excluded_folders)) { a?.startActivity(Intent(a, ExcludedFoldersActivity::class.java)) }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
-            SectionLabel("Video")
-            SettingsSwitch("Automatisch abspielen", conf.autoplayVideos) { conf.autoplayVideos = it }
-            SettingsSwitch("Videos wiederholen", conf.loopVideos) { conf.loopVideos = it }
-            SettingsSwitch("Video stumm schalten", conf.muteVideos) { conf.muteVideos = it }
-            SettingsSwitch("Getrennter Videoplayer", conf.gestureVideoPlayer) { conf.gestureVideoPlayer = it }
-            SettingsSwitch("Position merken", conf.rememberLastVideoPosition) { conf.rememberLastVideoPosition = it }
-            SettingsSwitch("Video-Gesten", conf.allowVideoGestures) { conf.allowVideoGestures = it }
+            SectionLabel(stringResource(R.string.set_video))
+            SettingsSwitch(stringResource(R.string.set_autoplay), conf.autoplayVideos) { conf.autoplayVideos = it }
+            SettingsSwitch(stringResource(R.string.set_loop_videos), conf.loopVideos) { conf.loopVideos = it }
+            SettingsSwitch(stringResource(R.string.set_mute_videos), conf.muteVideos) { conf.muteVideos = it }
+            SettingsSwitch(stringResource(R.string.set_separate_player), conf.gestureVideoPlayer) { conf.gestureVideoPlayer = it }
+            SettingsSwitch(stringResource(R.string.set_remember_position), conf.rememberLastVideoPosition) { conf.rememberLastVideoPosition = it }
+            SettingsSwitch(stringResource(R.string.set_video_gestures), conf.allowVideoGestures) { conf.allowVideoGestures = it }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
-            SectionLabel("Vollbild & Anzeige")
-            SettingsSwitch("Schwarzer Hintergrund", conf.blackBackground) { conf.blackBackground = it }
-            SettingsSwitch("System-UI ausblenden", conf.hideSystemUI) { conf.hideSystemUI = it }
-            SettingsSwitch("Bildschirm an lassen", conf.keepScreenOn) { conf.keepScreenOn = it }
-            SettingsSwitch("Notch zeigen", conf.showNotch) { conf.showNotch = it }
-            SettingsSwitch("Wischen zum Schließen", conf.allowDownGesture) { conf.allowDownGesture = it }
-            SettingsSwitch("Sofort wechseln", conf.allowInstantChange) { conf.allowInstantChange = it }
-            SettingsNav("Bildschirmrotation", getRotationLabel(conf.screenRotation)) {
+            SectionLabel(stringResource(R.string.set_fullscreen))
+            SettingsSwitch(stringResource(R.string.set_black_bg), conf.blackBackground) { conf.blackBackground = it }
+            SettingsSwitch(stringResource(R.string.set_hide_system_ui), conf.hideSystemUI) { conf.hideSystemUI = it }
+            SettingsSwitch(stringResource(R.string.set_keep_screen_on), conf.keepScreenOn) { conf.keepScreenOn = it }
+            SettingsSwitch(stringResource(R.string.set_show_notch), conf.showNotch) { conf.showNotch = it }
+            SettingsSwitch(stringResource(R.string.set_swipe_close), conf.allowDownGesture) { conf.allowDownGesture = it }
+            SettingsSwitch(stringResource(R.string.set_instant_change), conf.allowInstantChange) { conf.allowInstantChange = it }
+            SettingsNav(stringResource(R.string.set_screen_rotation), getRotationLabel(ctx, conf.screenRotation)) {
                 conf.screenRotation = when (conf.screenRotation) {
                     ROTATE_BY_SYSTEM_SETTING -> ROTATE_BY_DEVICE_ROTATION
                     ROTATE_BY_DEVICE_ROTATION -> ROTATE_BY_ASPECT_RATIO
@@ -160,41 +159,41 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
-            SectionLabel("Thumbnails")
-            SettingsSwitch("Thumbnails zuschneiden", conf.cropThumbnails) { conf.cropThumbnails = it }
-            SettingsSwitch("Video-Dauer anzeigen", conf.showThumbnailVideoDuration) { conf.showThumbnailVideoDuration = it }
-            SettingsSwitch("Dateityp anzeigen", conf.showThumbnailFileTypes) { conf.showThumbnailFileTypes = it }
-            SettingsSwitch("Favoriten markieren", conf.markFavoriteItems) { conf.markFavoriteItems = it }
-            SettingsSwitch("Bewertung anzeigen", conf.showRatingOnThumbnails) { conf.showRatingOnThumbnails = it }
+            SectionLabel(stringResource(R.string.set_thumbnails))
+            SettingsSwitch(stringResource(R.string.set_crop_thumbnails), conf.cropThumbnails) { conf.cropThumbnails = it }
+            SettingsSwitch(stringResource(R.string.show_video_duration), conf.showThumbnailVideoDuration) { conf.showThumbnailVideoDuration = it }
+            SettingsSwitch(stringResource(R.string.set_show_file_type), conf.showThumbnailFileTypes) { conf.showThumbnailFileTypes = it }
+            SettingsSwitch(stringResource(R.string.set_mark_favorites), conf.markFavoriteItems) { conf.markFavoriteItems = it }
+            SettingsSwitch(stringResource(R.string.show_rating), conf.showRatingOnThumbnails) { conf.showRatingOnThumbnails = it }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
-            SectionLabel("Papierkorb")
-            SettingsSwitch("In Papierkorb verschieben", conf.useRecycleBin) { conf.useRecycleBin = it }
+            SectionLabel(stringResource(R.string.nav_recycle_bin))
+            SettingsSwitch(stringResource(R.string.set_use_recycle_bin), conf.useRecycleBin) { conf.useRecycleBin = it }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
-            SectionLabel("Dateien")
-            SettingsSwitch("Leere Ordner löschen", conf.deleteEmptyFolders) { conf.deleteEmptyFolders = it }
-            SettingsSwitch("Letzte Änderung bewahren", conf.keepLastModified) { conf.keepLastModified = it }
-            SettingsSwitch("Löschbestätigung überspringen", conf.skipDeleteConfirmation) { conf.skipDeleteConfirmation = it }
-            SettingsNav("Dateien laden", getFileLoadingLabel(conf.fileLoadingPriority)) {
+            SectionLabel(stringResource(R.string.set_files))
+            SettingsSwitch(stringResource(R.string.set_delete_empty), conf.deleteEmptyFolders) { conf.deleteEmptyFolders = it }
+            SettingsSwitch(stringResource(R.string.set_keep_modified), conf.keepLastModified) { conf.keepLastModified = it }
+            SettingsSwitch(stringResource(R.string.set_skip_delete_confirm), conf.skipDeleteConfirmation) { conf.skipDeleteConfirmation = it }
+            SettingsNav(stringResource(R.string.set_load_files), getFileLoadingLabel(ctx, conf.fileLoadingPriority)) {
                 conf.fileLoadingPriority = (conf.fileLoadingPriority + 1) % 3
                 settingsVersion++
             }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
-            SectionLabel("Erweiterte Details")
-            SettingsSwitch("Details anzeigen", conf.showExtendedDetails) { conf.showExtendedDetails = it }
-            SettingsSwitch("Details ausblenden (Vollbild)", conf.hideExtendedDetails) { conf.hideExtendedDetails = it }
-            SettingsNav("Detail-Elemente verwalten", getExtendedDetailsSummary(conf.extendedDetails)) { showExtendedDialog = true }
+            SectionLabel(stringResource(R.string.set_extended_details))
+            SettingsSwitch(stringResource(R.string.set_show_details), conf.showExtendedDetails) { conf.showExtendedDetails = it }
+            SettingsSwitch(stringResource(R.string.set_hide_details), conf.hideExtendedDetails) { conf.hideExtendedDetails = it }
+            SettingsNav(stringResource(R.string.set_manage_details), getExtendedDetailsSummary(ctx, conf.extendedDetails)) { showExtendedDialog = true }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
-            SectionLabel("Bildschirmaktionen")
-            SettingsSwitch("Aktionen anzeigen", conf.bottomActions) { conf.bottomActions = it }
-            SettingsNav("Aktionen verwalten", getBottomActionsSummary(conf.visibleBottomActions)) { showBottomActionsDialog = true }
+            SectionLabel(stringResource(R.string.set_screen_actions))
+            SettingsSwitch(stringResource(R.string.set_show_actions), conf.bottomActions) { conf.bottomActions = it }
+            SettingsNav(stringResource(R.string.set_manage_actions), getBottomActionsSummary(ctx, conf.visibleBottomActions)) { showBottomActionsDialog = true }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
-            SectionLabel("Sicherheit")
-            SecurityNav("App-Passwortschutz", conf.isAppPasswordProtectionOn) {
+            SectionLabel(stringResource(R.string.set_security))
+            SecurityNav(stringResource(R.string.set_app_password), conf.isAppPasswordProtectionOn) {
                 SecurityDialog(a!!, conf.appPasswordHash, if (conf.isAppPasswordProtectionOn) conf.appProtectionType else SHOW_ALL_TABS) { hash, type, success ->
                     if (success) {
                         val wasOn = conf.isAppPasswordProtectionOn
@@ -204,7 +203,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
                     }
                 }
             }
-            SecurityNav("Versteckte Passwort", conf.isHiddenPasswordProtectionOn) {
+            SecurityNav(stringResource(R.string.set_hidden_password), conf.isHiddenPasswordProtectionOn) {
                 SecurityDialog(a!!, conf.hiddenPasswordHash, if (conf.isHiddenPasswordProtectionOn) conf.hiddenProtectionType else SHOW_ALL_TABS) { hash, type, success ->
                     if (success) {
                         val wasOn = conf.isHiddenPasswordProtectionOn
@@ -214,7 +213,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
                     }
                 }
             }
-            SecurityNav("Ausgeschlossene Passwort", conf.isExcludedPasswordProtectionOn) {
+            SecurityNav(stringResource(R.string.set_excluded_password), conf.isExcludedPasswordProtectionOn) {
                 SecurityDialog(a!!, conf.excludedPasswordHash, if (conf.isExcludedPasswordProtectionOn) conf.excludedProtectionType else SHOW_ALL_TABS) { hash, type, success ->
                     if (success) {
                         val wasOn = conf.isExcludedPasswordProtectionOn
@@ -224,7 +223,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
                     }
                 }
             }
-            SecurityNav("Löschen Passwortschutz", conf.isDeletePasswordProtectionOn) {
+            SecurityNav(stringResource(R.string.set_delete_password), conf.isDeletePasswordProtectionOn) {
                 SecurityDialog(a!!, conf.deletePasswordHash, if (conf.isDeletePasswordProtectionOn) conf.deleteProtectionType else SHOW_ALL_TABS) { hash, type, success ->
                     if (success) {
                         val wasOn = conf.isDeletePasswordProtectionOn
@@ -236,32 +235,24 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
-            SectionLabel("Tags & Bewertungen")
-            SettingsNav("Tags & Bewertungen aus Dateien lesen") { MetadataSyncWorker.scheduleFullScan(ctx); Toast.makeText(ctx, "Scan gestartet – Fortschritt in der Benachrichtigung", Toast.LENGTH_SHORT).show() }
+            SectionLabel(stringResource(R.string.set_tags_ratings))
+            SettingsNav(stringResource(R.string.set_read_metadata)) { MetadataSyncWorker.scheduleFullScan(ctx); Toast.makeText(ctx, "Scan gestartet – Fortschritt in der Benachrichtigung", Toast.LENGTH_SHORT).show() }
+            SettingsNav(stringResource(R.string.set_cancel_scan)) { MetadataSyncWorker.cancel(ctx); Toast.makeText(ctx, ctx.getString(R.string.set_scan_cancelled), Toast.LENGTH_SHORT).show() }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
-            SectionLabel("Daten verwalten")
+            SectionLabel(stringResource(R.string.set_manage_data))
             FavoritesExportNav(ctx, conf, scope)
             FavoritesImportNav(ctx, conf, scope)
-            SettingsNav("Einstellungen exportieren") { a?.startActivity(Intent(a, SettingsActivity::class.java).putExtra("open_section", "export_settings")) }
-            SettingsNav("Einstellungen importieren") { a?.startActivity(Intent(a, SettingsActivity::class.java).putExtra("open_section", "import_settings")) }
+            SettingsNav(stringResource(R.string.set_export_settings)) { a?.startActivity(Intent(a, SettingsActivity::class.java).putExtra("open_section", "export_settings")) }
+            SettingsNav(stringResource(R.string.set_import_settings)) { a?.startActivity(Intent(a, SettingsActivity::class.java).putExtra("open_section", "import_settings")) }
             ClearCacheNav(ctx, scope)
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
-            SectionLabel("Information")
-            SettingsNav("Über diese App", onClick = onNavigateToAbout)
+            SectionLabel(stringResource(R.string.set_information))
+            SettingsNav(stringResource(R.string.set_about), onClick = onNavigateToAbout)
 
             Spacer(Modifier.height(32.dp))
         }
-    }
-
-    if (showScanDialog) {
-        AlertDialog(
-            onDismissRequest = { showScanDialog = false },
-            title = { Text("Scanne...") },
-            text = { Text("Durchsuche Dateien nach Tags und Bewertungen") },
-            confirmButton = { TextButton(onClick = { showScanDialog = false }) { Text("Abbrechen") } }
-        )
     }
 
     if (showExtendedDialog) {
@@ -290,7 +281,7 @@ internal fun SectionLabel(text: String) {
 @Composable
 internal fun SettingsSwitch(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     var internalChecked by remember(checked) { mutableStateOf(checked) }
-    Card(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(8.dp),
+    Card(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(Radius.sm),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
@@ -301,7 +292,7 @@ internal fun SettingsSwitch(label: String, checked: Boolean, onChange: (Boolean)
 
 @Composable
 internal fun SettingsNav(label: String, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(onClick = onClick), shape = RoundedCornerShape(8.dp),
+    Card(Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(onClick = onClick), shape = RoundedCornerShape(Radius.sm),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
@@ -312,7 +303,7 @@ internal fun SettingsNav(label: String, onClick: () -> Unit) {
 
 @Composable
 internal fun SettingsNav(label: String, subtitle: String, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(onClick = onClick), shape = RoundedCornerShape(8.dp),
+    Card(Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(onClick = onClick), shape = RoundedCornerShape(Radius.sm),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -326,11 +317,11 @@ internal fun SettingsNav(label: String, subtitle: String, onClick: () -> Unit) {
 
 @Composable
 internal fun SecurityNav(label: String, enabled: Boolean, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(onClick = onClick), shape = RoundedCornerShape(8.dp),
+    Card(Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(onClick = onClick), shape = RoundedCornerShape(Radius.sm),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Text(if (enabled) "Ein" else "Aus", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (enabled) stringResource(R.string.set_on) else stringResource(R.string.set_off), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -340,14 +331,14 @@ internal fun SecurityNav(label: String, enabled: Boolean, onClick: () -> Unit) {
 internal fun ExtendedDetailsDialog(current: Int, onDismiss: () -> Unit, onSave: (Int) -> Unit) {
     var result by remember { mutableStateOf(current) }
     val items = listOf(
-        EXT_NAME to "Name", EXT_PATH to "Pfad", EXT_SIZE to "Größe",
-        EXT_RESOLUTION to "Auflösung", EXT_LAST_MODIFIED to "Letzte Änderung",
-        EXT_DATE_TAKEN to "Aufnahmedatum", EXT_CAMERA_MODEL to "Kamera",
+        EXT_NAME to stringResource(R.string.sort_name), EXT_PATH to stringResource(R.string.path), EXT_SIZE to stringResource(R.string.sort_size),
+        EXT_RESOLUTION to stringResource(R.string.exif_resolution), EXT_LAST_MODIFIED to stringResource(R.string.last_modified),
+        EXT_DATE_TAKEN to stringResource(R.string.date_taken_full), EXT_CAMERA_MODEL to stringResource(R.string.exif_camera),
         EXT_EXIF_PROPERTIES to "EXIF", EXT_GPS to "GPS"
     )
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Detail-Elemente") },
+        title = { Text(stringResource(R.string.set_detail_items)) },
         text = {
             Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
                 items.forEach { (flag, label) ->
@@ -358,8 +349,8 @@ internal fun ExtendedDetailsDialog(current: Int, onDismiss: () -> Unit, onSave: 
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(result); onDismiss() }) { Text("OK") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+        confirmButton = { TextButton(onClick = { onSave(result); onDismiss() }) { Text(stringResource(org.fossify.commons.R.string.ok)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
 
@@ -367,18 +358,18 @@ internal fun ExtendedDetailsDialog(current: Int, onDismiss: () -> Unit, onSave: 
 internal fun BottomActionsDialog(current: Int, onDismiss: () -> Unit, onSave: (Int) -> Unit) {
     var result by remember { mutableStateOf(current) }
     val items = listOf(
-        BOTTOM_ACTION_TOGGLE_FAVORITE to "Favorit", BOTTOM_ACTION_EDIT to "Bearbeiten",
-        BOTTOM_ACTION_SHARE to "Teilen", BOTTOM_ACTION_DELETE to "Löschen",
-        BOTTOM_ACTION_ROTATE to "Drehen", BOTTOM_ACTION_PROPERTIES to "Eigenschaften",
-        BOTTOM_ACTION_CHANGE_ORIENTATION to "Ausrichtung", BOTTOM_ACTION_SLIDESHOW to "Diashow",
-        BOTTOM_ACTION_SHOW_ON_MAP to "Karte", BOTTOM_ACTION_TOGGLE_VISIBILITY to "Sichtbarkeit",
-        BOTTOM_ACTION_RENAME to "Umbenennen", BOTTOM_ACTION_SET_AS to "Setzen als",
-        BOTTOM_ACTION_COPY to "Kopieren", BOTTOM_ACTION_MOVE to "Verschieben",
-        BOTTOM_ACTION_RESIZE to "Größe ändern", BOTTOM_ACTION_RATING to "Bewertung"
+        BOTTOM_ACTION_TOGGLE_FAVORITE to stringResource(R.string.favorite), BOTTOM_ACTION_EDIT to stringResource(R.string.edit),
+        BOTTOM_ACTION_SHARE to stringResource(R.string.action_share), BOTTOM_ACTION_DELETE to stringResource(org.fossify.commons.R.string.delete),
+        BOTTOM_ACTION_ROTATE to stringResource(R.string.action_rotate), BOTTOM_ACTION_PROPERTIES to stringResource(R.string.action_properties),
+        BOTTOM_ACTION_CHANGE_ORIENTATION to stringResource(R.string.action_change_orientation), BOTTOM_ACTION_SLIDESHOW to stringResource(R.string.action_slideshow),
+        BOTTOM_ACTION_SHOW_ON_MAP to stringResource(R.string.action_show_on_map), BOTTOM_ACTION_TOGGLE_VISIBILITY to stringResource(R.string.action_toggle_visibility),
+        BOTTOM_ACTION_RENAME to stringResource(R.string.action_rename), BOTTOM_ACTION_SET_AS to stringResource(R.string.action_set_as),
+        BOTTOM_ACTION_COPY to stringResource(R.string.action_copy), BOTTOM_ACTION_MOVE to stringResource(R.string.action_move),
+        BOTTOM_ACTION_RESIZE to stringResource(R.string.action_resize), BOTTOM_ACTION_RATING to stringResource(R.string.rating_title)
     )
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Bildschirmaktionen") },
+        title = { Text(stringResource(R.string.set_screen_actions)) },
         text = {
             Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
                 items.forEach { (flag, label) ->
@@ -389,8 +380,8 @@ internal fun BottomActionsDialog(current: Int, onDismiss: () -> Unit, onSave: (I
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(result); onDismiss() }) { Text("OK") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+        confirmButton = { TextButton(onClick = { onSave(result); onDismiss() }) { Text(stringResource(org.fossify.commons.R.string.ok)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
 
@@ -399,113 +390,82 @@ internal fun ClearCacheNav(ctx: Context, scope: CoroutineScope) {
     val a = ctx as? Activity
     var cacheSize by remember { mutableStateOf("") }
     LaunchedEffect(Unit) { cacheSize = withContext(Dispatchers.IO) { a?.cacheDir?.let { dir -> if (dir.exists()) dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }.let { bytes -> if (bytes > 1_000_000) "${bytes / 1_000_000} MB" else "${bytes / 1_000} KB" } else "" } ?: "" } }
-    SettingsNav("Cache leeren", cacheSize.ifEmpty { "0 KB" }) {
+    SettingsNav(stringResource(R.string.set_clear_cache), cacheSize.ifEmpty { "0 KB" }) {
         scope.launch(Dispatchers.IO) { a?.cacheDir?.deleteRecursively(); withContext(Dispatchers.Main) { cacheSize = "0 KB" } }
     }
 }
 
 @Composable
 internal fun FavoritesExportNav(ctx: Context, conf: org.fossify.gallery.helpers.Config, scope: CoroutineScope) {
+    val repo = LocalMediaRepository.current
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         if (uri != null) scope.launch(Dispatchers.IO) {
             try {
-                val paths = ctx.favoritesDB.getValidFavoritePaths()
+                val paths = repo.getValidFavoritePaths()
                 ctx.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { w -> paths.forEach { w.write("$it\n") } }
                 withContext(Dispatchers.Main) { Toast.makeText(ctx, "${paths.size} Favoriten exportiert", Toast.LENGTH_SHORT).show() }
             } catch (_: Exception) { }
         }
     }
-    SettingsNav("Favoriten exportieren") { exportLauncher.launch("gallery-favorites_${java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US).format(java.util.Date())}.txt") }
+    SettingsNav(stringResource(R.string.set_export_favorites)) { exportLauncher.launch("gallery-favorites_${java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US).format(java.util.Date())}.txt") }
 }
 
 @Composable
 internal fun FavoritesImportNav(ctx: Context, conf: org.fossify.gallery.helpers.Config, scope: CoroutineScope) {
+    val repo = LocalMediaRepository.current
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch(Dispatchers.IO) {
             try {
                 val lines = ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.readLines() ?: emptyList()
                 var imported = 0
                 lines.forEach { line ->
-                    if (java.io.File(line).exists()) { ctx.favoritesDB.insert(ctx.getFavoriteFromPath(line)); imported++ }
+                    if (java.io.File(line).exists()) { repo.addFavoriteByPath(line); imported++ }
                 }
                 withContext(Dispatchers.Main) { Toast.makeText(ctx, "$imported Favoriten importiert", Toast.LENGTH_SHORT).show() }
             } catch (_: Exception) { }
         }
     }
-    SettingsNav("Favoriten importieren") { importLauncher.launch(arrayOf("text/plain")) }
+    SettingsNav(stringResource(R.string.set_import_favorites)) { importLauncher.launch(arrayOf("text/plain")) }
 }
 
-internal fun startTagScan(ctx: Context, scope: CoroutineScope, showDialog: (Boolean) -> Unit) {
-    showDialog(true)
-    scope.launch(Dispatchers.IO) {
-        var foundTags = 0; var foundRatings = 0; var total = 0
-        val batch = mutableListOf<MediaCache>()
-        try {
-            val uri = MediaStore.Files.getContentUri("external")
-            val proj = arrayOf(MediaStore.MediaColumns.DATA)
-            val sel = "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
-            val args = arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
-            ctx.contentResolver.query(uri, proj, sel, args, null)?.use { c ->
-                val col = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
-                while (c.moveToNext()) {
-                    total++; val p = c.getString(col) ?: continue
-                    try {
-                        val xmp = org.fossify.gallery.helpers.XmpWriter.read(p)
-                        if (xmp.tags.isNotEmpty()) foundTags++
-                        if (xmp.rating > 0) foundRatings++
-                        batch.add(MediaCache(fullPath = p, tags = xmp.tags.joinToString(","), rating = xmp.rating, lastScanned = System.currentTimeMillis()))
-                        if (xmp.rating > 0) try { ctx.mediaDB.updateRating(p, xmp.rating) } catch (_: Exception) { }
-                        if (batch.size >= 500) { ctx.mediaCacheDB.upsertAll(batch); batch.clear() }
-                    } catch (_: Exception) { }
-                }
-            }
-            if (batch.isNotEmpty()) ctx.mediaCacheDB.upsertAll(batch)
-        } catch (_: Exception) { }
-        withContext(Dispatchers.Main) {
-            showDialog(false)
-            Toast.makeText(ctx, "$total Dateien: $foundTags mit Tags, $foundRatings bewertet", Toast.LENGTH_LONG).show()
-        }
-    }
+internal fun getViewTypeLabel(ctx: Context, viewType: Int): String = when {
+    viewType == VIEW_TYPE_GRID -> ctx.getString(R.string.view_type_grid)
+    viewType == 2 -> ctx.getString(R.string.view_type_mosaic)
+    else -> ctx.getString(R.string.view_type_list)
+}
+internal fun getRotationLabel(ctx: Context, rotation: Int): String = when (rotation) {
+    ROTATE_BY_SYSTEM_SETTING -> ctx.getString(R.string.rot_system)
+    ROTATE_BY_DEVICE_ROTATION -> ctx.getString(R.string.rot_device)
+    ROTATE_BY_ASPECT_RATIO -> ctx.getString(R.string.rot_aspect)
+    else -> ctx.getString(R.string.rot_system)
+}
+internal fun getFileLoadingLabel(ctx: Context, priority: Int): String = when (priority) {
+    0 -> ctx.getString(R.string.load_speed)
+    1 -> ctx.getString(R.string.load_compromise)
+    else -> ctx.getString(R.string.load_validity)
 }
 
-internal fun getViewTypeLabel(viewType: Int): String = when {
-    viewType == VIEW_TYPE_GRID -> "Kacheln"
-    viewType == 2 -> "Mosaik"
-    else -> "Liste"
-}
-internal fun getRotationLabel(rotation: Int): String = when (rotation) {
-    ROTATE_BY_SYSTEM_SETTING -> "Systemeinstellung"
-    ROTATE_BY_DEVICE_ROTATION -> "Geräterotation"
-    ROTATE_BY_ASPECT_RATIO -> "Seitenverhältnis"
-    else -> "Systemeinstellung"
-}
-internal fun getFileLoadingLabel(priority: Int): String = when (priority) {
-    0 -> "Geschwindigkeit"
-    1 -> "Kompromiss"
-    else -> "Gültigkeit"
-}
-
-internal fun getBottomActionsSummary(actions: Int): String {
+internal fun getBottomActionsSummary(ctx: Context, actions: Int): String {
     val labels = mutableListOf<String>()
-    if (actions and BOTTOM_ACTION_SHARE != 0) labels.add("Teilen")
-    if (actions and BOTTOM_ACTION_DELETE != 0) labels.add("Löschen")
-    if (actions and BOTTOM_ACTION_EDIT != 0) labels.add("Bearbeiten")
-    if (actions and BOTTOM_ACTION_ROTATE != 0) labels.add("Drehen")
-    if (actions and BOTTOM_ACTION_TOGGLE_FAVORITE != 0) labels.add("Favorit")
-    if (actions and BOTTOM_ACTION_RATING != 0) labels.add("Bewertung")
-    return if (labels.isEmpty()) "Keine" else labels.take(3).joinToString(", ") + if (labels.size > 3) "..." else ""
+    if (actions and BOTTOM_ACTION_SHARE != 0) labels.add(ctx.getString(R.string.action_share))
+    if (actions and BOTTOM_ACTION_DELETE != 0) labels.add(ctx.getString(org.fossify.commons.R.string.delete))
+    if (actions and BOTTOM_ACTION_EDIT != 0) labels.add(ctx.getString(R.string.edit))
+    if (actions and BOTTOM_ACTION_ROTATE != 0) labels.add(ctx.getString(R.string.action_rotate))
+    if (actions and BOTTOM_ACTION_TOGGLE_FAVORITE != 0) labels.add(ctx.getString(R.string.favorite))
+    if (actions and BOTTOM_ACTION_RATING != 0) labels.add(ctx.getString(R.string.rating_title))
+    return if (labels.isEmpty()) ctx.getString(R.string.none_label) else labels.take(3).joinToString(", ") + if (labels.size > 3) "..." else ""
 }
 
-internal fun getExtendedDetailsSummary(details: Int): String {
+internal fun getExtendedDetailsSummary(ctx: Context, details: Int): String {
     val labels = mutableListOf<String>()
-    if (details and EXT_NAME != 0) labels.add("Name")
-    if (details and EXT_PATH != 0) labels.add("Pfad")
-    if (details and EXT_SIZE != 0) labels.add("Größe")
-    if (details and EXT_RESOLUTION != 0) labels.add("Auflösung")
-    if (details and EXT_LAST_MODIFIED != 0) labels.add("Datum")
-    if (details and EXT_DATE_TAKEN != 0) labels.add("Aufnahme")
-    if (details and EXT_CAMERA_MODEL != 0) labels.add("Kamera")
+    if (details and EXT_NAME != 0) labels.add(ctx.getString(R.string.sort_name))
+    if (details and EXT_PATH != 0) labels.add(ctx.getString(R.string.path))
+    if (details and EXT_SIZE != 0) labels.add(ctx.getString(R.string.sort_size))
+    if (details and EXT_RESOLUTION != 0) labels.add(ctx.getString(R.string.exif_resolution))
+    if (details and EXT_LAST_MODIFIED != 0) labels.add(ctx.getString(R.string.sort_date))
+    if (details and EXT_DATE_TAKEN != 0) labels.add(ctx.getString(R.string.date_taken_short))
+    if (details and EXT_CAMERA_MODEL != 0) labels.add(ctx.getString(R.string.exif_camera))
     if (details and EXT_EXIF_PROPERTIES != 0) labels.add("EXIF")
     if (details and EXT_GPS != 0) labels.add("GPS")
-    return if (labels.isEmpty()) "Standard" else labels.take(3).joinToString(", ") + if (labels.size > 3) "..." else ""
+    return if (labels.isEmpty()) ctx.getString(R.string.default_value) else labels.take(3).joinToString(", ") + if (labels.size > 3) "..." else ""
 }

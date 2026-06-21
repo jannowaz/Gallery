@@ -1,4 +1,6 @@
 package org.fossify.gallery.compose.screens.about
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -28,8 +30,8 @@ import androidx.compose.ui.unit.dp
 fun AboutScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Über", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück") } },
+            TopAppBar(title = { Text(stringResource(R.string.about_title), fontWeight = FontWeight.Bold) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface))
         }
     ) { padding ->
@@ -38,7 +40,7 @@ fun AboutScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             Text("Version 1.13.1", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(16.dp))
-            Text("Eine datenschutzfreundliche Galerie-App für Android.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Start)
+            Text(stringResource(R.string.app_description), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Start)
         }
     }
 }

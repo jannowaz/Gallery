@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -60,17 +60,8 @@ fun EmptyState(
             }
             if (actionLabel != null && onAction != null) {
                 Spacer(Modifier.height(s.md))
-                Surface(
-                    onClick = onAction,
-                    shape = MaterialTheme.shapes.large,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                ) {
-                    Text(
-                        actionLabel,
-                        modifier = Modifier.padding(horizontal = s.lg, vertical = s.sm),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
+                FilledTonalButton(onClick = onAction) {
+                    Text(actionLabel, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }

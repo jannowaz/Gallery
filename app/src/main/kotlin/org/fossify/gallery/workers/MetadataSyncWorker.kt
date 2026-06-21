@@ -42,6 +42,7 @@ class MetadataSyncWorker(
             .setProgress(total.coerceAtLeast(1), done.coerceAtMost(total.coerceAtLeast(1)), total == 0)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .addAction(buildCancelAction())
             .build()
         return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
             ForegroundInfo(2002, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
@@ -49,12 +50,28 @@ class MetadataSyncWorker(
             ForegroundInfo(2002, notification)
     }
 
+    private fun buildCancelAction(): NotificationCompat.Action {
+        val intent = android.content.Intent(applicationContext, org.fossify.gallery.receivers.CancelMetadataScanReceiver::class.java)
+            .setAction(org.fossify.gallery.receivers.CancelMetadataScanReceiver.ACTION)
+        val flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        val pi = android.app.PendingIntent.getBroadcast(applicationContext, 0, intent, flags)
+        return NotificationCompat.Action(android.R.drawable.ic_menu_close_clear_cancel, "Abbrechen", pi)
+    }
+
     override suspend fun doWork(): Result {
         val fullScan = inputData.getBoolean("full_scan", false)
         val folderPath = inputData.getString("folder_path")
         return try {
             if (fullScan && folderPath == null) fullScanFromMediaStore() else dbScan(fullScan, folderPath)
+            if (isStopped) {
+                cancelProgress()
+                showNotification("Scan abgebrochen", "Der Scan wurde gestoppt.")
+            }
             Result.success()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            cancelProgress()
+            showNotification("Scan abgebrochen", "Der Scan wurde gestoppt.")
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("MetadataSync", "Sync failed", e)
             cancelProgress()
@@ -92,7 +109,7 @@ class MetadataSyncWorker(
         }
         if (batch.isNotEmpty()) applicationContext.mediaCacheDB.upsertAll(batch.toList())
         RefreshBus.trigger()
-        showNotification("Scan abgeschlossen", "$total Dateien · $foundTags mit Tags · $foundRatings bewertet")
+        if (!isStopped) showNotification("Scan abgeschlossen", "$total Dateien · $foundTags mit Tags · $foundRatings bewertet")
     }
 
     private suspend fun dbScan(fullScan: Boolean, folderPath: String?) {
@@ -136,7 +153,7 @@ class MetadataSyncWorker(
         if (batch.isNotEmpty()) applicationContext.mediaCacheDB.upsertAll(batch.toList())
         android.util.Log.i(logTag, "Done: ${allMedia.size} files, $processed synced, $tagged tagged")
         if (processed > 0) RefreshBus.trigger()
-        if (folderPath != null) {
+        if (folderPath != null && !isStopped) {
             showNotification("Scan abgeschlossen", "${File(folderPath).name}: $tagged mit Tags/Bewertungen, $processed synchronisiert")
         }
     }
@@ -217,6 +234,23 @@ class MetadataSyncWorker(
                 .setInputData(Data.Builder().putString("folder_path", folderPath).putBoolean("full_scan", true).build())
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork("${WORK_NAME}_folder", ExistingWorkPolicy.REPLACE, workRequest)
+        }
+
+        fun cancel(context: Context) {
+            val wm = WorkManager.getInstance(context)
+            wm.cancelUniqueWork(WORK_NAME)
+            wm.cancelUniqueWork("${WORK_NAME}_now")
+            wm.cancelUniqueWork("${WORK_NAME}_full")
+            wm.cancelUniqueWork("${WORK_NAME}_folder")
+            try {
+                (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(2002)
+            } catch (_: Exception) { }
+        }
+
+        fun cancelAutomatic(context: Context) {
+            val wm = WorkManager.getInstance(context)
+            wm.cancelUniqueWork(WORK_NAME)
+            wm.cancelUniqueWork("${WORK_NAME}_now")
         }
     }
 }

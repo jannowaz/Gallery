@@ -1,4 +1,5 @@
 package org.fossify.gallery.compose.components
+import org.fossify.gallery.compose.theme.Radius
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,12 +29,12 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun SelectionRow(icon: ImageVector, label: String, tint: Color = Color.Unspecified, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(
-        modifier = modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick),
+        modifier = modifier.clip(RoundedCornerShape(Radius.md)).clickable(onClick = onClick),
         color = Color.Transparent
     ) {
         Row(Modifier.padding(horizontal = 8.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.size(40.dp).clip(RoundedCornerShape(10.dp))
+                Modifier.size(40.dp).clip(RoundedCornerShape(Radius.md))
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
                 contentAlignment = Alignment.Center
             ) {

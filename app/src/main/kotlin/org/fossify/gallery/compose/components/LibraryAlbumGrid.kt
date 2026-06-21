@@ -1,4 +1,6 @@
 package org.fossify.gallery.compose.components
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -77,10 +79,9 @@ fun LibraryAlbumGrid(
         LazyColumn(modifier.fillMaxSize()) {
             items(items, key = { it.key }) { item ->
                 val selected = item.key in selectedKeys
-                Card(
+                AppCard(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = s.md, vertical = s.xs).clickableItem(item, onClick, onLongClick),
-                    shape = RoundedCornerShape(Radius.md),
-                    colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else containerColor),
+                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else containerColor,
                 ) {
                     Row(Modifier.padding(s.md).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -88,7 +89,7 @@ fun LibraryAlbumGrid(
                             Text(subtitle?.invoke(item) ?: countLabel(item.count), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         if (selected) {
-                            Icon(Icons.Default.Check, "Ausgewählt", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = s.sm).size(20.dp))
+                            Icon(Icons.Default.Check, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = s.sm).size(20.dp))
                         } else {
                             val previews = item.previewPaths.ifEmpty { if (item.thumbnailPath.isNotEmpty()) listOf(item.thumbnailPath) else emptyList() }
                             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -121,6 +122,7 @@ fun LibraryAlbumGrid(
                         showThumbnail = viewSettings.showFolderThumbnails,
                         roundedCorners = viewSettings.roundedCorners,
                         containerColor = containerColor,
+                        subtitle = if (item.count > 0) countLabel(item.count) else null,
                     )
                     if (item.key in selectedKeys) {
                         Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)))

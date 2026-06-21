@@ -1,4 +1,7 @@
 package org.fossify.gallery.compose.screens.tagbrowser
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
+import org.fossify.gallery.compose.theme.Radius
 
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -71,7 +74,6 @@ import org.fossify.gallery.compose.components.LibraryAlbumGrid
 import org.fossify.gallery.compose.components.AlbumGridItem
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
-import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import java.io.File
 
@@ -102,7 +104,7 @@ fun TagBrowserScreen(
         withContext(Dispatchers.IO) {
             val tags = mutableMapOf<String, MutableList<String>>()
             try {
-                val cached = ctx.mediaCacheDB.getAllTagged()
+                val cached = repo.getAllTagged()
                 if (cached.isNotEmpty()) {
                     cached.forEach { mc ->
                         mc.tags.split(",").filter { it.isNotBlank() }.forEach { t ->
@@ -118,8 +120,8 @@ fun TagBrowserScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Tags (${allTags.size})", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück") } },
+                title = { Text(stringResource(R.string.tags_count_title, allTags.size), fontWeight = FontWeight.Bold) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
             )
         }
@@ -128,20 +130,20 @@ fun TagBrowserScreen(
             OutlinedTextField(
                 value = tagSearchQuery,
                 onValueChange = { tagSearchQuery = it },
-                placeholder = { Text("Tag suchen") },
+                placeholder = { Text(stringResource(R.string.search_tag)) },
                 singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Search, "Suchen", modifier = Modifier.size(18.dp)) },
-                trailingIcon = { if (tagSearchQuery.isNotEmpty()) IconButton(onClick = { tagSearchQuery = "" }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Close, "Leeren", modifier = Modifier.size(16.dp)) } },
+                leadingIcon = { Icon(Icons.Default.Search, stringResource(R.string.cd_search), modifier = Modifier.size(18.dp)) },
+                trailingIcon = { if (tagSearchQuery.isNotEmpty()) IconButton(onClick = { tagSearchQuery = "" }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Close, stringResource(R.string.action_empty), modifier = Modifier.size(16.dp)) } },
                 modifier = Modifier.fillMaxWidth(),
                 textStyle = MaterialTheme.typography.bodyMedium,
                 colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(Radius.md),
             )
             Spacer(Modifier.height(8.dp))
             if (scanning) {
                 Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             } else if (allTags.isEmpty()) {
-                EmptyState(Icons.AutoMirrored.Filled.Label, "Keine Tags gefunden", subtitle = "Tags zu Medien hinzufügen, dann erscheinen sie hier")
+                EmptyState(Icons.AutoMirrored.Filled.Label, stringResource(R.string.no_tags_found), subtitle = stringResource(R.string.no_tags_hint))
             } else {
                 val filteredTags = if (tagSearchQuery.isBlank()) allTags.entries.toList() else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
                 LibraryAlbumGrid(
@@ -170,31 +172,31 @@ fun TagBrowserScreen(
                             val tagPaths = selectedTags.flatMap { allTags[it] ?: emptyList() }.toSet()
                             onBack()
                             onTagFilterApplied(tagPaths, selectedTags.joinToString(", "))
-                        }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f)) {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Filtern", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimary) }
+                        }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f)) {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.action_filter), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimary) }
                         }
-                        Surface(onClick = { deleteConfirmTags = selectedTags }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.weight(1f)) {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Löschen", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer) }
+                        Surface(onClick = { deleteConfirmTags = selectedTags }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.weight(1f)) {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(org.fossify.commons.R.string.delete), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer) }
                         }
                     }
                     if (selectedTags.size == 1) {
                         Spacer(Modifier.height(6.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Surface(onClick = { renameTargetTag = selectedTags.sorted().firstOrNull() }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Umbenennen", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }
+                            Surface(onClick = { renameTargetTag = selectedTags.sorted().firstOrNull() }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.action_rename), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }
                             }
-                            Surface(onClick = { pendingParentAssign = selectedTags }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Parent", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }
+                            Surface(onClick = { pendingParentAssign = selectedTags }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.action_parent), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }
                             }
                         }
                     } else {
                         Spacer(Modifier.height(6.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Surface(onClick = { pendingParentAssign = selectedTags }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Parent", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }
+                            Surface(onClick = { pendingParentAssign = selectedTags }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.action_parent), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }
                             }
-                            Surface(onClick = { mergeTargetTag = selectedTags.sorted().firstOrNull() }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.weight(1f)) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Merge", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onTertiaryContainer) }
+                            Surface(onClick = { mergeTargetTag = selectedTags.sorted().firstOrNull() }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.weight(1f)) {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.action_merge), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onTertiaryContainer) }
                             }
                         }
                     }
@@ -209,10 +211,10 @@ fun TagBrowserScreen(
         val totalFiles = tagsToDelete.flatMap { allTags[it] ?: emptyList() }.distinct().size
         AlertDialog(
             onDismissRequest = { deleteConfirmTags = emptySet() },
-            title = { Text(if (tagsToDelete.size == 1) "Tag entfernen" else "Tags entfernen") },
+            title = { Text(if (tagsToDelete.size == 1) stringResource(R.string.remove_tag_title) else stringResource(R.string.remove_tags_title)) },
             text = {
-                if (tagsToDelete.size == 1) Text("Tag \"${tagsToDelete.first()}\" aus $totalFiles Dateien entfernen? Die Dateien bleiben erhalten.")
-                else Text("${tagsToDelete.size} Tags (${tagsToDelete.joinToString(", ")}) aus $totalFiles Dateien entfernen? Die Dateien bleiben erhalten.")
+                if (tagsToDelete.size == 1) Text(stringResource(R.string.remove_tag_confirm, tagsToDelete.first(), totalFiles))
+                else Text(stringResource(R.string.remove_tags_confirm, tagsToDelete.size, tagsToDelete.joinToString(", "), totalFiles))
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -222,11 +224,11 @@ fun TagBrowserScreen(
                             pathsForTag.forEach { p -> repo.removeTag(p, tag) }
                         }
                         try {
-                            val cached = ctx.mediaCacheDB.getAllTagged().filter { mc -> mc.tags.split(",").map { it.trim() }.any { it in tagsToDelete } }
+                            val cached = repo.getAllTagged().filter { mc -> mc.tags.split(",").map { it.trim() }.any { it in tagsToDelete } }
                             cached.forEach { mc ->
                                 var newTags = mc.tags
                                 tagsToDelete.forEach { tag -> newTags = newTags.split(",").filter { it.trim() != tag }.joinToString(",") }
-                                ctx.mediaCacheDB.upsertAll(listOf(mc.copy(tags = newTags)))
+                                repo.upsertCache(listOf(mc.copy(tags = newTags)))
                             }
                         } catch (_: Exception) { }
                         // Drop orphaned hierarchy entries referencing the deleted tags.
@@ -236,13 +238,13 @@ fun TagBrowserScreen(
                             if (cleaned.size != h.size) ctx.config.tagHierarchy = cleaned.toMutableMap()
                         } catch (_: Exception) { }
                         withContext(Dispatchers.Main) {
-                            ctx.toast("${tagsToDelete.size} Tag${if (tagsToDelete.size != 1) "s" else ""} aus $totalFiles Dateien entfernt", Toast.LENGTH_SHORT)
+                            ctx.toast(ctx.getString(R.string.tags_removed, tagsToDelete.size, totalFiles), Toast.LENGTH_SHORT)
                             deleteConfirmTags = emptySet(); refreshTrigger++; selectedTags = emptySet()
                         }
                     }
-                }) { Text("Entfernen", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.action_remove), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { deleteConfirmTags = emptySet() }) { Text("Abbrechen") } }
+            dismissButton = { TextButton(onClick = { deleteConfirmTags = emptySet() }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 
@@ -252,17 +254,17 @@ fun TagBrowserScreen(
         var selectedParent by remember { mutableStateOf(candidates.firstOrNull() ?: "") }
         AlertDialog(
             onDismissRequest = { pendingParentAssign = null },
-            title = { Text("Eltern-Tag zuweisen") },
+            title = { Text(stringResource(R.string.assign_parent_title)) },
             text = {
                 Column {
-                    Text("Setze Eltern-Tag für: ${tagsToAssign.joinToString(", ")}")
+                    Text(stringResource(R.string.set_parent_for, tagsToAssign.joinToString(", ")))
                     Spacer(Modifier.height(8.dp))
-                    if (candidates.isEmpty()) Text("Keine anderen Tags vorhanden", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (candidates.isEmpty()) Text(stringResource(R.string.no_other_tags), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     else {
                         OutlinedTextField(
                             value = selectedParent,
                             onValueChange = { selectedParent = it },
-                            label = { Text("Eltern-Tag") },
+                            label = { Text(stringResource(R.string.parent_tag)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -284,19 +286,19 @@ fun TagBrowserScreen(
                         }
                         val invalid = selectedParent in tagsToAssign || tagsToAssign.any { createsCycle(it, selectedParent) }
                         if (invalid) {
-                            ctx.toast("Ungültiger Eltern-Tag (Zyklus)", Toast.LENGTH_SHORT)
+                            ctx.toast(ctx.getString(R.string.invalid_parent_cycle), Toast.LENGTH_SHORT)
                         } else {
                             tagsToAssign.forEach { h[it] = selectedParent }
                             ctx.config.tagHierarchy = h
-                            ctx.toast("Eltern-Tag gesetzt", Toast.LENGTH_SHORT)
+                            ctx.toast(ctx.getString(R.string.parent_tag_set), Toast.LENGTH_SHORT)
                             pendingParentAssign = null; selectedTags = emptySet(); refreshTrigger++
                             return@TextButton
                         }
                     }
                     pendingParentAssign = null; selectedTags = emptySet()
-                }) { Text("Speichern") }
+                }) { Text(stringResource(org.fossify.commons.R.string.save)) }
             },
-            dismissButton = { TextButton(onClick = { pendingParentAssign = null }) { Text("Abbrechen") } }
+            dismissButton = { TextButton(onClick = { pendingParentAssign = null }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 
@@ -306,19 +308,19 @@ fun TagBrowserScreen(
         val existingTags = allTags.keys.filter { it != defaultTarget }.sorted()
         AlertDialog(
             onDismissRequest = { mergeTargetTag = null },
-            title = { Text("Merge Tags") },
+            title = { Text(stringResource(R.string.merge_tags_title)) },
             text = {
                 Column {
-                    Text("Quellen: ${selectedTags.joinToString(", ")}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.sources_label, selectedTags.joinToString(", ")), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(value = mergeTargetName, onValueChange = { mergeTargetName = it }, label = { Text("Ziel-Tag") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = mergeTargetName, onValueChange = { mergeTargetName = it }, label = { Text(stringResource(R.string.target_tag)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     if (existingTags.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
-                        Text("Vorhandene Tags:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.existing_tags), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             existingTags.forEach { t ->
-                                Surface(onClick = { mergeTargetName = t }, shape = RoundedCornerShape(12.dp), color = if (t == mergeTargetName) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
+                                Surface(onClick = { mergeTargetName = t }, shape = RoundedCornerShape(Radius.md), color = if (t == mergeTargetName) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
                                     Text(t, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = if (t == mergeTargetName) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
                                 }
                             }
@@ -340,22 +342,22 @@ fun TagBrowserScreen(
                             }
                         }
                         try {
-                            val cached = ctx.mediaCacheDB.getAllTagged().filter { mc -> mc.tags.split(",").map { it.trim() }.any { it in sources } }
+                            val cached = repo.getAllTagged().filter { mc -> mc.tags.split(",").map { it.trim() }.any { it in sources } }
                             cached.forEach { mc ->
                                 var newTags = mc.tags
                                 sources.forEach { src -> newTags = newTags.split(",").filter { it.trim() != src }.joinToString(",") }
                                 if (target !in newTags.split(",").map { it.trim() }) newTags = "$newTags,$target"
-                                ctx.mediaCacheDB.upsertAll(listOf(mc.copy(tags = newTags)))
+                                repo.upsertCache(listOf(mc.copy(tags = newTags)))
                             }
                         } catch (_: Exception) { }
                         withContext(Dispatchers.Main) {
-                            ctx.toast("Zu \"$target\" gemerged", Toast.LENGTH_SHORT)
+                            ctx.toast(ctx.getString(R.string.merged_into, target), Toast.LENGTH_SHORT)
                             mergeTargetTag = null; refreshTrigger++; selectedTags = emptySet()
                         }
                     }
-                }) { Text("Merge") }
+                }) { Text(stringResource(R.string.action_merge)) }
             },
-            dismissButton = { TextButton(onClick = { mergeTargetTag = null }) { Text("Abbrechen") } }
+            dismissButton = { TextButton(onClick = { mergeTargetTag = null }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 
@@ -365,12 +367,12 @@ fun TagBrowserScreen(
         val count = allTags[oldName]?.size ?: 0
         AlertDialog(
             onDismissRequest = { renameTargetTag = null },
-            title = { Text("Tag umbenennen") },
+            title = { Text(stringResource(R.string.rename_tag_title)) },
             text = {
                 Column {
                     Text("\"$oldName\" ($count Dateien) umbenennen in:", style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(value = newName, onValueChange = { newName = it }, label = { Text("Neuer Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = newName, onValueChange = { newName = it }, label = { Text(stringResource(R.string.rename_numbered)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
             },
             confirmButton = {
@@ -381,22 +383,22 @@ fun TagBrowserScreen(
                         val paths = allTags[oldName] ?: emptyList()
                         paths.forEach { p -> repo.addTag(p, target); repo.removeTag(p, oldName) }
                         try {
-                            val cached = ctx.mediaCacheDB.getAllTagged().filter { mc -> mc.tags.split(",").map { it.trim() }.any { it == oldName } }
+                            val cached = repo.getAllTagged().filter { mc -> mc.tags.split(",").map { it.trim() }.any { it == oldName } }
                             cached.forEach { mc ->
                                 var newTags = mc.tags.split(",").map { it.trim() }.toMutableList()
                                 val idx = newTags.indexOf(oldName)
                                 if (idx >= 0) { newTags[idx] = target; newTags = newTags.distinct().toMutableList() }
-                                ctx.mediaCacheDB.upsertAll(listOf(mc.copy(tags = newTags.joinToString(","))))
+                                repo.upsertCache(listOf(mc.copy(tags = newTags.joinToString(","))))
                             }
                         } catch (_: Exception) { }
                         withContext(Dispatchers.Main) {
-                            ctx.toast("\"$oldName\" → \"$target\" ($count Dateien)", Toast.LENGTH_SHORT)
+                            ctx.toast(ctx.getString(R.string.renamed_tag_result, oldName, target, count), Toast.LENGTH_SHORT)
                             renameTargetTag = null; refreshTrigger++; selectedTags = emptySet()
                         }
                     }
-                }) { Text("Umbenennen") }
+                }) { Text(stringResource(R.string.action_rename)) }
             },
-            dismissButton = { TextButton(onClick = { renameTargetTag = null }) { Text("Abbrechen") } }
+            dismissButton = { TextButton(onClick = { renameTargetTag = null }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 }

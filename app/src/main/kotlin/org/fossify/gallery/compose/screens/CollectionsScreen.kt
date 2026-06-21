@@ -1,4 +1,5 @@
 package org.fossify.gallery.compose.screens
+import org.fossify.gallery.compose.theme.Radius
 
 import android.net.Uri
 import android.widget.Toast
@@ -27,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CollectionsBookmark
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
@@ -60,17 +62,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.LibraryAlbumGrid
+import org.fossify.gallery.compose.components.ConfirmDestructive
 import org.fossify.gallery.compose.components.AlbumGridItem
-import org.fossify.gallery.extensions.collectionDB
-import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.compose.theme.RatingStarColor
 import org.fossify.gallery.extensions.config
-import org.fossify.gallery.extensions.mediaCacheDB
+import org.fossify.gallery.R
+import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.models.MediaCollection
 import java.io.File
 
@@ -90,6 +96,7 @@ private fun pathDisplayName(uri: String): String {
 @Composable
 fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifier: Modifier = Modifier, viewSettings: ViewSettings = ViewSettings()) {
     val ctx = LocalContext.current
+    val repo = LocalMediaRepository.current
     val scope = rememberCoroutineScope()
     var collections by remember { mutableStateOf<List<MediaCollection>>(emptyList()) }
     var editingColl by remember { mutableStateOf<MediaCollection?>(null) }
@@ -99,7 +106,7 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
     // Load collections on IO (Room verbietet Main-Thread)
     var loadTrigger by remember { mutableIntStateOf(0) }
     LaunchedEffect(loadTrigger) {
-        collections = withContext(Dispatchers.IO) { try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() } }
+        collections = withContext(Dispatchers.IO) { repo.getCollections() }
     }
     fun refresh() { loadTrigger++ }
 
@@ -109,7 +116,7 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
         albumItems = withContext(Dispatchers.IO) {
             collections.map { coll ->
                 val folders = coll.getIncludedPaths()
-                val media = folders.flatMap { try { ctx.mediaDB.getMediaFromPath(it) } catch (_: Exception) { emptyList() } }
+                val media = folders.flatMap { repo.getMediaFromPath(it) }
                 AlbumGridItem(
                     key = coll.id.toString(),
                     name = coll.name,
@@ -127,27 +134,27 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
             title = { Text(coll.name) },
             text = {
                 Column {
-                    TextButton(onClick = { editingColl = coll; showEditDialog = true; actionColl = null }, modifier = Modifier.fillMaxWidth()) { Text("Bearbeiten") }
-                    TextButton(onClick = { deleteConfirm = coll; actionColl = null }, modifier = Modifier.fillMaxWidth()) { Text("Löschen", color = MaterialTheme.colorScheme.error) }
+                    val pinned = coll.id.toString() in ctx.config.pinnedCollections
+                    TextButton(onClick = { val cur = ctx.config.pinnedCollections; ctx.config.pinnedCollections = if (pinned) cur - coll.id.toString() else cur + coll.id.toString(); org.fossify.gallery.helpers.RefreshBus.trigger(); actionColl = null }, modifier = Modifier.fillMaxWidth()) { Text(if (pinned) stringResource(R.string.unpin_from_drawer) else stringResource(R.string.pin_to_drawer)) }
+                    TextButton(onClick = { editingColl = coll; showEditDialog = true; actionColl = null }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(org.fossify.commons.R.string.edit)) }
+                    TextButton(onClick = { deleteConfirm = coll; actionColl = null }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(org.fossify.commons.R.string.delete), color = MaterialTheme.colorScheme.error) }
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { actionColl = null }) { Text("Abbrechen") } },
+            dismissButton = { TextButton(onClick = { actionColl = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 
     deleteConfirm?.let { coll ->
-        AlertDialog(
-            onDismissRequest = { deleteConfirm = null },
-            title = { Text("Sammlung löschen") },
-            text = { Text("\"${coll.name}\" wirklich löschen?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    deleteConfirm = null
-                    scope.launch(Dispatchers.IO) { try { ctx.collectionDB.delete(coll); withContext(Dispatchers.Main) { refresh() } } catch (_: Exception) { } }
-                }) { Text("Löschen", color = MaterialTheme.colorScheme.error) }
+        ConfirmDestructive(
+            title = stringResource(R.string.delete_collection),
+            text = stringResource(R.string.delete_collection_confirm, coll.name),
+            confirmLabel = stringResource(org.fossify.commons.R.string.delete),
+            onConfirm = {
+                deleteConfirm = null
+                scope.launch(Dispatchers.IO) { try { repo.deleteCollection(coll); withContext(Dispatchers.Main) { refresh() } } catch (_: Exception) { } }
             },
-            dismissButton = { TextButton(onClick = { deleteConfirm = null }) { Text("Abbrechen") } },
+            onDismiss = { deleteConfirm = null },
         )
     }
 
@@ -160,88 +167,94 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
         var ratingFilter by remember(editingColl) { mutableIntStateOf(editingColl?.ratingFilter ?: 0) }
         var searchQuery by remember(editingColl) { mutableStateOf(editingColl?.searchQuery ?: "") }
         val inclPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-            if (uri != null) { val p = uri.toString(); if (p !in includedUris) includedUris = includedUris + p }
+            if (uri != null) { try { ctx.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}; val p = uri.toString(); if (p !in includedUris) includedUris = includedUris + p }
         }
         val exclPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-            if (uri != null) { val p = uri.toString(); if (p !in excludedUris) excludedUris = excludedUris + p }
+            if (uri != null) { try { ctx.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}; val p = uri.toString(); if (p !in excludedUris) excludedUris = excludedUris + p }
         }
 
         var allCachedTags by remember { mutableStateOf<List<String>>(emptyList()) }
         androidx.compose.runtime.LaunchedEffect(Unit) {
-            allCachedTags = try { withContext(kotlinx.coroutines.Dispatchers.IO) { ctx.mediaCacheDB.getAllTagged().flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct().sorted() } } catch (_: Exception) { emptyList() }
+            allCachedTags = withContext(kotlinx.coroutines.Dispatchers.IO) { repo.getAllTags() }
         }
 
-        AlertDialog(
-            onDismissRequest = { showEditDialog = false },
-            title = { Text(if (editingColl != null) "Sammlung bearbeiten" else "Sammlung erstellen") },
-            text = {
-                Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        fun saveCollection() {
+            if (name.isBlank()) return
+            val col = (editingColl ?: MediaCollection(id = 0, name = "")).copy(
+                name = name,
+                includedPaths = MediaCollection.createPathsJson(includedUris),
+                excludedPaths = MediaCollection.createPathsJson(excludedUris),
+                tagFilter = tagFilter,
+                ratingFilter = ratingFilter,
+                searchQuery = searchQuery,
+            )
+            scope.launch(Dispatchers.IO) {
+                try {
+                    repo.insertCollection(col)
+                    collections = repo.getCollections()
+                    withContext(Dispatchers.Main) { showEditDialog = false }
+                } catch (e: Exception) {
+                    android.util.Log.e("Collections", "Save failed", e)
+                    withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.error_generic, e.message), Toast.LENGTH_LONG) }
+                }
+            }
+        }
+
+        Dialog(onDismissRequest = { showEditDialog = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                Column(Modifier.fillMaxSize()) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { showEditDialog = false }) { Icon(Icons.Default.Close, stringResource(R.string.cancel)) }
+                        Text(if (editingColl != null) stringResource(R.string.edit_collection) else stringResource(R.string.create_collection), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { saveCollection() }) { Text(stringResource(org.fossify.commons.R.string.save)) }
+                    }
+                    HorizontalDivider()
+                    Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(stringResource(org.fossify.commons.R.string.name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
                     // Included folders
-                    Text("Eingeschlossene Ordner:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.included_folders), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
                     includedUris.forEach { uri ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(pathDisplayName(uri), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { includedUris = includedUris - uri }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, "Entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
+                            IconButton(onClick = { includedUris = includedUris - uri }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, stringResource(R.string.action_remove), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
                         }
                     }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Surface(onClick = { val p = "/storage/emulated/0/Download"; if (p !in includedUris) includedUris = includedUris + p }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                            Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Download", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                            }
+                    Surface(onClick = { inclPicker.launch(null) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(Radius.sm), color = MaterialTheme.colorScheme.surfaceVariant) {
+                        Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.add_folder), style = MaterialTheme.typography.labelSmall)
                         }
-                        Spacer(Modifier.width(4.dp))
-                        Surface(onClick = { inclPicker.launch(null) }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-                            Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Auswählen", style = MaterialTheme.typography.labelSmall)
-                            }
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        var manualIncl by remember(editingColl) { mutableStateOf("") }
-                        OutlinedTextField(value = manualIncl, onValueChange = { manualIncl = it }, placeholder = { Text("Pfad tippen (z.B. /storage/emulated/0/DCIM)") }, singleLine = true, modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.labelSmall)
-                        TextButton(onClick = { if (manualIncl.isNotBlank() && !includedUris.contains(manualIncl)) { includedUris = includedUris + manualIncl; manualIncl = "" } }) { Text("+") }
                     }
                     Spacer(Modifier.height(8.dp))
                     // Excluded folders
-                    Text("Ausgeschlossene Ordner:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.excluded_folders), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
                     excludedUris.forEach { uri ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(pathDisplayName(uri), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { excludedUris = excludedUris - uri }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, "Entfernen", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
+                            IconButton(onClick = { excludedUris = excludedUris - uri }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, stringResource(R.string.action_remove), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
                         }
                     }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Surface(onClick = { exclPicker.launch(null) }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-                            Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Auswählen", style = MaterialTheme.typography.labelSmall)
-                            }
+                    Surface(onClick = { exclPicker.launch(null) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(Radius.sm), color = MaterialTheme.colorScheme.surfaceVariant) {
+                        Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.exclude_folder), style = MaterialTheme.typography.labelSmall)
                         }
-                        Spacer(Modifier.width(8.dp))
-                        var manualExcl by remember(editingColl) { mutableStateOf("") }
-                        OutlinedTextField(value = manualExcl, onValueChange = { manualExcl = it }, placeholder = { Text("oder Pfad tippen") }, singleLine = true, modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.labelSmall)
-                        TextButton(onClick = { if (manualExcl.isNotBlank() && !excludedUris.contains(manualExcl)) { excludedUris = excludedUris + manualExcl; manualExcl = "" } }) { Text("+") }
                     }
                     Spacer(Modifier.height(8.dp))
                     HorizontalDivider()
                     Spacer(Modifier.height(8.dp))
                     // Tags
-                    Text("Tags (kommagetrennt):", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                    OutlinedTextField(value = tagFilter, onValueChange = { tagFilter = it }, placeholder = { Text("z.B. Urlaub, Familie") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Text(stringResource(R.string.tags_comma_label), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(value = tagFilter, onValueChange = { tagFilter = it }, placeholder = { Text(stringResource(R.string.tags_example_hint)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     if (allCachedTags.isNotEmpty()) {
                         Spacer(Modifier.height(4.dp))
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             allCachedTags.take(30).forEach { t ->
                                 val hasTag = tagFilter.split(",").any { it.trim().equals(t, ignoreCase = true) }
-                                Surface(onClick = { tagFilter = if (hasTag) tagFilter.split(",").filter { it.trim() != t }.joinToString(",") else "${tagFilter},$t".trim(',') }, shape = RoundedCornerShape(12.dp), color = if (hasTag) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
+                                Surface(onClick = { tagFilter = if (hasTag) tagFilter.split(",").filter { it.trim() != t }.joinToString(",") else "${tagFilter},$t".trim(',') }, shape = RoundedCornerShape(Radius.md), color = if (hasTag) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
                                     Text(t, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp), color = if (hasTag) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
                                 }
                             }
@@ -249,54 +262,31 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                     }
                     Spacer(Modifier.height(8.dp))
                     // Rating
-                    Text("Min. Bewertung:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.min_rating_label), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
                     Row(Modifier.fillMaxWidth()) {
-                        Text("Alle", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(end = 8.dp, top = 4.dp).clickable { ratingFilter = 0 }, color = if (ratingFilter == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(R.string.filter_all), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(end = 8.dp, top = 4.dp).clickable { ratingFilter = 0 }, color = if (ratingFilter == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                         for (i in 1..5) {
                             IconButton(onClick = { ratingFilter = if (ratingFilter == i) 0 else i }, modifier = Modifier.size(36.dp)) {
-                                Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, "$i", tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(22.dp))
+                                Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, "$i", tint = RatingStarColor, modifier = Modifier.size(22.dp))
                             }
                         }
                     }
                     Spacer(Modifier.height(8.dp))
                     // Search
-                    OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, label = { Text("Text-Suche (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (name.isBlank()) return@TextButton
-                    val col = (editingColl ?: MediaCollection(id = 0, name = "")).copy(
-                        name = name,
-                        includedPaths = MediaCollection.createPathsJson(includedUris),
-                        excludedPaths = MediaCollection.createPathsJson(excludedUris),
-                        tagFilter = tagFilter,
-                        ratingFilter = ratingFilter,
-                        searchQuery = searchQuery,
-                    )
-                    scope.launch(Dispatchers.IO) {
-                        try {
-                            ctx.collectionDB.insert(col)
-                            collections = try { ctx.collectionDB.getAll() } catch (_: Exception) { emptyList() }
-                            withContext(Dispatchers.Main) { showEditDialog = false }
-                        } catch (e: Exception) {
-                            android.util.Log.e("Collections", "Save failed", e)
-                            withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", Toast.LENGTH_LONG) }
-                        }
+                    OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, label = { Text(stringResource(R.string.text_search_optional)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     }
-                }) { Text("Speichern") }
-            },
-            dismissButton = { TextButton(onClick = { showEditDialog = false }) { Text("Abbrechen") } }
-        )
+                }
+            }
+        }
     }
 
     Column(modifier = modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Sammlungen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            IconButton(onClick = { editingColl = null; showEditDialog = true }) { Icon(Icons.Default.Add, "Neue Sammlung") }
+            Text(stringResource(R.string.nav_collections), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            IconButton(onClick = { editingColl = null; showEditDialog = true }) { Icon(Icons.Default.Add, stringResource(R.string.new_collection)) }
         }
         if (collections.isEmpty()) {
-            EmptyState(Icons.Default.CollectionsBookmark, "Keine Sammlungen", subtitle = "Tippe auf + um eine zu erstellen")
+            EmptyState(Icons.Default.CollectionsBookmark, stringResource(R.string.no_collections), subtitle = stringResource(R.string.tap_to_create_collection))
         } else {
             LibraryAlbumGrid(
                 items = albumItems,

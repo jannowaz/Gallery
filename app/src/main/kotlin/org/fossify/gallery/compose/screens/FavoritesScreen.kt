@@ -1,6 +1,5 @@
 package org.fossify.gallery.compose.screens
 
-import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,10 +21,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,14 +46,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.fossify.gallery.activities.ComposeFolderActivity
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.LibraryAlbumGrid
 import org.fossify.gallery.compose.components.AlbumGridItem
+import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
-import org.fossify.gallery.extensions.directoryDB
-import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.R
+import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.models.Directory
 import org.fossify.gallery.models.Medium
 import java.io.File
@@ -62,8 +63,11 @@ fun FavoritesScreen(
     modifier: Modifier = Modifier,
     viewSettings: ViewSettings = ViewSettings(),
     onNavigateToViewer: ((paths: List<String>, startIndex: Int) -> Unit)? = null,
+    onFolderClick: (String) -> Unit = {},
 ) {
     val ctx = LocalContext.current
+    val repo = LocalMediaRepository.current
+    var pinTarget by remember { mutableStateOf<AlbumGridItem?>(null) }
     var favoriteMedia by remember { mutableStateOf<List<Medium>>(emptyList()) }
     var favoriteDirs by remember { mutableStateOf<List<Directory>>(emptyList()) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
@@ -74,37 +78,55 @@ fun FavoritesScreen(
 
     LaunchedEffect(refreshTrigger) {
         favoriteMedia = withContext(Dispatchers.IO) {
-            try { ctx.mediaDB.getFavorites() } catch (_: Exception) { emptyList() }
+            repo.getFavorites()
         }
         favoriteDirs = withContext(Dispatchers.IO) {
             try {
                 val paths = ctx.config.favoriteFolders.toList()
                 if (paths.isEmpty()) emptyList()
-                else ctx.directoryDB.getAll().filter { it.path in paths }
+                else repo.getAllDirectories().filter { it.path in paths }
             } catch (_: Exception) { emptyList() }
         }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
         if (favoriteMedia.isEmpty() && favoriteDirs.isEmpty()) {
-            EmptyState(Icons.Default.Star, "Keine Favoriten", subtitle = "Tippe auf den Stern bei Medien oder Ordnern")
+            EmptyState(Icons.Default.Star, stringResource(R.string.no_favorites), subtitle = stringResource(R.string.no_favorites_hint))
         } else {
             Column(Modifier.fillMaxSize().padding(8.dp)) {
                 if (favoriteDirs.isNotEmpty()) {
-                    Text("Ordner", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                    Text(stringResource(R.string.folders), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                     LibraryAlbumGrid(
                         items = favoriteDirs.map { AlbumGridItem(key = it.path, name = it.name, thumbnailPath = it.tmb, count = it.mediaCnt) },
                         viewSettings = viewSettings,
-                        onClick = { ctx.startActivity(Intent(ctx, ComposeFolderActivity::class.java).apply { putExtra("FOLDER_PATH", it.key) }) },
+                        onClick = { onFolderClick(it.key) },
+                        onLongClick = { pinTarget = it },
                         modifier = if (favoriteMedia.isEmpty()) Modifier.weight(1f) else Modifier.heightIn(max = 320.dp),
                     )
                     if (favoriteMedia.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 }
                 if (favoriteMedia.isNotEmpty()) {
-                    Text("Medien", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                    Text(stringResource(R.string.media), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                     MediaScreen(modifier = Modifier.weight(1f), viewSettings = viewSettings, mediaOverride = favoriteMedia, onNavigateToViewer = onNavigateToViewer)
                 }
             }
         }
+    }
+    pinTarget?.let { item ->
+        val pinned = item.key in ctx.config.pinnedFavoriteFolders
+        AlertDialog(
+            onDismissRequest = { pinTarget = null },
+            title = { Text(item.name) },
+            text = { Text(if (pinned) stringResource(R.string.unpin_favorite_q) else stringResource(R.string.pin_favorite_q)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val cur = ctx.config.pinnedFavoriteFolders
+                    ctx.config.pinnedFavoriteFolders = if (pinned) cur - item.key else cur + item.key
+                    org.fossify.gallery.helpers.RefreshBus.trigger()
+                    pinTarget = null
+                }) { Text(if (pinned) stringResource(R.string.unpin_action) else stringResource(R.string.pin_action)) }
+            },
+            dismissButton = { TextButton(onClick = { pinTarget = null }) { Text(stringResource(R.string.cancel)) } },
+        )
     }
 }

@@ -1,4 +1,7 @@
 package org.fossify.gallery.compose.screens.viewer
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
+import org.fossify.gallery.compose.theme.Radius
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -42,6 +45,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Share
@@ -75,6 +79,7 @@ import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -92,19 +97,22 @@ import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.compose.theme.RatingStarColor
 import org.fossify.gallery.compose.components.TagInputDialog
+import org.fossify.gallery.compose.components.UndoBar
 import org.fossify.gallery.compose.screens.FolderPickerSheet
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
-import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.openEditor
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
+import org.fossify.gallery.helpers.UndoAction
+import org.fossify.gallery.helpers.UndoManager
+import org.fossify.gallery.helpers.UndoType
 import java.io.File
 
 private fun isVideo(path: String) = path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
 
 @Composable
 private fun ActionChip(icon: ImageVector, label: String, tint: Color = MaterialTheme.colorScheme.onSurface, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(4.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp)) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(4.dp).clip(RoundedCornerShape(Radius.md)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp)) {
         Icon(icon, label, tint = tint, modifier = Modifier.size(22.dp))
         Spacer(Modifier.height(4.dp))
         Text(label, style = MaterialTheme.typography.labelSmall, color = tint, maxLines = 1)
@@ -139,9 +147,9 @@ fun ViewerScreen(
     var currentRating by remember { mutableIntStateOf(0) }
     var videoScalingMode by remember { mutableIntStateOf(0) }
     var backgroundAudio by remember { mutableStateOf(false) }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
     var showVideoSettings by remember { mutableStateOf(false) }
     var isCurrentZoomed by remember { mutableStateOf(false) }
+    var uiInteractionTick by remember { mutableIntStateOf(0) }
     LaunchedEffect(pagerState.currentPage) {
         isCurrentZoomed = false
         withContext(Dispatchers.IO) {
@@ -151,14 +159,25 @@ fun ViewerScreen(
     }
 
     val autoHideMs = ctx.config.viewerAutoHideMs
-    LaunchedEffect(showUI) { if (showUI) { delay(autoHideMs.toLong()); showUI = false } }
+    LaunchedEffect(showUI, uiInteractionTick) { if (showUI) { delay(autoHideMs.toLong()); showUI = false } }
 
-    BackHandler(enabled = showActionSheet || showDeleteConfirm || showVideoSettings || showTagsDialog || showFolderPicker) {
+    fun deleteCurrent() {
+        val idx = pagerState.currentPage
+        val p = items.getOrNull(idx) ?: return
+        ctx.config.lastViewedPath = p
+        scope.launch(Dispatchers.IO) { repo.moveToRecycleBin(p) }
+        UndoManager.push(UndoAction(paths = setOf(p), type = UndoType.DELETE))
+        if (items.size <= 1) onClose() else {
+            items.removeAt(idx)
+            if (idx >= items.size) scope.launch { pagerState.scrollToPage(items.size - 1) }
+        }
+    }
+
+    BackHandler(enabled = showActionSheet || showVideoSettings || showTagsDialog || showFolderPicker) {
         when {
             showFolderPicker -> showFolderPicker = false
             showTagsDialog -> showTagsDialog = false
             showVideoSettings -> showVideoSettings = false
-            showDeleteConfirm -> showDeleteConfirm = false
             showActionSheet -> showActionSheet = false
         }
     }
@@ -170,7 +189,15 @@ fun ViewerScreen(
             modifier = Modifier.fillMaxSize()
                 .pointerInput(isCurrentZoomed) {
                     if (!isCurrentZoomed) {
-                        detectVerticalDragGestures(onVerticalDrag = { _, drag -> if (drag < -30f) showActionSheet = true })
+                        var totalDrag = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { totalDrag = 0f },
+                            onDragEnd = {
+                                if (totalDrag < -80f) showActionSheet = true
+                                else if (totalDrag > 160f) { ctx.config.lastViewedPath = currentPath; onClose() }
+                            },
+                            onVerticalDrag = { _, drag -> totalDrag += drag },
+                        )
                     }
                 }
         ) { page ->
@@ -199,7 +226,7 @@ fun ViewerScreen(
                     onClick = { ctx.config.lastViewedPath = currentPath; onClose() },
                     modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
                         .background(Color.Black.copy(alpha = 0.4f), CircleShape).size(44.dp)
-                ) { Icon(Icons.Default.Close, "Schließen", tint = Color.White) }
+                ) { Icon(Icons.Default.Close, stringResource(R.string.cd_close), tint = Color.White) }
                 if (items.size > 1) Text(
                     "${pagerState.currentPage + 1} / ${items.size}",
                     color = Color.White,
@@ -213,22 +240,54 @@ fun ViewerScreen(
         // Rating overlay (inside main Box)
         AnimatedVisibility(
             visible = showRatingOverlay,
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (currentIsVideo) 56.dp else 0.dp),
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = (if (currentIsVideo) 56.dp else 0.dp) + (if (showUI) 64.dp else 0.dp)),
             enter = fadeIn(), exit = fadeOut(),
         ) {
             Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
-                Surface(shape = RoundedCornerShape(24.dp), color = Color.Black.copy(alpha = 0.32f)) {
+                Surface(shape = RoundedCornerShape(Radius.xl), color = Color.Black.copy(alpha = 0.32f)) {
                     Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 6.dp)) {
                         for (i in 1..5) {
                             IconButton(onClick = { val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) {
-                                Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, "Bewertung $i", tint = if (i <= currentRating) MaterialTheme.colorScheme.tertiary else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))
+                                Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))
                             }
                         }
-                        IconButton(onClick = { showRatingOverlay = false; ctx.config.viewerShowRatingBar = false }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, "Ausblenden", tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
+                        IconButton(onClick = { showRatingOverlay = false; ctx.config.viewerShowRatingBar = false }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, stringResource(R.string.action_hide), tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
                     }
                 }
             }
         }
+
+        // Visible bottom action bar — primary actions without needing the swipe-up gesture.
+        AnimatedVisibility(
+            visible = showUI,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn(), exit = fadeOut(),
+        ) {
+            Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.55f)))) {
+                Row(
+                    Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = {
+                        uiInteractionTick++
+                        val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath))
+                        ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, ctx.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }) { Icon(Icons.Default.Share, stringResource(R.string.action_share), tint = Color.White) }
+                    IconButton(onClick = {
+                        uiInteractionTick++
+                        val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { repo.toggleFavorite(currentPath, f) }
+                    }) { Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), tint = if (isFavorite) MaterialTheme.colorScheme.primary else Color.White) }
+                    if (!currentIsVideo) {
+                        IconButton(onClick = { uiInteractionTick++; (ctx as? android.app.Activity)?.openEditor(currentPath) }) { Icon(Icons.Default.Edit, stringResource(R.string.edit), tint = Color.White) }
+                    }
+                    IconButton(onClick = { uiInteractionTick++; deleteCurrent() }) { Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = Color.White) }
+                    IconButton(onClick = { uiInteractionTick++; showActionSheet = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions), tint = Color.White) }
+                }
+            }
+        }
+
+        UndoBar(modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
     }
 
     if (showActionSheet) {
@@ -240,7 +299,7 @@ fun ViewerScreen(
             if (showActionSheet) {
                 currentTags = withContext(Dispatchers.IO) { repo.getTags(currentPath) }
                 tagSuggestions = withContext(Dispatchers.IO) {
-                    try { ctx.mediaCacheDB.getRecentTagged(1000).flatMap { it.tags.split(",").filter(String::isNotBlank) }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(24).map { it.key to it.value } } catch (_: Exception) { emptyList() }
+                    repo.getRecentTagged(1000).flatMap { it.tags.split(",").filter(String::isNotBlank) }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(24).map { it.key to it.value }
                 }
             }
             if (showActionSheet && !currentIsVideo) {
@@ -248,16 +307,16 @@ fun ViewerScreen(
                     val lines = mutableListOf<Pair<String, String>>()
                     try {
                         val exif = android.media.ExifInterface(currentPath)
-                        exif.getAttribute(android.media.ExifInterface.TAG_DATETIME)?.let { lines.add("Datum" to it.take(10)) }
-                        exif.getAttribute(android.media.ExifInterface.TAG_IMAGE_WIDTH)?.let { w -> exif.getAttribute(android.media.ExifInterface.TAG_IMAGE_LENGTH)?.let { h -> lines.add("Auflösung" to "$w × $h") } }
+                        exif.getAttribute(android.media.ExifInterface.TAG_DATETIME)?.let { lines.add(ctx.getString(R.string.sort_date) to it.take(10)) }
+                        exif.getAttribute(android.media.ExifInterface.TAG_IMAGE_WIDTH)?.let { w -> exif.getAttribute(android.media.ExifInterface.TAG_IMAGE_LENGTH)?.let { h -> lines.add(ctx.getString(R.string.exif_resolution) to "$w × $h") } }
                         val make = exif.getAttribute(android.media.ExifInterface.TAG_MAKE) ?: ""
                         val model = exif.getAttribute(android.media.ExifInterface.TAG_MODEL) ?: ""
-                        if (make.isNotBlank() || model.isNotBlank()) lines.add("Kamera" to "$make $model".trim())
-                        exif.getAttribute(android.media.ExifInterface.TAG_FOCAL_LENGTH)?.let { lines.add("Brennweite" to it) }
-                        exif.getAttribute(android.media.ExifInterface.TAG_F_NUMBER)?.let { lines.add("Blende" to "f/$it") }
-                        exif.getAttribute(android.media.ExifInterface.TAG_EXPOSURE_TIME)?.let { lines.add("Belichtung" to "${it}s") }
+                        if (make.isNotBlank() || model.isNotBlank()) lines.add(ctx.getString(R.string.exif_camera) to "$make $model".trim())
+                        exif.getAttribute(android.media.ExifInterface.TAG_FOCAL_LENGTH)?.let { lines.add(ctx.getString(R.string.exif_focal_length) to it) }
+                        exif.getAttribute(android.media.ExifInterface.TAG_F_NUMBER)?.let { lines.add(ctx.getString(R.string.exif_aperture) to "f/$it") }
+                        exif.getAttribute(android.media.ExifInterface.TAG_EXPOSURE_TIME)?.let { lines.add(ctx.getString(R.string.exif_exposure) to "${it}s") }
                         exif.getAttribute(android.media.ExifInterface.TAG_ISO)?.let { lines.add("ISO" to it) }
-                        lines.add("Größe" to if (File(currentPath).length() > 1_000_000) "${File(currentPath).length() / 1_000_000} MB" else "${File(currentPath).length() / 1_000} KB")
+                        lines.add(ctx.getString(R.string.sort_size) to if (File(currentPath).length() > 1_000_000) "${File(currentPath).length() / 1_000_000} MB" else "${File(currentPath).length() / 1_000} KB")
                     } catch (_: Exception) { }
                     lines
                 }
@@ -271,53 +330,31 @@ fun ViewerScreen(
                 Text(File(currentPath).name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (exifLines.isNotEmpty()) { Spacer(Modifier.height(2.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) { exifLines.take(8).forEach { (label, value) -> Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface); Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } } }
                 Spacer(Modifier.height(12.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { for (i in 1..5) { IconButton(onClick = { val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) { Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, "Bewertung $i", tint = if (i <= currentRating) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f), modifier = Modifier.size(28.dp)) } } }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { for (i in 1..5) { IconButton(onClick = { val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) { Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f), modifier = Modifier.size(28.dp)) } } }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Share, "Teilen") { val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath)); ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Teilen").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); showActionSheet = false }; ActionChip(Icons.Default.Edit, "Bearbeiten") { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }; ActionChip(Icons.Default.ContentCopy, "Kopieren") { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }; ActionChip(Icons.AutoMirrored.Filled.DriveFileMove, "Verschieben") { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false } }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Info, "Info") { try { (ctx as? android.app.Activity)?.let { org.fossify.commons.dialogs.PropertiesDialog(it, currentPath, false) } } catch (e: Exception) { ctx.toast("Info-Fehler: ${e.message}", android.widget.Toast.LENGTH_SHORT) }; showActionSheet = false }; ActionChip(Icons.Default.Delete, "Löschen", MaterialTheme.colorScheme.error) { showDeleteConfirm = true; showActionSheet = false }; ActionChip(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, if (isFavorite) "Favorit" else "Favorit", if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) { val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { repo.toggleFavorite(currentPath, f) }; showActionSheet = false } }
-                if (currentIsVideo) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Star, "Anzeige") { showVideoSettings = true; showActionSheet = false }; ActionChip(Icons.Default.Close, "Frame") { scope.launch(Dispatchers.IO) { try { val r = android.media.MediaMetadataRetriever(); r.setDataSource(currentPath); val bmp = r.frameAtTime ?: return@launch; r.release(); val parentDir = File(currentPath).parentFile ?: ctx.cacheDir; val outFile = File(parentDir, "frame_${System.currentTimeMillis()}.jpg"); outFile.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }; bmp.recycle(); withContext(Dispatchers.Main) { ctx.toast("Frame gespeichert: ${outFile.name}", android.widget.Toast.LENGTH_SHORT) } } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast("Fehler: ${e.message}", android.widget.Toast.LENGTH_SHORT) } } }; showActionSheet = false } } }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Share, stringResource(R.string.action_share)) { val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath)); ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, ctx.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); showActionSheet = false }; ActionChip(Icons.Default.Edit, stringResource(R.string.edit)) { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }; ActionChip(Icons.Default.ContentCopy, stringResource(R.string.action_copy)) { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }; ActionChip(Icons.AutoMirrored.Filled.DriveFileMove, stringResource(R.string.action_move)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false } }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Info, stringResource(R.string.action_info)) { try { (ctx as? android.app.Activity)?.let { org.fossify.commons.dialogs.PropertiesDialog(it, currentPath, false) } } catch (e: Exception) { ctx.toast(ctx.getString(R.string.info_error, e.message), android.widget.Toast.LENGTH_SHORT) }; showActionSheet = false }; ActionChip(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), MaterialTheme.colorScheme.error) { showActionSheet = false; deleteCurrent() }; ActionChip(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) { val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { repo.toggleFavorite(currentPath, f) }; showActionSheet = false } }
+                if (currentIsVideo) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Star, stringResource(R.string.video_display)) { showVideoSettings = true; showActionSheet = false }; ActionChip(Icons.Default.Close, "Frame") { scope.launch(Dispatchers.IO) { try { val r = android.media.MediaMetadataRetriever(); r.setDataSource(currentPath); val bmp = r.frameAtTime ?: return@launch; r.release(); val parentDir = File(currentPath).parentFile ?: ctx.cacheDir; val outFile = File(parentDir, "frame_${System.currentTimeMillis()}.jpg"); outFile.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }; bmp.recycle(); withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.frame_saved, outFile.name), android.widget.Toast.LENGTH_SHORT) } } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.error_generic, e.message), android.widget.Toast.LENGTH_SHORT) } } }; showActionSheet = false } } }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                if (currentTags.isNotEmpty()) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { currentTags.forEach { tag -> InputChip(selected = true, onClick = {}, label = { Text(tag, style = MaterialTheme.typography.labelSmall) }, trailingIcon = { Icon(Icons.Default.Close, "Entfernen", Modifier.size(14.dp).clickable { removeTag(tag) }) }, shape = RoundedCornerShape(8.dp), colors = InputChipDefaults.inputChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer, labelColor = MaterialTheme.colorScheme.onPrimaryContainer)) } }; Spacer(Modifier.height(8.dp)) }
-                OutlinedTextField(value = tagInput, onValueChange = { tagInput = it }, placeholder = { Text("Tag hinzufügen...") }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { addTag(tagInput) }))
-                if (filteredSuggestions.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Text("Vorschläge", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(4.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { filteredSuggestions.forEach { (tag, count) -> Surface(onClick = { addTag(tag) }, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) { Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) { Text(tag, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.width(4.dp)); Text("$count", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) } } } } }
-                if (tagInput.isNotBlank() && filteredSuggestions.none { it.first.equals(tagInput, ignoreCase = true) }) { Spacer(Modifier.height(6.dp)); TextButton(onClick = { addTag(tagInput) }, modifier = Modifier.fillMaxWidth()) { Text("\"${tagInput.trim()}\" als neuen Tag hinzufügen") } }
-                if (quickTags.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { quickTags.forEach { tag -> val hasTag = currentTags.contains(tag); Surface(onClick = { scope.launch(Dispatchers.IO) { if (hasTag) repo.removeTag(currentPath, tag) else repo.addTag(currentPath, tag) }; currentTags = if (hasTag) currentTags - tag else currentTags + tag }, shape = RoundedCornerShape(16.dp), color = if (hasTag) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, color = if (hasTag) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
+                if (currentTags.isNotEmpty()) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { currentTags.forEach { tag -> InputChip(selected = true, onClick = {}, label = { Text(tag, style = MaterialTheme.typography.labelSmall) }, trailingIcon = { Icon(Icons.Default.Close, stringResource(R.string.action_remove), Modifier.size(14.dp).clickable { removeTag(tag) }) }, shape = RoundedCornerShape(Radius.sm), colors = InputChipDefaults.inputChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer, labelColor = MaterialTheme.colorScheme.onPrimaryContainer)) } }; Spacer(Modifier.height(8.dp)) }
+                OutlinedTextField(value = tagInput, onValueChange = { tagInput = it }, placeholder = { Text(stringResource(R.string.add_tag)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(Radius.md), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { addTag(tagInput) }))
+                if (filteredSuggestions.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Text(stringResource(R.string.suggestions), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(4.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { filteredSuggestions.forEach { (tag, count) -> Surface(onClick = { addTag(tag) }, shape = RoundedCornerShape(Radius.lg), color = MaterialTheme.colorScheme.surfaceVariant) { Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) { Text(tag, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.width(4.dp)); Text("$count", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) } } } } }
+                if (tagInput.isNotBlank() && filteredSuggestions.none { it.first.equals(tagInput, ignoreCase = true) }) { Spacer(Modifier.height(6.dp)); TextButton(onClick = { addTag(tagInput) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.add_new_tag, tagInput.trim())) } }
+                if (quickTags.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { quickTags.forEach { tag -> val hasTag = currentTags.contains(tag); Surface(onClick = { scope.launch(Dispatchers.IO) { if (hasTag) repo.removeTag(currentPath, tag) else repo.addTag(currentPath, tag) }; currentTags = if (hasTag) currentTags - tag else currentTags + tag }, shape = RoundedCornerShape(Radius.lg), color = if (hasTag) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, color = if (hasTag) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
                 Spacer(Modifier.height(16.dp))
             }
         }
     }
 
-    if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Löschen") },
-            text = { Text("\"${File(currentPath).name}\" in den Papierkorb verschieben?") },
-            confirmButton = { TextButton(onClick = {
-                showDeleteConfirm = false
-                val idx = pagerState.currentPage
-                val p = items.getOrNull(idx)
-                if (p != null) {
-                    ctx.config.lastViewedPath = p
-                    scope.launch(Dispatchers.IO) { repo.moveToRecycleBin(p) }
-                    if (items.size <= 1) onClose() else {
-                        items.removeAt(idx)
-                        if (idx >= items.size) scope.launch { pagerState.scrollToPage(items.size - 1) }
-                    }
-                }
-            }) { Text("Löschen", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Abbrechen") } },
-        )
-    }
-
     if (showVideoSettings) {
-        AlertDialog(onDismissRequest = { showVideoSettings = false }, title = { Text("Anzeigemodus") }, text = { Column { listOf("Passend" to 0, "Vollbild (Zoom)" to 4, "Strecken" to 3).forEach { (l, m) -> TextButton(onClick = { videoScalingMode = m; showVideoSettings = false }, modifier = Modifier.fillMaxWidth()) { Text(l, color = if (videoScalingMode == m) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) } } } }, confirmButton = { TextButton(onClick = { showVideoSettings = false }) { Text("Schließen") } })
+        AlertDialog(onDismissRequest = { showVideoSettings = false }, title = { Text(stringResource(R.string.display_mode)) }, text = { Column { listOf(stringResource(R.string.video_scale_fit) to 0, stringResource(R.string.video_scale_zoom) to 4, stringResource(R.string.video_scale_stretch) to 3).forEach { (l, m) -> TextButton(onClick = { videoScalingMode = m; showVideoSettings = false }, modifier = Modifier.fillMaxWidth()) { Text(l, color = if (videoScalingMode == m) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) } } } }, confirmButton = { TextButton(onClick = { showVideoSettings = false }) { Text(stringResource(R.string.cd_close)) } })
     }
 
     if (showTagsDialog) {
         var allTags by remember { mutableStateOf<List<String>>(emptyList()) }
         LaunchedEffect(Unit) {
             allTags = withContext(Dispatchers.IO) {
-                try { ctx.mediaCacheDB.getRecentTagged(1000).flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct() } catch (_: Exception) { emptyList() }
+                repo.getRecentTagged(1000).flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct()
             }
         }
         TagInputDialog(

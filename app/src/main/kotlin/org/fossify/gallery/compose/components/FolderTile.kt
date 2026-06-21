@@ -1,7 +1,9 @@
 package org.fossify.gallery.compose.components
+import org.fossify.gallery.compose.theme.Radius
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -30,8 +32,9 @@ fun FolderTile(
     modifier: Modifier = Modifier,
     roundedCorners: Boolean = true,
     containerColor: Color = MaterialTheme.colorScheme.surface,
+    subtitle: String? = null,
 ) {
-    val shape = if (roundedCorners) RoundedCornerShape(8.dp) else RoundedCornerShape(0.dp)
+    val shape = if (roundedCorners) RoundedCornerShape(Radius.sm) else RoundedCornerShape(0.dp)
 
     Box(modifier.aspectRatio(1f).clip(shape)) {
         if (showThumbnail && thumbnailPath.isNotEmpty() && File(thumbnailPath).exists()) {
@@ -47,23 +50,34 @@ fun FolderTile(
                     placeholderIconSize = 20.dp,
                 )
             }
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
-        } else {
             Box(Modifier.fillMaxSize().background(
-                Brush.linearGradient(listOf(
-                    containerColor,
-                    containerColor
-                ))
+                Brush.verticalGradient(
+                    0.55f to Color.Transparent,
+                    1f to Color.Black.copy(alpha = 0.6f),
+                )
             ))
+        } else {
+            Box(Modifier.fillMaxSize().background(containerColor))
         }
-        Text(
-            text = name,
-            modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
-            color = if (showThumbnail && thumbnailPath.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
+        Column(Modifier.align(Alignment.BottomStart).padding(8.dp)) {
+            val onThumb = showThumbnail && thumbnailPath.isNotEmpty()
+            Text(
+                text = name,
+                color = if (onThumb) Color.White else MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    color = if (onThumb) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }

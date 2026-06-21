@@ -1,4 +1,5 @@
 package org.fossify.gallery.compose.screens.analysis
+import org.fossify.gallery.R
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
@@ -56,7 +57,7 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.update {
                 it.copy(
-                    isScanning = true, progress = 0, phase = "Sammeln…", folderPath = folderPath,
+                    isScanning = true, progress = 0, phase = getApplication<Application>().getString(R.string.dup_phase_collecting), folderPath = folderPath,
                     groups = emptyList(), selectedForDeletion = emptySet(),
                     hashedCount = 0, totalCandidates = 0, totalScanned = 0, scanDone = false,
                 )
@@ -64,9 +65,9 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
             val flow = if (mode == DuplicateMode.SIMILAR) scanner.scanFolderSimilar(folderPath, threshold) else scanner.scanFolder(folderPath)
             flow.collect { progress ->
                 when (progress) {
-                    is DuplicateProgress.Collecting -> _state.update { it.copy(phase = "${progress.found} Dateien gefunden…") }
+                    is DuplicateProgress.Collecting -> _state.update { it.copy(phase = getApplication<Application>().getString(R.string.dup_phase_found, progress.found)) }
                     is DuplicateProgress.Hashing -> _state.update {
-                        it.copy(phase = "Vergleichen…", progress = progress.percent, hashedCount = progress.hashed, totalCandidates = progress.total)
+                        it.copy(phase = getApplication<Application>().getString(R.string.dup_phase_comparing), progress = progress.percent, hashedCount = progress.hashed, totalCandidates = progress.total)
                     }
                     is DuplicateProgress.Done -> _state.update {
                         it.copy(isScanning = false, progress = 100, groups = progress.groups, totalScanned = progress.totalScanned, scanDone = true)

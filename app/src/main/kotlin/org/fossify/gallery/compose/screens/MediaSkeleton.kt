@@ -1,4 +1,5 @@
 package org.fossify.gallery.compose.screens
+import org.fossify.gallery.compose.theme.Radius
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -64,7 +65,7 @@ fun MediaSkeleton(
                 Box(
                     Modifier
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(Radius.sm))
                         .background(shimmerBrush)
                 )
                 Spacer(Modifier.height(4.dp))
@@ -72,7 +73,7 @@ fun MediaSkeleton(
                     Modifier
                         .fillMaxWidth(0.7f)
                         .height(10.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(Radius.xs))
                         .background(shimmerBrush)
                 )
             }
