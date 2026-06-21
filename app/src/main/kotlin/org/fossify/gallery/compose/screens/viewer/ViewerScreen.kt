@@ -130,7 +130,7 @@ fun ViewerScreen(
     val scope = rememberCoroutineScope()
     val items = remember { paths.toMutableStateList() }
     val pagerState = rememberPagerState(initialPage = startIndex.coerceIn(0, (paths.size - 1).coerceAtLeast(0)), pageCount = { items.size })
-    var showUI by remember { mutableStateOf(true) }
+    var showUI by remember { mutableStateOf(paths.getOrNull(startIndex.coerceIn(0, (paths.size - 1).coerceAtLeast(0)))?.let { !isVideo(it) } ?: true) }
     var showActionSheet by remember { mutableStateOf(false) }
     val currentPath = items.getOrNull(pagerState.currentPage) ?: ""
     val currentIsVideo = isVideo(currentPath)
