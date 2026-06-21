@@ -24,8 +24,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -88,7 +91,7 @@ fun VideoPage(
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val zoom = rememberZoomState()
-    var showControls by remember { mutableStateOf(false) }
+    var showControls by remember { mutableStateOf(true) }
     var isPlaying by remember { mutableStateOf(true) }
     var playbackSpeed by remember { mutableFloatStateOf(1f) }
     val speeds = listOf(0.5f, 1f, 1.5f, 2f, 3f)
@@ -212,8 +215,8 @@ fun VideoPage(
                     TextButton(onClick = { playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed); resetAutoHide() }, modifier = Modifier.size(48.dp)) {
                         Text("${playbackSpeed}x", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                     }
-                    TextButton(onClick = { isMuted = !isMuted; player.volume = if (isMuted) 0f else 1f }, modifier = Modifier.size(48.dp)) { Text(if (isMuted) "🔇" else "🔊", style = MaterialTheme.typography.labelSmall) }
-                    TextButton(onClick = { trimMode = !trimMode; if (trimMode && trimEndMs < 0f) trimEndMs = player.duration.toFloat() }, modifier = Modifier.size(48.dp)) { Text(if (trimMode) "✂" else "⚡", style = MaterialTheme.typography.labelSmall, color = Color.White) }
+                    IconButton(onClick = { isMuted = !isMuted; player.volume = if (isMuted) 0f else 1f; resetAutoHide() }, modifier = Modifier.size(48.dp)) { Icon(if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, stringResource(R.string.set_mute_videos), tint = Color.White, modifier = Modifier.size(22.dp)) }
+                    IconButton(onClick = { trimMode = !trimMode; if (trimMode && trimEndMs < 0f) trimEndMs = player.duration.toFloat(); resetAutoHide() }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.ContentCut, stringResource(R.string.trim_save), tint = if (trimMode) MaterialTheme.colorScheme.primary else Color.White, modifier = Modifier.size(22.dp)) }
                 }
 
                 if (player.duration > 0) {

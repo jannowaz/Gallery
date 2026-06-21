@@ -214,7 +214,8 @@ fun MediaScreen(
     }
 
     var isRefreshing by remember { mutableStateOf(false) }
-    PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = { isRefreshing = true; viewModel.refresh(); scope.launch { kotlinx.coroutines.delay(800); isRefreshing = false } }, modifier = Modifier.fillMaxSize()) {
+    LaunchedEffect(state.isLoading) { if (!state.isLoading && isRefreshing) isRefreshing = false }
+    PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = { isRefreshing = true; viewModel.refresh(); scope.launch { kotlinx.coroutines.delay(5000); isRefreshing = false } }, modifier = Modifier.fillMaxSize()) {
         BackHandler(enabled = hasSelection) { selectedPaths = emptySet() }
         Box(modifier = modifier.fillMaxSize()) {
         when {

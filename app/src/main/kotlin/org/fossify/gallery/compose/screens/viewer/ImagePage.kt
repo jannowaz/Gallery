@@ -47,7 +47,7 @@ fun ImagePage(
 
     Box(Modifier.fillMaxSize().clipToBounds().then(modifier)) {
         AsyncImage(
-            model = ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(file)).crossfade(true).build(),
+            model = ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(file)).size(2560).crossfade(true).build(),
             contentDescription = file.name,
             contentScale = ContentScale.Fit,
             modifier = Modifier

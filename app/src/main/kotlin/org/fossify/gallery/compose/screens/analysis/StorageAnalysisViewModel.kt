@@ -42,9 +42,11 @@ class StorageAnalysisViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<AnalysisState> = _state.asStateFlow()
     private val analyzer = MediaAnalyzer(app)
     val engine = TransformationEngine(app)
+    private var scanJob: kotlinx.coroutines.Job? = null
 
     fun startAnalysis(folderPath: String) {
-        viewModelScope.launch {
+        scanJob?.cancel()
+        scanJob = viewModelScope.launch {
             _state.update { it.copy(isScanning = true, progress = 0, folderPath = folderPath, results = emptyList(), scannedCount = 0, totalFiles = 0) }
             analyzer.analyzeFolder(folderPath).collect { progress ->
                 when (progress) {
@@ -54,6 +56,11 @@ class StorageAnalysisViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+    }
+
+    fun cancelScan() {
+        scanJob?.cancel()
+        _state.update { it.copy(isScanning = false) }
     }
 
     fun setFilterMode(mode: FilterMode) { _state.update { it.copy(filterMode = mode) } }

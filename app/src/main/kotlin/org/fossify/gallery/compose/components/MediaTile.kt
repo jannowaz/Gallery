@@ -147,12 +147,6 @@ fun MediaTile(
                     }
                 }
             }
-            // Preview affordance (kept): open the item without leaving selection mode.
-            if (isSelectionMode && !isSelected) {
-                Box(Modifier.align(Alignment.BottomEnd).padding(4.dp).size(28.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape).clickable { onPreview() }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Visibility, stringResource(R.string.cd_preview), tint = Color.White, modifier = Modifier.size(18.dp))
-                }
-            }
         }
         if (showFileName) {
             Text(medium.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))

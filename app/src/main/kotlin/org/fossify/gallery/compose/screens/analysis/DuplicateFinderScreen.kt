@@ -73,7 +73,7 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "") {
+fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavigateToViewer: (String) -> Unit = {}) {
     val vm: DuplicateFinderViewModel = viewModel()
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
@@ -118,12 +118,12 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "") {
                     }
                 }
                 Spacer(Modifier.width(8.dp))
-                Button(onClick = { vm.startScan(currentFolder) }, enabled = !state.isScanning) {
+                Button(onClick = { if (state.isScanning) vm.cancelScan() else vm.startScan(currentFolder) }) {
                     if (state.isScanning) {
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                         Spacer(Modifier.width(8.dp))
                     }
-                    Text(if (state.isScanning) stringResource(R.string.scanning_short) else stringResource(R.string.cd_search))
+                    Text(if (state.isScanning) stringResource(R.string.cancel) else stringResource(R.string.cd_search))
                 }
             }
 
@@ -205,13 +205,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "") {
                             similar = state.mode == DuplicateMode.SIMILAR,
                             selected = state.selectedForDeletion,
                             onToggle = { vm.toggleSelection(it) },
-                            onView = { path ->
-                                ctx.startActivity(Intent(ctx, org.fossify.gallery.activities.ComposeViewerActivity::class.java).apply {
-                                    putStringArrayListExtra("PATHS", arrayListOf(path))
-                                    putExtra("START_INDEX", 0)
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                })
-                            },
+                            onView = { path -> onNavigateToViewer(path) },
                         )
                     }
                     item { Spacer(Modifier.height(80.dp)) }
@@ -235,7 +229,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "") {
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
             title = { Text(stringResource(R.string.confirm_delete_title)) },
-            text = { Text("$count Dateien endgültig löschen? (${dupFormatBytes(selSize)} werden freigegeben)") },
+            text = { Text("$count Dateien in den Papierkorb verschieben? (${dupFormatBytes(selSize)}) – wiederherstellbar.") },
             confirmButton = { TextButton(onClick = { showConfirmDialog = false; vm.deleteSelected() }) { Text(stringResource(org.fossify.commons.R.string.delete), color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { showConfirmDialog = false }) { Text(stringResource(R.string.cancel)) } },
         )

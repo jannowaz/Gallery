@@ -42,6 +42,12 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<DuplicateState> = _state.asStateFlow()
     private val scanner = DuplicateScanner(app)
     private val repo = MediaRepository(app)
+    private var scanJob: kotlinx.coroutines.Job? = null
+
+    fun cancelScan() {
+        scanJob?.cancel()
+        _state.update { it.copy(isScanning = false) }
+    }
 
     fun setMode(mode: DuplicateMode) {
         _state.update { it.copy(mode = mode, groups = emptyList(), selectedForDeletion = emptySet(), scanDone = false) }
@@ -54,7 +60,8 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
     fun startScan(folderPath: String) {
         val mode = _state.value.mode
         val threshold = _state.value.similarThreshold
-        viewModelScope.launch {
+        scanJob?.cancel()
+        scanJob = viewModelScope.launch {
             _state.update {
                 it.copy(
                     isScanning = true, progress = 0, phase = getApplication<Application>().getString(R.string.dup_phase_collecting), folderPath = folderPath,

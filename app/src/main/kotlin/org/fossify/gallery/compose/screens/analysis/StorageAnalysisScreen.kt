@@ -71,7 +71,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StorageAnalysisScreen(onBack: () -> Unit) {
+fun StorageAnalysisScreen(onBack: () -> Unit, onNavigateToViewer: (String) -> Unit = {}) {
     val vm: StorageAnalysisViewModel = viewModel()
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
@@ -122,14 +122,13 @@ fun StorageAnalysisScreen(onBack: () -> Unit) {
                 }
                 Spacer(Modifier.width(8.dp))
                 Button(
-                    onClick = { vm.startAnalysis(currentFolder) },
-                    enabled = !state.isScanning,
+                    onClick = { if (state.isScanning) vm.cancelScan() else vm.startAnalysis(currentFolder) },
                 ) {
                     if (state.isScanning) {
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                         Spacer(Modifier.width(8.dp))
                     }
-                    Text(if (state.isScanning) stringResource(R.string.scanning_short) else stringResource(R.string.analyze))
+                    Text(if (state.isScanning) stringResource(R.string.cancel) else stringResource(R.string.analyze))
                 }
             }
 
@@ -178,13 +177,7 @@ fun StorageAnalysisScreen(onBack: () -> Unit) {
                             item = item,
                             isSelected = item.path in state.selectedPaths,
                             onClick = { vm.toggleSelection(item.path) },
-                            onView = {
-                                ctx.startActivity(Intent(ctx, org.fossify.gallery.activities.ComposeViewerActivity::class.java).apply {
-                                    putStringArrayListExtra("PATHS", arrayListOf(item.path))
-                                    putExtra("START_INDEX", 0)
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                })
-                            }
+                            onView = { onNavigateToViewer(item.path) }
                         )
                     }
                     item { Spacer(Modifier.height(80.dp)) }
@@ -212,24 +205,20 @@ fun StorageAnalysisScreen(onBack: () -> Unit) {
             title = { Text(stringResource(R.string.optimize_confirm_title)) },
             text = {
                 Column {
-                    Text("$selCount Dateien optimieren? Geschätzte Ersparnis: ${formatBytes(selWaste)}.")
-                    Spacer(Modifier.height(8.dp))
-                    Text(stringResource(R.string.opt_lossless_detail, losslessCount), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    val lossyCount = selCount - losslessCount
-                    if (lossyCount > 0) {
+                    Text("$losslessCount von $selCount Dateien können verlustfrei optimiert werden.")
+                    Spacer(Modifier.height(6.dp))
+                    Text("Geschätzte Ersparnis: ${formatBytes(selWaste)}. Die Originale wandern in den Papierkorb (wiederherstellbar).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (selCount - losslessCount > 0) {
                         Spacer(Modifier.height(4.dp))
-                        Text(stringResource(R.string.opt_lossy_detail, lossyCount), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                        Text("${selCount - losslessCount} Datei(en) ohne verlustfreie Option werden übersprungen.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showConfirmDialog = false; vm.executeTransforms(losslessOnly = true) }) { Text(stringResource(R.string.lossless_only)) }
+                TextButton(onClick = { showConfirmDialog = false; vm.executeTransforms() }, enabled = losslessCount > 0) { Text(stringResource(R.string.optimize)) }
             },
             dismissButton = {
-                Row {
-                    TextButton(onClick = { showConfirmDialog = false; vm.executeTransforms(losslessOnly = false) }) { Text(stringResource(R.string.filter_all), color = MaterialTheme.colorScheme.error) }
-                    TextButton(onClick = { showConfirmDialog = false }) { Text(stringResource(R.string.cancel)) }
-                }
+                TextButton(onClick = { showConfirmDialog = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
