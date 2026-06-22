@@ -93,14 +93,15 @@ fun GalleryNavHost(
                         FolderMediaScreen(
                             folderPath = route.folderPath,
                             onBack = { navController.popBackStack() },
-                            onNavigateToViewer = { paths, startIndex -> navController.navigate(Viewer(paths, startIndex)) },
+                            onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) },
                         )
                     }
                     composable<Viewer> { backStackEntry ->
                         val route = backStackEntry.toRoute<Viewer>()
+                        val viewerPaths = remember { ViewerArgs.paths }
                         CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
                             ViewerScreen(
-                                paths = route.paths,
+                                paths = viewerPaths,
                                 startIndex = route.startIndex,
                                 onClose = { navController.popBackStack() },
                             )
@@ -136,7 +137,7 @@ fun GalleryNavHost(
                     composable<StorageAnalysis> {
                         StorageAnalysisScreen(
                             onBack = { navController.popBackStack() },
-                            onNavigateToViewer = { path -> navController.navigate(Viewer(listOf(path), 0)) },
+                            onNavigateToViewer = { path -> ViewerArgs.paths = listOf(path); navController.navigate(Viewer(0)) },
                         )
                     }
                     composable<DuplicateFinder> { backStackEntry ->
@@ -144,7 +145,7 @@ fun GalleryNavHost(
                         DuplicateFinderScreen(
                             initialFolder = route.folderPath,
                             onBack = { navController.popBackStack() },
-                            onNavigateToViewer = { path -> navController.navigate(Viewer(listOf(path), 0)) },
+                            onNavigateToViewer = { path -> ViewerArgs.paths = listOf(path); navController.navigate(Viewer(0)) },
                         )
                     }
                     composable<RecycleBin> {

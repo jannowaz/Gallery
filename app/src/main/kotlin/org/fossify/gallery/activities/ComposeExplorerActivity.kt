@@ -172,6 +172,7 @@ import org.fossify.gallery.navigation.DuplicateFinder
 import org.fossify.gallery.navigation.Folder
 import org.fossify.gallery.navigation.TagBrowser
 import org.fossify.gallery.navigation.Viewer
+import org.fossify.gallery.navigation.ViewerArgs
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.compose.theme.RatingStarColor
 import org.fossify.gallery.compose.theme.LocalSpacing
@@ -978,7 +979,7 @@ private fun MainTabContent(
             onClearRatingFilter = { mainVM.setRatingFilter(0) },
             onClearTagFilter = { mainVM.setTagFilter(null, null) },
             onClearPathFilter = { mainVM.setPathFilter(null); mainVM.setCollectionName(null) },
-            onNavigateToViewer = { paths, startIndex -> navController.navigate(Viewer(paths, startIndex)) },
+            onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) },
             scrollToPath = state.lastViewedPath,
             onClearScrollToPath = { mainVM.clearLastViewedPath() },
             onSelectionActiveChanged = onMediaSelectionChanged,
@@ -995,7 +996,7 @@ private fun MainTabContent(
             mediaSettings = tabSettings.explorerMedia,
             onPathChange = { mainVM.setExplorerPath(it) },
             onSelectionActiveChanged = onMediaSelectionChanged,
-            onNavigateToViewer = { paths, startIndex -> navController.navigate(Viewer(paths, startIndex)) },
+            onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) },
         )
             }
         }
@@ -1005,7 +1006,7 @@ private fun MainTabContent(
             viewSettings = tabSettings.collections,
             onCollectionClick = { coll -> applyCollection(coll, mainVM, ctx, scope) },
         )
-        4 -> FavoritesScreen(viewSettings = tabSettings.favorites, onNavigateToViewer = { paths, startIndex -> navController.navigate(Viewer(paths, startIndex)) }, onFolderClick = { navController.navigate(Folder(it)) })
+        4 -> FavoritesScreen(viewSettings = tabSettings.favorites, onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) }, onFolderClick = { navController.navigate(Folder(it)) })
         5 -> TagBrowserScreen(
             onBack = {},
             onTagFilterApplied = { tagPaths, tagName ->
