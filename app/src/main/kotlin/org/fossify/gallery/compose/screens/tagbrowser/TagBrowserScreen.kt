@@ -147,7 +147,7 @@ fun TagBrowserScreen(
             } else {
                 val filteredTags = if (tagSearchQuery.isBlank()) allTags.entries.toList().sortedWith(compareByDescending<Map.Entry<String, List<String>>> { it.key in hierarchy.values }.thenBy { it.key }) else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
                 LibraryAlbumGrid(
-                    items = filteredTags.map { AlbumGridItem(key = it.key, name = it.key, thumbnailPath = it.value.firstOrNull() ?: "", count = it.value.size, previewPaths = it.value.take(3)) },
+                    items = filteredTags.map { AlbumGridItem(key = it.key, name = if (it.key in hierarchy) "↳ ${it.key}" else it.key, thumbnailPath = it.value.firstOrNull() ?: "", count = it.value.size, previewPaths = it.value.take(3)) },
                     viewSettings = viewSettings,
                     onClick = { item -> onTagFilterApplied((allTags[item.key] ?: emptyList()).toSet(), item.key); onBack() },
                     onLongClick = { item -> selectedTags = if (item.key in selectedTags) selectedTags - item.key else selectedTags + item.key },
