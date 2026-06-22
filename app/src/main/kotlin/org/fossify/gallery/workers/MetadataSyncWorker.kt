@@ -91,7 +91,7 @@ class MetadataSyncWorker(
             while (c.moveToNext()) c.getString(col)?.let { paths.add(it) }
         }
         val total = paths.size
-        try { setForeground(createForegroundInfo(0, total, 0, 0)) } catch (_: Exception) { }
+        showProgress(0, total, 0, 0)
         val batch = mutableListOf<MediaCache>()
         var processed = 0; var foundTags = 0; var foundRatings = 0; var lastNotify = 0L
         for (p in paths) {
@@ -105,7 +105,7 @@ class MetadataSyncWorker(
             } catch (_: Exception) { }
             processed++
             val nowMs = System.currentTimeMillis()
-            if (nowMs - lastNotify > 500) { lastNotify = nowMs; try { setForeground(createForegroundInfo(processed, total, foundTags, foundRatings)) } catch (_: Exception) { } }
+            if (nowMs - lastNotify > 500) { lastNotify = nowMs; showProgress(processed, total, foundTags, foundRatings) }
         }
         if (batch.isNotEmpty()) applicationContext.mediaCacheDB.upsertAll(batch.toList())
         RefreshBus.trigger()
