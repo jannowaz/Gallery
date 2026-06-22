@@ -137,7 +137,7 @@ class TransformationEngine(private val context: android.content.Context) {
             BitmapFactory.decodeFile(s.originalPath, bounds)
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@withContext TransformResult(false, s.originalPath, "", 0, "Decode failed")
             // Never silently downsample (that would break the lossless promise); skip images too large to decode safely.
-            if (bounds.outWidth.toLong() * bounds.outHeight > 50_000_000L) return@withContext TransformResult(false, s.originalPath, "", 0, context.getString(R.string.opt_err_image_too_large))
+            if (bounds.outWidth.toLong() * bounds.outHeight > 24_000_000L) return@withContext TransformResult(false, s.originalPath, "", 0, context.getString(R.string.opt_err_image_too_large))
 
             val srcData = try { XmpWriter.read(s.originalPath) } catch (_: Exception) { null }
             val tmpFile = File(context.cacheDir, "transform_${System.nanoTime()}.tmp")
@@ -195,6 +195,8 @@ class TransformationEngine(private val context: android.content.Context) {
             try { android.media.MediaScannerConnection.scanFile(context, arrayOf(s.originalPath, newPath), null, null) } catch (_: Exception) { }
             RefreshBus.trigger()
             TransformResult(true, s.originalPath, newPath, saved)
+        } catch (e: OutOfMemoryError) {
+            TransformResult(false, s.originalPath, "", 0, context.getString(R.string.opt_err_image_too_large))
         } catch (e: Exception) { TransformResult(false, s.originalPath, "", 0, e.message) }
     }
 
