@@ -40,7 +40,9 @@ object XmpWriter {
         if (tokens.size >= 2 && tokens.contains("0") && tokens.all { tok -> tok.toIntOrNull()?.let { it in 0..255 } == true }) {
             runCatching {
                 val bytes = tokens.map { it.toInt().toByte() }.toByteArray()
-                val decoded = String(bytes, Charsets.UTF_16LE).trim('\u0000', ' ')
+                // UTF-16LE needs an even byte count; if the last null was dropped, pad with 0.
+                val fullBytes = if (bytes.size % 2 == 1) bytes + byteArrayOf(0) else bytes
+                val decoded = String(fullBytes, Charsets.UTF_16LE).trim('\u0000', ' ')
                 if (decoded.isNotBlank()) t = decoded
             }
         }
