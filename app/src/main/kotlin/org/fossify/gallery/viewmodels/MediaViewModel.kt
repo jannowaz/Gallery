@@ -108,6 +108,10 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         if (next == filter) return
         filter = next
         _state.update { it.copy(filter = next) }
+        // Narrow instantly using the already-loaded media (clear stale DB caches first), then refine
+        // once the DB-backed results are resolved off the main thread.
+        ratingDbCache = null; tagDbCache = null; pathDbCache = null
+        recompute()
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 ratingDbCache = if (rating > 0) repository.getByMinRating(rating) else null

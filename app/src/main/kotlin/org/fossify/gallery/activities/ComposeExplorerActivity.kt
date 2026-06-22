@@ -492,7 +492,7 @@ private fun applyCollection(
                     withContext(Dispatchers.Main) { mainVM.setPathFilter(result) }
                 } catch (_: Exception) { }
             }
-            null
+            incPaths
         }
         incPaths.isNotEmpty() -> incPaths
         excPaths.isNotEmpty() -> {

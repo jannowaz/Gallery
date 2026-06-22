@@ -150,10 +150,7 @@ fun VideoPage(
         }
     }
     DisposableEffect(path) {
-        onDispose {
-            try { frameCache.forEach { it.recycle() } } catch (_: Exception) { }
-            try { retriever.release() } catch (_: Exception) { }
-        }
+        onDispose { try { retriever.release() } catch (_: Exception) { } }
     }
 
     val player = remember(path) {
