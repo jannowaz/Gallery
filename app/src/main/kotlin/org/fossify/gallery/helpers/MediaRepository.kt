@@ -3,27 +3,41 @@ package org.fossify.gallery.helpers
 import android.content.Context
 import android.os.Environment
 import android.provider.MediaStore
-import kotlinx.coroutines.runBlocking
 import org.fossify.gallery.extensions.collectionDB
 import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.favoritesDB
 import org.fossify.gallery.extensions.getFavoriteFromPath
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.extensions.mediaCacheDB
+import org.fossify.gallery.extensions.config
 import org.fossify.gallery.models.Directory
 import org.fossify.gallery.models.MediaCollection
 import org.fossify.gallery.models.Medium
 import org.fossify.gallery.models.MediaCache
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
 
 class MediaRepository(private val context: Context) : MediaRepositoryInterface {
+    private val repositoryScope = CoroutineScope(Dispatchers.IO)
 
     override fun getMediaFromPath(path: String): List<Medium> {
-        return try { context.mediaDB.getMediaFromPath(path) } catch (_: Exception) { emptyList() }
+        return try {
+            context.mediaDB.getMediaFromPath(path)
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "getMediaFromPath failed for $path", e)
+            emptyList()
+        }
     }
 
     override fun isFavorite(path: String): Boolean {
-        return try { context.favoritesDB.isFavorite(path) } catch (_: Exception) { false }
+        return try {
+            context.favoritesDB.isFavorite(path)
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "isFavorite failed for $path", e)
+            false
+        }
     }
 
     override fun toggleFavorite(path: String, isFav: Boolean) {
@@ -36,7 +50,9 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                 context.favoritesDB.deleteFavoritePath(path)
             }
             context.mediaDB.updateFavorite(path, isFav)
-        } catch (_: Exception) { }
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "toggleFavorite failed for $path", e)
+        }
         RefreshBus.trigger()
     }
 
@@ -47,8 +63,15 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     override fun updateRating(path: String, rating: Int) {
         val current = XmpWriter.read(path)
         XmpWriter.write(path, current.tags, rating)
-        try { context.mediaDB.updateRating(path, rating) } catch (_: Exception) { }
-        syncCache(path, current.tags.joinToString(","), rating)
+        try {
+            context.mediaDB.updateRating(path, rating)
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "updateRating failed for $path", e)
+        }
+        // Background sync to avoid blocking the caller
+        repositoryScope.launch {
+            syncCache(path, current.tags.joinToString(","), rating)
+        }
     }
 
     override fun getTags(path: String): Set<String> {
@@ -59,30 +82,36 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         val current = XmpWriter.read(path)
         val tags = if (tag in current.tags) current.tags else current.tags + tag
         XmpWriter.write(path, tags, current.rating)
-        syncCache(path, tags.joinToString(","), current.rating)
+        // Background sync
+        repositoryScope.launch {
+            syncCache(path, tags.joinToString(","), current.rating)
+        }
     }
 
     override fun removeTag(path: String, tag: String) {
         val current = XmpWriter.read(path)
         val tags = current.tags.filter { it != tag }
         XmpWriter.write(path, tags, current.rating)
-        syncCache(path, tags.joinToString(","), current.rating)
+        // Background sync
+        repositoryScope.launch {
+            syncCache(path, tags.joinToString(","), current.rating)
+        }
     }
 
-    private fun syncCache(path: String, tags: String, rating: Int) {
+    private suspend fun syncCache(path: String, tags: String, rating: Int) {
         try {
-            runBlocking {
-                context.mediaCacheDB.upsertAll(listOf(MediaCache(fullPath = path, tags = tags, rating = rating, lastScanned = System.currentTimeMillis())))
-            }
-        } catch (_: Exception) { }
+            context.mediaCacheDB.upsertAll(listOf(MediaCache(fullPath = path, tags = tags, rating = rating, lastScanned = System.currentTimeMillis())))
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "syncCache failed for $path", e)
+        }
     }
 
     override fun deleteMedium(path: String) {
-        try { context.mediaDB.deleteMediumPath(path) } catch (_: Exception) { }
-        try { context.favoritesDB.deleteFavoritePath(path) } catch (_: Exception) { }
-        try { context.mediaCacheDB.deleteByPathSync(path) } catch (_: Exception) { }
-        try { File("$path.xmp").delete() } catch (_: Exception) { }
-        try { File(path).delete() } catch (_: Exception) { }
+        try { context.mediaDB.deleteMediumPath(path) } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium DB failed", e) }
+        try { context.favoritesDB.deleteFavoritePath(path) } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium Fav failed", e) }
+        try { context.mediaCacheDB.deleteByPathSync(path) } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium Cache failed", e) }
+        try { File("$path.xmp").delete() } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium XMP delete failed", e) }
+        try { File(path).delete() } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium File delete failed", e) }
     }
 
     fun getByMinRating(minRating: Int): List<Medium> =
@@ -141,8 +170,21 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     suspend fun getRecentTagged(limit: Int): List<MediaCache> =
         try { context.mediaCacheDB.getRecentTagged(limit) } catch (_: Exception) { emptyList() }
 
+    suspend fun getTagsInFolder(folder: String): Map<String, Int> =
+        try {
+            val pattern = if (folder.endsWith("/")) "$folder%" else "$folder/%"
+            context.mediaCacheDB.getTagsInFolder(pattern)
+                .flatMap { it.tags.split(",").filter(String::isNotBlank) }
+                .groupingBy { it }
+                .eachCount()
+        } catch (_: Exception) { emptyMap() }
+
     suspend fun upsertCache(items: List<MediaCache>) {
-        try { context.mediaCacheDB.upsertAll(items) } catch (_: Exception) { }
+        try {
+            context.mediaCacheDB.upsertAll(items)
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "upsertCache failed", e)
+        }
     }
 
     fun getValidFavoritePaths(): List<String> =
@@ -154,7 +196,11 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
 
     /** DB-only rating write (no XMP). Used when importing ratings that already exist on disk. */
     fun setDbRating(path: String, rating: Int) {
-        try { context.mediaDB.updateRating(path, rating) } catch (_: Exception) { }
+        try { context.mediaDB.updateRating(path, rating) } catch (e: Exception) { android.util.Log.e("MediaRepository", "setDbRating failed", e) }
+    }
+
+    fun setDbRatingBatch(paths: Collection<String>, rating: Int) {
+        try { context.mediaDB.updateRatingBatch(paths, rating) } catch (e: Exception) { android.util.Log.e("MediaRepository", "setDbRatingBatch failed", e) }
     }
 
     fun updateMediumPath(oldPath: String, parentPath: String, newName: String, newPath: String) {
@@ -177,6 +223,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     /** Pulls newly added images/videos from MediaStore (plus recent disk folders) into the local DB. */
     fun syncNewMediaFromStore() {
         try {
+            val lastSync = context.config.lastSyncTimestamp
             val existingPaths = context.mediaDB.getAllPaths().toSet()
             val newMedia = mutableListOf<Medium>()
             val uri = MediaStore.Files.getContentUri("external")
@@ -188,9 +235,19 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                 MediaStore.MediaColumns.SIZE,
                 MediaStore.Files.FileColumns.MEDIA_TYPE,
             )
-            val sel = "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
-            val args = arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
+            
+            // Incremental sync: only query items modified since last sync
+            val lastSyncSec = lastSync / 1000L
+            val sel = "(${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?) AND ${MediaStore.MediaColumns.DATE_MODIFIED} > ?"
+            val args = arrayOf(
+                MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
+                MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
+                lastSyncSec.toString()
+            )
+            
             val storageRoot = Environment.getExternalStorageDirectory().absolutePath
+            var latestTimestamp = lastSync
+            
             context.contentResolver.query(uri, proj, sel, args, "${MediaStore.MediaColumns.DATE_MODIFIED} DESC")?.use { c ->
                 val dataIdx = c.getColumnIndex(MediaStore.MediaColumns.DATA)
                 val relPathIdx = c.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
@@ -200,7 +257,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                 val typeIdx = c.getColumnIndex(MediaStore.Files.FileColumns.MEDIA_TYPE)
                 var scanned = 0
                 while (c.moveToNext()) {
-                    if (scanned++ >= 20000) break
+                    if (scanned++ >= 10000) break // Lower limit for incremental sync
                     var path = if (dataIdx >= 0) c.getString(dataIdx) else null
                     if (path.isNullOrBlank()) {
                         val relPath = if (relPathIdx >= 0) c.getString(relPathIdx) ?: "" else ""
@@ -209,17 +266,47 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                     }
                     if (path.isNullOrBlank() || path in existingPaths) continue
                     val name = File(path).name
-                    val modified = if (dateIdx >= 0) c.getLong(dateIdx) * 1000L else System.currentTimeMillis()
+                    val modifiedSec = if (dateIdx >= 0) c.getLong(dateIdx) else 0L
+                    val modified = modifiedSec * 1000L
+                    latestTimestamp = maxOf(latestTimestamp, modified)
+                    
                     val size = if (sizeIdx >= 0) c.getLong(sizeIdx) else 0L
                     val mediaType = if (typeIdx >= 0) c.getInt(typeIdx) else 1
                     val type = if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) 2 else 1
                     newMedia.add(Medium(null, name, path, File(path).parent ?: "", modified, modified, size, type, 0, false, 0L, 0L, 0))
                 }
             }
-            val deletedPaths = try { context.mediaDB.getDeletedMedia().map { it.path }.toSet() } catch (_: Exception) { emptySet() }
-            newMedia.addAll(recentDiskMedia(existingPaths + newMedia.map { it.path } + deletedPaths))
-            if (newMedia.isNotEmpty()) context.mediaDB.insertAllKeepingExisting(newMedia)
-        } catch (_: Exception) { }
+            val deletedPaths = try {
+                context.mediaDB.getDeletedMedia().map { it.path }.toSet()
+            } catch (e: Exception) {
+                android.util.Log.e("MediaRepository", "getDeletedMedia failed", e)
+                emptySet()
+            }
+            
+            // Only scan recent disk folders if we found something new or if it's the first sync
+            if (newMedia.isNotEmpty() || lastSync == 0L) {
+                newMedia.addAll(recentDiskMedia(existingPaths + newMedia.map { it.path } + deletedPaths))
+            }
+            
+            if (newMedia.isNotEmpty()) {
+                try {
+                    context.mediaDB.insertAllKeepingExisting(newMedia)
+                    context.config.lastSyncTimestamp = latestTimestamp
+                } catch (e: Exception) {
+                    android.util.Log.e("MediaRepository", "insertAllKeepingExisting failed", e)
+                }
+            } else if (lastSync == 0L || existingPaths.isEmpty()) {
+                // Fallback for first sync or empty DB
+                android.util.Log.i("MediaRepository", "No incremental media found, triggering disk scan fallback")
+                scanMediaFromDisk()
+                context.config.lastSyncTimestamp = System.currentTimeMillis()
+            } else {
+                // Update timestamp anyway to skip these items next time
+                context.config.lastSyncTimestamp = System.currentTimeMillis()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "syncNewMediaFromStore failed", e)
+        }
     }
 
     /** Full MediaStore enumeration with a recursive disk fallback — used when the local DB is empty. */
@@ -320,12 +407,33 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         try {
             val now = System.currentTimeMillis()
             context.mediaDB.softDelete(path, now)
-        } catch (_: Exception) { }
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "moveToRecycleBin failed for $path", e)
+        }
+    }
+
+    fun moveToRecycleBinBatch(paths: Collection<String>) {
+        try {
+            val now = System.currentTimeMillis()
+            context.mediaDB.softDeleteBatch(paths, now)
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "moveToRecycleBinBatch failed", e)
+        }
     }
 
     fun restoreFromRecycleBin(path: String) {
         try {
             context.mediaDB.restoreDeleted(path)
-        } catch (_: Exception) { }
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "restoreFromRecycleBin failed for $path", e)
+        }
+    }
+
+    fun restoreFromRecycleBinBatch(paths: Collection<String>) {
+        try {
+            context.mediaDB.restoreDeletedBatch(paths)
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "restoreFromRecycleBinBatch failed", e)
+        }
     }
 }

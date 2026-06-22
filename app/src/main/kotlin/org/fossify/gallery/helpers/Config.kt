@@ -25,8 +25,13 @@ class Config(context: Context) : BaseConfig(context) {
         private const val TAGS_COLUMN_CNT = "tags_column_cnt"
         private const val PINNED_FAV_FOLDERS = "pinned_fav_folders"
         private const val PINNED_COLLECTIONS = "pinned_collections"
+        private const val LAST_SYNC_TIMESTAMP = "last_sync_timestamp"
         fun newInstance(context: Context) = Config(context)
     }
+
+    var lastSyncTimestamp: Long
+        get() = prefs.getLong(LAST_SYNC_TIMESTAMP, 0L)
+        set(value) = prefs.edit().putLong(LAST_SYNC_TIMESTAMP, value).apply()
 
     var useDynamicColors: Boolean
         get() = prefs.getBoolean(USE_DYNAMIC_COLORS, true)

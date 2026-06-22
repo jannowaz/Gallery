@@ -16,6 +16,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.extensions.config
 import org.fossify.gallery.helpers.RefreshBus
 import org.fossify.gallery.helpers.XmpWriter
 import org.fossify.gallery.models.MediaCache
@@ -61,8 +62,16 @@ class MetadataSyncWorker(
     override suspend fun doWork(): Result {
         val fullScan = inputData.getBoolean("full_scan", false)
         val folderPath = inputData.getString("folder_path")
+        val dateStart = inputData.getLong("date_start", 0L)
+        val dateEnd = inputData.getLong("date_end", Long.MAX_VALUE)
+        val incremental = inputData.getBoolean("incremental", false)
+        
         return try {
-            if (fullScan && folderPath == null) fullScanFromMediaStore() else dbScan(fullScan, folderPath)
+            if (fullScan && folderPath == null && dateStart == 0L && !incremental) {
+                fullScanFromMediaStore()
+            } else {
+                dbScan(fullScan, folderPath, dateStart, dateEnd, incremental)
+            }
             if (isStopped) {
                 cancelProgress()
                 showNotification("Scan abgebrochen", "Der Scan wurde gestoppt.")
@@ -112,18 +121,30 @@ class MetadataSyncWorker(
         if (!isStopped) showNotification("Scan abgeschlossen", "$total Dateien · $foundTags mit Tags · $foundRatings bewertet")
     }
 
-    private suspend fun dbScan(fullScan: Boolean, folderPath: String?) {
+    private suspend fun dbScan(fullScan: Boolean, folderPath: String?, dateStart: Long = 0L, dateEnd: Long = Long.MAX_VALUE, incremental: Boolean = false) {
         val logTag = "MetadataSync"
         val now = System.currentTimeMillis()
+        val lastSync = if (incremental) applicationContext.config.lastSyncTimestamp else 0L
         val staleThreshold = if (fullScan) 0L else now - 6 * 60 * 60 * 1000L
 
-        val allMedia = when {
+        var allMedia = when {
             folderPath != null -> {
                 applicationContext.mediaDB.getNewestMedia(Int.MAX_VALUE)
                     .filter { it.path.startsWith("$folderPath/") || it.parentPath == folderPath }
             }
             fullScan -> applicationContext.mediaDB.getNewestMedia(Int.MAX_VALUE)
             else -> applicationContext.mediaDB.getNewestMedia(10000)
+        }
+        
+        if (dateStart > 0 || dateEnd < Long.MAX_VALUE) {
+            allMedia = allMedia.filter { m ->
+                val t = maxOf(m.taken, m.modified)
+                t in dateStart..dateEnd
+            }
+        }
+        
+        if (incremental) {
+            allMedia = allMedia.filter { maxOf(it.taken, it.modified) > lastSync }
         }
 
         val existingCache = applicationContext.mediaCacheDB.getAllTagged().associateBy { it.fullPath }
@@ -234,6 +255,27 @@ class MetadataSyncWorker(
                 .setInputData(Data.Builder().putString("folder_path", folderPath).putBoolean("full_scan", true).build())
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork("${WORK_NAME}_folder", ExistingWorkPolicy.REPLACE, workRequest)
+        }
+
+        fun scheduleAdvancedScan(context: Context, folderPath: String?, dateStart: Long, dateEnd: Long, incremental: Boolean, chargingOnly: Boolean) {
+            val constraints = androidx.work.Constraints.Builder()
+                .setRequiresCharging(chargingOnly)
+                .build()
+            
+            val data = Data.Builder()
+                .putString("folder_path", folderPath)
+                .putLong("date_start", dateStart)
+                .putLong("date_end", dateEnd)
+                .putBoolean("incremental", incremental)
+                .putBoolean("full_scan", true)
+                .build()
+
+            val workRequest = OneTimeWorkRequestBuilder<MetadataSyncWorker>()
+                .addTag("${WORK_NAME}_advanced")
+                .setConstraints(constraints)
+                .setInputData(data)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork("${WORK_NAME}_advanced", ExistingWorkPolicy.REPLACE, workRequest)
         }
 
         fun cancel(context: Context) {

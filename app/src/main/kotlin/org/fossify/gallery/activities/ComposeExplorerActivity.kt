@@ -232,6 +232,7 @@ class ComposeExplorerActivity : ComponentActivity() {
             MediaSyncWorker.schedule(this)
             MediaSyncWorker.scheduleInitialSync(this)
             MetadataSyncWorker.cancelAutomatic(this)
+            MetadataSyncWorker.cancel(this)
             setContent { GalleryNavHost() }
         } else {
             requestPermissionLauncher.launch(getMediaPermissionStrings())
@@ -560,114 +561,116 @@ private fun AppNavigationDrawer(
 ) {
     ModalDrawerSheet {
         val s = LocalSpacing.current
-        Spacer(Modifier.height(s.md))
-        Text(
-            stringResource(R.string.nav_library),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 28.dp, vertical = s.md),
-        )
-        NavigationDrawerItem(
-            label = { Text(stringResource(R.string.nav_favorites)) },
-            icon = { Icon(Icons.Default.Star, null) },
-            selected = selectedTab == 4,
-            onClick = { onSelectTab(4) },
-            modifier = Modifier.padding(horizontal = s.md),
-        )
-        PinnedPreviewRow(pinnedFavorites, onOpenPinnedFavorite)
-        NavigationDrawerItem(
-            label = { Text(stringResource(R.string.nav_collections)) },
-            icon = { Icon(Icons.Default.CollectionsBookmark, null) },
-            selected = selectedTab == 3,
-            onClick = { onSelectTab(3) },
-            modifier = Modifier.padding(horizontal = s.md),
-        )
-        PinnedPreviewRow(pinnedCollections, onOpenPinnedCollection)
-        NavigationDrawerItem(
-            label = { Text(stringResource(R.string.nav_tags)) },
-            icon = { Icon(Icons.AutoMirrored.Filled.Label, null) },
-            selected = selectedTab == 5,
-            onClick = { onSelectTab(5) },
-            modifier = Modifier.padding(horizontal = s.md),
-        )
-        HorizontalDivider(Modifier.padding(horizontal = 28.dp, vertical = s.sm))
-        Text(
-            "Ansicht & Filter",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 28.dp, vertical = s.md),
-        )
-        NavigationDrawerItem(
-            label = { Text("Ansicht") },
-            icon = { Icon(Icons.Default.GridView, null) },
-            selected = false,
-            onClick = onOpenViewSettings,
-            modifier = Modifier.padding(horizontal = s.md),
-        )
-        NavigationDrawerItem(
-            label = { Text("Nach Bewertung") },
-            icon = { Icon(Icons.Default.Star, null) },
-            selected = false,
-            onClick = onFilterByRating,
-            modifier = Modifier.padding(horizontal = s.md),
-        )
-        NavigationDrawerItem(
-            label = { Text("Nach Tags") },
-            icon = { Icon(Icons.AutoMirrored.Filled.Label, null) },
-            selected = false,
-            onClick = onBrowseTags,
-            modifier = Modifier.padding(horizontal = s.md),
-        )
-        NavigationDrawerItem(
-            label = { Text("Neu scannen") },
-            icon = { Icon(Icons.Default.Search, null) },
-            selected = false,
-            onClick = onRescanMetadata,
-            modifier = Modifier.padding(horizontal = s.md),
-        )
-        HorizontalDivider(Modifier.padding(horizontal = 28.dp, vertical = s.sm))
-        Text(
-            stringResource(R.string.nav_more),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 28.dp, vertical = s.md),
-        )
-        NavigationDrawerItem(
-            label = { Text(stringResource(R.string.nav_manage_collections)) },
-            icon = { Icon(Icons.Default.CollectionsBookmark, null) },
-            selected = false,
-            onClick = { onNavigate(ManageCollections) },
-            modifier = Modifier.padding(horizontal = s.md),
-        )
-        NavigationDrawerItem(
-            label = { Text(stringResource(R.string.nav_storage_analysis)) },
-            icon = { Icon(Icons.Default.Storage, null) },
-            selected = false,
-            onClick = { onNavigate(StorageAnalysis) },
-            modifier = Modifier.padding(horizontal = s.md),
-        )
-        NavigationDrawerItem(
-            label = { Text(stringResource(R.string.nav_find_duplicates)) },
-            icon = { Icon(Icons.Default.ContentCopy, null) },
-            selected = false,
-            onClick = { onNavigate(DuplicateFinder(duplicateScanFolder)) },
-            modifier = Modifier.padding(horizontal = s.md),
-        )
-        NavigationDrawerItem(
-            label = { Text(stringResource(R.string.nav_recycle_bin)) },
-            icon = { Icon(Icons.Default.Delete, null) },
-            selected = false,
-            onClick = { onNavigate(RecycleBin) },
-            modifier = Modifier.padding(horizontal = s.md),
-        )
-        NavigationDrawerItem(
-            label = { Text(stringResource(R.string.nav_settings)) },
-            icon = { Icon(Icons.Default.Settings, null) },
-            selected = false,
-            onClick = { onNavigate(Settings) },
-            modifier = Modifier.padding(horizontal = s.md),
-        )
-        Spacer(Modifier.height(s.md))
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Spacer(Modifier.height(s.md))
+            Text(
+                stringResource(R.string.nav_library),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = s.md),
+            )
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.nav_favorites)) },
+                icon = { Icon(Icons.Default.Star, null) },
+                selected = selectedTab == 4,
+                onClick = { onSelectTab(4) },
+                modifier = Modifier.padding(horizontal = s.md),
+            )
+            PinnedPreviewRow(pinnedFavorites, onOpenPinnedFavorite)
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.nav_collections)) },
+                icon = { Icon(Icons.Default.CollectionsBookmark, null) },
+                selected = selectedTab == 3,
+                onClick = { onSelectTab(3) },
+                modifier = Modifier.padding(horizontal = s.md),
+            )
+            PinnedPreviewRow(pinnedCollections, onOpenPinnedCollection)
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.nav_tags)) },
+                icon = { Icon(Icons.AutoMirrored.Filled.Label, null) },
+                selected = selectedTab == 5,
+                onClick = { onSelectTab(5) },
+                modifier = Modifier.padding(horizontal = s.md),
+            )
+            HorizontalDivider(Modifier.padding(horizontal = 28.dp, vertical = s.sm))
+            Text(
+                "Ansicht & Filter",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = s.md),
+            )
+            NavigationDrawerItem(
+                label = { Text("Ansicht") },
+                icon = { Icon(Icons.Default.GridView, null) },
+                selected = false,
+                onClick = onOpenViewSettings,
+                modifier = Modifier.padding(horizontal = s.md),
+            )
+            NavigationDrawerItem(
+                label = { Text("Nach Bewertung") },
+                icon = { Icon(Icons.Default.Star, null) },
+                selected = false,
+                onClick = onFilterByRating,
+                modifier = Modifier.padding(horizontal = s.md),
+            )
+            NavigationDrawerItem(
+                label = { Text("Nach Tags") },
+                icon = { Icon(Icons.AutoMirrored.Filled.Label, null) },
+                selected = false,
+                onClick = onBrowseTags,
+                modifier = Modifier.padding(horizontal = s.md),
+            )
+            NavigationDrawerItem(
+                label = { Text("Neu scannen") },
+                icon = { Icon(Icons.Default.Search, null) },
+                selected = false,
+                onClick = onRescanMetadata,
+                modifier = Modifier.padding(horizontal = s.md),
+            )
+            HorizontalDivider(Modifier.padding(horizontal = 28.dp, vertical = s.sm))
+            Text(
+                stringResource(R.string.nav_more),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = s.md),
+            )
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.nav_manage_collections)) },
+                icon = { Icon(Icons.Default.CollectionsBookmark, null) },
+                selected = false,
+                onClick = { onNavigate(ManageCollections) },
+                modifier = Modifier.padding(horizontal = s.md),
+            )
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.nav_storage_analysis)) },
+                icon = { Icon(Icons.Default.Storage, null) },
+                selected = false,
+                onClick = { onNavigate(StorageAnalysis) },
+                modifier = Modifier.padding(horizontal = s.md),
+            )
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.nav_find_duplicates)) },
+                icon = { Icon(Icons.Default.ContentCopy, null) },
+                selected = false,
+                onClick = { onNavigate(DuplicateFinder(duplicateScanFolder)) },
+                modifier = Modifier.padding(horizontal = s.md),
+            )
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.nav_recycle_bin)) },
+                icon = { Icon(Icons.Default.Delete, null) },
+                selected = false,
+                onClick = { onNavigate(RecycleBin) },
+                modifier = Modifier.padding(horizontal = s.md),
+            )
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.nav_settings)) },
+                icon = { Icon(Icons.Default.Settings, null) },
+                selected = false,
+                onClick = { onNavigate(Settings) },
+                modifier = Modifier.padding(horizontal = s.md),
+            )
+            Spacer(Modifier.height(s.lg))
+        }
     }
 }
 

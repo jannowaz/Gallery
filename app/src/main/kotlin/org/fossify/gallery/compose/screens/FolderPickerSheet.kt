@@ -5,7 +5,9 @@ import org.fossify.gallery.compose.theme.Radius
 
 import android.widget.Toast
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -51,8 +54,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -85,6 +92,7 @@ fun FolderPickerSheet(
     isMoveOperation: Boolean,
     sourcePaths: List<String>,
     onDismiss: () -> Unit,
+    onTargetSelected: ((String) -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     val repo = LocalMediaRepository.current
@@ -158,6 +166,11 @@ fun FolderPickerSheet(
     val isSearchingMode = searchQuery.length >= 2
 
     fun performCopyMove(destPath: String) {
+        if (onTargetSelected != null) {
+            onTargetSelected.invoke(destPath)
+            onDismiss()
+            return
+        }
         conf.lastCopyMoveDestination = destPath
         val targetRel = MediaStoreOps.relativePathFor(destPath)
         scope.launch {
@@ -196,6 +209,7 @@ fun FolderPickerSheet(
             }
             ctx.toast(msg, Toast.LENGTH_LONG)
             onDismiss()
+            onTargetSelected?.invoke(destPath)
         }
     }
 
@@ -273,14 +287,19 @@ fun FolderPickerSheet(
             } else {
                 // Breadcrumb + directory listing
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { navStack.clear(); navStack.add(rootPath); currentPath = rootPath }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Home, null, tint = if (currentPath == rootPath) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                    }
                     if (navStack.size > 1) {
                         IconButton(onClick = { navStack.removeAt(navStack.lastIndex); currentPath = navStack.last() }, modifier = Modifier.size(32.dp)) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                         }
-                    } else {
-                        Spacer(Modifier.width(36.dp))
                     }
-                    Text(currentPath, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    val breadcrumbScroll = rememberScrollState()
+                    Row(Modifier.weight(1f).horizontalScroll(breadcrumbScroll).padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        val parts = currentPath.removePrefix(rootPath).split("/").filter { it.isNotBlank() }
+                        Text(if (parts.isEmpty()) "Interner Speicher" else parts.joinToString(" › "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    }
                     IconButton(onClick = { pendingCreateFolder = true }, modifier = Modifier.size(28.dp)) {
                         Icon(Icons.Default.CreateNewFolder, stringResource(R.string.new_folder), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     }
@@ -402,7 +421,7 @@ private fun FolderResultRow(item: FolderItem, query: String, onClick: () -> Unit
             Icon(Icons.Default.FolderOpen, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(text = highlightMatch(item.name, query), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(item.path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (item.mediaCount > 0) {
@@ -411,4 +430,46 @@ private fun FolderResultRow(item: FolderItem, query: String, onClick: () -> Unit
         }
     }
     HorizontalDivider(Modifier.padding(start = 44.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+}
+
+private fun highlightMatch(text: String, query: String): AnnotatedString {
+    if (query.isBlank()) return AnnotatedString(text)
+    val parts = query.lowercase().split(" ").filter { it.isNotBlank() }
+    return buildAnnotatedString {
+        var lastIdx = 0
+        val lowerText = text.lowercase()
+        val matchIndices = mutableListOf<IntRange>()
+        parts.forEach { part ->
+            var start = lowerText.indexOf(part)
+            while (start != -1) {
+                matchIndices.add(start until (start + part.length))
+                start = lowerText.indexOf(part, start + 1)
+            }
+        }
+        val sortedMatches = matchIndices.sortedBy { it.first }
+        val mergedMatches = mutableListOf<IntRange>()
+        if (sortedMatches.isNotEmpty()) {
+            var current = sortedMatches[0]
+            for (i in 1 until sortedMatches.size) {
+                val next = sortedMatches[i]
+                if (next.first <= current.last + 1) {
+                    current = current.first..maxOf(current.last, next.last)
+                } else {
+                    mergedMatches.add(current)
+                    current = next
+                }
+            }
+            mergedMatches.add(current)
+        }
+        mergedMatches.forEach { range ->
+            if (range.first > lastIdx) {
+                append(text.substring(lastIdx, range.first))
+            }
+            withStyle(SpanStyle(fontWeight = FontWeight.ExtraBold, color = Color.Unspecified)) {
+                append(text.substring(range.first, minOf(range.last + 1, text.length)))
+            }
+            lastIdx = range.last + 1
+        }
+        if (lastIdx < text.length) append(text.substring(lastIdx))
+    }
 }

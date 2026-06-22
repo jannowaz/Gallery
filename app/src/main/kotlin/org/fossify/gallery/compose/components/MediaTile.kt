@@ -45,6 +45,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.graphicsLayer
 import org.fossify.gallery.compose.screens.VideoThumbnail
 import org.fossify.gallery.compose.theme.RatingStarColor
 import org.fossify.gallery.compose.util.selectableItem
@@ -77,6 +81,10 @@ fun MediaTile(
     onBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (isPressed) 0.96f else 1f, label = "pressScale")
+
     var lastBoundsUpdate by remember { mutableLongStateOf(0L) }
     val durationText = if (showVideoDuration && isVideo && medium.videoDuration > 0)
         "%02d:%02d".format(medium.videoDuration / 60, medium.videoDuration % 60) else ""
@@ -84,6 +92,10 @@ fun MediaTile(
     Column(
         modifier
             .padding(itemSpacing / 2)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .background(cardColor, cornerShape)
             .onGloballyPositioned { coords ->
                 val now = System.currentTimeMillis()
@@ -102,6 +114,7 @@ fun MediaTile(
                     onClick = onClick,
                     onLongClick = onLongClick,
                     onSwipeToSelect = onSwipeToSelect,
+                    interactionSource = interactionSource,
                 )
                 .semantics { if (isSelectionMode) selected = isSelected }
         ) {

@@ -4,10 +4,14 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.compose.screens.SortField
@@ -26,8 +30,10 @@ data class MediaFilter(
     val rating: Int = 0,
     val tagPaths: Set<String>? = null,
     val pathFilter: Set<String>? = null,
+    val minSize: Long = 0L,
+    val dateRange: Int = 0, // 0: All, 1: Today, 2: 7d, 3: 30d, 4: 1y
 ) {
-    val isActive: Boolean get() = rating > 0 || tagPaths != null || pathFilter != null
+    val isActive: Boolean get() = rating > 0 || tagPaths != null || pathFilter != null || minSize > 0 || dateRange > 0
 }
 
 data class MediaUiState(
@@ -103,8 +109,8 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Resolves DB-backed filters off the main thread, then rebuilds the display list. */
-    fun setFilter(rating: Int, tagPaths: Set<String>?, pathFilter: Set<String>?) {
-        val next = MediaFilter(rating, tagPaths, pathFilter)
+    fun setFilter(rating: Int, tagPaths: Set<String>?, pathFilter: Set<String>?, minSize: Long = 0, dateRange: Int = 0) {
+        val next = MediaFilter(rating, tagPaths, pathFilter, minSize, dateRange)
         if (next == filter) return
         filter = next
         _state.update { it.copy(filter = next) }
@@ -156,6 +162,19 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                     val fb = pathDbCache
                     m = if (fb != null && fb.size > filtered.size) fb else filtered
                 }
+                if (f.minSize > 0) {
+                    m = m.filter { it.size >= f.minSize }
+                }
+                if (f.dateRange > 0) {
+                    val cutoff = when (f.dateRange) {
+                        1 -> System.currentTimeMillis() - 86400000L
+                        2 -> System.currentTimeMillis() - 7 * 86400000L
+                        3 -> System.currentTimeMillis() - 30 * 86400000L
+                        4 -> System.currentTimeMillis() - 365 * 86400000L
+                        else -> 0L
+                    }
+                    m = m.filter { maxOf(it.taken, it.modified) >= cutoff }
+                }
                 applySort(m)
             }
             val groups = withContext(Dispatchers.Default) { groupByMonth(display) }
@@ -171,11 +190,38 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Lazily decodes and caches the aspect ratio of an image (mosaic layout). Decoding runs in the repo. */
+    private val aspectRequests = MutableSharedFlow<String>(extraBufferCapacity = 64)
+
+    init {
+        viewModelScope.launch {
+            aspectRequests
+                .chunked(20, 200) // Batch of 20 or every 200ms
+                .collect { paths ->
+                    val updates = withContext(Dispatchers.Default) {
+                        paths.distinct().associateWith { repository.decodeImageAspect(it) }
+                    }
+                    _state.update { it.copy(aspectRatios = it.aspectRatios + updates) }
+                }
+        }
+    }
+
     fun requestAspect(path: String) {
         if (_state.value.aspectRatios.containsKey(path)) return
-        viewModelScope.launch {
-            val ratio = withContext(Dispatchers.IO) { repository.decodeImageAspect(path) }
-            _state.update { it.copy(aspectRatios = it.aspectRatios + (path to ratio)) }
+        aspectRequests.tryEmit(path)
+    }
+
+    // Helper for batching flow
+    private fun <T> Flow<T>.chunked(size: Int, timeoutMillis: Long): Flow<List<T>> = flow {
+        val buffer = mutableListOf<T>()
+        var lastEmitTime = System.currentTimeMillis()
+        collect { value ->
+            buffer.add(value)
+            val now = System.currentTimeMillis()
+            if (buffer.size >= size || (now - lastEmitTime >= timeoutMillis && buffer.isNotEmpty())) {
+                emit(buffer.toList())
+                buffer.clear()
+                lastEmitTime = now
+            }
         }
     }
 
@@ -220,8 +266,17 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setRatingFor(paths: Collection<String>, rating: Int) {
         viewModelScope.launch(Dispatchers.IO) {
-            paths.forEach { repository.updateRating(it, rating) }
-            silentRefresh()
+            try {
+                // Bulk write to DB (XMP is still per-file in repository.updateRating)
+                repository.setDbRatingBatch(paths, rating)
+                // For XMP persistence, we still need to call updateRating for each if we want standard XMP write
+                // But setDbRatingBatch is faster for immediate DB update.
+                // Let's use a compromise: bulk DB update + background XMP updates
+                paths.forEach { repository.updateRating(it, rating) }
+                silentRefresh()
+            } catch (e: Exception) {
+                android.util.Log.e("MediaViewModel", "setRatingFor failed", e)
+            }
         }
     }
 
@@ -248,13 +303,18 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 repository.syncNewMediaFromStore()
-                val media = try { repository.getNewestMedia(20000).sortedByDescending { it.modified } } catch (_: Exception) { repository.scanMediaFromDisk() }
+                val media = try { repository.getNewestMedia(20000).sortedByDescending { it.modified } } catch (e: Exception) {
+                    android.util.Log.e("MediaViewModel", "silentRefresh getNewestMedia failed, falling back to disk scan", e)
+                    repository.scanMediaFromDisk()
+                }
                 cachedAllMedia = applySort(media)
                 currentPage = 0
                 val firstPage = getPage(cachedAllMedia, 0)
                 _state.update { it.copy(allMedia = firstPage, hasMore = cachedAllMedia.size > pageSize) }
                 recompute()
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                android.util.Log.e("MediaViewModel", "silentRefresh failed", e)
+            }
         }
     }
 
@@ -305,20 +365,39 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deletePaths(paths: Set<String>) {
         viewModelScope.launch(Dispatchers.IO) {
-            paths.forEach { p -> repository.deleteMedium(p) }
-            val removed = paths; _state.update { s -> s.copy(allMedia = s.allMedia.filter { it.path !in removed }) }
+            try {
+                paths.forEach { p -> repository.deleteMedium(p) }
+                _state.update { s -> s.copy(allMedia = s.allMedia.filter { it.path !in paths }) }
+                recompute()
+            } catch (e: Exception) {
+                android.util.Log.e("MediaViewModel", "deletePaths failed", e)
+                _state.update { it.copy(error = e.message) }
+            }
         }
     }
 
     fun softDeletePaths(paths: Set<String>) {
         viewModelScope.launch(Dispatchers.IO) {
-            paths.forEach { p -> repository.moveToRecycleBin(p) }
-            val removed = paths; _state.update { s -> s.copy(allMedia = s.allMedia.filter { it.path !in removed }) }
+            try {
+                repository.moveToRecycleBinBatch(paths)
+                _state.update { s -> s.copy(allMedia = s.allMedia.filter { it.path !in paths }) }
+                recompute()
+            } catch (e: Exception) {
+                android.util.Log.e("MediaViewModel", "softDeletePaths failed", e)
+                _state.update { it.copy(error = e.message) }
+            }
         }
     }
 
     fun undoDeletePaths(paths: Set<String>) {
-        viewModelScope.launch(Dispatchers.IO) { paths.forEach { p -> repository.restoreFromRecycleBin(p) } }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                repository.restoreFromRecycleBinBatch(paths)
+                refresh()
+            } catch (e: Exception) {
+                android.util.Log.e("MediaViewModel", "undoDeletePaths failed", e)
+            }
+        }
     }
 
     fun saveScrollPosition(index: Int, offset: Int) {

@@ -29,12 +29,14 @@ class RecycleBinCleanupWorker(
                     val gone = !file.exists() || file.delete()
                     if (gone) {
                         applicationContext.mediaDB.deleteMediumPath(medium.path)
-                        try { applicationContext.favoritesDB.deleteFavoritePath(medium.path) } catch (_: Exception) { }
-                        try { applicationContext.mediaCacheDB.deleteByPathSync(medium.path) } catch (_: Exception) { }
-                        try { File("${medium.path}.xmp").delete() } catch (_: Exception) { }
+                        try { applicationContext.favoritesDB.deleteFavoritePath(medium.path) } catch (e: Exception) { android.util.Log.e("RecycleBinCleanup", "Failed to delete favorite path", e) }
+                        try { applicationContext.mediaCacheDB.deleteByPathSync(medium.path) } catch (e: Exception) { android.util.Log.e("RecycleBinCleanup", "Failed to delete cache path", e) }
+                        try { File("${medium.path}.xmp").delete() } catch (e: Exception) { android.util.Log.e("RecycleBinCleanup", "Failed to delete XMP sidecar", e) }
                         deletedCount++
                     }
-                } catch (_: Exception) { }
+                } catch (e: Exception) {
+                    android.util.Log.e("RecycleBinCleanup", "Failed to clean item: ${medium.path}", e)
+                }
             }
 
             android.util.Log.i("RecycleBinCleanup", "Cleaned $deletedCount expired items")

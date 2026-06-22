@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.request.ImageRequest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
 @Composable
@@ -40,10 +43,15 @@ fun GalleryImage(
     val file = File(path)
     var imageState by remember(path) { mutableStateOf<AsyncImagePainter.State?>(null) }
 
+    var fileExists by remember(path) { mutableStateOf(true) }
+    LaunchedEffect(path) {
+        fileExists = withContext(Dispatchers.IO) { file.exists() }
+    }
+
     Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
         AsyncImage(
             model = ImageRequest.Builder(ctx)
-                .data(Uri.fromFile(file))
+                .data(if (fileExists) Uri.fromFile(file) else null)
                 .crossfade(true)
                 .apply { if (thumbnailSize != null) size(thumbnailSize, thumbnailSize) }
                 .build(),
@@ -55,7 +63,7 @@ fun GalleryImage(
             onLoading = { imageState = it },
         )
 
-        if (imageState is AsyncImagePainter.State.Error || imageState == null && !file.exists()) {
+        if (imageState is AsyncImagePainter.State.Error || imageState == null && !fileExists) {
             Box(Modifier.fillMaxSize().background(Color.Transparent), contentAlignment = Alignment.Center) {
                 Icon(
                     Icons.Default.BrokenImage,

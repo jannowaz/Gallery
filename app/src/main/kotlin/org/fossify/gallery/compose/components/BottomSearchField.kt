@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
@@ -28,6 +30,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import org.fossify.gallery.compose.theme.LocalSpacing
 import org.fossify.gallery.compose.theme.Radius
@@ -43,6 +46,7 @@ fun BottomSearchField(
     focusRequester: FocusRequester,
     onFocusChanged: (Boolean) -> Unit,
     onClear: () -> Unit,
+    onSearch: () -> Unit = {},
     modifier: Modifier = Modifier,
     searching: Boolean = false,
 ) {
@@ -66,6 +70,8 @@ fun BottomSearchField(
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { onSearch() }),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 20.dp).focusRequester(focusRequester).onFocusChanged { onFocusChanged(it.isFocused) },
                 )
             }

@@ -56,8 +56,14 @@ interface MediumDao {
     @Query("UPDATE media SET deleted_ts = :deletedTS WHERE full_path = :path COLLATE NOCASE")
     fun softDelete(path: String, deletedTS: Long)
 
+    @Query("UPDATE media SET deleted_ts = :deletedTS WHERE full_path IN (:paths)")
+    fun softDeleteBatch(paths: Collection<String>, deletedTS: Long)
+
     @Query("UPDATE media SET deleted_ts = 0 WHERE full_path = :path COLLATE NOCASE")
     fun restoreDeleted(path: String)
+
+    @Query("UPDATE media SET deleted_ts = 0 WHERE full_path IN (:paths)")
+    fun restoreDeletedBatch(paths: Collection<String>)
 
     @Query("UPDATE media SET date_taken = :dateTaken WHERE full_path = :path COLLATE NOCASE")
     fun updateFavoriteDateTaken(path: String, dateTaken: Long)
@@ -76,6 +82,9 @@ interface MediumDao {
 
     @Query("UPDATE media SET rating = :rating WHERE full_path = :path COLLATE NOCASE")
     fun updateRating(path: String, rating: Int)
+
+    @Query("UPDATE media SET rating = :rating WHERE full_path IN (:paths)")
+    fun updateRatingBatch(paths: Collection<String>, rating: Int)
 
     @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating FROM media WHERE deleted_ts = 0 AND rating >= :minRating ORDER BY date_taken DESC, last_modified DESC")
     fun getByMinRating(minRating: Int): List<Medium>

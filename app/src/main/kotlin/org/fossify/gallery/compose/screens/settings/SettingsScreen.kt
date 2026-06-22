@@ -2,6 +2,7 @@ package org.fossify.gallery.compose.screens.settings
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.theme.Radius
+import org.fossify.gallery.helpers.SettingsBackupHelper
 
 import android.app.Activity
 import android.content.Context
@@ -12,6 +13,8 @@ import org.fossify.gallery.workers.MetadataSyncWorker
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,30 +23,39 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -52,6 +64,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
@@ -237,12 +250,22 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
 
             SectionLabel(stringResource(R.string.set_tags_ratings))
             SettingsNav(stringResource(R.string.set_read_metadata)) { MetadataSyncWorker.scheduleFullScan(ctx); Toast.makeText(ctx, "Scan gestartet – Fortschritt in der Benachrichtigung", Toast.LENGTH_SHORT).show() }
+            var showAdvancedScan by remember { mutableStateOf(false) }
+            SettingsNav("Erweiterter Metadaten-Scan", "Ordner, Datum und Energie-Optionen wählen") { showAdvancedScan = true }
+            if (showAdvancedScan) {
+                AdvancedScanDialog(onDismiss = { showAdvancedScan = false }) { folder, start, end, inc, charging ->
+                    MetadataSyncWorker.scheduleAdvancedScan(ctx, folder, start, end, inc, charging)
+                    Toast.makeText(ctx, "Erweiterter Scan geplant", Toast.LENGTH_SHORT).show()
+                }
+            }
             SettingsNav(stringResource(R.string.set_cancel_scan)) { MetadataSyncWorker.cancel(ctx); Toast.makeText(ctx, ctx.getString(R.string.set_scan_cancelled), Toast.LENGTH_SHORT).show() }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
             SectionLabel(stringResource(R.string.set_manage_data))
             FavoritesExportNav(ctx, conf, scope)
             FavoritesImportNav(ctx, conf, scope)
+            FullBackupExportNav(ctx, scope)
+            FullBackupImportNav(ctx, scope)
             SettingsNav(stringResource(R.string.set_export_settings)) { a?.startActivity(Intent(a, SettingsActivity::class.java).putExtra("open_section", "export_settings")) }
             SettingsNav(stringResource(R.string.set_import_settings)) { a?.startActivity(Intent(a, SettingsActivity::class.java).putExtra("open_section", "import_settings")) }
             ClearCacheNav(ctx, scope)
@@ -410,6 +433,115 @@ internal fun FavoritesExportNav(ctx: Context, conf: org.fossify.gallery.helpers.
     SettingsNav(stringResource(R.string.set_export_favorites)) { exportLauncher.launch("gallery-favorites_${java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US).format(java.util.Date())}.txt") }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun AdvancedScanDialog(
+    onDismiss: () -> Unit,
+    onStart: (folder: String?, start: Long, end: Long, incremental: Boolean, chargingOnly: Boolean) -> Unit
+) {
+    var folderPath by remember { mutableStateOf<String?>(null) }
+    var startDate by remember { mutableLongStateOf(0L) }
+    var endDate by remember { mutableLongStateOf(Long.MAX_VALUE) }
+    var incremental by remember { mutableStateOf(false) }
+    var chargingOnly by remember { mutableStateOf(false) }
+    var showFolderPicker by remember { mutableStateOf(false) }
+    var showStartDatePicker by remember { mutableStateOf(false) }
+    var showEndDatePicker by remember { mutableStateOf(false) }
+    val ctx = LocalContext.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Erweiterter Scan") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text("Ordner auswählen", style = MaterialTheme.typography.labelSmall)
+                Surface(
+                    onClick = { showFolderPicker = true },
+                    shape = RoundedCornerShape(Radius.sm),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                ) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Folder, null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(folderPath ?: "Gesamtes Gerät", style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                
+                Spacer(Modifier.height(12.dp))
+                Text("Zeitraum", style = MaterialTheme.typography.labelSmall)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Surface(onClick = { showStartDatePicker = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(Radius.sm), color = MaterialTheme.colorScheme.surfaceVariant) {
+                        Text(if (startDate == 0L) "Von Beginn" else java.text.DateFormat.getDateInstance().format(java.util.Date(startDate)), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Surface(onClick = { showEndDatePicker = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(Radius.sm), color = MaterialTheme.colorScheme.surfaceVariant) {
+                        Text(if (endDate == Long.MAX_VALUE) "Bis heute" else java.text.DateFormat.getDateInstance().format(java.util.Date(endDate)), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = incremental, onValueChange = { incremental = it })
+                    Text("Nur neue Dateien seit letztem Scan", style = MaterialTheme.typography.bodyMedium)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = chargingOnly, onValueChange = { chargingOnly = it })
+                    Text("Nur während des Ladens ausführen", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onStart(folderPath, startDate, endDate, incremental, chargingOnly); onDismiss() }) { Text("Starten") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+    )
+
+    if (showFolderPicker) {
+        org.fossify.gallery.compose.screens.FolderPickerSheet(
+            isMoveOperation = false,
+            sourcePaths = emptyList(),
+            onDismiss = { showFolderPicker = false },
+            onTargetSelected = { path ->
+                folderPath = path
+                showFolderPicker = false
+            }
+        )
+    }
+
+    if (showStartDatePicker) {
+        val datePickerState = androidx.compose.material3.rememberDatePickerState(initialSelectedDateMillis = if (startDate > 0) startDate else System.currentTimeMillis())
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { showStartDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    startDate = datePickerState.selectedDateMillis ?: 0L
+                    showStartDatePicker = false
+                }) { Text(stringResource(org.fossify.commons.R.string.ok)) }
+            }
+        ) {
+            androidx.compose.material3.DatePicker(state = datePickerState)
+        }
+    }
+
+    if (showEndDatePicker) {
+        val datePickerState = androidx.compose.material3.rememberDatePickerState(initialSelectedDateMillis = if (endDate < Long.MAX_VALUE) endDate else System.currentTimeMillis())
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { showEndDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    endDate = datePickerState.selectedDateMillis ?: Long.MAX_VALUE
+                    showEndDatePicker = false
+                }) { Text(stringResource(org.fossify.commons.R.string.ok)) }
+            }
+        ) {
+            androidx.compose.material3.DatePicker(state = datePickerState)
+        }
+    }
+}
+
+@Composable
+internal fun Checkbox(checked: Boolean, onValueChange: (Boolean) -> Unit) {
+    androidx.compose.material3.Checkbox(checked = checked, onCheckedChange = onValueChange)
+}
+
 @Composable
 internal fun FavoritesImportNav(ctx: Context, conf: org.fossify.gallery.helpers.Config, scope: CoroutineScope) {
     val repo = LocalMediaRepository.current
@@ -426,6 +558,48 @@ internal fun FavoritesImportNav(ctx: Context, conf: org.fossify.gallery.helpers.
         }
     }
     SettingsNav(stringResource(R.string.set_import_favorites)) { importLauncher.launch(arrayOf("text/plain")) }
+}
+
+@Composable
+internal fun FullBackupExportNav(ctx: Context, scope: CoroutineScope) {
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) scope.launch {
+            val out = ctx.contentResolver.openOutputStream(uri)
+            if (out != null) {
+                val success = SettingsBackupHelper.exportSettings(ctx, out)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(ctx, if (success) "Backup erstellt" else "Export fehlgeschlagen", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+    SettingsNav("Vollständiges Backup exportieren", "Alle Einstellungen und Pins sichern") {
+        exportLauncher.launch("gallery-full-backup_${java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US).format(java.util.Date())}.json")
+    }
+}
+
+@Composable
+internal fun FullBackupImportNav(ctx: Context, scope: CoroutineScope) {
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            val ins = ctx.contentResolver.openInputStream(uri)
+            if (ins != null) {
+                val success = SettingsBackupHelper.importSettings(ctx, ins)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(ctx, if (success) "Backup wiederhergestellt" else "Import fehlgeschlagen", Toast.LENGTH_LONG).show()
+                    if (success) {
+                        (ctx as? Activity)?.let {
+                            it.finish()
+                            it.startActivity(it.intent)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    SettingsNav("Vollständiges Backup importieren", "Alle Einstellungen überschreiben") {
+        importLauncher.launch(arrayOf("application/json", "application/octet-stream"))
+    }
 }
 
 internal fun getViewTypeLabel(ctx: Context, viewType: Int): String = when {

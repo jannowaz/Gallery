@@ -2,6 +2,7 @@ package org.fossify.gallery.compose.util
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
@@ -62,10 +63,13 @@ fun Modifier.selectableItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onSwipeToSelect: () -> Unit = {},
+    interactionSource: MutableInteractionSource? = null,
 ): Modifier = composed {
     this.combinedClickable(
         onClick = onClick,
         onLongClick = onLongClick,
+        interactionSource = interactionSource,
+        indication = androidx.compose.foundation.LocalIndication.current
     )
 }
 

@@ -30,6 +30,7 @@ import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -53,6 +54,7 @@ fun TagInputDialog(
     onRemoveTag: (String) -> Unit,
     suggestedTags: List<String> = emptyList(),
     suggestedTagCounts: Map<String, Int> = emptyMap(),
+    folderSuggestions: Map<String, Int> = emptyMap(),
     onDismiss: () -> Unit,
     batchCount: Int = 1,
 ) {
@@ -100,6 +102,21 @@ fun TagInputDialog(
                                 shape = RoundedCornerShape(Radius.sm),
                                 colors = InputChipDefaults.inputChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer, labelColor = MaterialTheme.colorScheme.onPrimaryContainer),
                             )
+                        }
+                    }
+                }
+
+                if (folderSuggestions.isNotEmpty() && tags.isEmpty() && tagInput.isBlank()) {
+                    Text("In diesem Ordner häufig:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 6.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                        folderSuggestions.entries.sortedByDescending { it.value }.take(10).forEach { (tag, _) ->
+                            Surface(
+                                onClick = { if (tag !in tags) { tags.add(tag); onAddTag(tag) } },
+                                shape = RoundedCornerShape(Radius.sm),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                            ) {
+                                Text(tag, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                            }
                         }
                     }
                 }

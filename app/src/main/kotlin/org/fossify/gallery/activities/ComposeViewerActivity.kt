@@ -229,20 +229,31 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
         HorizontalPager(state = pagerState, userScrollEnabled = !isCurrentZoomed, modifier = Modifier.fillMaxSize()) { page ->
             val path = items.getOrNull(page) ?: ""
             val file = File(path)
-            if (isVideo(path) && file.exists()) VideoPage(
-                path = path, scalingMode = videoScalingMode, onScalingModeChange = { videoScalingMode = it }, onBackgroundAudioChange = { backgroundAudio = it },
-                onToggleUi = { showUI = !showUI },
-                onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
-                isCurrentPage = page == pagerState.currentPage,
-            )
-            else if (file.exists()) ImagePage(
-                path = path, file = file, onClose = closeWithAnimation,
-                onToggleUi = { showUI = !showUI },
-                onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
-                isCurrentPage = page == pagerState.currentPage,
-            )
-            else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Datei nicht verfügbar", color = Color.White.copy(alpha = 0.7f))
+            
+            // Calculate parallax offset based on pager state
+            val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
+            val parallaxOffset = (pageOffset * 140).dp // Subtle shift
+
+            Box(Modifier.fillMaxSize().graphicsLayer {
+                translationX = pageOffset * 0.1f // Very subtle layer shift
+            }) {
+                if (isVideo(path) && file.exists()) VideoPage(
+                    path = path, scalingMode = videoScalingMode, onScalingModeChange = { videoScalingMode = it }, onBackgroundAudioChange = { backgroundAudio = it },
+                    onToggleUi = { showUI = !showUI },
+                    onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
+                    isCurrentPage = page == pagerState.currentPage,
+                    modifier = Modifier.offset(x = parallaxOffset)
+                )
+                else if (file.exists()) ImagePage(
+                    path = path, file = file, onClose = closeWithAnimation,
+                    onToggleUi = { showUI = !showUI },
+                    onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
+                    isCurrentPage = page == pagerState.currentPage,
+                    modifier = Modifier.offset(x = parallaxOffset)
+                )
+                else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Datei nicht verfügbar", color = Color.White.copy(alpha = 0.7f))
+                }
             }
         }
 
@@ -358,10 +369,14 @@ private fun ViewerScreen(paths: List<String>, startIndex: Int = 0, onClose: () -
     if (showTagsDialog) {
         var allTags by remember { mutableStateOf<List<String>>(emptyList()) }
         var tagCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+        var folderTags by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
         var dialogInitialTags by remember(currentPath) { mutableStateOf<Set<String>>(emptySet()) }
-        LaunchedEffect(currentPath) { dialogInitialTags = withContext(Dispatchers.IO) { repo.getTags(currentPath) } }
+        LaunchedEffect(currentPath) {
+            dialogInitialTags = withContext(Dispatchers.IO) { repo.getTags(currentPath) }
+            folderTags = withContext(Dispatchers.IO) { repo.getTagsInFolder(File(currentPath).parent ?: "") }
+        }
         LaunchedEffect(Unit) { withContext(Dispatchers.IO) { try { val tagged = ctx.mediaCacheDB.getRecentTagged(1000); val counts = tagged.flatMap { it.tags.split(",").filter(String::isNotBlank) }.groupingBy { it }.eachCount(); allTags = counts.entries.sortedByDescending { it.value }.map { it.key }; tagCounts = counts } catch (_: Exception) { } } }
-        TagInputDialog(initialTags = dialogInitialTags, suggestedTags = allTags, suggestedTagCounts = tagCounts, onAddTag = { scope.launch(Dispatchers.IO) { repo.addTag(currentPath, it) } }, onRemoveTag = { scope.launch(Dispatchers.IO) { repo.removeTag(currentPath, it) } }, onDismiss = { showTagsDialog = false })
+        TagInputDialog(initialTags = dialogInitialTags, suggestedTags = allTags, suggestedTagCounts = tagCounts, folderSuggestions = folderTags, onAddTag = { scope.launch(Dispatchers.IO) { repo.addTag(currentPath, it) } }, onRemoveTag = { scope.launch(Dispatchers.IO) { repo.removeTag(currentPath, it) } }, onDismiss = { showTagsDialog = false })
     }
 
     if (showFolderPicker) {

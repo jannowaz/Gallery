@@ -31,4 +31,7 @@ interface MediaCacheDao {
 
     @Upsert
     suspend fun upsertAll(cache: List<MediaCache>)
+
+    @Query("SELECT * FROM media_cache WHERE full_path LIKE :pattern")
+    suspend fun getTagsInFolder(pattern: String): List<MediaCache>
 }

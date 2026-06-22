@@ -94,7 +94,7 @@ class MediaSyncWorker(
         private const val INITIAL_WORK_NAME = "media_sync_initial"
 
         fun schedule(context: Context) {
-            val workRequest = PeriodicWorkRequestBuilder<MediaSyncWorker>(24, TimeUnit.HOURS)
+            val workRequest = PeriodicWorkRequestBuilder<MediaSyncWorker>(168, TimeUnit.HOURS)
                 .addTag(WORK_NAME)
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(

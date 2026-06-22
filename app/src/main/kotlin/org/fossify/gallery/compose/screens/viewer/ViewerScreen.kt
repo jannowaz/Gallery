@@ -6,6 +6,7 @@ import org.fossify.gallery.compose.theme.Radius
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleOut
@@ -70,6 +71,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,6 +83,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -107,6 +110,7 @@ import org.fossify.gallery.helpers.UndoAction
 import org.fossify.gallery.helpers.UndoManager
 import org.fossify.gallery.helpers.UndoType
 import java.io.File
+import kotlin.math.abs
 
 private fun isVideo(path: String) = path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
 
@@ -182,21 +186,30 @@ fun ViewerScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    val dragScale = (1f - (abs(dragOffset) / 1000f)).coerceIn(0.85f, 1f)
+    val dragAlpha = (1f - (abs(dragOffset) / 600f)).coerceIn(0.5f, 1f)
+
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dragAlpha))) {
         HorizontalPager(
             state = pagerState,
             userScrollEnabled = !isCurrentZoomed,
             modifier = Modifier.fillMaxSize()
+                .graphicsLayer {
+                    translationY = dragOffset
+                    scaleX = dragScale
+                    scaleY = dragScale
+                }
                 .pointerInput(isCurrentZoomed) {
                     if (!isCurrentZoomed) {
-                        var totalDrag = 0f
                         detectVerticalDragGestures(
-                            onDragStart = { totalDrag = 0f },
+                            onDragStart = { dragOffset = 0f },
                             onDragEnd = {
-                                if (totalDrag < -80f) showActionSheet = true
-                                else if (totalDrag > 160f) { ctx.config.lastViewedPath = currentPath; onClose() }
+                                if (dragOffset < -180f) showActionSheet = true
+                                else if (dragOffset > 240f) { ctx.config.lastViewedPath = currentPath; onClose() }
+                                else { scope.launch { animate(dragOffset, 0f) { v, _ -> dragOffset = v } } }
                             },
-                            onVerticalDrag = { _, drag -> totalDrag += drag },
+                            onVerticalDrag = { _, drag -> dragOffset += drag },
                         )
                     }
                 }

@@ -17,7 +17,8 @@ object TimelineHelper {
         val now = System.currentTimeMillis() / 1000
 
         for (medium in media) {
-            val date = medium.modified.formatDate(context)
+            val timestamp = if (medium.taken > 0) medium.taken else medium.modified
+            val date = timestamp.formatDate(context)
             if (date != lastDate) {
                 grouped.add(ThumbnailSection(date))
                 lastDate = date

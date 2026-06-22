@@ -55,6 +55,8 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -207,6 +209,17 @@ fun VideoPage(
             .graphicsLayer {
                 scaleX = zoom.scale; scaleY = zoom.scale
                 translationX = zoom.offset.x; translationY = zoom.offset.y
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onToggleUi() },
+                    onDoubleTap = { pos: androidx.compose.ui.geometry.Offset ->
+                        val w = size.width
+                        if (pos.x < w / 3f) player.seekTo((player.currentPosition - 10000).coerceAtLeast(0))
+                        else if (pos.x > w * 2 / 3f) player.seekTo((player.currentPosition + 10000).coerceAtMost(player.duration))
+                        else zoom.cycleZoom(pos, size)
+                    }
+                )
             }
             .zoomable(zoom, onSingleTap = { onToggleUi() })
         )

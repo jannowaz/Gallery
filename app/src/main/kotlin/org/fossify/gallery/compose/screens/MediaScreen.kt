@@ -138,10 +138,14 @@ fun MediaScreen(
     activeTagName: String? = null,
     activePathName: String? = null,
     activeCollectionName: String? = null,
+    minSizeFilter: Long = 0L,
+    dateRangeFilter: Int = 0,
     onClearFilter: () -> Unit = {},
     onClearRatingFilter: () -> Unit = {},
     onClearTagFilter: () -> Unit = {},
     onClearPathFilter: () -> Unit = {},
+    onClearSizeFilter: () -> Unit = {},
+    onClearDateFilter: () -> Unit = {},
     mediaOverride: List<Medium>? = null,
     refreshTrigger: Int = 0,
     onNavigateToViewer: ((paths: List<String>, startIndex: Int) -> Unit)? = null,
@@ -156,7 +160,7 @@ fun MediaScreen(
     LaunchedEffect(refreshTrigger) { if (refreshTrigger > 0) { if (state.allMedia.isNotEmpty()) viewModel.silentRefresh() else viewModel.refresh() } }
     LaunchedEffect(viewSettings.sortBy, viewSettings.sortDesc) { if (mediaOverride == null) viewModel.setSort(viewSettings.sortBy, viewSettings.sortDesc) }
     LaunchedEffect(mediaOverride) { viewModel.setOverride(mediaOverride) }
-    LaunchedEffect(ratingFilter, tagFilterPaths, pathFilter) { viewModel.setFilter(ratingFilter, tagFilterPaths, pathFilter) }
+    LaunchedEffect(ratingFilter, tagFilterPaths, pathFilter, minSizeFilter, dateRangeFilter) { viewModel.setFilter(ratingFilter, tagFilterPaths, pathFilter, minSizeFilter, dateRangeFilter) }
     var selectedPaths by rememberSaveable(stateSaver = selectionSaver) { mutableStateOf<Set<String>>(emptySet()) }
     val dragSelection = rememberSelectionDragState()
     var showRatingDialog by remember { mutableStateOf(false) }
@@ -175,7 +179,7 @@ fun MediaScreen(
     val columnCount = viewSettings.columnCount
     val isGrid = viewSettings.viewType == ViewType.GRID
     val isMosaic = viewSettings.viewType == ViewType.MOSAIC
-    val hasFilter = ratingFilter > 0 || tagFilterPaths != null || pathFilter != null
+    val hasFilter = ratingFilter > 0 || tagFilterPaths != null || pathFilter != null || minSizeFilter > 0 || dateRangeFilter > 0
     val displayMedia = state.displayMedia
     val pathIndexMap = remember(displayMedia) { displayMedia.withIndex().associate { it.value.path to it.index } }
     val cornerShape = if (viewSettings.roundedCorners) RoundedCornerShape(Radius.sm) else RoundedCornerShape(0.dp)
@@ -202,6 +206,10 @@ fun MediaScreen(
     val density = androidx.compose.ui.platform.LocalDensity.current
     val contentTopInset by androidx.compose.animation.core.animateDpAsState(
         targetValue = if (hasSelection) with(density) { selectionBarHeightPx.toDp() } else 0.dp,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioLowBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+        ),
         label = "selectionTopInset",
     )
 
@@ -242,7 +250,12 @@ fun MediaScreen(
             }
             isGrid -> {
                 Column(Modifier.padding(top = contentTopInset)) {
-                    if (hasFilter) FilterBreadcrumbs(ratingFilter,activeTagName,activePathName,activeCollectionName,displayMedia.size,onClearRatingFilter,onClearTagFilter,onClearPathFilter,onClearFilter)
+                    if (hasFilter) FilterBreadcrumbs(
+                        ratingFilter, activeTagName, activePathName, activeCollectionName,
+                        minSizeFilter, dateRangeFilter,
+                        displayMedia.size, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
+                        onClearSizeFilter, onClearDateFilter, onClearFilter
+                    )
                     val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
                     AnimatedVisibility(visible = quickTags.isNotEmpty() && hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
                     if (quickTags.isNotEmpty() && hasSelection) {
@@ -333,7 +346,12 @@ fun MediaScreen(
             }
             isMosaic -> {
                 Column(Modifier.padding(top = contentTopInset)) {
-                    if (hasFilter) FilterBreadcrumbs(ratingFilter,activeTagName,activePathName,activeCollectionName,displayMedia.size,onClearRatingFilter,onClearTagFilter,onClearPathFilter,onClearFilter)
+                    if (hasFilter) FilterBreadcrumbs(
+                        ratingFilter, activeTagName, activePathName, activeCollectionName,
+                        minSizeFilter, dateRangeFilter,
+                        displayMedia.size, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
+                        onClearSizeFilter, onClearDateFilter, onClearFilter
+                    )
                     val quickTagsM = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
                     AnimatedVisibility(visible = quickTagsM.isNotEmpty() && hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
                     if (quickTagsM.isNotEmpty() && hasSelection) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { quickTagsM.forEach { tag -> val active = tag in selectedCommonTags; Surface(onClick = { viewModel.toggleQuickTag(selectedPaths, tag) }, shape = RoundedCornerShape(Radius.lg), color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
@@ -467,14 +485,26 @@ fun MediaScreen(
 }
 
 @Composable
-private fun FilterBreadcrumbs(ratingFilter:Int,activeTagName:String?,activePathName:String?,activeCollectionName:String?,resultCount:Int,onClearRating:()->Unit,onClearTag:()->Unit,onClearPath:()->Unit,onClearAll:()->Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=6.dp).horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
-        if(activeCollectionName!=null) ActiveFilterChip(stringResource(R.string.filter_collection, activeCollectionName)){onClearPath()}
-        if(activePathName!=null) ActiveFilterChip(stringResource(R.string.filter_path, activePathName)){onClearPath()}
-        if(activeTagName!=null) ActiveFilterChip(activeTagName.take(24).let{if(activeTagName.length>24)"$it…" else it}){onClearTag()}
-        if(ratingFilter>0) ActiveFilterChip(stringResource(R.string.filter_rating, ratingFilter)){onClearRating()}
-        Text(stringResource(R.string.result_count, resultCount),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        androidx.compose.material3.AssistChip(onClick=onClearAll,label={Text(stringResource(R.string.clear_all_filters))},leadingIcon={Icon(Icons.Default.Close,null,Modifier.size(18.dp))})
+private fun FilterBreadcrumbs(
+    ratingFilter: Int, activeTagName: String?, activePathName: String?, activeCollectionName: String?,
+    minSizeFilter: Long, dateRangeFilter: Int,
+    resultCount: Int, onClearRating: () -> Unit, onClearTag: () -> Unit, onClearPath: () -> Unit,
+    onClearSize: () -> Unit, onClearDate: () -> Unit,
+    onClearAll: () -> Unit
+) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (activeCollectionName != null) ActiveFilterChip(stringResource(R.string.filter_collection, activeCollectionName)) { onClearPath() }
+        if (activePathName != null) ActiveFilterChip(stringResource(R.string.filter_path, activePathName)) { onClearPath() }
+        if (activeTagName != null) ActiveFilterChip(activeTagName.take(24).let { if (activeTagName.length > 24) "$it…" else it }) { onClearTag() }
+        if (ratingFilter > 0) ActiveFilterChip(stringResource(R.string.filter_rating, ratingFilter)) { onClearRating() }
+        if (minSizeFilter > 0) ActiveFilterChip("> ${formatFileSize(minSizeFilter)}") { onClearSize() }
+        if (dateRangeFilter > 0) ActiveFilterChip(
+            when (dateRangeFilter) {
+                1 -> "Heute"; 2 -> "Letzte 7 Tage"; 3 -> "Letzte 30 Tage"; 4 -> "Letztes Jahr"; else -> ""
+            }
+        ) { onClearDate() }
+        Text(stringResource(R.string.result_count, resultCount), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        androidx.compose.material3.AssistChip(onClick = onClearAll, label = { Text(stringResource(R.string.clear_all_filters)) }, leadingIcon = { Icon(Icons.Default.Close, null, Modifier.size(18.dp)) })
     }
 }
 @Composable

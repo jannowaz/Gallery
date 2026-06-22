@@ -156,8 +156,10 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     private val binding by viewBinding(ActivityMediaBinding::inflate)
 
     companion object {
-        var mMedia = ArrayList<ThumbnailItem>()
-        private var sCachedAllMedia: ArrayList<ThumbnailItem>? = null
+        private var sMedia = ArrayList<ThumbnailItem>()
+        var mMedia: ArrayList<ThumbnailItem>
+            get() = sMedia
+            set(value) { sMedia = value }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -742,12 +744,6 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             return
         }
         if (mShowAll) {
-            sCachedAllMedia?.let { cached ->
-                if (cached.isNotEmpty()) {
-                    mMedia = ArrayList(cached)
-                    runOnUiThread { setupAdapter() }
-                }
-            }
             runOnUiThread { binding.loadingIndicator.show() }
             startAsyncTask()
             return
@@ -804,6 +800,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                             }
                         }
                 } catch (e: Exception) {
+                    android.util.Log.e("MediaActivity", "startAsyncTask callback failed", e)
                 }
             }
         }
@@ -1108,11 +1105,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             media
         }
 
-        if (mShowAll && mMedia.isNotEmpty()) {
-            sCachedAllMedia = ArrayList(mMedia)
-        } else if (!mShowAll) {
-            sCachedAllMedia = null
-        }
+        // No longer using static sCachedAllMedia to prevent leaks
 
         runOnUiThread {
             binding.loadingIndicator.hide()
