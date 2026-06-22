@@ -11,6 +11,7 @@ object XmpWriter {
     data class XmpData(
         val tags: List<String> = emptyList(),
         val rating: Int = 0,
+        val hierarchy: Map<String, String> = emptyMap(),
     )
 
     fun read(path: String): XmpData {
@@ -25,7 +26,7 @@ object XmpWriter {
             val extra = readExternalKeywords(file)
             if (extra.isNotEmpty()) data = data.copy(tags = extra)
         }
-        return data.copy(tags = data.tags.map(::sanitizeTag).filter { it.isNotBlank() }.distinct())
+        return data.copy(tags = data.tags.map(::sanitizeTag).filter { it.isNotBlank() }.distinct(), hierarchy = data.hierarchy)
     }
 
     /**
@@ -97,9 +98,17 @@ object XmpWriter {
         Regex("<dc:subject[^>]*>(.*?)</dc:subject>", RegexOption.DOT_MATCHES_ALL).findAll(raw).forEach { m ->
             liRegex.findAll(m.groupValues[1]).forEach { tags.add(it.groupValues[1].trim()) }
         }
-        // Lightroom hierarchical keywords — keep the leaf after the last '|'
+        // Lightroom hierarchical keywords — keep leaf tags and build the parent→child hierarchy.
+        val hierarchy = mutableMapOf<String, String>()
         Regex("hierarchicalSubject[^>]*>(.*?)</[A-Za-z0-9]+:hierarchicalSubject>", RegexOption.DOT_MATCHES_ALL).findAll(raw).forEach { m ->
-            liRegex.findAll(m.groupValues[1]).forEach { tags.add(it.groupValues[1].substringAfterLast('|').trim()) }
+            liRegex.findAll(m.groupValues[1]).forEach {
+                val full = it.groupValues[1].trim()
+                val parts = full.split("|").map { it.trim() }.filter { it.isNotBlank() }
+                if (parts.isNotEmpty()) tags.add(parts.last())
+                for (i in 1 until parts.size) {
+                    hierarchy[parts[i]] = parts[i - 1]
+                }
+            }
         }
         // Microsoft Photo keyword lists
         Regex("LastKeyword(?:XMP|IPTC)[^>]*>(.*?)</[A-Za-z0-9]+:LastKeyword(?:XMP|IPTC)>", RegexOption.DOT_MATCHES_ALL).findAll(raw).forEach { m ->
@@ -108,7 +117,7 @@ object XmpWriter {
         val rating = Regex("<xmp:Rating>(\\d+)</xmp:Rating>").find(raw)?.groupValues?.get(1)?.toIntOrNull()
             ?: Regex("xmp:Rating=\"(\\d+)\"").find(raw)?.groupValues?.get(1)?.toIntOrNull()
             ?: 0
-        return XmpData(tags = tags.filter { it.isNotBlank() }, rating = rating)
+        return XmpData(tags = tags.filter { it.isNotBlank() }, rating = rating, hierarchy = hierarchy)
     }
 
     private fun tryMigrateOldFormat(file: File): XmpData {

@@ -145,7 +145,7 @@ fun TagBrowserScreen(
             } else if (allTags.isEmpty()) {
                 EmptyState(Icons.AutoMirrored.Filled.Label, stringResource(R.string.no_tags_found), subtitle = stringResource(R.string.no_tags_hint))
             } else {
-                val filteredTags = if (tagSearchQuery.isBlank()) allTags.entries.toList() else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
+                val filteredTags = if (tagSearchQuery.isBlank()) allTags.entries.toList().sortedWith(compareByDescending<Map.Entry<String, List<String>>> { it.key in hierarchy.values }.thenBy { it.key }) else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
                 LibraryAlbumGrid(
                     items = filteredTags.map { AlbumGridItem(key = it.key, name = it.key, thumbnailPath = it.value.firstOrNull() ?: "", count = it.value.size, previewPaths = it.value.take(3)) },
                     viewSettings = viewSettings,

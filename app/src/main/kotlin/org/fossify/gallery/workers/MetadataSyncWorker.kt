@@ -103,12 +103,14 @@ class MetadataSyncWorker(
         showProgress(0, total, 0, 0)
         val batch = mutableListOf<MediaCache>()
         var processed = 0; var foundTags = 0; var foundRatings = 0; var lastNotify = 0L
+        val hierarchyAccum = mutableMapOf<String, String>()
         for (p in paths) {
             if (isStopped) break
             try {
                 val xmp = XmpWriter.read(p)
                 if (xmp.tags.isNotEmpty()) foundTags++
                 if (xmp.rating > 0) { foundRatings++; try { applicationContext.mediaDB.updateRating(p, xmp.rating) } catch (_: Exception) { } }
+                if (xmp.hierarchy.isNotEmpty()) hierarchyAccum.putAll(xmp.hierarchy)
                 batch.add(MediaCache(fullPath = p, tags = xmp.tags.joinToString(","), rating = xmp.rating, lastScanned = now))
                 if (batch.size >= 200) { applicationContext.mediaCacheDB.upsertAll(batch.toList()); batch.clear() }
             } catch (_: Exception) { }
@@ -117,6 +119,7 @@ class MetadataSyncWorker(
             if (nowMs - lastNotify > 500) { lastNotify = nowMs; showProgress(processed, total, foundTags, foundRatings) }
         }
         if (batch.isNotEmpty()) applicationContext.mediaCacheDB.upsertAll(batch.toList())
+        if (hierarchyAccum.isNotEmpty()) try { applicationContext.config.tagHierarchy = hierarchyAccum.toMutableMap() } catch (_: Exception) { }
         RefreshBus.trigger()
         if (!isStopped) showNotification("Scan abgeschlossen", "$total Dateien · $foundTags mit Tags · $foundRatings bewertet")
     }
