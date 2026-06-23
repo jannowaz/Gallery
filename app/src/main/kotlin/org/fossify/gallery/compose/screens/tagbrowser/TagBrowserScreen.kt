@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -250,24 +251,59 @@ fun TagBrowserScreen(
 
     if (pendingParentAssign != null) {
         val tagsToAssign = pendingParentAssign!!
-        val candidates = allTags.keys.filter { it !in tagsToAssign }.sorted()
+        val candidates = allTags.keys.filter { it !in tagsToAssign }
         var selectedParent by remember { mutableStateOf(candidates.firstOrNull() ?: "") }
+
+        // Build a tree-sorted list of selectable parents (parents first, then children indented).
+        val treeList = remember(candidates, hierarchy) {
+            val hasParent = { tag: String -> tag in hierarchy }
+            val isParent = { tag: String -> hierarchy.any { it.value == tag } }
+            val available = candidates.toSet()
+            val parents = available.filter(isParent).sorted()
+            val children = available.filter(hasParent).sortedWith(compareBy<String> { hierarchy[it] ?: "" }.thenBy { it })
+            val rest = (available - parents.toSet() - children.toSet()).sorted()
+            val out = mutableListOf<Pair<String, String>>()
+            parents.forEach { out.add(it to it) }
+            children.forEach { out.add("↳ ${it}" to it) }
+            rest.forEach { out.add(it to it) }
+            out
+        }
+
         AlertDialog(
             onDismissRequest = { pendingParentAssign = null },
             title = { Text(stringResource(R.string.assign_parent_title)) },
             text = {
-                Column {
+                Column(Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.set_parent_for, tagsToAssign.joinToString(", ")))
                     Spacer(Modifier.height(8.dp))
-                    if (candidates.isEmpty()) Text(stringResource(R.string.no_other_tags), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    else {
-                        OutlinedTextField(
-                            value = selectedParent,
-                            onValueChange = { selectedParent = it },
-                            label = { Text(stringResource(R.string.parent_tag)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                    OutlinedTextField(
+                        value = selectedParent,
+                        onValueChange = { selectedParent = it },
+                        label = { Text(stringResource(R.string.parent_tag)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (candidates.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Vorhandene Tags", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(4.dp))
+                        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(max = 240.dp)) {
+                            treeList.forEach { (label, tag) ->
+                                Surface(
+                                    onClick = { selectedParent = tag },
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
+                                    shape = RoundedCornerShape(Radius.sm),
+                                    color = if (selectedParent == tag) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                ) {
+                                    Text(
+                                        label,
+                                        modifier = Modifier.padding(horizontal = if (label.startsWith("↳")) 24.dp else 8.dp, vertical = 6.dp),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (selectedParent == tag) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             },
