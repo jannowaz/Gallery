@@ -150,7 +150,10 @@ fun TagBrowserScreen(
                 LibraryAlbumGrid(
                     items = filteredTags.map { AlbumGridItem(key = it.key, name = if (it.key in hierarchy) "↳ ${it.key}" else it.key, thumbnailPath = it.value.firstOrNull() ?: "", count = it.value.size, previewPaths = it.value.take(3)) },
                     viewSettings = viewSettings,
-                    onClick = { item -> onTagFilterApplied((allTags[item.key] ?: emptyList()).toSet(), item.key); onBack() },
+                    onClick = { item ->
+                        if (selectedTags.isNotEmpty()) selectedTags = if (item.key in selectedTags) selectedTags - item.key else selectedTags + item.key
+                        else { onTagFilterApplied((allTags[item.key] ?: emptyList()).toSet(), item.key); onBack() }
+                    },
                     onLongClick = { item -> selectedTags = if (item.key in selectedTags) selectedTags - item.key else selectedTags + item.key },
                     countLabel = { "$it Dateien" },
                     selectedKeys = selectedTags,
