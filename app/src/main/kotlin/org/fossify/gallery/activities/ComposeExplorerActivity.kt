@@ -556,7 +556,6 @@ private fun AppNavigationDrawer(
     onOpenPinnedCollection: (String) -> Unit,
     onOpenViewSettings: () -> Unit,
     onFilterByRating: () -> Unit,
-    onBrowseTags: () -> Unit,
     onRescanMetadata: () -> Unit,
 ) {
     ModalDrawerSheet {
@@ -611,13 +610,6 @@ private fun AppNavigationDrawer(
                 icon = { Icon(Icons.Default.Star, null) },
                 selected = false,
                 onClick = onFilterByRating,
-                modifier = Modifier.padding(horizontal = s.md),
-            )
-            NavigationDrawerItem(
-                label = { Text("Nach Tags") },
-                icon = { Icon(Icons.AutoMirrored.Filled.Label, null) },
-                selected = false,
-                onClick = onBrowseTags,
                 modifier = Modifier.padding(horizontal = s.md),
             )
             NavigationDrawerItem(
@@ -761,7 +753,6 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                 onOpenPinnedCollection = { id -> scope.launch { drawerState.close() }; pinnedColls.find { it.id.toString() == id }?.let { applyCollection(it, mainVM, ctx, scope) } },
                 onOpenViewSettings = { scope.launch { drawerState.close() }; activeSheet = ActiveSheet.VIEW_SETTINGS },
                 onFilterByRating = { scope.launch { drawerState.close() }; showRatingBrowser = true },
-                onBrowseTags = { scope.launch { drawerState.close() }; navController.navigate(TagBrowser) },
                 onRescanMetadata = { scope.launch { drawerState.close() }; MetadataSyncWorker.scheduleFullScan(ctx) },
             )
         },
