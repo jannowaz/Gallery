@@ -212,6 +212,7 @@ class MetadataSyncWorker(
                 .setProgress(total.coerceAtLeast(1), done.coerceAtMost(total.coerceAtLeast(1)), total == 0)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
+                .addAction(buildCancelAction())
                 .build())
         } catch (_: Exception) { }
     }
