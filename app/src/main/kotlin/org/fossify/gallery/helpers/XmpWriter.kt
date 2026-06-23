@@ -34,9 +34,9 @@ object XmpWriter {
      * space-separated list of decimal byte values (e.g. "100 0 97 0 115 0 103" → "das…"). Decode
      * those back into the real text and strip any stray UTF-16 null padding.
      */
-    private fun sanitizeTag(raw: String): String {
+    fun sanitizeTag(raw: String): String {
         var t = raw.trim()
-        val tokens = t.split(Regex(" +"))
+        val tokens = t.split(Regex("[\\s,;]+"))
         if (tokens.size >= 2 && tokens.contains("0") && tokens.all { tok -> tok.toIntOrNull()?.let { it in 0..255 } == true }) {
             runCatching {
                 val bytes = tokens.map { it.toInt().toByte() }.toByteArray()

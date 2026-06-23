@@ -28,6 +28,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.fossify.gallery.activities.MainScreen
 import org.fossify.gallery.compose.screens.folderscreen.FolderMediaScreen
 import org.fossify.gallery.compose.screens.settings.SettingsScreen
@@ -41,6 +43,7 @@ import org.fossify.gallery.compose.screens.viewer.ViewerScreen
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.helpers.UndoManager
 import org.fossify.gallery.helpers.UndoType
@@ -68,6 +71,20 @@ fun GalleryNavHost(
         UndoManager.registerHandler(UndoType.TAG_ADD) { action -> action.paths.forEach { repo.removeTag(it, action.extra["tag"] ?: "") } }
         UndoManager.registerHandler(UndoType.TAG_REMOVE) { action -> action.paths.forEach { repo.addTag(it, action.extra["tag"] ?: "") } }
         UndoManager.registerHandler(UndoType.RATING_CHANGE) { action -> action.paths.forEach { repo.updateRating(it, action.extra["oldRating"]?.toIntOrNull() ?: 0) }; org.fossify.gallery.helpers.RefreshBus.trigger() }
+    }
+
+    // One-time sanitisation of cached tags that may contain UTF-16LE byte dumps (e.g. "100 0 97 0 …").
+    LaunchedEffect(Unit) {
+        withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val cached = ctx.mediaCacheDB.getAllTagged()
+                var changed = false
+                cached.forEach { mc ->
+                    val sanitised = mc.tags.split(",").map { org.fossify.gallery.helpers.XmpWriter.sanitizeTag(it.trim()) }.filter { it.isNotBlank() }.distinct().joinToString(",")
+                    if (sanitised != mc.tags) { changed = true; ctx.mediaCacheDB.upsertAll(listOf(mc.copy(tags = sanitised))) }
+                }
+            } catch (_: Exception) { }
+        }
     }
 
     GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme(), dynamicColor = conf.useDynamicColors) {
