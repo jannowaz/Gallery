@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -53,6 +55,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -71,6 +74,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.components.EmptyState
+import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.compose.theme.LocalSpacing
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
 import org.fossify.gallery.extensions.config
@@ -251,6 +255,53 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FolderSearchDialog(
+    title: String,
+    onFolderPicked: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val ctx = LocalContext.current
+    val repo = LocalMediaRepository.current
+    var query by remember { mutableStateOf("") }
+    var allDirs by remember { mutableStateOf<List<org.fossify.gallery.models.Directory>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        allDirs = withContext(Dispatchers.IO) { repo.getAllDirectories().sortedBy { it.name.lowercase() } }
+    }
+    val filtered = remember(allDirs, query) {
+        if (query.isBlank()) allDirs.take(50)
+        else allDirs.filter { it.name.contains(query, ignoreCase = true) || it.path.contains(query, ignoreCase = true) }.take(50)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                OutlinedTextField(value = query, onValueChange = { query = it }, placeholder = { Text("Ordner suchen…") }, singleLine = true, modifier = Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Default.Search, null, modifier = Modifier.size(18.dp)) })
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+                    items(filtered, key = { it.path }) { dir ->
+                        Surface(
+                            onClick = { onFolderPicked(dir.path) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(org.fossify.gallery.compose.theme.Radius.sm),
+                        ) {
+                            Column(Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
+                                Text(dir.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (query.isNotBlank()) Text(dir.path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
 @Composable
 private fun AddPairDialog(
     initialSource: String,
@@ -262,18 +313,24 @@ private fun AddPairDialog(
     var source by remember { mutableStateOf(initialSource) }
     var dest by remember { mutableStateOf(initialDest) }
     val ctx = LocalContext.current
+    val prefs = remember { ctx.getSharedPreferences("mover_prefs", android.content.Context.MODE_PRIVATE) }
+    var showSearch by remember { mutableStateOf("") } // "source" or "dest" or ""
 
-    val sourcePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) {
-            val path = uriToPath(uri, storageRoot) ?: uri.toString()
-            source = path
-        }
+    fun loadLast(name: String): String {
+        val saved = prefs.getString(name, null) ?: return ""
+        return if (File(saved).exists()) saved else ""
     }
-    val destPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) {
-            val path = uriToPath(uri, storageRoot) ?: uri.toString()
-            dest = path
-        }
+
+    if (showSearch.isNotEmpty()) {
+        FolderSearchDialog(
+            title = if (showSearch == "source") "Quelle auswählen" else "Ziel auswählen",
+            onFolderPicked = { path ->
+                if (showSearch == "source") { source = path; prefs.edit().putString("last_source", path).apply() }
+                else { dest = path; prefs.edit().putString("last_dest", path).apply() }
+                showSearch = ""
+            },
+            onDismiss = { showSearch = "" },
+        )
     }
 
     AlertDialog(
@@ -281,13 +338,13 @@ private fun AddPairDialog(
         title = { Text(if (initialSource.isNotBlank()) "Paar bearbeiten" else "Neues Paar") },
         text = {
             Column(Modifier.fillMaxWidth()) {
-                OutlinedTextField(value = source, onValueChange = { source = it }, label = { Text("Quelle") }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = { IconButton(onClick = { sourcePicker.launch(null) }) { Icon(Icons.Default.Folder, "Auswählen") } })
-                Spacer(Modifier.height(4.dp))
+                OutlinedTextField(value = source, onValueChange = { source = it }, label = { Text("Quelle") }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = { IconButton(onClick = { showSearch = "source" }) { Icon(Icons.Default.Search, "Durchsuchen") } })
                 Text(source, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                TextButton(onClick = { source = loadLast("last_source"); if (source.isNotBlank()) prefs.edit().putString("last_source", source).apply() }) { Text("Letzte Quelle", style = MaterialTheme.typography.labelSmall) }
                 Spacer(Modifier.height(12.dp))
-                OutlinedTextField(value = dest, onValueChange = { dest = it }, label = { Text("Ziel") }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = { IconButton(onClick = { destPicker.launch(null) }) { Icon(Icons.Default.Folder, "Auswählen") } })
-                Spacer(Modifier.height(4.dp))
+                OutlinedTextField(value = dest, onValueChange = { dest = it }, label = { Text("Ziel") }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = { IconButton(onClick = { showSearch = "dest" }) { Icon(Icons.Default.Search, "Durchsuchen") } })
                 Text(dest, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                TextButton(onClick = { dest = loadLast("last_dest"); if (dest.isNotBlank()) prefs.edit().putString("last_dest", dest).apply() }) { Text("Letztes Ziel", style = MaterialTheme.typography.labelSmall) }
             }
         },
         confirmButton = { TextButton(onClick = { if (source.isNotBlank() && dest.isNotBlank()) onConfirm(source.trimEnd('/'), dest.trimEnd('/')) }) { Text(stringResource(org.fossify.commons.R.string.save)) } },
