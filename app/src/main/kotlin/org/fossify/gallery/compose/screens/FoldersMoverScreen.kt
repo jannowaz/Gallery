@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -71,7 +72,6 @@ import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.theme.LocalSpacing
-import org.fossify.gallery.compose.theme.Radius
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.deleteMediumWithPath
@@ -193,7 +193,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                     items(pairs.toList(), key = { it.source + "→" + it.destination }) { pair ->
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(vertical = s.xs),
-                            shape = RoundedCornerShape(Radius.md),
+                            shape = RoundedCornerShape(org.fossify.gallery.compose.theme.Radius.md),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         ) {
                             Row(Modifier.padding(s.md), verticalAlignment = Alignment.CenterVertically) {
@@ -223,14 +223,14 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                 Button(
                     onClick = { editingIndex = -1; showAddDialog = true },
                     modifier = Modifier.fillMaxWidth().padding(12.dp),
-                    shape = RoundedCornerShape(Radius.md),
+                    shape = RoundedCornerShape(org.fossify.gallery.compose.theme.Radius.md),
                 ) { Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Paar hinzufügen") }
                 if (pairs.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))
                     Button(
                         onClick = { startMove() },
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        shape = RoundedCornerShape(Radius.md),
+                        shape = RoundedCornerShape(org.fossify.gallery.compose.theme.Radius.md),
                         colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     ) { Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Alle verschieben (${pairs.size} Paare)") }
                 }
