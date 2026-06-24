@@ -70,8 +70,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.components.EmptyState
+import org.fossify.gallery.compose.theme.LocalSpacing
+import org.fossify.gallery.compose.theme.Radius
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.extensions.deleteMediumWithPath
 import org.fossify.gallery.helpers.MediaStoreOps
 import org.fossify.gallery.helpers.RefreshBus
 import org.fossify.gallery.helpers.UndoAction
@@ -86,6 +89,7 @@ private data class FolderPair(val source: String = "", val destination: String =
 fun FoldersMoverScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    val s = LocalSpacing.current
     val pairs = remember { mutableStateListOf<FolderPair>() }
     var showAddDialog by remember { mutableStateOf(false) }
     var isMoving by remember { mutableStateOf(false) }
@@ -138,21 +142,18 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
             var done = 0; var failed = 0
             val movedPaths = mutableListOf<String>()
             for ((srcPath, destPath) in allMoves) {
+                if (!isMoving) break // cancel
                 movePhase = "$done/${allMoves.size}: ${File(srcPath).name}"
                 val success = withContext(Dispatchers.IO) {
-                    val destFile = File(destPath)
-                    if (destFile.exists()) { failed++; return@withContext false }
-                    destFile.parentFile?.mkdirs()
                     try {
-                        val srcUri = MediaStoreOps.uriForPath(ctx, srcPath) ?: false
-                        if (srcUri is android.net.Uri) {
-                            val targetRel = MediaStoreOps.relativePathFor(destFile.parent ?: "")
-                            val newUri = MediaStoreOps.copy(ctx, srcUri, destFile.name, targetRel, MediaStoreOps.isVideoPath(srcPath))
-                            if (newUri != null) {
-                                ctx.contentResolver.delete(srcUri, null, null)
-                                movedPaths.add(srcPath)
-                                true
-                            } else false
+                        val srcUri = MediaStoreOps.uriForPath(ctx, srcPath) ?: return@withContext false
+                        val targetRel = MediaStoreOps.relativePathFor(File(destPath).parent ?: "")
+                        val newUri = MediaStoreOps.copy(ctx, srcUri, File(destPath).name, targetRel, MediaStoreOps.isVideoPath(srcPath))
+                        if (newUri != null) {
+                            ctx.contentResolver.delete(srcUri, null, null)
+                            try { ctx.deleteMediumWithPath(srcPath) } catch (_: Exception) { }
+                            movedPaths.add(srcPath)
+                            true
                         } else false
                     } catch (_: Exception) { false }
                 }
@@ -182,25 +183,24 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                 EmptyState(Icons.Default.Folder, "Keine Ordner-Paare", subtitle = "Tippe unten auf + um ein Paar zu definieren", modifier = Modifier.weight(1f))
             } else {
                 if (isMoving) {
-                    Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = s.md, vertical = s.sm)) {
                         LinearProgressIndicator(progress = { if (moveTotal > 0) moveProgress.toFloat() / moveTotal else 0f }, modifier = Modifier.fillMaxWidth())
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(s.xs))
                         Text(movePhase, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(4.dp))
                     }
                 }
-                LazyColumn(Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {
+                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(s.md)) {
                     items(pairs.toList(), key = { it.source + "→" + it.destination }) { pair ->
                         Card(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = s.xs),
                             shape = RoundedCornerShape(Radius.md),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         ) {
-                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.padding(s.md), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                                        Spacer(Modifier.width(4.dp))
+                                        Spacer(Modifier.width(s.xs))
                                         Text(pair.source.substringAfterLast('/'), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Text(" → ", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(16.dp))
