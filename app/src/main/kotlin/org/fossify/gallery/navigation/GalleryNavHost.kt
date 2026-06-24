@@ -39,6 +39,7 @@ import org.fossify.gallery.compose.screens.tagbrowser.TagBrowserScreen
 import org.fossify.gallery.compose.screens.analysis.StorageAnalysisScreen
 import org.fossify.gallery.compose.screens.analysis.DuplicateFinderScreen
 import org.fossify.gallery.compose.screens.RecycleBinScreen
+import org.fossify.gallery.compose.screens.FoldersMoverScreen
 import org.fossify.gallery.compose.screens.viewer.ViewerScreen
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
@@ -164,6 +165,9 @@ fun GalleryNavHost(
                             onBack = { navController.popBackStack() },
                             onNavigateToViewer = { path -> ViewerArgs.paths = listOf(path); navController.navigate(Viewer(0)) },
                         )
+                    }
+                    composable<FoldersMover> {
+                        FoldersMoverScreen(onBack = { navController.popBackStack() })
                     }
                     composable<RecycleBin> {
                         RecycleBinScreen(onBack = { navController.popBackStack() })

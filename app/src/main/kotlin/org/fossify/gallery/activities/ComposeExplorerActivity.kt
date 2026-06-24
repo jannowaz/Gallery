@@ -60,6 +60,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
@@ -164,6 +165,7 @@ import org.fossify.gallery.navigation.GalleryNavHost
 import org.fossify.gallery.navigation.ManageCollections
 import org.fossify.gallery.navigation.Settings
 import org.fossify.gallery.navigation.StorageAnalysis
+import org.fossify.gallery.navigation.FoldersMover
 import org.fossify.gallery.navigation.RecycleBin
 import org.fossify.gallery.models.Directory
 import org.fossify.gallery.models.MediaCollection
@@ -640,14 +642,21 @@ private fun AppNavigationDrawer(
                 onClick = { onNavigate(StorageAnalysis) },
                 modifier = Modifier.padding(horizontal = s.md),
             )
-            NavigationDrawerItem(
-                label = { Text(stringResource(R.string.nav_find_duplicates)) },
-                icon = { Icon(Icons.Default.ContentCopy, null) },
-                selected = false,
-                onClick = { onNavigate(DuplicateFinder(duplicateScanFolder)) },
-                modifier = Modifier.padding(horizontal = s.md),
-            )
-            NavigationDrawerItem(
+        NavigationDrawerItem(
+            label = { Text(stringResource(R.string.nav_find_duplicates)) },
+            icon = { Icon(Icons.Default.ContentCopy, null) },
+            selected = false,
+            onClick = { onNavigate(DuplicateFinder(duplicateScanFolder)) },
+            modifier = Modifier.padding(horizontal = s.md),
+        )
+        NavigationDrawerItem(
+            label = { Text("Mover") },
+            icon = { Icon(Icons.AutoMirrored.Filled.DriveFileMove, null) },
+            selected = false,
+            onClick = { onNavigate(FoldersMover) },
+            modifier = Modifier.padding(horizontal = s.md),
+        )
+        NavigationDrawerItem(
                 label = { Text(stringResource(R.string.nav_recycle_bin)) },
                 icon = { Icon(Icons.Default.Delete, null) },
                 selected = false,
