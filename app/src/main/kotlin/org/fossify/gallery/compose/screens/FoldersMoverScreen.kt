@@ -1,5 +1,7 @@
 package org.fossify.gallery.compose.screens
 import androidx.compose.ui.res.stringResource
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.theme.Radius
 
@@ -94,7 +96,14 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val s = LocalSpacing.current
-    val pairs = remember { mutableStateListOf<FolderPair>() }
+    val defPrefs = remember { android.preference.PreferenceManager.getDefaultSharedPreferences(ctx) }
+    val gson = remember { Gson() }
+    fun loadPairs(): List<FolderPair> {
+        val json = defPrefs.getString("mover_pairs", null) ?: return emptyList()
+        return try { gson.fromJson(json, object : TypeToken<List<FolderPair>>() {}.type) } catch (_: Exception) { emptyList() }
+    }
+    val pairs = remember { mutableStateListOf<FolderPair>().also { it.addAll(loadPairs()) } }
+    fun savePairs() { defPrefs.edit().putString("mover_pairs", gson.toJson(pairs.toList())).apply() }
     var showAddDialog by remember { mutableStateOf(false) }
     var isMoving by remember { mutableStateOf(false) }
     var moveProgress by remember { mutableIntStateOf(0) }
@@ -124,6 +133,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
         } else {
             pairs.add(p)
         }
+        savePairs()
         showAddDialog = false
     }
 
@@ -213,7 +223,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                                     }
                                     Text("${pair.source} → ${pair.destination}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                                 }
-                                IconButton(onClick = { pairs.remove(pair) }, modifier = Modifier.size(32.dp), enabled = !isMoving) {
+                                IconButton(onClick = { pairs.remove(pair); savePairs() }, modifier = Modifier.size(32.dp), enabled = !isMoving) {
                                     Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                                 }
                             }
@@ -250,7 +260,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
             initialDest = if (editingIndex >= 0) pairs[editingIndex].destination else "",
             onConfirm = { src, dest -> addOrUpdatePair(src, dest) },
             onDismiss = { showAddDialog = false; editingIndex = -1 },
-            storageRoot = storageRoot,
+            defPrefs = defPrefs,
         )
     }
 }
@@ -308,29 +318,28 @@ private fun AddPairDialog(
     initialDest: String,
     onConfirm: (String, String) -> Unit,
     onDismiss: () -> Unit,
-    storageRoot: String,
+    defPrefs: android.content.SharedPreferences,
 ) {
     var source by remember { mutableStateOf(initialSource) }
     var dest by remember { mutableStateOf(initialDest) }
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("mover_prefs", android.content.Context.MODE_PRIVATE) }
     var showSearch by remember { mutableStateOf("") } // "source" or "dest" or ""
 
     fun loadLast(name: String): String {
-        val saved = prefs.getString(name, null) ?: return ""
+        val saved = defPrefs.getString(name, null) ?: return ""
         return if (File(saved).exists()) saved else ""
     }
 
     if (showSearch.isNotEmpty()) {
-        FolderSearchDialog(
-            title = if (showSearch == "source") "Quelle auswählen" else "Ziel auswählen",
-            onFolderPicked = { path ->
-                if (showSearch == "source") { source = path; prefs.edit().putString("last_source", path).apply() }
-                else { dest = path; prefs.edit().putString("last_dest", path).apply() }
-                showSearch = ""
-            },
-            onDismiss = { showSearch = "" },
-        )
+            FolderSearchDialog(
+                title = if (showSearch == "source") "Quelle auswählen" else "Ziel auswählen",
+                onFolderPicked = { path ->
+                    if (showSearch == "source") { source = path; defPrefs.edit().putString("mover_last_source", path).apply() }
+                    else { dest = path; defPrefs.edit().putString("mover_last_dest", path).apply() }
+                    showSearch = ""
+                },
+                onDismiss = { showSearch = "" },
+            )
     }
 
     AlertDialog(
@@ -340,11 +349,11 @@ private fun AddPairDialog(
             Column(Modifier.fillMaxWidth()) {
                 OutlinedTextField(value = source, onValueChange = { source = it }, label = { Text("Quelle") }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = { IconButton(onClick = { showSearch = "source" }) { Icon(Icons.Default.Search, "Durchsuchen") } })
                 Text(source, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                TextButton(onClick = { source = loadLast("last_source"); if (source.isNotBlank()) prefs.edit().putString("last_source", source).apply() }) { Text("Letzte Quelle", style = MaterialTheme.typography.labelSmall) }
+                TextButton(onClick = { source = loadLast("mover_last_source"); if (source.isNotBlank()) defPrefs.edit().putString("mover_last_source", source).apply() }) { Text("Letzte Quelle", style = MaterialTheme.typography.labelSmall) }
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(value = dest, onValueChange = { dest = it }, label = { Text("Ziel") }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = { IconButton(onClick = { showSearch = "dest" }) { Icon(Icons.Default.Search, "Durchsuchen") } })
                 Text(dest, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                TextButton(onClick = { dest = loadLast("last_dest"); if (dest.isNotBlank()) prefs.edit().putString("last_dest", dest).apply() }) { Text("Letztes Ziel", style = MaterialTheme.typography.labelSmall) }
+                TextButton(onClick = { dest = loadLast("mover_last_dest"); if (dest.isNotBlank()) defPrefs.edit().putString("mover_last_dest", dest).apply() }) { Text("Letztes Ziel", style = MaterialTheme.typography.labelSmall) }
             }
         },
         confirmButton = { TextButton(onClick = { if (source.isNotBlank() && dest.isNotBlank()) onConfirm(source.trimEnd('/'), dest.trimEnd('/')) }) { Text(stringResource(org.fossify.commons.R.string.save)) } },
