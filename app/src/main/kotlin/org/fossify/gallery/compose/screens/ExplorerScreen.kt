@@ -131,9 +131,6 @@ fun ExplorerScreen(
     var allEntries by remember { mutableStateOf<List<org.fossify.gallery.helpers.MediaStoreOps.MediaEntry>?>(null) }
     LaunchedEffect(Unit) {
         allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.mediaEntriesUnder(context, storageRoot) }
-        org.fossify.gallery.helpers.RefreshBus.events.collect {
-            allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.mediaEntriesUnder(context, storageRoot) }
-        }
     }
 
     suspend fun loadFolderContents(path: String) {
