@@ -90,7 +90,8 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
             val s = prefs.getString(key, null)
             if (s != null) {
                 val parts = s.split(",")
-                if (parts.size == 2) return parts[0].toIntOrNull() to parts[1].toBoolean()
+                val sort = parts.getOrNull(0)?.toIntOrNull()
+                if (parts.size == 2 && sort != null) return sort to (parts[1] == "true")
             }
             return fallbackSort to fallbackDesc
         }
