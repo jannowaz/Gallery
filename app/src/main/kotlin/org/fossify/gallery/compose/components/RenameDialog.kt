@@ -41,6 +41,8 @@ import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
 import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.extensions.mediaCacheDB
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MediaStoreOps
 import org.fossify.gallery.helpers.RefreshBus
 import java.io.File
@@ -138,6 +140,9 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit) {
                                 val parent = File(job.path).parent ?: ""
                                 val newPath = File(parent, job.newName).absolutePath
                                 try { repo.updateMediumPath(job.path, parent, job.newName, newPath) } catch (_: Exception) { }
+                                // Remove any leftover reference to the old path (MediaCache + stale media row).
+                                try { ctx.mediaCacheDB.deleteByPathSync(job.path) } catch (_: Exception) { }
+                                try { ctx.mediaDB.deleteMediumPath(job.path) } catch (_: Exception) { }
                                 n++
                             }
                         }
