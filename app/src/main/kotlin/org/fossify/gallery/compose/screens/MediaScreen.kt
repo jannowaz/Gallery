@@ -98,6 +98,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.paging.LoadState
+import androidx.paging.compose.collectAsLazyPagingItems
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -156,6 +158,7 @@ fun MediaScreen(
     val ctx = LocalContext.current
     val viewModel: MediaViewModel = viewModel()
     val state by viewModel.state.collectAsState()
+    val lazyPagingItems = viewModel.pagedMedia.collectAsLazyPagingItems()
     val selectionSaver = remember { listSaver<Set<String>, String>(save = { it.toList() }, restore = { it.toSet() }) }
     LaunchedEffect(refreshTrigger) { if (refreshTrigger > 0) { if (state.allMedia.isNotEmpty()) viewModel.silentRefresh() else viewModel.refresh() } }
     LaunchedEffect(viewSettings.sortBy, viewSettings.sortDesc) { if (mediaOverride == null) viewModel.setSort(viewSettings.sortBy, viewSettings.sortDesc) }
@@ -180,6 +183,9 @@ fun MediaScreen(
     val isGrid = viewSettings.viewType == ViewType.GRID
     val isMosaic = viewSettings.viewType == ViewType.MOSAIC
     val hasFilter = ratingFilter > 0 || tagFilterPaths != null || pathFilter != null || minSizeFilter > 0 || dateRangeFilter > 0
+    // Unfiltered, non-override browse: renders from the Paging3 flow instead of state.displayMedia,
+    // so it isn't capped at the legacy path's 20,000-item scan.
+    val showPaged = !hasFilter && mediaOverride == null
     val displayMedia = state.displayMedia
     val pathIndexMap = remember(displayMedia) { displayMedia.withIndex().associate { it.value.path to it.index } }
     val cornerShape = if (viewSettings.roundedCorners) RoundedCornerShape(Radius.sm) else RoundedCornerShape(0.dp)
@@ -200,11 +206,32 @@ fun MediaScreen(
         }
     }
 
+    // Viewer swipe-through needs the FULL sorted path list, not just what the grid has paged in so
+    // far - fetched fresh on demand (cheap: paths only, no thumbnails) so opening any item can swipe
+    // through the entire library, not just the loaded window.
+    fun openViewerPaged(index: Int) {
+        scope.launch {
+            val paths = viewModel.activePathsSorted()
+            val navigate = onNavigateToViewer
+            if (navigate != null) {
+                navigate(paths, index)
+            } else {
+                ctx.startActivity(Intent(ctx, ComposeViewerActivity::class.java).apply {
+                    putStringArrayListExtra("PATHS", ArrayList(paths)); putExtra("START_INDEX", index)
+                    heroRect?.let { putExtra("HERO_LEFT",it.left.toFloat()); putExtra("HERO_TOP",it.top.toFloat()); putExtra("HERO_WIDTH",it.width().toFloat()); putExtra("HERO_HEIGHT",it.height().toFloat()) }
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            }
+        }
+    }
+
     val hasSelection = selectedPaths.isNotEmpty()
     LaunchedEffect(hasSelection) { onSelectionActiveChanged(hasSelection) }
     var selectionBarHeightPx by remember { mutableIntStateOf(0) }
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val contentTopInset by androidx.compose.animation.core.animateDpAsState(
+    // The bouncy spring can transiently overshoot past 0 while animating the inset closed, and
+    // Modifier.padding() throws on a negative value - coerce here so every use site is safe.
+    val rawContentTopInset by androidx.compose.animation.core.animateDpAsState(
         targetValue = if (hasSelection) with(density) { selectionBarHeightPx.toDp() } else 0.dp,
         animationSpec = androidx.compose.animation.core.spring(
             dampingRatio = androidx.compose.animation.core.Spring.DampingRatioLowBouncy,
@@ -212,6 +239,7 @@ fun MediaScreen(
         ),
         label = "selectionTopInset",
     )
+    val contentTopInset = rawContentTopInset.coerceAtLeast(0.dp)
 
     LaunchedEffect(state.error) {
         val err = state.error
@@ -223,14 +251,245 @@ fun MediaScreen(
 
     var isRefreshing by remember { mutableStateOf(false) }
     LaunchedEffect(state.isLoading) { if (!state.isLoading && isRefreshing) isRefreshing = false }
-    PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = { isRefreshing = true; viewModel.refresh(); scope.launch { kotlinx.coroutines.delay(5000); isRefreshing = false } }, modifier = Modifier.fillMaxSize()) {
+
+    @Composable
+    fun PagedContent() {
+        when {
+            isGrid -> {
+                Column(Modifier.padding(top = contentTopInset)) {
+                    val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
+                    AnimatedVisibility(visible = quickTags.isNotEmpty() && hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
+                        if (quickTags.isNotEmpty() && hasSelection) {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                quickTags.forEach { tag ->
+                                    val active = tag in selectedCommonTags
+                                    Surface(
+                                        onClick = { viewModel.toggleQuickTag(selectedPaths, tag) },
+                                        shape = RoundedCornerShape(Radius.lg),
+                                        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                    ) {
+                                        Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    val rows = remember(lazyPagingItems.itemCount) { buildPagedRows(lazyPagingItems.itemSnapshotList) }
+                    val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
+                    LaunchedEffect(gridState) {
+                        snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
+                            .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
+                    }
+                    var showOverlays by remember { mutableStateOf(true) }
+                    val isScrolling by remember { derivedStateOf { gridState.isScrollInProgress } }
+                    LaunchedEffect(isScrolling) {
+                        if (isScrolling) showOverlays = false
+                        else { delay(300); showOverlays = true }
+                    }
+                    LaunchedEffect(dragSelection.isDragging) {
+                        if (dragSelection.isDragging) {
+                            var targetIdx = gridState.firstVisibleItemIndex
+                            while (dragSelection.isDragging) {
+                                val s = dragSelection.autoScrollSpeed
+                                if (s < -0.5f) targetIdx = maxOf(targetIdx - 1, 0)
+                                else if (s > 0.5f) targetIdx++
+                                else { kotlinx.coroutines.delay(50); continue }
+                                gridState.animateScrollToItem(targetIdx, 0)
+                                kotlinx.coroutines.delay((100 / kotlin.math.abs(s).coerceAtLeast(0.5f)).toLong().coerceIn(50, 150))
+                            }
+                        }
+                    }
+                    CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
+                    Box(Modifier.dragSelectionGesture(dragSelection, gridState = gridState) { path -> selectedPaths = selectedPaths + path }) {
+                    LazyVerticalGrid(state = gridState, columns = GridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
+                        items(
+                            count = rows.size,
+                            key = { i -> when (val r = rows[i]) { is PagedRow.Header -> "header_${i}_${r.label}"; is PagedRow.Item -> safePeek(lazyPagingItems, r.pagingIndex)?.path ?: "empty_${r.pagingIndex}" } },
+                            span = { i -> if (rows[i] is PagedRow.Header) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
+                            contentType = { i -> if (rows[i] is PagedRow.Header) "header" else (safePeek(lazyPagingItems, (rows[i] as PagedRow.Item).pagingIndex)?.type ?: 0) },
+                        ) { i ->
+                            when (val row = rows[i]) {
+                                is PagedRow.Header -> MonthHeader(label = row.label, count = row.count)
+                                is PagedRow.Item -> {
+                                    val m = safeGet(lazyPagingItems, row.pagingIndex) ?: return@items
+                                    val isVideo = remember(m.path) { m.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS }
+                                    MediaTile(
+                                        medium = m,
+                                        isVideo = isVideo,
+                                        isSelected = m.path in selectedPaths,
+                                        isSelectionMode = hasSelection,
+                                        hasTag = m.path in taggedPaths,
+                                        showOverlays = showOverlays,
+                                        aspectRatio = 1f,
+                                        cornerShape = cornerShape,
+                                        cardColor = mediaCardColor,
+                                        itemSpacing = itemSpacing,
+                                        showFileName = viewSettings.showFileNames,
+                                        showVideoDuration = ctx.config.showVideoDurationOnThumbnails,
+                                        onClick = { if (hasSelection) selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path else openViewerPaged(row.pagingIndex) },
+                                        onLongClick = { selectedPaths = selectedPaths + m.path },
+                                        onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
+                                        onPreview = { openViewerPaged(row.pagingIndex) },
+                                        onBoundsChanged = { r -> heroRect = android.graphics.Rect(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt()); dragSelection.registerItemBounds(m.path, r) },
+                                    )
+                                }
+                            }
+                        }
+                        if (lazyPagingItems.loadState.append is LoadState.Loading) {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                }
+                            }
+                        }
+                    }
+                    }
+                    }
+                }
+            }
+            isMosaic -> {
+                Column(Modifier.padding(top = contentTopInset)) {
+                    val quickTagsM = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
+                    AnimatedVisibility(visible = quickTagsM.isNotEmpty() && hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
+                        if (quickTagsM.isNotEmpty() && hasSelection) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { quickTagsM.forEach { tag -> val active = tag in selectedCommonTags; Surface(onClick = { viewModel.toggleQuickTag(selectedPaths, tag) }, shape = RoundedCornerShape(Radius.lg), color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
+                    }
+                    val rows = remember(lazyPagingItems.itemCount) { buildPagedRows(lazyPagingItems.itemSnapshotList) }
+                    val mosaicState = rememberLazyStaggeredGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
+                    LaunchedEffect(mosaicState) {
+                        snapshotFlow { mosaicState.firstVisibleItemIndex to mosaicState.firstVisibleItemScrollOffset }
+                            .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
+                    }
+                    var showOverlaysStag by remember { mutableStateOf(true) }
+                    val isScrollingStag by remember { derivedStateOf { mosaicState.isScrollInProgress } }
+                    LaunchedEffect(isScrollingStag) {
+                        if (isScrollingStag) showOverlaysStag = false
+                        else { delay(300); showOverlaysStag = true }
+                    }
+                    LaunchedEffect(dragSelection.isDragging) {
+                        if (dragSelection.isDragging) {
+                            var targetIdx = mosaicState.firstVisibleItemIndex
+                            while (dragSelection.isDragging) {
+                                val s = dragSelection.autoScrollSpeed
+                                if (s < -0.5f) targetIdx = maxOf(targetIdx - 1, 0)
+                                else if (s > 0.5f) targetIdx++
+                                else { kotlinx.coroutines.delay(50); continue }
+                                mosaicState.animateScrollToItem(targetIdx, 0)
+                                kotlinx.coroutines.delay((120 / kotlin.math.abs(s).coerceAtLeast(0.5f)).toLong().coerceIn(60, 200))
+                            }
+                        }
+                    }
+                    CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
+                    Box(Modifier.dragSelectionGesture(dragSelection, staggeredGridState = mosaicState) { path -> selectedPaths = selectedPaths + path }) {
+                    LazyVerticalStaggeredGrid(state = mosaicState, columns = StaggeredGridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
+                        rows.forEachIndexed { i, row ->
+                            when (row) {
+                                is PagedRow.Header -> item(key = "header_${i}_${row.label}", span = StaggeredGridItemSpan.FullLine, contentType = "header") {
+                                    MonthHeader(label = row.label, count = row.count)
+                                }
+                                is PagedRow.Item -> item(
+                                    key = safePeek(lazyPagingItems, row.pagingIndex)?.path ?: "empty_${row.pagingIndex}",
+                                    contentType = safePeek(lazyPagingItems, row.pagingIndex)?.type ?: 0,
+                                ) {
+                                    val m = safeGet(lazyPagingItems, row.pagingIndex)
+                                    if (m != null) {
+                                        val isVideo = remember(m.path) { m.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS }
+                                        if (!isVideo) LaunchedEffect(m.path) { viewModel.requestAspect(m.path) }
+                                        MediaTile(
+                                            medium = m,
+                                            isVideo = isVideo,
+                                            isSelected = m.path in selectedPaths,
+                                            isSelectionMode = hasSelection,
+                                            hasTag = m.path in taggedPaths,
+                                            showOverlays = showOverlaysStag,
+                                            aspectRatio = if (isVideo) 1f else (state.aspectRatios[m.path] ?: 1f),
+                                            cornerShape = cornerShape,
+                                            cardColor = mediaCardColor,
+                                            itemSpacing = itemSpacing,
+                                            showFileName = viewSettings.showFileNames,
+                                            showVideoDuration = ctx.config.showVideoDurationOnThumbnails,
+                                            onClick = { if (hasSelection) selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path else openViewerPaged(row.pagingIndex) },
+                                            onLongClick = { selectedPaths = selectedPaths + m.path },
+                                            onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
+                                            onPreview = { openViewerPaged(row.pagingIndex) },
+                                            onBoundsChanged = { r -> heroRect = android.graphics.Rect(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt()); dragSelection.registerItemBounds(m.path, r) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    }
+                    }
+                }
+            }
+            else -> {
+                val rows = remember(lazyPagingItems.itemCount) { buildPagedRows(lazyPagingItems.itemSnapshotList) }
+                val listState = rememberLazyListState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
+                LaunchedEffect(listState) {
+                    snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+                        .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
+                }
+                Box(Modifier.padding(top = contentTopInset).dragSelectionGesture(dragSelection) { path -> selectedPaths = selectedPaths + path }) {
+                LazyColumn(state = listState, reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
+                    var headerSeq = 0
+                    rows.forEach { row ->
+                        when (row) {
+                            is PagedRow.Header -> {
+                                headerSeq++
+                                stickyHeader(key = "header_${headerSeq}_${row.label}") { MonthHeader(label = row.label, count = row.count) }
+                            }
+                            is PagedRow.Item -> {
+                                val path = safePeek(lazyPagingItems, row.pagingIndex)?.path
+                                item(key = path ?: "empty_${row.pagingIndex}", contentType = safePeek(lazyPagingItems, row.pagingIndex)?.type ?: 0) {
+                                    val m = safeGet(lazyPagingItems, row.pagingIndex)
+                                    if (m != null) {
+                                        val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
+                                        var lastBoundsUpdate by remember { mutableLongStateOf(0L) }
+                                        Surface(modifier = Modifier.fillMaxWidth().background(mediaCardColor,RoundedCornerShape(Radius.sm)).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt());val now=System.currentTimeMillis();if(now-lastBoundsUpdate>300){lastBoundsUpdate=now;dragSelection.registerItemBounds(m.path,androidx.compose.ui.geometry.Rect(p,androidx.compose.ui.geometry.Size(s.width.toFloat(),s.height.toFloat())))}}.selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewerPaged(row.pagingIndex)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path}),color=Color.Transparent) {
+                                            Row(Modifier.padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
+                                                Box(Modifier.size(56.dp).clip(RoundedCornerShape(Radius.sm))){if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop) else GalleryImage(path=m.path,contentDescription=m.name,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop,placeholderIconSize=18.dp)}
+                                                Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)){Text(m.name,style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis);Text(formatFileSize(m.size),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+                                                if(hasSelection){IconButton(onClick={openViewerPaged(row.pagingIndex)},modifier=Modifier.size(36.dp)){Icon(Icons.Default.Visibility,stringResource(R.string.cd_preview),tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(20.dp))}}
+                                                if(m.path in selectedPaths) Icon(Icons.Default.CheckCircle,stringResource(R.string.cd_selected),tint=MaterialTheme.colorScheme.primary)
+                                            }
+                                        }
+                                        HorizontalDivider(Modifier.padding(start=76.dp),color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.3f))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                }
+            }
+        }
+    }
+
+    PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = { isRefreshing = true; viewModel.refresh(); if (showPaged) lazyPagingItems.refresh(); scope.launch { kotlinx.coroutines.delay(5000); isRefreshing = false } }, modifier = Modifier.fillMaxSize()) {
         BackHandler(enabled = hasSelection) { selectedPaths = emptySet() }
         Box(modifier = modifier.fillMaxSize()) {
-        when {
-            mediaOverride != null && mediaOverride.isEmpty() -> {
-                EmptyState(Icons.Default.Search, stringResource(R.string.no_media_in_folder))
+        if (mediaOverride != null && mediaOverride.isEmpty()) {
+            EmptyState(Icons.Default.Search, stringResource(R.string.no_media_in_folder))
+        } else if (showPaged) {
+            val refreshState = lazyPagingItems.loadState.refresh
+            when {
+                refreshState is LoadState.Loading && lazyPagingItems.itemCount == 0 -> MediaSkeleton(columns = columnCount)
+                refreshState is LoadState.Error && lazyPagingItems.itemCount == 0 -> {
+                    EmptyState(
+                        icon = Icons.Default.ErrorOutline,
+                        title = stringResource(R.string.error_loading_media),
+                        subtitle = refreshState.error.message?.takeIf { it.isNotBlank() },
+                        actionLabel = stringResource(R.string.retry),
+                        onAction = { lazyPagingItems.retry() },
+                    )
+                }
+                lazyPagingItems.itemCount == 0 -> {
+                    EmptyState(icon = Icons.Default.Search, title = stringResource(R.string.no_media_found))
+                }
+                else -> PagedContent()
             }
-            state.isLoading && !hasFilter && mediaOverride == null -> MediaSkeleton(columns = columnCount)
+        } else {
+        when {
             state.error != null && displayMedia.isEmpty() && mediaOverride == null -> {
                 EmptyState(
                     icon = Icons.Default.ErrorOutline,
@@ -281,12 +540,6 @@ fun MediaScreen(
                     }
                     var showOverlays by remember { mutableStateOf(true) }
                     val isScrolling by remember { derivedStateOf { gridState.isScrollInProgress } }
-                    val shouldLoadMore by remember { derivedStateOf {
-                        val info = gridState.layoutInfo
-                        val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
-                        lastVisible >= info.totalItemsCount - 6 && info.totalItemsCount > 0
-                    } }
-                    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore && !hasFilter) viewModel.loadMore() }
                     LaunchedEffect(isScrolling) {
                         if (isScrolling) showOverlays = false
                         else { delay(300); showOverlays = true }
@@ -332,13 +585,6 @@ fun MediaScreen(
                             )
                         }
                     }
-                    if (state.isLoadingMore) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                            }
-                        }
-                    }
                     }
                     }
                     }
@@ -364,12 +610,6 @@ fun MediaScreen(
                     }
                     var showOverlaysStag by remember { mutableStateOf(true) }
                     val isScrollingStag by remember { derivedStateOf { mosaicState.isScrollInProgress } }
-                    val shouldLoadMoreStag by remember { derivedStateOf {
-                        val info = mosaicState.layoutInfo
-                        val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
-                        lastVisible >= info.totalItemsCount - 6 && info.totalItemsCount > 0
-                    } }
-                    LaunchedEffect(shouldLoadMoreStag) { if (shouldLoadMoreStag && !hasFilter) viewModel.loadMore() }
                     LaunchedEffect(isScrollingStag) {
                         if (isScrollingStag) showOverlaysStag = false
                         else { delay(300); showOverlaysStag = true }
@@ -451,6 +691,7 @@ fun MediaScreen(
                 }
             }
         }
+        }
         AnimatedVisibility(visible=hasSelection,enter=slideInVertically(initialOffsetY={-it})+fadeIn(),exit=slideOutVertically(targetOffsetY={-it})+fadeOut(),modifier=Modifier.align(Alignment.TopCenter)) {
             SelectionTopAppBar(
                 modifier = Modifier.onGloballyPositioned { selectionBarHeightPx = it.size.height },
@@ -464,8 +705,8 @@ fun MediaScreen(
                     ctx.startActivity(Intent.createChooser(si, ctx.getString(R.string.action_share)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); selectedPaths = emptySet()
                 },
                 onDelete = { val d = selectedPaths.toSet(); viewModel.softDeletePaths(d); UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE)); selectedPaths = emptySet() },
-                onSelectAll = { selectedPaths = (if (hasFilter) displayMedia.map { it.path } else viewModel.allMediaPaths()).toSet() },
-                onInvert = { val all = (if (hasFilter) displayMedia.map { it.path } else viewModel.allMediaPaths()).toSet(); selectedPaths = all - selectedPaths },
+                onSelectAll = { scope.launch { selectedPaths = if (hasFilter) displayMedia.map { it.path }.toSet() else viewModel.activePaths() } },
+                onInvert = { scope.launch { val all = if (hasFilter) displayMedia.map { it.path }.toSet() else viewModel.activePaths(); selectedPaths = all - selectedPaths } },
                 onCopy = { folderPickerIsMove = false; showFolderPicker = true },
                 onMove = { folderPickerIsMove = true; showFolderPicker = true },
                 onRate = { showRatingDialog = true },
@@ -529,3 +770,46 @@ private fun formatFileSize(bytes: Long): String = when {
 }
 @Composable
 private fun MonthHeader(label:String,count:Int){Surface(Modifier.fillMaxWidth(),color=MaterialTheme.colorScheme.background){Row(Modifier.padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically){Text(label,style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.onSurface);Spacer(Modifier.width(8.dp));Text("$count",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}}
+
+/** Row model for the paged (unfiltered, non-override) grid: a flat, contiguous-run-based month
+ * grouping over whatever [androidx.paging.compose.LazyPagingItems] has loaded so far. Unlike the
+ * legacy [MonthGroup] (a LinkedHashMap keyed by label, which merges non-contiguous same-month runs
+ * under one earlier header), this never re-groups across non-adjacent runs - the correct behavior
+ * once the list isn't fully materialized in memory. */
+private sealed interface PagedRow {
+    data class Header(val label: String, val count: Int) : PagedRow
+    data class Item(val pagingIndex: Int) : PagedRow
+}
+
+// Paging3's itemCount/itemSnapshotList can change between when `rows` (remember(itemCount){...})
+// was memoized and when the LazyColumn/LazyGrid content lambda actually evaluates key/contentType
+// for each row in that same recomposition pass (both are read eagerly, for every row, to build the
+// item provider) - so `rows` can transiently reference an index one step ahead of what
+// itemSnapshotList currently holds. peek()/get() throw IndexOutOfBoundsException in that case
+// instead of returning null, so bounds-check before ever calling them.
+private fun safePeek(items: androidx.paging.compose.LazyPagingItems<Medium>, index: Int): Medium? =
+    if (index in 0 until items.itemCount) items.peek(index) else null
+
+private fun safeGet(items: androidx.paging.compose.LazyPagingItems<Medium>, index: Int): Medium? =
+    if (index in 0 until items.itemCount) items[index] else null
+
+private fun buildPagedRows(snapshot: List<Medium?>): List<PagedRow> {
+    val rows = ArrayList<PagedRow>(snapshot.size + 8)
+    var lastLabel: String? = null
+    var lastHeaderPos = -1
+    for (idx in snapshot.indices) {
+        val label = snapshot[idx]?.let { MediaViewModel.monthLabelFor(it) }
+        if (label != null) {
+            if (label != lastLabel) {
+                lastHeaderPos = rows.size
+                rows.add(PagedRow.Header(label, 1))
+                lastLabel = label
+            } else if (lastHeaderPos >= 0) {
+                val h = rows[lastHeaderPos] as PagedRow.Header
+                rows[lastHeaderPos] = h.copy(count = h.count + 1)
+            }
+        }
+        rows.add(PagedRow.Item(idx))
+    }
+    return rows
+}

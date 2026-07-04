@@ -16,6 +16,8 @@ androidx-documentfile = "1.1.0"
 exif = "1.0.1"
 #Room
 room = "2.8.4"
+#Paging
+paging = "3.3.6"
 #Fossify
 commons = "6.1.6"
 #Gradle4
@@ -59,6 +61,10 @@ exif = { module = "it.sephiroth.android.exif:library", version.ref = "exif" }
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+androidx-room-paging = { module = "androidx.room:room-paging", version.ref = "room" }
+#Paging
+androidx-paging-runtime-ktx = { module = "androidx.paging:paging-runtime-ktx", version.ref = "paging" }
+androidx-paging-compose = { module = "androidx.paging:paging-compose", version.ref = "paging" }
 #Compose
 compose-detekt = { module = "io.nlopez.compose.rules:detekt", version.ref = "detektCompose" }
 #Fossify
@@ -87,6 +93,7 @@ work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version = "2.9.1
 room = [
     "androidx-room-ktx",
     "androidx-room-runtime",
+    "androidx-room-paging",
 ]
 [plugins]
 android = { id = "com.android.application", version.ref = "gradlePlugins-agp" }

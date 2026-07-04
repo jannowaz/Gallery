@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import org.fossify.gallery.interfaces.*
 import org.fossify.gallery.models.*
 
-@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class], version = 15)
+@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class], version = 16)
 abstract class GalleryDatabase : RoomDatabase() {
 
     abstract fun DirectoryDao(): DirectoryDao
@@ -45,6 +45,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                             .addMigrations(MIGRATION_12_13)
                             .addMigrations(MIGRATION_13_14)
                             .addMigrations(MIGRATION_14_15)
+                            .addMigrations(MIGRATION_15_16)
                             .fallbackToDestructiveMigrationFrom(1, 2, 3)
                             .build()
                     }
@@ -148,6 +149,18 @@ abstract class GalleryDatabase : RoomDatabase() {
 
                 database.execSQL("DROP INDEX IF EXISTS `index_date_takens_full_path`")
                 database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_date_takens_full_path` ON `date_takens` (`full_path` COLLATE NOCASE)")
+            }
+        }
+
+        // Supports the Paging3 media queries (MediumDao.getMediaPagedBy*): each one filters on
+        // deleted_ts and orders by one sort column, and SQLite's LIMIT/OFFSET cost is O(offset)
+        // without an index to walk in order - these keep deep scrolling from degrading into a
+        // full table scan per page.
+        private val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_date_taken_last_modified` ON `media` (`deleted_ts`, `date_taken`, `last_modified`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_size` ON `media` (`deleted_ts`, `size`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_rating_last_modified` ON `media` (`deleted_ts`, `rating`, `last_modified`)")
             }
         }
     }

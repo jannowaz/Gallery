@@ -14,7 +14,15 @@ import java.util.Calendar
 import java.util.Locale
 
 @Stable
-@Entity(tableName = "media", indices = [(Index(value = ["full_path"], unique = true))])
+@Entity(
+    tableName = "media",
+    indices = [
+        Index(value = ["full_path"], unique = true),
+        Index(value = ["deleted_ts", "date_taken", "last_modified"]),
+        Index(value = ["deleted_ts", "size"]),
+        Index(value = ["deleted_ts", "rating", "last_modified"]),
+    ],
+)
 data class Medium(
     @PrimaryKey(autoGenerate = true) var id: Long?,
     @ColumnInfo(name = "filename") var name: String,

@@ -3,13 +3,19 @@ package org.fossify.gallery.viewmodels
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -24,6 +30,8 @@ import java.util.Date
 import java.util.Locale
 
 data class MonthGroup(val label: String, val items: List<Medium>)
+
+data class SortSpec(val field: SortField, val desc: Boolean)
 
 /** Active filtering for the media grid. Owned by the ViewModel, never resolved in composition. */
 data class MediaFilter(
@@ -48,8 +56,6 @@ data class MediaUiState(
     val allTags: List<String> = emptyList(),
     val tagCounts: Map<String, Int> = emptyMap(),
     val isLoading: Boolean = false,
-    val isLoadingMore: Boolean = false,
-    val hasMore: Boolean = true,
     val error: String? = null,
     val scrollIndex: Int = 0,
     val scrollOffset: Int = 0,
@@ -62,9 +68,6 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     val state: StateFlow<MediaUiState> = _state.asStateFlow()
 
     private var loaded = false
-    private var currentPage = 0
-    private val pageSize = 500
-    private var cachedAllMedia: List<Medium> = emptyList()
     private var sortField = SortField.DATE
     private var sortDesc = true
 
@@ -74,6 +77,20 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private var ratingDbCache: List<Medium>? = null
     private var tagDbCache: List<Medium>? = null
     private var pathDbCache: List<Medium>? = null
+
+    // Unfiltered, non-override browse list. Backed by Room's PagingSource + InvalidationTracker, so
+    // it stays fresh across rename/rating/delete/sync without any manual refresh call, and isn't
+    // capped like the legacy filtered/override path below.
+    private val sortSpec = MutableStateFlow(SortSpec(sortField, sortDesc))
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val pagedMedia: Flow<PagingData<Medium>> = sortSpec
+        .flatMapLatest { spec ->
+            Pager(PagingConfig(pageSize = 60, prefetchDistance = 40, enablePlaceholders = false)) {
+                repository.getMediaPaged(spec.field, spec.desc)
+            }.flow
+        }
+        .cachedIn(viewModelScope)
 
     private fun applySort(list: List<Medium>): List<Medium> {
         if (sortField == SortField.RATING) {
@@ -93,11 +110,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         if (field == sortField && desc == sortDesc) return
         sortField = field
         sortDesc = desc
-        if (cachedAllMedia.isNotEmpty()) {
-            cachedAllMedia = applySort(cachedAllMedia)
-            currentPage = 0
-            _state.update { it.copy(allMedia = getPage(cachedAllMedia, 0), hasMore = cachedAllMedia.size > pageSize) }
-        }
+        sortSpec.value = SortSpec(field, desc)
         recompute()
     }
 
@@ -267,12 +280,10 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     fun setRatingFor(paths: Collection<String>, rating: Int) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Bulk write to DB (XMP is still per-file in repository.updateRating)
+                // One batch DB write (single InvalidationTracker notification) + per-file XMP writes
+                // (no DB write each - see MediaRepository.writeRatingXmp).
                 repository.setDbRatingBatch(paths, rating)
-                // For XMP persistence, we still need to call updateRating for each if we want standard XMP write
-                // But setDbRatingBatch is faster for immediate DB update.
-                // Let's use a compromise: bulk DB update + background XMP updates
-                paths.forEach { repository.updateRating(it, rating) }
+                paths.forEach { repository.writeRatingXmp(it, rating) }
                 silentRefresh()
             } catch (e: Exception) {
                 android.util.Log.e("MediaViewModel", "setRatingFor failed", e)
@@ -288,17 +299,17 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     fun load() {
         if (loaded) return
         loaded = true
-        currentPage = 0
         rescanAndLoad()
     }
 
     fun refresh() {
         loaded = false
-        currentPage = 0
-        cachedAllMedia = emptyList()
         rescanAndLoad()
     }
 
+    // NOTE: state.allMedia/displayMedia below only feed the legacy filtered/override rendering path
+    // and the filter's instant-narrow fallback (see setFilter) - the unfiltered/no-override grid
+    // renders from `pagedMedia` instead and doesn't depend on this fetch or its 20,000-item cap.
     fun silentRefresh() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -307,10 +318,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                     android.util.Log.e("MediaViewModel", "silentRefresh getNewestMedia failed, falling back to disk scan", e)
                     repository.scanMediaFromDisk()
                 }
-                cachedAllMedia = applySort(media)
-                currentPage = 0
-                val firstPage = getPage(cachedAllMedia, 0)
-                _state.update { it.copy(allMedia = firstPage, hasMore = cachedAllMedia.size > pageSize) }
+                _state.update { it.copy(allMedia = applySort(media)) }
                 recompute()
             } catch (e: Exception) {
                 android.util.Log.e("MediaViewModel", "silentRefresh failed", e)
@@ -334,34 +342,17 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             android.util.Log.i("MediaVMLoad", "final media=${media.size}")
-            cachedAllMedia = applySort(media)
-            val firstPage = getPage(cachedAllMedia, 0)
-            _state.update { it.copy(allMedia = firstPage, isLoading = false, hasMore = cachedAllMedia.size > pageSize, error = if (media.isEmpty()) loadError else null) }
+            _state.update { it.copy(allMedia = applySort(media), isLoading = false, error = if (media.isEmpty()) loadError else null) }
             recompute()
         }
     }
 
-    fun loadMore() {
-        if (_state.value.isLoadingMore || !_state.value.hasMore) return
-        currentPage++
-        viewModelScope.launch {
-            _state.update { it.copy(isLoadingMore = true) }
-            val nextPage = getPage(cachedAllMedia, currentPage)
-            if (nextPage.isNotEmpty()) {
-                _state.update { it.copy(allMedia = it.allMedia + nextPage, isLoadingMore = false) }
-                recompute()
-            } else {
-                _state.update { it.copy(isLoadingMore = false, hasMore = false) }
-            }
-        }
-    }
+    /** All active paths, unsorted - used for select-all/invert in the unfiltered browse view. */
+    suspend fun activePaths(): Set<String> = withContext(Dispatchers.IO) { repository.getActivePaths().toSet() }
 
-    private fun getPage(media: List<Medium>, page: Int): List<Medium> {
-        val start = page * pageSize
-        val end = minOf(start + pageSize, media.size)
-        if (start >= media.size) return emptyList()
-        return media.subList(start, end)
-    }
+    /** Full sorted path list (matching the current sort field/direction) for Viewer swipe-through,
+     * independent of how much of the paged grid has loaded so far. */
+    suspend fun activePathsSorted(): List<String> = withContext(Dispatchers.IO) { repository.getActivePathsSorted(sortField, sortDesc) }
 
     fun deletePaths(paths: Set<String>) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -408,17 +399,21 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(error = null) }
     }
 
-    fun allMediaPaths(): List<String> = cachedAllMedia.map { it.path }
-
     private fun groupByMonth(media: List<Medium>): List<MonthGroup> {
         if (media.isEmpty()) return emptyList()
-        val f = SimpleDateFormat("MMMM yyyy", Locale.GERMANY)
         val g = LinkedHashMap<String, MutableList<Medium>>()
-        media.forEach { m ->
-            val d = if (m.taken > 0) Date(m.taken) else Date(m.modified)
-            val k = f.format(d).replaceFirstChar { it.uppercase() }
-            g.getOrPut(k) { mutableListOf() }.add(m)
-        }
+        media.forEach { m -> g.getOrPut(monthLabelFor(m)) { mutableListOf() }.add(m) }
         return g.map { MonthGroup(it.key, it.value) }
+    }
+
+    companion object {
+        /** Shared with MediaScreen's paged-grid header scan so both label the same item identically.
+         * Allocates its own SimpleDateFormat per call - it's called from both a background dispatcher
+         * (recompute's groupByMonth) and Compose's main thread (paged header scan), and SimpleDateFormat
+         * isn't thread-safe to share across them. */
+        fun monthLabelFor(m: Medium): String {
+            val d = if (m.taken > 0) Date(m.taken) else Date(m.modified)
+            return SimpleDateFormat("MMMM yyyy", Locale.GERMANY).format(d).replaceFirstChar { it.uppercase() }
+        }
     }
 }

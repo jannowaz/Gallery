@@ -1,5 +1,6 @@
 package org.fossify.gallery.interfaces
 
+import androidx.paging.PagingSource
 import androidx.room.*
 import org.fossify.gallery.models.Medium
 
@@ -88,4 +89,71 @@ interface MediumDao {
 
     @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating FROM media WHERE deleted_ts = 0 AND rating >= :minRating ORDER BY date_taken DESC, last_modified DESC")
     fun getByMinRating(minRating: Int): List<Medium>
+
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0")
+    suspend fun getActivePaths(): List<String>
+
+    // The `date_taken > 0` fallback to `last_modified` mirrors MediaViewModel.groupByMonth's grouping
+    // key, so month headers computed from this order line up with the actual sort order instead of
+    // silently disagreeing with it.
+    @Query(
+        """
+        SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating
+        FROM media WHERE deleted_ts = 0
+        ORDER BY (CASE WHEN :desc THEN -1 ELSE 1 END) * (CASE WHEN date_taken > 0 THEN date_taken ELSE last_modified END)
+        """
+    )
+    fun getMediaPagedByDate(desc: Boolean): PagingSource<Int, Medium>
+
+    @Query(
+        """
+        SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating
+        FROM media WHERE deleted_ts = 0
+        ORDER BY (CASE WHEN :desc THEN -1 ELSE 1 END) * size
+        """
+    )
+    fun getMediaPagedBySize(desc: Boolean): PagingSource<Int, Medium>
+
+    @Query(
+        """
+        SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating
+        FROM media WHERE deleted_ts = 0
+        ORDER BY (CASE WHEN :desc THEN -1 ELSE 1 END) * rating, (CASE WHEN :desc THEN -1 ELSE 1 END) * last_modified
+        """
+    )
+    fun getMediaPagedByRating(desc: Boolean): PagingSource<Int, Medium>
+
+    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE ASC")
+    fun getMediaPagedByNameAsc(): PagingSource<Int, Medium>
+
+    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE DESC")
+    fun getMediaPagedByNameDesc(): PagingSource<Int, Medium>
+
+    // Paths-only mirrors of the getMediaPagedBy* queries above (same ordering, no LIMIT/OFFSET) -
+    // used to hand the Viewer the full sorted path list on demand so swipe-through isn't limited to
+    // whatever the grid has paged in so far.
+    @Query(
+        """
+        SELECT full_path FROM media WHERE deleted_ts = 0
+        ORDER BY (CASE WHEN :desc THEN -1 ELSE 1 END) * (CASE WHEN date_taken > 0 THEN date_taken ELSE last_modified END)
+        """
+    )
+    suspend fun getActivePathsByDate(desc: Boolean): List<String>
+
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY (CASE WHEN :desc THEN -1 ELSE 1 END) * size")
+    suspend fun getActivePathsBySize(desc: Boolean): List<String>
+
+    @Query(
+        """
+        SELECT full_path FROM media WHERE deleted_ts = 0
+        ORDER BY (CASE WHEN :desc THEN -1 ELSE 1 END) * rating, (CASE WHEN :desc THEN -1 ELSE 1 END) * last_modified
+        """
+    )
+    suspend fun getActivePathsByRating(desc: Boolean): List<String>
+
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE ASC")
+    suspend fun getActivePathsByNameAsc(): List<String>
+
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE DESC")
+    suspend fun getActivePathsByNameDesc(): List<String>
 }

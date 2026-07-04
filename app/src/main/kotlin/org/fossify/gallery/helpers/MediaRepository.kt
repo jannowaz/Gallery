@@ -3,6 +3,8 @@ package org.fossify.gallery.helpers
 import android.content.Context
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.paging.PagingSource
+import org.fossify.gallery.compose.screens.SortField
 import org.fossify.gallery.extensions.collectionDB
 import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.favoritesDB
@@ -129,6 +131,27 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     fun getNewestMedia(limit: Int): List<Medium> =
         try { context.mediaDB.getNewestMedia(limit) } catch (_: Exception) { emptyList() }
 
+    fun getMediaPaged(field: SortField, desc: Boolean): PagingSource<Int, Medium> = when (field) {
+        SortField.NAME -> if (desc) context.mediaDB.getMediaPagedByNameDesc() else context.mediaDB.getMediaPagedByNameAsc()
+        SortField.DATE -> context.mediaDB.getMediaPagedByDate(desc)
+        SortField.SIZE -> context.mediaDB.getMediaPagedBySize(desc)
+        SortField.RATING -> context.mediaDB.getMediaPagedByRating(desc)
+    }
+
+    suspend fun getActivePaths(): List<String> =
+        try { context.mediaDB.getActivePaths() } catch (_: Exception) { emptyList() }
+
+    /** Full sorted path list (no LIMIT/OFFSET) - used to give the Viewer a complete swipe-through
+     * list regardless of how much of the grid has been paged in. Cheap: full_path only, no thumbnails. */
+    suspend fun getActivePathsSorted(field: SortField, desc: Boolean): List<String> = try {
+        when (field) {
+            SortField.NAME -> if (desc) context.mediaDB.getActivePathsByNameDesc() else context.mediaDB.getActivePathsByNameAsc()
+            SortField.DATE -> context.mediaDB.getActivePathsByDate(desc)
+            SortField.SIZE -> context.mediaDB.getActivePathsBySize(desc)
+            SortField.RATING -> context.mediaDB.getActivePathsByRating(desc)
+        }
+    } catch (_: Exception) { emptyList() }
+
     suspend fun getTaggedPaths(): Set<String> =
         try { context.mediaCacheDB.getAllTagged().map { it.fullPath }.toSet() } catch (_: Exception) { emptySet() }
 
@@ -207,6 +230,16 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
 
     fun setDbRatingBatch(paths: Collection<String>, rating: Int) {
         try { paths.chunked(SQLITE_BATCH_CHUNK_SIZE).forEach { context.mediaDB.updateRatingBatch(it, rating) } } catch (e: Exception) { android.util.Log.e("MediaRepository", "setDbRatingBatch failed", e) }
+    }
+
+    /** Writes the rating into a file's XMP sidecar only - no DB write. Batch rating changes already
+     * update the DB in one statement via [setDbRatingBatch]; writing the DB again per-path here would
+     * fire Room's InvalidationTracker (and reload any active PagingSource) once per file instead of once
+     * per batch. */
+    fun writeRatingXmp(path: String, rating: Int) {
+        val current = XmpWriter.read(path)
+        XmpWriter.write(path, current.tags, rating)
+        repositoryScope.launch { syncCache(path, current.tags.joinToString(","), rating) }
     }
 
     fun updateMediumPath(oldPath: String, parentPath: String, newName: String, newPath: String) {
