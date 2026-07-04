@@ -105,6 +105,7 @@ import org.fossify.gallery.helpers.TYPE_PORTRAITS
 import org.fossify.gallery.helpers.TYPE_RAWS
 import org.fossify.gallery.helpers.TYPE_SVGS
 import org.fossify.gallery.helpers.TYPE_VIDEOS
+import org.fossify.gallery.interfaces.BatchJobItemDao
 import org.fossify.gallery.interfaces.CollectionDao
 import org.fossify.gallery.interfaces.DateTakensDao
 import org.fossify.gallery.interfaces.DirectoryDao
@@ -153,6 +154,9 @@ val Context.dateTakensDB: DateTakensDao
 
 val Context.collectionDB: CollectionDao
     get() = GalleryDatabase.getInstance(applicationContext).CollectionDao()
+
+val Context.batchJobItemDB: BatchJobItemDao
+    get() = GalleryDatabase.getInstance(applicationContext).BatchJobItemDao()
 
 val Context.recycleBin: File get() = filesDir
 

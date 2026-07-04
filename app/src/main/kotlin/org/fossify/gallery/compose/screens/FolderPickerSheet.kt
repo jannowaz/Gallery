@@ -45,11 +45,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.work.WorkManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -70,10 +72,11 @@ import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
-import org.fossify.gallery.extensions.deleteMediumWithPath
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
 import org.fossify.gallery.helpers.MediaStoreOps
-import org.fossify.gallery.helpers.RefreshBus
+import org.fossify.gallery.models.BatchJobItem
+import org.fossify.gallery.workers.BatchOperation
+import org.fossify.gallery.workers.MediaBatchWorker
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -110,6 +113,9 @@ fun FolderPickerSheet(
     var newFolderName by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val consent = rememberMediaStoreConsent()
+    // Set once a copy/move job is enqueued; while non-null the sheet shows progress instead of the
+    // folder browser. The job keeps running via MediaBatchWorker even if the sheet is dismissed.
+    var activeJobId by remember { mutableStateOf<String?>(null) }
 
     suspend fun loadFolders(path: String): List<FolderItem> = withContext(Dispatchers.IO) {
         val dir = Paths.get(path)
@@ -172,44 +178,22 @@ fun FolderPickerSheet(
             return
         }
         conf.lastCopyMoveDestination = destPath
-        val targetRel = MediaStoreOps.relativePathFor(destPath)
         scope.launch {
-            val srcUris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, sourcePaths) }
-            if (srcUris.isEmpty()) {
+            val srcPaths = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, sourcePaths) }.map { it.first }
+            if (srcPaths.isEmpty()) {
                 ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_LONG); onDismiss(); return@launch
             }
+            val items = srcPaths.map { path -> BatchJobItem(jobId = "", sourcePath = path, targetPath = "${destPath.trimEnd('/')}/${File(path).name}") }
             // Moving someone else's media requires user consent via the system dialog. Copying
             // creates a new app-owned file, which needs no consent.
             if (isMoveOperation) {
+                val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, srcPaths) }.map { it.second }
                 val granted = try {
-                    consent.request(MediaStoreOps.writeRequest(ctx, srcUris.map { it.second }))
+                    consent.request(MediaStoreOps.writeRequest(ctx, uris))
                 } catch (_: Exception) { false }
                 if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); onDismiss(); return@launch }
             }
-            val (done, failed) = withContext(Dispatchers.IO) {
-                var ok = 0; var fail = 0
-                for ((path, uri) in srcUris) {
-                    val success = if (isMoveOperation) {
-                        MediaStoreOps.move(ctx, uri, targetRel).also {
-                            if (it) try { ctx.deleteMediumWithPath(path) } catch (_: Exception) { }
-                        }
-                    } else {
-                        MediaStoreOps.copy(ctx, uri, File(path).name, targetRel, MediaStoreOps.isVideoPath(path)) != null
-                    }
-                    if (success) ok++ else fail++
-                }
-                ok to fail
-            }
-            RefreshBus.trigger()
-            val total = sourcePaths.size
-            val msg = when {
-                done == total -> if (isMoveOperation) "Verschoben" else "Kopiert"
-                done > 0 -> "$done/$total ${if (isMoveOperation) "verschoben" else "kopiert"}, $failed fehlgeschlagen"
-                else -> "Keine Dateien ${if (isMoveOperation) "verschoben" else "kopiert"} ($failed fehlgeschlagen)"
-            }
-            ctx.toast(msg, Toast.LENGTH_LONG)
-            onDismiss()
-            onTargetSelected?.invoke(destPath)
+            activeJobId = MediaBatchWorker.enqueue(ctx, if (isMoveOperation) BatchOperation.MOVE_FAST else BatchOperation.COPY, items)
         }
     }
 
@@ -405,6 +389,37 @@ fun FolderPickerSheet(
             },
             dismissButton = {
                 androidx.compose.material3.TextButton(onClick = { confirmTarget = null }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
+    }
+
+    val jobId = activeJobId
+    if (jobId != null) {
+        val workInfo by remember(jobId) { WorkManager.getInstance(ctx).getWorkInfosForUniqueWorkFlow(jobId) }
+            .collectAsState(initial = emptyList())
+        val info = workInfo.firstOrNull()
+        LaunchedEffect(info?.state) {
+            if (info?.state?.isFinished == true) {
+                ctx.toast(if (isMoveOperation) "Verschoben" else "Kopiert", Toast.LENGTH_SHORT)
+                onDismiss()
+            }
+        }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(if (isMoveOperation) "Verschieben läuft" else "Kopieren läuft") },
+            text = {
+                val progress = info?.progress
+                val done = progress?.getInt("done", 0) ?: 0
+                val total = progress?.getInt("total", sourcePaths.size) ?: sourcePaths.size
+                Column {
+                    androidx.compose.material3.LinearProgressIndicator(progress = { if (total > 0) done.toFloat() / total else 0f }, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    Text("$done/$total", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(org.fossify.commons.R.string.close)) }
             }
         )
     }

@@ -337,6 +337,14 @@
         </receiver>
 
         <receiver
+            android:name=".receivers.CancelBatchOpReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.fossify.gallery.CANCEL_BATCH_OP" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".helpers.MyWidgetProvider"
             android:exported="true"
             android:icon="@drawable/img_widget_preview"

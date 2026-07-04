@@ -58,6 +58,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -80,12 +81,10 @@ import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.compose.theme.LocalSpacing
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
 import org.fossify.gallery.extensions.config
-import org.fossify.gallery.extensions.deleteMediumWithPath
 import org.fossify.gallery.helpers.MediaStoreOps
-import org.fossify.gallery.helpers.RefreshBus
-import org.fossify.gallery.helpers.UndoAction
-import org.fossify.gallery.helpers.UndoManager
-import org.fossify.gallery.helpers.UndoType
+import org.fossify.gallery.models.BatchJobItem
+import org.fossify.gallery.workers.BatchOperation
+import org.fossify.gallery.workers.MediaBatchWorker
 import java.io.File
 
 private data class FolderPair(val source: String = "", val destination: String = "")
@@ -105,13 +104,28 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     val pairs = remember { mutableStateListOf<FolderPair>().also { it.addAll(loadPairs()) } }
     fun savePairs() { defPrefs.edit().putString("mover_pairs", gson.toJson(pairs.toList())).apply() }
     var showAddDialog by remember { mutableStateOf(false) }
-    var isMoving by remember { mutableStateOf(false) }
-    var moveProgress by remember { mutableIntStateOf(0) }
-    var moveTotal by remember { mutableIntStateOf(1) }
-    var movePhase by remember { mutableStateOf("") }
+    // Set once the move job is enqueued; the job keeps running via MediaBatchWorker (with its own
+    // foreground notification) even if this screen is left - it no longer depends on this
+    // composable's own coroutine scope surviving.
+    var activeJobId by remember { mutableStateOf<String?>(null) }
     var editingIndex by remember { mutableIntStateOf(-1) }
     val storageRoot = Environment.getExternalStorageDirectory().absolutePath
     val moverConsent = rememberMediaStoreConsent()
+
+    val workInfo by remember(activeJobId) {
+        activeJobId?.let { androidx.work.WorkManager.getInstance(ctx).getWorkInfosForUniqueWorkFlow(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }.collectAsState(initial = emptyList())
+    val activeWorkInfo = workInfo.firstOrNull()
+    val isMoving = activeJobId != null && activeWorkInfo?.state?.isFinished != true
+    val moveProgressData = activeWorkInfo?.progress
+    val moveProgress = moveProgressData?.getInt("done", 0) ?: 0
+    val moveTotal = moveProgressData?.getInt("total", 1) ?: 1
+    LaunchedEffect(activeWorkInfo?.state) {
+        if (activeWorkInfo?.state?.isFinished == true) {
+            ctx.toast(if (activeWorkInfo.state == androidx.work.WorkInfo.State.SUCCEEDED) "Alle $moveProgress verschoben" else "Verschieben beendet: $moveProgress erledigt", Toast.LENGTH_SHORT)
+            activeJobId = null
+        }
+    }
 
     fun uriToPath(uri: Uri): String? {
         return try {
@@ -139,48 +153,19 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
 
     fun startMove() {
         if (pairs.isEmpty() || isMoving) return
-        isMoving = true
-        moveProgress = 0
         val allMoves = pairs.flatMap { pair ->
             val srcDir = File(pair.source)
             if (!srcDir.isDirectory) return@flatMap emptyList<Pair<String, String>>()
             val destBase = pair.destination
             srcDir.listFiles()?.filter { it.isFile }?.map { it.absolutePath to "$destBase/${it.name}" } ?: emptyList()
         }
-        moveTotal = allMoves.size
-        if (allMoves.isEmpty()) { isMoving = false; ctx.toast("Keine Dateien gefunden", Toast.LENGTH_SHORT); return }
+        if (allMoves.isEmpty()) { ctx.toast("Keine Dateien gefunden", Toast.LENGTH_SHORT); return }
         scope.launch {
             val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, allMoves.map { it.first }) }
             val granted = try { moverConsent.request(MediaStoreOps.writeRequest(ctx, uris.map { it.second })) } catch (_: Exception) { false }
-            if (!granted) { ctx.toast("Abgebrochen", Toast.LENGTH_SHORT); isMoving = false; return@launch }
-            var done = 0; var failed = 0
-            val movedPaths = mutableListOf<String>()
-            for ((srcPath, destPath) in allMoves) {
-                if (!isMoving) break // cancel
-                movePhase = "$done/${allMoves.size}: ${File(srcPath).name}"
-                val success = withContext(Dispatchers.IO) {
-                    try {
-                        val srcUri = MediaStoreOps.uriForPath(ctx, srcPath) ?: return@withContext false
-                        val targetRel = MediaStoreOps.relativePathFor(File(destPath).parent ?: "")
-                        val newUri = MediaStoreOps.copy(ctx, srcUri, File(destPath).name, targetRel, MediaStoreOps.isVideoPath(srcPath))
-                        if (newUri != null) {
-                            ctx.contentResolver.delete(srcUri, null, null)
-                            try { ctx.deleteMediumWithPath(srcPath) } catch (_: Exception) { }
-                            movedPaths.add(srcPath)
-                            true
-                        } else false
-                    } catch (_: Exception) { false }
-                }
-                if (success) done++ else failed++
-                moveProgress = done + failed
-            }
-            if (movedPaths.isNotEmpty()) {
-                UndoManager.push(UndoAction(paths = movedPaths.toSet(), type = UndoType.MOVE))
-            }
-            RefreshBus.trigger()
-            movePhase = if (failed > 0) "$done verschoben, $failed fehlgeschlagen" else "Alle $done verschoben"
-            ctx.toast(movePhase, Toast.LENGTH_SHORT)
-            isMoving = false
+            if (!granted) { ctx.toast("Abgebrochen", Toast.LENGTH_SHORT); return@launch }
+            val items = allMoves.map { (srcPath, destPath) -> BatchJobItem(jobId = "", sourcePath = srcPath, targetPath = destPath) }
+            activeJobId = MediaBatchWorker.enqueue(ctx, BatchOperation.MOVE_COPY_DELETE, items)
         }
     }
     Scaffold(
@@ -200,7 +185,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                     Column(Modifier.fillMaxWidth().padding(horizontal = s.md, vertical = s.sm)) {
                         LinearProgressIndicator(progress = { if (moveTotal > 0) moveProgress.toFloat() / moveTotal else 0f }, modifier = Modifier.fillMaxWidth())
                         Spacer(Modifier.height(s.xs))
-                        Text(movePhase, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("$moveProgress/$moveTotal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(s.md)) {
@@ -249,7 +234,10 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                     ) { Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Alle verschieben (${pairs.size} Paare)") }
                 }
             } else {
-                TextButton(onClick = { isMoving = false }, modifier = Modifier.align(Alignment.CenterHorizontally).padding(8.dp)) { Text("Abbrechen") }
+                TextButton(
+                    onClick = { activeJobId?.let { androidx.work.WorkManager.getInstance(ctx).cancelUniqueWork(it) } },
+                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(8.dp),
+                ) { Text("Abbrechen") }
             }
         }
     }

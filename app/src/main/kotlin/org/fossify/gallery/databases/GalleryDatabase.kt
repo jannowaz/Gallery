@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import org.fossify.gallery.interfaces.*
 import org.fossify.gallery.models.*
 
-@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class], version = 16)
+@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class], version = 17)
 abstract class GalleryDatabase : RoomDatabase() {
 
     abstract fun DirectoryDao(): DirectoryDao
@@ -25,6 +25,8 @@ abstract class GalleryDatabase : RoomDatabase() {
     abstract fun CollectionDao(): CollectionDao
 
     abstract fun MediaCacheDao(): MediaCacheDao
+
+    abstract fun BatchJobItemDao(): BatchJobItemDao
 
     companion object {
         private var db: GalleryDatabase? = null
@@ -46,6 +48,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                             .addMigrations(MIGRATION_13_14)
                             .addMigrations(MIGRATION_14_15)
                             .addMigrations(MIGRATION_15_16)
+                            .addMigrations(MIGRATION_16_17)
                             .fallbackToDestructiveMigrationFrom(1, 2, 3)
                             .build()
                     }
@@ -161,6 +164,16 @@ abstract class GalleryDatabase : RoomDatabase() {
                 database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_date_taken_last_modified` ON `media` (`deleted_ts`, `date_taken`, `last_modified`)")
                 database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_size` ON `media` (`deleted_ts`, `size`)")
                 database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_rating_last_modified` ON `media` (`deleted_ts`, `rating`, `last_modified`)")
+            }
+        }
+
+        // Scratch table backing MediaBatchWorker (batch rename/move/copy jobs) - see BatchJobItem.
+        private val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `batch_job_items` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `job_id` TEXT NOT NULL, `source_path` TEXT NOT NULL, `target_path` TEXT NOT NULL, `created_at` INTEGER NOT NULL)"
+                )
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_batch_job_items_job_id` ON `batch_job_items` (`job_id`)")
             }
         }
     }

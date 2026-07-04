@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -21,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -35,22 +37,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.work.WorkManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
-import org.fossify.gallery.compose.theme.LocalMediaRepository
-import org.fossify.gallery.extensions.mediaCacheDB
-import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.extensions.batchJobItemDB
 import org.fossify.gallery.helpers.MediaStoreOps
-import org.fossify.gallery.helpers.RefreshBus
+import org.fossify.gallery.models.BatchJobItem
+import org.fossify.gallery.workers.BatchOperation
+import org.fossify.gallery.workers.MediaBatchWorker
 import java.io.File
 
 @Composable
 fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<String, String>) -> Unit = {}) {
     val ctx = LocalContext.current
-    val repo = LocalMediaRepository.current
     var mode by remember { mutableIntStateOf(0) }
     var text by remember { mutableStateOf("") }
     var counter by remember { mutableIntStateOf(1) }
@@ -59,12 +61,45 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<Str
     val consent = rememberMediaStoreConsent()
     val modes = listOf(stringResource(R.string.rename_prefix) to stringResource(R.string.rename_prefix_desc), stringResource(R.string.rename_suffix) to stringResource(R.string.rename_suffix_desc), stringResource(R.string.rename_numbered) to stringResource(R.string.rename_numbered_desc))
 
+    // Set once the rename job is enqueued; while non-null the dialog shows progress instead of the
+    // input form. The job keeps running via MediaBatchWorker even if the user dismisses from here -
+    // dismissing early just means onRenamed's selection-remap won't fire (the batch still completes).
+    var jobId by remember { mutableStateOf<String?>(null) }
+    var plannedMapping by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    val workInfo by remember(jobId) {
+        jobId?.let { WorkManager.getInstance(ctx).getWorkInfosForUniqueWorkFlow(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }.collectAsState(initial = emptyList())
+    val activeWorkInfo = workInfo.firstOrNull()
+
+    LaunchedEffect(activeWorkInfo?.state, jobId) {
+        val info = activeWorkInfo ?: return@LaunchedEffect
+        val id = jobId ?: return@LaunchedEffect
+        if (info.state.isFinished) {
+            val remaining = withContext(Dispatchers.IO) { ctx.batchJobItemDB.getForJob(id) }
+            val failedPaths = remaining.map { it.sourcePath }.toSet()
+            val succeededMapping = plannedMapping.filterKeys { it !in failedPaths }
+            onRenamed(succeededMapping)
+            onDismiss()
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("${paths.size} Dateien umbenennen") },
+        title = { Text(if (jobId != null) "Umbenennen läuft" else "${paths.size} Dateien umbenennen") },
         text = {
+            if (jobId != null) {
+                val progress = activeWorkInfo?.progress
+                val done = progress?.getInt("done", 0) ?: 0
+                val total = progress?.getInt("total", paths.size) ?: paths.size
+                Column {
+                    LinearProgressIndicator(progress = { if (total > 0) done.toFloat() / total else 0f }, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    Text("$done/$total", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
             Column {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     modes.forEachIndexed { idx, (title, _) ->
@@ -106,56 +141,47 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<Str
                     }
                 }
             }
+            }
         },
         confirmButton = {
-            TextButton(onClick = {
-                if (text.isBlank()) return@TextButton
-                scope.launch {
-                    data class Job(val path: String, val uri: android.net.Uri, val newName: String)
-                    val jobs = withContext(Dispatchers.IO) {
-                        paths.mapIndexedNotNull { idx, path ->
-                            val file = File(path)
-                            val ext = file.extension
-                            val newName = when (mode) {
-                                0 -> "$text${file.name}"
-                                1 -> "${file.nameWithoutExtension}$text.$ext"
-                                2 -> "${text}_${counter + idx}.$ext"
-                                else -> file.name
-                            }
-                            val uri = MediaStoreOps.uriForPath(ctx, path) ?: return@mapIndexedNotNull null
-                            Job(path, uri, newName)
-                        }
-                    }
-                    if (jobs.isEmpty()) {
-                        ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); onDismiss(); return@launch
-                    }
-                    val granted = try {
-                        consent.request(MediaStoreOps.writeRequest(ctx, jobs.map { it.uri }))
-                    } catch (_: Exception) { false }
-                    if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); return@launch }
-                    val renamedPaths = withContext(Dispatchers.IO) {
-                        val mapping = mutableMapOf<String, String>()
-                        jobs.forEach { job ->
-                            if (MediaStoreOps.rename(ctx, job.uri, job.newName)) {
-                                val parent = File(job.path).parent ?: ""
-                                val newPath = File(parent, job.newName).absolutePath
-                                try { repo.updateMediumPath(job.path, parent, job.newName, newPath) } catch (_: Exception) { }
-                                // Remove any leftover reference to the old path (MediaCache + stale media row).
-                                try { ctx.mediaCacheDB.deleteByPathSync(job.path) } catch (_: Exception) { }
-                                try { ctx.mediaDB.deleteMediumPath(job.path) } catch (_: Exception) { }
-                                mapping[job.path] = newPath
+            if (jobId == null) {
+                TextButton(onClick = {
+                    if (text.isBlank()) return@TextButton
+                    scope.launch {
+                        data class Job(val path: String, val uri: android.net.Uri, val newName: String)
+                        val jobs = withContext(Dispatchers.IO) {
+                            paths.mapIndexedNotNull { idx, path ->
+                                val file = File(path)
+                                val ext = file.extension
+                                val newName = when (mode) {
+                                    0 -> "$text${file.name}"
+                                    1 -> "${file.nameWithoutExtension}$text.$ext"
+                                    2 -> "${text}_${counter + idx}.$ext"
+                                    else -> file.name
+                                }
+                                val uri = MediaStoreOps.uriForPath(ctx, path) ?: return@mapIndexedNotNull null
+                                Job(path, uri, newName)
                             }
                         }
-                        mapping
+                        if (jobs.isEmpty()) {
+                            ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); onDismiss(); return@launch
+                        }
+                        val granted = try {
+                            consent.request(MediaStoreOps.writeRequest(ctx, jobs.map { it.uri }))
+                        } catch (_: Exception) { false }
+                        if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); return@launch }
+                        val items = jobs.map { job ->
+                            val parent = File(job.path).parent ?: ""
+                            val newPath = File(parent, job.newName).absolutePath
+                            BatchJobItem(jobId = "", sourcePath = job.path, targetPath = newPath)
+                        }
+                        plannedMapping = items.associate { it.sourcePath to it.targetPath }
+                        jobId = MediaBatchWorker.enqueue(ctx, BatchOperation.RENAME, items)
                     }
-                    RefreshBus.trigger()
-                    ctx.toast(ctx.getString(R.string.files_renamed, renamedPaths.size), Toast.LENGTH_SHORT)
-                    onRenamed(renamedPaths)
-                    onDismiss()
-                }
-            }) { Text(stringResource(R.string.action_rename)) }
+                }) { Text(stringResource(R.string.action_rename)) }
+            }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(if (jobId != null) org.fossify.commons.R.string.close else R.string.cancel)) } },
     )
 }
 

@@ -142,6 +142,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -179,6 +180,7 @@ import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.compose.theme.RatingStarColor
 import org.fossify.gallery.compose.theme.LocalSpacing
 import org.fossify.gallery.compose.theme.GalleryTheme
+import org.fossify.gallery.extensions.batchJobItemDB
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.mediaCacheDB
@@ -235,6 +237,11 @@ class ComposeExplorerActivity : ComponentActivity() {
             MediaSyncWorker.scheduleInitialSync(this)
             MetadataSyncWorker.cancelAutomatic(this)
             MetadataSyncWorker.cancel(this)
+            // Sweep batch_job_items left behind by a MediaBatchWorker job that was interrupted and
+            // never retried (e.g. app force-stopped mid-batch).
+            lifecycleScope.launch(Dispatchers.IO) {
+                try { batchJobItemDB.deleteStale(System.currentTimeMillis() - 24 * 60 * 60 * 1000L) } catch (_: Exception) { }
+            }
             setContent { GalleryNavHost() }
         } else {
             requestPermissionLauncher.launch(getMediaPermissionStrings())
