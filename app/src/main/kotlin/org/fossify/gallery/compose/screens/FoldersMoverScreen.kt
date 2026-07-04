@@ -163,7 +163,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
         scope.launch {
             val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, allMoves.map { it.first }) }
             val granted = try { moverConsent.request(MediaStoreOps.writeRequest(ctx, uris.map { it.second })) } catch (_: Exception) { false }
-            if (!granted) { ctx.toast("Abgebrochen", Toast.LENGTH_SHORT); return@launch }
+            if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); return@launch }
             val items = allMoves.map { (srcPath, destPath) -> BatchJobItem(jobId = "", sourcePath = srcPath, targetPath = destPath) }
             activeJobId = MediaBatchWorker.enqueue(ctx, BatchOperation.MOVE_COPY_DELETE, items)
         }
@@ -171,7 +171,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Mover", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.nav_mover), fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
             )
@@ -179,7 +179,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (pairs.isEmpty() && !isMoving) {
-                EmptyState(Icons.Default.Folder, "Keine Ordner-Paare", subtitle = "Tippe unten auf + um ein Paar zu definieren", modifier = Modifier.weight(1f))
+                EmptyState(Icons.Default.Folder, stringResource(R.string.mover_no_pairs), subtitle = stringResource(R.string.mover_tap_to_add), modifier = Modifier.weight(1f))
             } else {
                 if (isMoving) {
                     Column(Modifier.fillMaxWidth().padding(horizontal = s.md, vertical = s.sm)) {
@@ -223,7 +223,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                     onClick = { editingIndex = -1; showAddDialog = true },
                     modifier = Modifier.fillMaxWidth().padding(12.dp),
                     shape = RoundedCornerShape(org.fossify.gallery.compose.theme.Radius.md),
-                ) { Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Paar hinzufügen") }
+                ) { Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.mover_add_pair)) }
                 if (pairs.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))
                     Button(
@@ -231,13 +231,13 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
                         shape = RoundedCornerShape(org.fossify.gallery.compose.theme.Radius.md),
                         colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    ) { Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Alle verschieben (${pairs.size} Paare)") }
+                    ) { Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.mover_move_all, pairs.size)) }
                 }
             } else {
                 TextButton(
                     onClick = { activeJobId?.let { androidx.work.WorkManager.getInstance(ctx).cancelUniqueWork(it) } },
                     modifier = Modifier.align(Alignment.CenterHorizontally).padding(8.dp),
-                ) { Text("Abbrechen") }
+                ) { Text(stringResource(R.string.cancel)) }
             }
         }
     }
@@ -277,7 +277,7 @@ private fun FolderSearchDialog(
         title = { Text(title) },
         text = {
             Column(Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
-                OutlinedTextField(value = query, onValueChange = { query = it }, placeholder = { Text("Ordner suchen…") }, singleLine = true, modifier = Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Default.Search, null, modifier = Modifier.size(18.dp)) })
+                OutlinedTextField(value = query, onValueChange = { query = it }, placeholder = { Text(stringResource(R.string.search_folder_hint)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Default.Search, null, modifier = Modifier.size(18.dp)) })
                 Spacer(Modifier.height(8.dp))
                 LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                     items(filtered, key = { it.path }) { dir ->
@@ -320,7 +320,7 @@ private fun AddPairDialog(
 
     if (showSearch.isNotEmpty()) {
             FolderSearchDialog(
-                title = if (showSearch == "source") "Quelle auswählen" else "Ziel auswählen",
+                title = if (showSearch == "source") stringResource(R.string.mover_select_source) else stringResource(R.string.mover_select_dest),
                 onFolderPicked = { path ->
                     if (showSearch == "source") { source = path; defPrefs.edit().putString("mover_last_source", path).apply() }
                     else { dest = path; defPrefs.edit().putString("mover_last_dest", path).apply() }
@@ -332,16 +332,16 @@ private fun AddPairDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initialSource.isNotBlank()) "Paar bearbeiten" else "Neues Paar") },
+        title = { Text(if (initialSource.isNotBlank()) stringResource(R.string.mover_edit_pair) else stringResource(R.string.mover_new_pair)) },
         text = {
             Column(Modifier.fillMaxWidth()) {
-                OutlinedTextField(value = source, onValueChange = { source = it }, label = { Text("Quelle") }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = { IconButton(onClick = { showSearch = "source" }) { Icon(Icons.Default.Search, "Durchsuchen") } })
+                OutlinedTextField(value = source, onValueChange = { source = it }, label = { Text(stringResource(R.string.source)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = { IconButton(onClick = { showSearch = "source" }) { Icon(Icons.Default.Search, stringResource(R.string.cd_search)) } })
                 Text(source, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                TextButton(onClick = { source = loadLast("mover_last_source"); if (source.isNotBlank()) defPrefs.edit().putString("mover_last_source", source).apply() }) { Text("Letzte Quelle", style = MaterialTheme.typography.labelSmall) }
+                TextButton(onClick = { source = loadLast("mover_last_source"); if (source.isNotBlank()) defPrefs.edit().putString("mover_last_source", source).apply() }) { Text(stringResource(R.string.mover_last_source), style = MaterialTheme.typography.labelSmall) }
                 Spacer(Modifier.height(12.dp))
-                OutlinedTextField(value = dest, onValueChange = { dest = it }, label = { Text("Ziel") }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = { IconButton(onClick = { showSearch = "dest" }) { Icon(Icons.Default.Search, "Durchsuchen") } })
+                OutlinedTextField(value = dest, onValueChange = { dest = it }, label = { Text(stringResource(R.string.destination)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = { IconButton(onClick = { showSearch = "dest" }) { Icon(Icons.Default.Search, stringResource(R.string.cd_search)) } })
                 Text(dest, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                TextButton(onClick = { dest = loadLast("mover_last_dest"); if (dest.isNotBlank()) defPrefs.edit().putString("mover_last_dest", dest).apply() }) { Text("Letztes Ziel", style = MaterialTheme.typography.labelSmall) }
+                TextButton(onClick = { dest = loadLast("mover_last_dest"); if (dest.isNotBlank()) defPrefs.edit().putString("mover_last_dest", dest).apply() }) { Text(stringResource(R.string.mover_last_dest), style = MaterialTheme.typography.labelSmall) }
             }
         },
         confirmButton = { TextButton(onClick = { if (source.isNotBlank() && dest.isNotBlank()) onConfirm(source.trimEnd('/'), dest.trimEnd('/')) }) { Text(stringResource(org.fossify.commons.R.string.save)) } },

@@ -103,17 +103,7 @@ fun TagBrowserScreen(
     LaunchedEffect(refreshTrigger) {
         scanning = true
         withContext(Dispatchers.IO) {
-            val tags = mutableMapOf<String, MutableList<String>>()
-            try {
-                val cached = repo.getAllTagged()
-                if (cached.isNotEmpty()) {
-                    cached.forEach { mc ->
-                        mc.tags.split(",").filter { it.isNotBlank() }.forEach { t ->
-                            tags.getOrPut(t.trim()) { mutableListOf() }.add(mc.fullPath)
-                        }
-                    }
-                }
-            } catch (_: Exception) { }
+            val tags = try { repo.getAllTagsWithPaths() } catch (_: Exception) { emptyMap() }
             withContext(Dispatchers.Main) { allTags = tags.entries.sortedByDescending { it.value.size }.associate { it.key to it.value }; scanning = false }
         }
     }
@@ -223,18 +213,12 @@ fun TagBrowserScreen(
             confirmButton = {
                 TextButton(onClick = {
                     scope.launch(Dispatchers.IO) {
+                        // repo.removeTag already keeps the XMP file, media_cache and the normalized
+                        // media_tags table in sync per path - no separate cache cleanup pass needed.
                         tagsToDelete.forEach { tag ->
                             val pathsForTag = allTags[tag] ?: return@forEach
                             pathsForTag.forEach { p -> repo.removeTag(p, tag) }
                         }
-                        try {
-                            val cached = repo.getAllTagged().filter { mc -> mc.tags.split(",").map { it.trim() }.any { it in tagsToDelete } }
-                            cached.forEach { mc ->
-                                var newTags = mc.tags
-                                tagsToDelete.forEach { tag -> newTags = newTags.split(",").filter { it.trim() != tag }.joinToString(",") }
-                                repo.upsertCache(listOf(mc.copy(tags = newTags)))
-                            }
-                        } catch (_: Exception) { }
                         // Drop orphaned hierarchy entries referencing the deleted tags.
                         try {
                             val h = ctx.config.tagHierarchy
@@ -288,7 +272,7 @@ fun TagBrowserScreen(
                     )
                     if (candidates.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
-                        Text("Vorhandene Tags", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.existing_tags), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
                         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(max = 240.dp)) {
                             treeList.forEach { (label, tag) ->
@@ -373,6 +357,8 @@ fun TagBrowserScreen(
                     if (target.isBlank()) return@TextButton
                     val sources = selectedTags - target
                     scope.launch(Dispatchers.IO) {
+                        // repo.addTag/removeTag already keep the XMP file, media_cache and the
+                        // normalized media_tags table in sync per path.
                         sources.forEach { srcTag ->
                             val srcPaths = allTags[srcTag] ?: return@forEach
                             srcPaths.forEach { p ->
@@ -380,15 +366,6 @@ fun TagBrowserScreen(
                                 repo.removeTag(p, srcTag)
                             }
                         }
-                        try {
-                            val cached = repo.getAllTagged().filter { mc -> mc.tags.split(",").map { it.trim() }.any { it in sources } }
-                            cached.forEach { mc ->
-                                var newTags = mc.tags
-                                sources.forEach { src -> newTags = newTags.split(",").filter { it.trim() != src }.joinToString(",") }
-                                if (target !in newTags.split(",").map { it.trim() }) newTags = "$newTags,$target"
-                                repo.upsertCache(listOf(mc.copy(tags = newTags)))
-                            }
-                        } catch (_: Exception) { }
                         withContext(Dispatchers.Main) {
                             ctx.toast(ctx.getString(R.string.merged_into, target), Toast.LENGTH_SHORT)
                             mergeTargetTag = null; refreshTrigger++; selectedTags = emptySet()
@@ -420,16 +397,9 @@ fun TagBrowserScreen(
                     if (target.isBlank() || target == oldName) return@TextButton
                     scope.launch(Dispatchers.IO) {
                         val paths = allTags[oldName] ?: emptyList()
+                        // repo.addTag/removeTag already keep the XMP file, media_cache and the
+                        // normalized media_tags table in sync per path.
                         paths.forEach { p -> repo.addTag(p, target); repo.removeTag(p, oldName) }
-                        try {
-                            val cached = repo.getAllTagged().filter { mc -> mc.tags.split(",").map { it.trim() }.any { it == oldName } }
-                            cached.forEach { mc ->
-                                var newTags = mc.tags.split(",").map { it.trim() }.toMutableList()
-                                val idx = newTags.indexOf(oldName)
-                                if (idx >= 0) { newTags[idx] = target; newTags = newTags.distinct().toMutableList() }
-                                repo.upsertCache(listOf(mc.copy(tags = newTags.joinToString(","))))
-                            }
-                        } catch (_: Exception) { }
                         withContext(Dispatchers.Main) {
                             ctx.toast(ctx.getString(R.string.renamed_tag_result, oldName, target, count), Toast.LENGTH_SHORT)
                             renameTargetTag = null; refreshTrigger++; selectedTags = emptySet()

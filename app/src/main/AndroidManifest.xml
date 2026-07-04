@@ -56,6 +56,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
+        android:enableOnBackInvokedCallback="true"
         tools:replace="android:label">
 
         <activity
@@ -67,7 +68,8 @@
             android:name=".activities.ComposeExplorerActivity"
             android:configChanges="orientation"
             android:exported="true"
-            android:resizeableActivity="true">
+            android:resizeableActivity="true"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.PICK" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -87,15 +89,6 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".activities.ComposeViewerActivity"
-            android:exported="false"
-            android:theme="@style/FullScreenTheme" />
-
-        <activity
-            android:name=".activities.ComposeVideoPlayerActivity"
-            android:exported="false"
-            android:theme="@style/FullScreenTheme" />
         <activity
             android:name=".activities.ComposeSettingsActivity"
             android:exported="false"
@@ -207,10 +200,6 @@
             android:exported="false"
             android:label="@string/hidden_folders"
             android:parentActivityName=".activities.SettingsActivity" />
-
-        <activity
-            android:name=".activities.ComposeManageCollectionsActivity"
-            android:exported="false" />
 
         <activity
             android:name=".activities.PhotoActivity"

@@ -17,6 +17,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.fossify.gallery.compose.util.sharedElementKey
 import java.io.File
 
 @Composable
@@ -53,6 +54,7 @@ fun ImagePage(
             modifier = Modifier
                 .fillMaxSize()
                 .onSizeChanged { }
+                .sharedElementKey("media_$path")
                 .graphicsLayer {
                     scaleX = zoom.scale; scaleY = zoom.scale
                     translationX = zoom.offset.x; translationY = zoom.offset.y

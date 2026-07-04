@@ -2,6 +2,7 @@ package org.fossify.gallery.compose.screens.viewer
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.theme.Radius
+import org.fossify.gallery.compose.theme.Scrim
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -56,6 +57,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
@@ -69,6 +71,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -91,12 +94,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
+import org.fossify.commons.extensions.updateBrightness
 import org.fossify.commons.dialogs.PropertiesDialog
+import org.fossify.gallery.compose.components.ConfirmDestructive
 import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.compose.theme.RatingStarColor
 import org.fossify.gallery.compose.components.TagInputDialog
@@ -113,6 +119,20 @@ import java.io.File
 import kotlin.math.abs
 
 private fun isVideo(path: String) = path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
+
+/** Small uppercase caption grouping a block of controls in the action sheet - Bewertung/Aktionen/Tags
+ * were previously separated only by dividers, which reads as one long wall of controls. */
+@Composable
+private fun SheetSectionLabel(text: String) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        letterSpacing = 0.6.sp,
+        modifier = Modifier.padding(bottom = 6.dp),
+    )
+}
 
 @Composable
 private fun ActionChip(icon: ImageVector, label: String, tint: Color = MaterialTheme.colorScheme.onSurface, onClick: () -> Unit) {
@@ -165,7 +185,23 @@ fun ViewerScreen(
     val autoHideMs = ctx.config.viewerAutoHideMs
     LaunchedEffect(showUI, uiInteractionTick) { if (showUI) { delay(autoHideMs.toLong()); showUI = false } }
 
-    fun deleteCurrent() {
+    DisposableEffect(Unit) {
+        val window = (ctx as? android.app.Activity)?.window
+        var originalBrightness: Float? = null
+        if (window != null) {
+            if (ctx.config.keepScreenOn) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            if (ctx.config.maxBrightness) originalBrightness = window.updateBrightness(true, null)
+        }
+        onDispose {
+            if (window != null) {
+                if (ctx.config.keepScreenOn) window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                if (ctx.config.maxBrightness) window.updateBrightness(false, originalBrightness)
+            }
+        }
+    }
+
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    fun performDelete() {
         val idx = pagerState.currentPage
         val p = items.getOrNull(idx) ?: return
         ctx.config.lastViewedPath = p
@@ -175,6 +211,9 @@ fun ViewerScreen(
             items.removeAt(idx)
             if (idx >= items.size) scope.launch { pagerState.scrollToPage(items.size - 1) }
         }
+    }
+    fun deleteCurrent() {
+        if (ctx.config.skipDeleteConfirmation) performDelete() else showDeleteConfirm = true
     }
 
     BackHandler(enabled = showActionSheet || showVideoSettings || showTagsDialog || showFolderPicker) {
@@ -207,7 +246,7 @@ fun ViewerScreen(
                             onDragEnd = {
                                 if (dragOffset < -180f) showActionSheet = true
                                 else if (dragOffset > 240f) { ctx.config.lastViewedPath = currentPath; onClose() }
-                                else { scope.launch { animate(dragOffset, 0f) { v, _ -> dragOffset = v } } }
+                                else { scope.launch { animate(dragOffset, 0f, animationSpec = org.fossify.gallery.compose.theme.AppMotion.gestureSpring) { v, _ -> dragOffset = v } } }
                             },
                             onVerticalDrag = { _, drag -> dragOffset += drag },
                         )
@@ -240,13 +279,14 @@ fun ViewerScreen(
                 IconButton(
                     onClick = { ctx.config.lastViewedPath = currentPath; onClose() },
                     modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
-                        .background(Color.Black.copy(alpha = 0.4f), CircleShape).size(44.dp)
+                        .background(Scrim.a40, CircleShape).size(44.dp)
                 ) { Icon(Icons.Default.Close, stringResource(R.string.cd_close), tint = Color.White) }
                 if (items.size > 1) Text(
                     "${pagerState.currentPage + 1} / ${items.size}",
                     color = Color.White,
+                    style = LocalTextStyle.current.copy(fontFeatureSettings = "tnum"),
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp)
-                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                        .background(Scrim.a40, CircleShape)
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
@@ -259,7 +299,7 @@ fun ViewerScreen(
             modifier = Modifier.align(Alignment.BottomCenter),
             enter = fadeIn(), exit = fadeOut(),
         ) {
-            Box(Modifier.fillMaxWidth().height(200.dp).background(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.6f))))
+            Box(Modifier.fillMaxWidth().height(200.dp).background(Brush.verticalGradient(0f to Color.Transparent, 1f to Scrim.a60)))
         }
 
         // Bottom overlays in one column: rating bar (persistent) above the action bar (with the UI),
@@ -273,7 +313,7 @@ fun ViewerScreen(
         ) {
             AnimatedVisibility(visible = showRatingOverlay, enter = fadeIn(), exit = fadeOut()) {
                 Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
-                    Surface(shape = RoundedCornerShape(Radius.xl), color = Color.Black.copy(alpha = 0.32f)) {
+                    Surface(shape = RoundedCornerShape(Radius.xl), color = Scrim.a32) {
                         Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 6.dp)) {
                             for (i in 1..5) {
                                 IconButton(onClick = { uiInteractionTick++; val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) {
@@ -322,9 +362,7 @@ fun ViewerScreen(
         LaunchedEffect(showActionSheet) {
             if (showActionSheet) {
                 currentTags = withContext(Dispatchers.IO) { repo.getTags(currentPath) }
-                tagSuggestions = withContext(Dispatchers.IO) {
-                    repo.getRecentTagged(1000).flatMap { it.tags.split(",").filter(String::isNotBlank) }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(24).map { it.key to it.value }
-                }
+                tagSuggestions = withContext(Dispatchers.IO) { repo.getTagSuggestions(24) }
             }
             if (showActionSheet && !currentIsVideo) {
                 exifLines = withContext(Dispatchers.IO) {
@@ -354,12 +392,15 @@ fun ViewerScreen(
                 Text(File(currentPath).name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (exifLines.isNotEmpty()) { Spacer(Modifier.height(2.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) { exifLines.take(8).forEach { (label, value) -> Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface); Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } } }
                 Spacer(Modifier.height(12.dp))
+                SheetSectionLabel(stringResource(R.string.rating_title))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { for (i in 1..5) { IconButton(onClick = { val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) { Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f), modifier = Modifier.size(28.dp)) } } }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                SheetSectionLabel(stringResource(R.string.video_actions))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Share, stringResource(R.string.action_share)) { val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath)); ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, ctx.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); showActionSheet = false }; ActionChip(Icons.Default.Edit, stringResource(R.string.edit)) { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }; ActionChip(Icons.Default.ContentCopy, stringResource(R.string.action_copy)) { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }; ActionChip(Icons.AutoMirrored.Filled.DriveFileMove, stringResource(R.string.action_move)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false } }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Info, stringResource(R.string.action_info)) { try { (ctx as? android.app.Activity)?.let { org.fossify.commons.dialogs.PropertiesDialog(it, currentPath, false) } } catch (e: Exception) { ctx.toast(ctx.getString(R.string.info_error, e.message), android.widget.Toast.LENGTH_SHORT) }; showActionSheet = false }; ActionChip(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), MaterialTheme.colorScheme.error) { showActionSheet = false; deleteCurrent() }; ActionChip(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) { val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { repo.toggleFavorite(currentPath, f) }; showActionSheet = false }; ActionChip(Icons.Default.Star, stringResource(R.string.action_rate), if (showRatingOverlay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) { showRatingOverlay = !showRatingOverlay; ctx.config.viewerShowRatingBar = showRatingOverlay; showActionSheet = false } }
                 if (currentIsVideo) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Star, stringResource(R.string.video_display)) { showVideoSettings = true; showActionSheet = false }; ActionChip(Icons.Default.Close, "Frame") { scope.launch(Dispatchers.IO) { try { val r = android.media.MediaMetadataRetriever(); r.setDataSource(currentPath); val bmp = r.frameAtTime ?: return@launch; r.release(); val parentDir = File(currentPath).parentFile ?: ctx.cacheDir; val outFile = File(parentDir, "frame_${System.currentTimeMillis()}.jpg"); outFile.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }; bmp.recycle(); withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.frame_saved, outFile.name), android.widget.Toast.LENGTH_SHORT) } } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.error_generic, e.message), android.widget.Toast.LENGTH_SHORT) } } }; showActionSheet = false } } }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                SheetSectionLabel(stringResource(R.string.action_tags))
                 if (currentTags.isNotEmpty()) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { currentTags.forEach { tag -> InputChip(selected = true, onClick = {}, label = { Text(tag, style = MaterialTheme.typography.labelSmall) }, trailingIcon = { Icon(Icons.Default.Close, stringResource(R.string.action_remove), Modifier.size(14.dp).clickable { removeTag(tag) }) }, shape = RoundedCornerShape(Radius.sm), colors = InputChipDefaults.inputChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer, labelColor = MaterialTheme.colorScheme.onPrimaryContainer)) } }; Spacer(Modifier.height(8.dp)) }
                 OutlinedTextField(value = tagInput, onValueChange = { tagInput = it }, placeholder = { Text(stringResource(R.string.add_tag)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(Radius.md), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { addTag(tagInput) }))
                 if (filteredSuggestions.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Text(stringResource(R.string.suggestions), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(4.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { filteredSuggestions.forEach { (tag, count) -> Surface(onClick = { addTag(tag) }, shape = RoundedCornerShape(Radius.lg), color = MaterialTheme.colorScheme.surfaceVariant) { Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) { Text(tag, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.width(4.dp)); Text("$count", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) } } } } }
@@ -377,9 +418,7 @@ fun ViewerScreen(
     if (showTagsDialog) {
         var allTags by remember { mutableStateOf<List<String>>(emptyList()) }
         LaunchedEffect(Unit) {
-            allTags = withContext(Dispatchers.IO) {
-                repo.getRecentTagged(1000).flatMap { it.tags.split(",").filter(String::isNotBlank) }.distinct()
-            }
+            allTags = withContext(Dispatchers.IO) { repo.getAllTags() }
         }
         TagInputDialog(
             initialTags = repo.getTags(currentPath), suggestedTags = allTags,
@@ -394,6 +433,17 @@ fun ViewerScreen(
             isMoveOperation = pendingFolderPickerIsMove,
             sourcePaths = listOf(currentPath),
             onDismiss = { showFolderPicker = false },
+        )
+    }
+
+    if (showDeleteConfirm) {
+        val question = stringResource(if (ctx.config.useRecycleBin) org.fossify.commons.R.string.are_you_sure_recycle_bin else org.fossify.commons.R.string.are_you_sure_delete)
+        ConfirmDestructive(
+            title = stringResource(org.fossify.commons.R.string.delete),
+            text = question,
+            confirmLabel = stringResource(org.fossify.commons.R.string.delete),
+            onConfirm = { showDeleteConfirm = false; performDelete() },
+            onDismiss = { showDeleteConfirm = false },
         )
     }
 }

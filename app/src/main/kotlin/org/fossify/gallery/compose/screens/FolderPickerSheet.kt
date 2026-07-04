@@ -400,13 +400,13 @@ fun FolderPickerSheet(
         val info = workInfo.firstOrNull()
         LaunchedEffect(info?.state) {
             if (info?.state?.isFinished == true) {
-                ctx.toast(if (isMoveOperation) "Verschoben" else "Kopiert", Toast.LENGTH_SHORT)
+                ctx.toast(ctx.getString(if (isMoveOperation) R.string.files_moved else R.string.files_copied), Toast.LENGTH_SHORT)
                 onDismiss()
             }
         }
         androidx.compose.material3.AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text(if (isMoveOperation) "Verschieben läuft" else "Kopieren läuft") },
+            title = { Text(if (isMoveOperation) stringResource(R.string.moving_in_progress) else stringResource(R.string.copying_in_progress)) },
             text = {
                 val progress = info?.progress
                 val done = progress?.getInt("done", 0) ?: 0

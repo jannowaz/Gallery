@@ -40,6 +40,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -74,7 +75,6 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Label
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -91,7 +91,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -160,6 +159,7 @@ import org.fossify.gallery.compose.screens.ViewSettingsViewModel
 import org.fossify.gallery.compose.screens.VideoThumbnail
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.BottomSearchField
+import org.fossify.gallery.compose.components.AllFilesAccessSheet
 import org.fossify.gallery.compose.screens.tagbrowser.TagBrowserScreen
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.navigation.GalleryNavHost
@@ -184,6 +184,7 @@ import org.fossify.gallery.extensions.batchJobItemDB
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.mediaCacheDB
+import org.fossify.gallery.extensions.mediaTagDB
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.helpers.RefreshBus
@@ -293,21 +294,12 @@ private fun TagBrowserSheet(
     var tagSearchQuery by remember { mutableStateOf("") }
     var refreshTrigger by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+    val repo = LocalMediaRepository.current
 
     LaunchedEffect(refreshTrigger) {
         scanning = true
         withContext(Dispatchers.IO) {
-            val tags = mutableMapOf<String, MutableList<String>>()
-            try {
-                val cached = ctx.mediaCacheDB.getAllTagged()
-                if (cached.isNotEmpty()) {
-                    cached.forEach { mc ->
-                        mc.tags.split(",").filter { it.isNotBlank() }.forEach { t ->
-                            tags.getOrPut(t.trim()) { mutableListOf() }.add(mc.fullPath)
-                        }
-                    }
-                }
-            } catch (_: Exception) { }
+            val tags = try { repo.getAllTagsWithPaths() } catch (_: Exception) { emptyMap() }
             withContext(Dispatchers.Main) { allTags = tags.entries.sortedByDescending { it.value.size }.associate { it.key to it.value }; scanning = false }
         }
     }
@@ -321,16 +313,16 @@ private fun TagBrowserSheet(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Tags (${allTags.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Schließen") }
+                Text(stringResource(R.string.tags_count_paren, allTags.size), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, stringResource(R.string.cd_close)) }
             }
             OutlinedTextField(
                 value = tagSearchQuery,
                 onValueChange = { tagSearchQuery = it },
-                placeholder = { Text("Tag suchen") },
+                placeholder = { Text(stringResource(R.string.search_tag_hint)) },
                 singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Search, "Suchen", modifier = Modifier.size(18.dp)) },
-                trailingIcon = { if (tagSearchQuery.isNotEmpty()) IconButton(onClick = { tagSearchQuery = "" }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Close, "Leeren", modifier = Modifier.size(16.dp)) } },
+                leadingIcon = { Icon(Icons.Default.Search, stringResource(R.string.cd_search), modifier = Modifier.size(18.dp)) },
+                trailingIcon = { if (tagSearchQuery.isNotEmpty()) IconButton(onClick = { tagSearchQuery = "" }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Close, stringResource(R.string.clear_field), modifier = Modifier.size(16.dp)) } },
                 modifier = Modifier.fillMaxWidth(),
                 textStyle = MaterialTheme.typography.bodyMedium,
                 colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
@@ -341,7 +333,7 @@ private fun TagBrowserSheet(
                 Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             } else if (allTags.isEmpty()) {
                 Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
-                    Text("Keine Tags gefunden", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.no_tags_found), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 val filteredTags = if (tagSearchQuery.isBlank()) allTags.entries.toList() else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
@@ -382,10 +374,10 @@ private fun TagBrowserSheet(
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(tag, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text("${paths.size} Dateien", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(stringResource(R.string.files_count, paths.size), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 if (isSelected) {
-                                    Icon(Icons.Default.CheckCircle, "Ausgewählt", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                    Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                                 }
                             }
                         }
@@ -402,10 +394,10 @@ private fun TagBrowserSheet(
                             mainVM.setPathFilter(null)
                             mainVM.setSelectedTab(0)
                         }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f)) {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Filtern", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimary) }
+                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.filter_action), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimary) }
                         }
                         Surface(onClick = { deleteConfirmTags = selectedTags }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.weight(1f)) {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text("Löschen", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer) }
+                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(org.fossify.commons.R.string.delete), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer) }
                         }
                     }
                     Spacer(Modifier.height(8.dp))
@@ -421,33 +413,27 @@ private fun TagBrowserSheet(
             onDismissRequest = { deleteConfirmTags = emptySet() },
             title = { Text(if (tagsToDelete.size == 1) "Tag entfernen" else "Tags entfernen") },
             text = {
-                if (tagsToDelete.size == 1) Text("Tag \"${tagsToDelete.first()}\" aus $totalFiles Dateien entfernen? Die Dateien bleiben erhalten.")
-                else Text("${tagsToDelete.size} Tags aus $totalFiles Dateien entfernen? Die Dateien bleiben erhalten.")
+                if (tagsToDelete.size == 1) Text(stringResource(R.string.remove_tag_confirm, tagsToDelete.first(), totalFiles))
+                else Text(stringResource(R.string.remove_tags_confirm, tagsToDelete.size, tagsToDelete.joinToString(", "), totalFiles))
             },
             confirmButton = {
                 val repo = LocalMediaRepository.current
                 TextButton(onClick = {
                     scope.launch(Dispatchers.IO) {
+                        // repo.removeTag already keeps the XMP file, media_cache and the normalized
+                        // media_tags table in sync per path - no separate cache cleanup pass needed.
                         tagsToDelete.forEach { tag ->
                             val pathsForTag = allTags[tag] ?: return@forEach
                             pathsForTag.forEach { p -> repo.removeTag(p, tag) }
                         }
-                        try {
-                            val cached = ctx.mediaCacheDB.getAllTagged().filter { mc -> tagsToDelete.any { mc.tags.contains(it) } }
-                            cached.forEach { mc ->
-                                var newTags = mc.tags
-                                tagsToDelete.forEach { tag -> newTags = newTags.split(",").filter { it.trim() != tag }.joinToString(",") }
-                                ctx.mediaCacheDB.upsertAll(listOf(mc.copy(tags = newTags)))
-                            }
-                        } catch (_: Exception) { }
                         withContext(Dispatchers.Main) {
                             ctx.toast("${tagsToDelete.size} Tag(s) entfernt", Toast.LENGTH_SHORT)
                             deleteConfirmTags = emptySet(); refreshTrigger++; selectedTags = emptySet()
                         }
                     }
-                }) { Text("Entfernen", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.action_remove), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { deleteConfirmTags = emptySet() }) { Text("Abbrechen") } }
+            dismissButton = { TextButton(onClick = { deleteConfirmTags = emptySet() }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 }
@@ -471,14 +457,9 @@ private fun applyCollection(
     if (coll.tagFilter.isNotBlank()) {
         scope.launch(Dispatchers.IO) {
             val tagNames = coll.tagFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }
-            val tagPaths = mutableSetOf<String>()
-            try {
-                ctx.mediaCacheDB.getAllTagged()
-                    .filter { mc -> tagNames.any { mc.tags.contains(it) } }
-                    .forEach { tagPaths.add(it.fullPath) }
-            } catch (_: Exception) { }
+            val tagPaths = try { ctx.mediaTagDB.getPathsForTags(tagNames).toSet() } catch (_: Exception) { emptySet() }
             withContext(Dispatchers.Main) {
-                mainVM.setTagFilter(if (tagPaths.isNotEmpty()) tagPaths else null, coll.tagFilter.takeIf { it.isNotBlank() })
+                mainVM.setTagFilter(tagPaths.ifEmpty { null }, coll.tagFilter.takeIf { it.isNotBlank() })
             }
         }
     } else {
@@ -577,14 +558,18 @@ private fun AppNavigationDrawer(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 28.dp, vertical = s.md),
             )
-            NavigationDrawerItem(
-                label = { Text(stringResource(R.string.nav_favorites)) },
-                icon = { Icon(Icons.Default.Star, null) },
-                selected = selectedTab == 4,
-                onClick = { onSelectTab(4) },
-                modifier = Modifier.padding(horizontal = s.md),
-            )
-            PinnedPreviewRow(pinnedFavorites, onOpenPinnedFavorite)
+            // Favorites itself is a bottom-nav tab now; this is just quick-jump shortcuts to
+            // individual folders pinned from within that tab, so it only needs a caption here,
+            // not another navigation entry duplicating the tab.
+            if (pinnedFavorites.isNotEmpty()) {
+                Text(
+                    stringResource(R.string.nav_favorites),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 28.dp, vertical = s.md),
+                )
+                PinnedPreviewRow(pinnedFavorites, onOpenPinnedFavorite)
+            }
             NavigationDrawerItem(
                 label = { Text(stringResource(R.string.nav_collections)) },
                 icon = { Icon(Icons.Default.CollectionsBookmark, null) },
@@ -602,27 +587,27 @@ private fun AppNavigationDrawer(
             )
             HorizontalDivider(Modifier.padding(horizontal = 28.dp, vertical = s.sm))
             Text(
-                "Ansicht & Filter",
+                stringResource(R.string.view_and_filter),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 28.dp, vertical = s.md),
             )
             NavigationDrawerItem(
-                label = { Text("Ansicht") },
+                label = { Text(stringResource(R.string.view_label)) },
                 icon = { Icon(Icons.Default.GridView, null) },
                 selected = false,
                 onClick = onOpenViewSettings,
                 modifier = Modifier.padding(horizontal = s.md),
             )
             NavigationDrawerItem(
-                label = { Text("Nach Bewertung") },
+                label = { Text(stringResource(R.string.by_rating)) },
                 icon = { Icon(Icons.Default.Star, null) },
                 selected = false,
                 onClick = onFilterByRating,
                 modifier = Modifier.padding(horizontal = s.md),
             )
             NavigationDrawerItem(
-                label = { Text("Neu scannen") },
+                label = { Text(stringResource(R.string.rescan)) },
                 icon = { Icon(Icons.Default.Search, null) },
                 selected = false,
                 onClick = onRescanMetadata,
@@ -657,7 +642,7 @@ private fun AppNavigationDrawer(
             modifier = Modifier.padding(horizontal = s.md),
         )
         NavigationDrawerItem(
-            label = { Text("Mover") },
+            label = { Text(stringResource(R.string.nav_mover)) },
             icon = { Icon(Icons.AutoMirrored.Filled.DriveFileMove, null) },
             selected = false,
             onClick = { onNavigate(FoldersMover) },
@@ -690,6 +675,10 @@ private val navTabs = listOf(
     NavTab(4, "Favoriten", Icons.Default.Star),
     NavTab(5, "Tags", Icons.AutoMirrored.Filled.Label)
 )
+
+// The bottom bar surfaces the four destinations used every session; Sammlung/Tags stay
+// drawer-only since they're set-up-once/occasional rather than part of the daily browse loop.
+private val bottomNavTabs = listOf(navTabs[0], navTabs[1], navTabs[2], navTabs[4])
 
 @Composable
 fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
@@ -728,6 +717,10 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
     var showRatingBrowser by remember { mutableStateOf(false) }
     var showTagBrowser by remember { mutableStateOf(false) }
     var isMediaSelectionActive by remember { mutableStateOf(false) }
+    // Lets the Explorer tab's own directory-up BackHandler take priority over this screen's
+    // tab-switch fallback below - otherwise both handlers are enabled at once while browsing a
+    // subfolder and back can non-deterministically switch tabs instead of navigating up one level.
+    var explorerCanGoUp by remember { mutableStateOf(false) }
     var showAllFilesPrompt by remember { mutableStateOf(false) }
     val allFilesLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         showAllFilesPrompt = !hasAllFilesAccess(ctx)
@@ -738,7 +731,7 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
         mainVM.initializeDatabase { mainVM.triggerMediaRefresh() }
     }
 
-    BackHandler(enabled = uiState.activeRatingFilter > 0 || uiState.activeTagFilter != null || uiState.activePathFilter != null || showTagBrowser || searchActive || (uiState.selectedTab != 1 && !isMediaSelectionActive)) {
+    BackHandler(enabled = uiState.activeRatingFilter > 0 || uiState.activeTagFilter != null || uiState.activePathFilter != null || showTagBrowser || searchActive || (uiState.selectedTab != 1 && !isMediaSelectionActive && !(uiState.selectedTab == 2 && explorerCanGoUp))) {
         when {
             showTagBrowser -> showTagBrowser = false
             searchActive -> closeSearch()
@@ -774,13 +767,6 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
         },
     ) {
     Scaffold(
-        floatingActionButton = {
-            if (!isMediaSelectionActive && !searchActive) {
-                FloatingActionButton(onClick = { scope.launch { drawerState.open() } }) {
-                    Icon(Icons.Default.Menu, stringResource(R.string.nav_more))
-                }
-            }
-        },
         bottomBar = {
             Column(Modifier.imePadding()) {
                 if (!isMediaSelectionActive) {
@@ -790,6 +776,9 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                         focusRequester = searchFocusRequester,
                         onFocusChanged = { searchFocused = it },
                         onClear = closeSearch,
+                        onMenuClick = { scope.launch { drawerState.open() } },
+                        isActive = searchActive,
+                        onSearch = { searchKeyboard?.hide() },
                     )
                 }
                 if (!searchActive && !isMediaSelectionActive) {
@@ -801,7 +790,16 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
             }
         }
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
+            // Must come from THIS Box's own maxHeight (already reduced by the bottom bar's
+            // Modifier.imePadding() while the keyboard is up), not a keyboard-independent value
+            // like LocalConfiguration.screenHeightDp - a height computed against the full screen
+            // is taller than the actual space left once the keyboard is showing, and since the
+            // panel is bottom-aligned, the overflow pushes its top edge up past the window's own
+            // top (confirmed on a real device: the filter row rendered up near the status bar
+            // instead of just above the search field). Deriving it from maxHeight guarantees the
+            // panel can never be taller than the space actually available, keyboard or not.
+            val searchPanelHeight = maxHeight * 0.6f
             MainTabContent(
                 state = uiState,
                 tabSettings = tabSettings,
@@ -812,16 +810,13 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                 scope = scope,
                 navController = navController,
                 onMediaSelectionChanged = { isMediaSelectionActive = it },
+                onExplorerCanGoUpChanged = { explorerCanGoUp = it },
                 onOpenDrawer = { scope.launch { drawerState.open() } },
             )
-            AnimatedVisibility(
-                visible = searchActive,
-                modifier = Modifier.align(Alignment.BottomCenter),
-                enter = slideInVertically(animationSpec = tween(250)) { it } + fadeIn(tween(200)),
-                exit = fadeOut(tween(150)),
-            ) {
+            if (searchActive) {
+                Box(Modifier.align(Alignment.BottomCenter).height(searchPanelHeight)) {
                 OmniSearchPanel(
-                    modifier = Modifier.fillMaxHeight(0.6f),
+                    modifier = Modifier.fillMaxSize(),
                     query = omniQuery,
                     onQueryChange = { omniQuery = it },
                     onDismiss = closeSearch,
@@ -835,6 +830,7 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                         if (rating > 0 || tagPaths != null || textPaths != null) mainVM.setSelectedTab(0)
                     },
                 )
+                }
             }
         }
     }
@@ -852,23 +848,18 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
     )
 
     if (showAllFilesPrompt) {
-        AlertDialog(
-            onDismissRequest = { showAllFilesPrompt = false },
-            title = { Text("Zugriff auf alle Dateien") },
-            text = { Text("Zum Verschieben, Kopieren, Löschen, Bearbeiten und Taggen von Medien benötigt die App den Zugriff auf alle Dateien. Lesen/Anzeigen funktioniert auch ohne.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showAllFilesPrompt = false
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        try {
-                            allFilesLauncher.launch(Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${ctx.packageName}")))
-                        } catch (_: Exception) {
-                            try { allFilesLauncher.launch(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) } catch (_: Exception) { }
-                        }
+        AllFilesAccessSheet(
+            onAllow = {
+                showAllFilesPrompt = false
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try {
+                        allFilesLauncher.launch(Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${ctx.packageName}")))
+                    } catch (_: Exception) {
+                        try { allFilesLauncher.launch(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) } catch (_: Exception) { }
                     }
-                }) { Text("Erlauben") }
+                }
             },
-            dismissButton = { TextButton(onClick = { showAllFilesPrompt = false }) { Text("Später") } },
+            onLater = { showAllFilesPrompt = false },
         )
     }
 
@@ -876,10 +867,10 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
         var ratingFilter by remember { mutableIntStateOf(0) }
         AlertDialog(
             onDismissRequest = { showRatingBrowser = false },
-            title = { Text("Nach Bewertung filtern") },
+            title = { Text(stringResource(R.string.filter_by_rating_title)) },
             text = {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Wähle eine Bewertung:", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.choose_a_rating), style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (i in 1..5) {
@@ -899,8 +890,8 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                     mainVM.setPathFilter(null)
                     mainVM.setSelectedTab(0)
                 }
-            }) { Text("Filtern") } },
-            dismissButton = { TextButton(onClick = { showRatingBrowser = false }) { Text("Schließen") } }
+            }) { Text(stringResource(R.string.filter_action)) } },
+            dismissButton = { TextButton(onClick = { showRatingBrowser = false }) { Text(stringResource(R.string.cd_close)) } }
         )
     }
 
@@ -920,10 +911,13 @@ private fun MainBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
         tonalElevation = 0.dp,
         modifier = Modifier.height(56.dp)
     ) {
-        navTabs.take(3).forEach { tab ->
+        bottomNavTabs.forEach { tab ->
             NavigationBarItem(
                 selected = selectedTab == tab.index,
-                onClick = { onTabSelected(tab.index) },
+                onClick = {
+                    if (selectedTab == tab.index) org.fossify.gallery.compose.util.ScrollToTopBus.trigger(tab.index)
+                    else onTabSelected(tab.index)
+                },
                 icon = { Icon(tab.icon, tab.label, modifier = Modifier.size(22.dp)) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.primary,
@@ -947,6 +941,7 @@ private fun MainTabContent(
     scope: kotlinx.coroutines.CoroutineScope,
     navController: NavHostController,
     onMediaSelectionChanged: (Boolean) -> Unit = {},
+    onExplorerCanGoUpChanged: (Boolean) -> Unit = {},
     onOpenDrawer: () -> Unit = {},
 ) {
     if (state.selectedTab <= 2) {
@@ -993,12 +988,14 @@ private fun MainTabContent(
             scrollToPath = state.lastViewedPath,
             onClearScrollToPath = { mainVM.clearLastViewedPath() },
             onSelectionActiveChanged = onMediaSelectionChanged,
+            tabIndex = 0,
         )
         1 -> AlbumsScreen(
             viewModel = albumsViewModel,
             onFolderClick = { dir -> navController.navigate(Folder(dir.path)) },
             viewSettings = tabSettings.albums,
             onSelectionActiveChanged = onMediaSelectionChanged,
+            tabIndex = 1,
         )
         2 -> ExplorerScreen(
             internalStoragePath = state.explorerPath,
@@ -1006,7 +1003,9 @@ private fun MainTabContent(
             mediaSettings = tabSettings.explorerMedia,
             onPathChange = { mainVM.setExplorerPath(it) },
             onSelectionActiveChanged = onMediaSelectionChanged,
+            onCanGoUpChanged = onExplorerCanGoUpChanged,
             onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) },
+            tabIndex = 2,
         )
             }
         }
@@ -1016,7 +1015,7 @@ private fun MainTabContent(
             viewSettings = tabSettings.collections,
             onCollectionClick = { coll -> applyCollection(coll, mainVM, ctx, scope) },
         )
-        4 -> FavoritesScreen(viewSettings = tabSettings.favorites, onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) }, onFolderClick = { navController.navigate(Folder(it)) })
+        4 -> FavoritesScreen(viewSettings = tabSettings.favorites, onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) }, onFolderClick = { navController.navigate(Folder(it)) }, tabIndex = 4)
         5 -> TagBrowserScreen(
             onBack = {},
             onTagFilterApplied = { tagPaths, tagName ->
@@ -1111,14 +1110,11 @@ private fun OmniSearchPanel(
     var showFilters by remember { mutableStateOf(false) }
     val searchCache = remember { mutableMapOf<String, Set<String>>() }
 
+    val repo = LocalMediaRepository.current
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            try {
-                val cached = ctx.mediaCacheDB.getAllTagged()
-                val tags = mutableMapOf<String, MutableSet<String>>()
-                cached.forEach { mc -> mc.tags.split(",").filter { it.isNotBlank() }.forEach { t -> tags.getOrPut(t.trim()) { mutableSetOf() }.add(mc.fullPath) } }
-                withContext(Dispatchers.Main) { allTags = tags.takeIf { it.isNotEmpty() } ?: emptyMap() }
-            } catch (_: Exception) { }
+            val tags = try { repo.getAllTagsWithPaths().mapValues { it.value.toSet() } } catch (_: Exception) { emptyMap() }
+            withContext(Dispatchers.Main) { allTags = tags.takeIf { it.isNotEmpty() } ?: emptyMap() }
         }
     }
 
@@ -1142,10 +1138,10 @@ private fun OmniSearchPanel(
                 when (dateFilter) { 1 -> { val t = (System.currentTimeMillis() - 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } 2 -> { val t = (System.currentTimeMillis() - 7 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } 3 -> { val t = (System.currentTimeMillis() - 30 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } 4 -> { val t = (System.currentTimeMillis() - 365 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } }
                 ctx.contentResolver.query(uri, proj, selParts.joinToString(" AND "), argsList.toTypedArray(), null)?.use { c ->
                     val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA); val nameCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
-                    while (c.moveToNext()) { val path = c.getString(dataCol) ?: continue; val name = c.getString(nameCol) ?: ""; if (qParts.all { it in "${name} ${path}".lowercase() } && java.io.File(path).exists()) matched.add(path) }
+                    while (c.moveToNext()) { val path = c.getString(dataCol) ?: continue; val name = c.getString(nameCol) ?: ""; if (qParts.all { it in name.lowercase() } && java.io.File(path).exists()) matched.add(path) }
                 }
             } catch (_: Exception) { }
-            try { ctx.directoryDB.getAll().forEach { d -> val lp = d.path.lowercase(); if (qParts.all { it in lp }) folders.add(d.name to d.path) } } catch (_: Exception) { }
+            try { ctx.directoryDB.getAll().forEach { d -> val ln = d.name.lowercase(); if (qParts.all { it in ln }) folders.add(d.name to d.path) } } catch (_: Exception) { }
             if (allTags.isNotEmpty()) qParts.forEach { qp -> allTags.entries.forEach { (tag, paths) -> if (tag.lowercase().contains(qp) && tags.none { it.first == tag }) tags.add(tag to paths.size) } }
             withContext(Dispatchers.Main) { textMatchPaths = matched.takeIf { it.isNotEmpty() }?.also { searchCache[cacheKey] = it }; folderResults = folders.sortedBy { it.first }.take(15); tagResults = tags.sortedByDescending { it.second }.take(15); isSearching = false }
         }
@@ -1160,7 +1156,7 @@ private fun OmniSearchPanel(
 
     Surface(
         modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomEnd = 0.dp, bottomStart = 0.dp),
+        shape = RoundedCornerShape(topStart = Radius.lg, topEnd = Radius.lg, bottomEnd = 0.dp, bottomStart = 0.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         shadowElevation = 2.dp,
     ) {
@@ -1168,20 +1164,20 @@ private fun OmniSearchPanel(
             // Filter toggle bar
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 Surface(onClick = { showFilters = !showFilters }, shape = RoundedCornerShape(Radius.md), color = if (showFilters || hasAnyFilter) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
-                    Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.FilterList, null, modifier = Modifier.size(14.dp), tint = if (showFilters || hasAnyFilter) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
                         if (hasAnyFilter) {
                             val parts = mutableListOf<String>()
                             if (ratingFilter > 0) parts.add("★$ratingFilter")
                             if (selectedTags.isNotEmpty()) parts.add(selectedTags.joinToString(","))
                             Text(parts.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1)
-                        } else Text("Filter", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else Text(stringResource(R.string.filter_label), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 if (hasAnyFilter) {
                     Spacer(Modifier.width(4.dp))
                     Surface(onClick = { ratingFilter = 0; selectedTags = emptySet(); fileTypeFilter = 0; dateFilter = 0 }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.errorContainer) {
-                        Text("Zurücksetzen", Modifier.padding(horizontal = 8.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                        Text(stringResource(R.string.reset), Modifier.padding(horizontal = 8.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onErrorContainer)
                     }
                 }
             }
@@ -1194,9 +1190,9 @@ private fun OmniSearchPanel(
                     Text("★", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     for (i in 1..5) IconButton(onClick = { ratingFilter = if (ratingFilter == i) 0 else i }, modifier = Modifier.size(32.dp)) { Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, "$i", tint = if (i <= ratingFilter) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
                     Spacer(Modifier.width(4.dp))
-                    listOf("Alles" to 0, "Bilder" to 1, "Videos" to 2).forEach { (l, v) -> Surface(onClick = { fileTypeFilter = v }, shape = RoundedCornerShape(Radius.md), color = if (fileTypeFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(l, Modifier.padding(horizontal = 7.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = if (fileTypeFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface) } }
+                    listOf(stringResource(R.string.everything) to 0, stringResource(R.string.images) to 1, stringResource(R.string.videos) to 2).forEach { (l, v) -> Surface(onClick = { fileTypeFilter = v }, shape = RoundedCornerShape(Radius.md), color = if (fileTypeFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(l, Modifier.padding(horizontal = 7.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = if (fileTypeFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface) } }
                     Spacer(Modifier.width(4.dp))
-                    listOf("Alle" to 0, "Heute" to 1, "7d" to 2, "30d" to 3).forEach { (l, v) -> Surface(onClick = { dateFilter = v }, shape = RoundedCornerShape(Radius.md), color = if (dateFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(l, Modifier.padding(horizontal = 7.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = if (dateFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface) } }
+                    listOf(stringResource(R.string.all_dates) to 0, stringResource(R.string.today) to 1, "7d" to 2, "30d" to 3).forEach { (l, v) -> Surface(onClick = { dateFilter = v }, shape = RoundedCornerShape(Radius.md), color = if (dateFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(l, Modifier.padding(horizontal = 7.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = if (dateFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface) } }
                 }
                 // Tags
                 if (allTags.isNotEmpty()) {
@@ -1205,7 +1201,7 @@ private fun OmniSearchPanel(
                         allTags.entries.sortedByDescending { it.value.size }.take(15).forEach { (tag, _) ->
                             val sel = tag in selectedTags
                             Surface(onClick = { selectedTags = if (sel) selectedTags - tag else selectedTags + tag }, shape = RoundedCornerShape(Radius.md), color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
-                                Text(tag, Modifier.padding(horizontal = 8.dp, vertical = 3.dp), style = MaterialTheme.typography.labelSmall, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
+                                Text(tag, Modifier.padding(horizontal = 8.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
                             }
                         }
                     }
@@ -1217,13 +1213,13 @@ private fun OmniSearchPanel(
                 Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
             } else if (query.length >= 2 && !hasResults && folderResults.isEmpty() && tagResults.isEmpty()) {
                 Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
-                    Text("Keine Ergebnisse", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.no_results), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else if (hasResults || folderResults.isNotEmpty() || tagResults.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp)); HorizontalDivider(); Spacer(Modifier.height(4.dp))
                 LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
                     if (folderResults.isNotEmpty()) {
-                        item { Text("Ordner", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 4.dp)) }
+                        item { Text(stringResource(R.string.folders), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 4.dp)) }
                         items(folderResults.take(5), key = { it.second }) { (name, path) ->
                             Surface(modifier = Modifier.fillMaxWidth().clickable { onNavigate(path) }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
                                 Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1233,11 +1229,11 @@ private fun OmniSearchPanel(
                                 }
                             }
                         }
-                        if (folderResults.size > 5) item { Text("+${folderResults.size - 5} weitere", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp)) }
+                        if (folderResults.size > 5) item { Text(stringResource(R.string.plus_n_more, folderResults.size - 5), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp)) }
                         item { Spacer(Modifier.height(8.dp)) }
                     }
                     if (tagResults.isNotEmpty()) {
-                        item { Text("Tags", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(vertical = 4.dp)) }
+                        item { Text(stringResource(R.string.nav_tags), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(vertical = 4.dp)) }
                         items(tagResults.take(8), key = { it.first }) { (tag, cnt) ->
                             Surface(modifier = Modifier.fillMaxWidth().clickable { onFilterChanged(null, 0, allTags[tag]?.toSet(), tag, 0, 0); onDismiss() }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
                                 Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1249,7 +1245,7 @@ private fun OmniSearchPanel(
                         item { Spacer(Modifier.height(8.dp)) }
                     }
                     if (hasResults) {
-                        item { Text("Medien ($mc)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(vertical = 4.dp)) }
+                        item { Text(stringResource(R.string.media_count_paren, mc), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(vertical = 4.dp)) }
                     }
                 }
                 Spacer(Modifier.height(4.dp))
@@ -1261,9 +1257,13 @@ private fun OmniSearchPanel(
                                 selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", "), fileTypeFilter, dateFilter)
                             onDismiss()
                         }, shape = RoundedCornerShape(Radius.xl), color = MaterialTheme.colorScheme.primary) {
-                            Text("${mc + folderResults.size} Ergebnisse anzeigen", Modifier.padding(horizontal = 20.dp, vertical = 10.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)
+                            Text(stringResource(R.string.show_results_count, mc + folderResults.size), Modifier.padding(horizontal = 20.dp, vertical = 10.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
+                }
+            } else if (!hasAnyFilter) {
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Text(stringResource(R.string.search_min_chars_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

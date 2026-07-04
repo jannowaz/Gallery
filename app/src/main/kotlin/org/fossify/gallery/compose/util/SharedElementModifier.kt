@@ -14,7 +14,7 @@ fun Modifier.sharedElementKey(key: String): Modifier {
     val state = sharedScope.rememberSharedContentState(key = key)
     return with(sharedScope) {
         this@sharedElementKey.sharedElement(
-            state = state,
+            sharedContentState = state,
             animatedVisibilityScope = visibilityScope,
         )
     }

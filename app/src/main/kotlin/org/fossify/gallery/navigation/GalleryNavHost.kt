@@ -7,7 +7,6 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -41,10 +40,12 @@ import org.fossify.gallery.compose.screens.analysis.DuplicateFinderScreen
 import org.fossify.gallery.compose.screens.RecycleBinScreen
 import org.fossify.gallery.compose.screens.FoldersMoverScreen
 import org.fossify.gallery.compose.screens.viewer.ViewerScreen
+import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.extensions.config
-import org.fossify.gallery.extensions.mediaCacheDB
+import org.fossify.gallery.extensions.mediaTagDB
+import org.fossify.gallery.models.MediaTag
 import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.helpers.UndoManager
 import org.fossify.gallery.helpers.UndoType
@@ -78,11 +79,12 @@ fun GalleryNavHost(
     LaunchedEffect(Unit) {
         withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val cached = ctx.mediaCacheDB.getAllTagged()
-                var changed = false
-                cached.forEach { mc ->
-                    val sanitised = mc.tags.split(",").map { org.fossify.gallery.helpers.XmpWriter.sanitizeTag(it.trim()) }.filter { it.isNotBlank() }.distinct().joinToString(",")
-                    if (sanitised != mc.tags) { changed = true; ctx.mediaCacheDB.upsertAll(listOf(mc.copy(tags = sanitised))) }
+                ctx.mediaTagDB.getAllTagPathPairs().forEach { row ->
+                    val sanitised = org.fossify.gallery.helpers.XmpWriter.sanitizeTag(row.tag)
+                    if (sanitised != row.tag) {
+                        ctx.mediaTagDB.delete(row.path, row.tag)
+                        if (sanitised.isNotBlank()) ctx.mediaTagDB.insert(MediaTag(mediaPath = row.path, tag = sanitised))
+                    }
                 }
             } catch (_: Exception) { }
         }
@@ -95,8 +97,8 @@ fun GalleryNavHost(
                 NavHost(
                     navController = navController,
                     startDestination = Home,
-                    enterTransition = { fadeIn(tween(300)) + scaleIn(initialScale = 0.92f, animationSpec = tween(300)) },
-                    exitTransition = { fadeOut(tween(300)) },
+                    enterTransition = { fadeIn(AppMotion.medium) + scaleIn(initialScale = 0.92f, animationSpec = AppMotion.medium) },
+                    exitTransition = { fadeOut(AppMotion.medium) },
                 ) {
                     composable<Home> {
                         CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
@@ -108,11 +110,13 @@ fun GalleryNavHost(
                     }
                     composable<Folder> { backStackEntry ->
                         val route = backStackEntry.toRoute<Folder>()
-                        FolderMediaScreen(
-                            folderPath = route.folderPath,
-                            onBack = { navController.popBackStack() },
-                            onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) },
-                        )
+                        CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
+                            FolderMediaScreen(
+                                folderPath = route.folderPath,
+                                onBack = { navController.popBackStack() },
+                                onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) },
+                            )
+                        }
                     }
                     composable<Viewer> { backStackEntry ->
                         val route = backStackEntry.toRoute<Viewer>()

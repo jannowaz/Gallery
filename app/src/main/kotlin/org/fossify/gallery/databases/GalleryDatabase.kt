@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import org.fossify.gallery.interfaces.*
 import org.fossify.gallery.models.*
 
-@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class], version = 17)
+@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class], version = 18)
 abstract class GalleryDatabase : RoomDatabase() {
 
     abstract fun DirectoryDao(): DirectoryDao
@@ -27,6 +27,8 @@ abstract class GalleryDatabase : RoomDatabase() {
     abstract fun MediaCacheDao(): MediaCacheDao
 
     abstract fun BatchJobItemDao(): BatchJobItemDao
+
+    abstract fun MediaTagDao(): MediaTagDao
 
     companion object {
         private var db: GalleryDatabase? = null
@@ -49,6 +51,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                             .addMigrations(MIGRATION_14_15)
                             .addMigrations(MIGRATION_15_16)
                             .addMigrations(MIGRATION_16_17)
+                            .addMigrations(MIGRATION_17_18)
                             .fallbackToDestructiveMigrationFrom(1, 2, 3)
                             .build()
                     }
@@ -174,6 +177,40 @@ abstract class GalleryDatabase : RoomDatabase() {
                     "CREATE TABLE IF NOT EXISTS `batch_job_items` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `job_id` TEXT NOT NULL, `source_path` TEXT NOT NULL, `target_path` TEXT NOT NULL, `created_at` INTEGER NOT NULL)"
                 )
                 database.execSQL("CREATE INDEX IF NOT EXISTS `index_batch_job_items_job_id` ON `batch_job_items` (`job_id`)")
+            }
+        }
+
+        // Normalizes tags out of the comma-separated `media_cache.tags` blob into one row per
+        // (file, tag). The old column matched tags with substring checks (split + contains), which
+        // false-positived e.g. a tag "Auto" against a file only tagged "Autobahn", and every
+        // tag-browsing/counting operation had to load every tagged file's full row into memory to
+        // split and recount client-side. `media_cache` itself (rating/last_scanned) is untouched -
+        // its `tags` column is left in place but unused going forward rather than risking a
+        // column-drop migration for a column nothing reads anymore.
+        private val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE TABLE IF NOT EXISTS `media_tags` (`media_path` TEXT NOT NULL, `tag` TEXT NOT NULL, PRIMARY KEY(`media_path`, `tag`))")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_tags_tag` ON `media_tags` (`tag`)")
+
+                val insertStmt = database.compileStatement("INSERT OR IGNORE INTO media_tags (media_path, tag) VALUES (?, ?)")
+                database.query("SELECT full_path, tags FROM media_cache WHERE tags != ''").use { cursor ->
+                    val pathCol = cursor.getColumnIndex("full_path")
+                    val tagsCol = cursor.getColumnIndex("tags")
+                    while (cursor.moveToNext()) {
+                        val path = cursor.getString(pathCol)
+                        val rawTags = cursor.getString(tagsCol) ?: continue
+                        rawTags.split(",")
+                            .map { org.fossify.gallery.helpers.XmpWriter.sanitizeTag(it) }
+                            .filter { it.isNotBlank() }
+                            .distinct()
+                            .forEach { tag ->
+                                insertStmt.clearBindings()
+                                insertStmt.bindString(1, path)
+                                insertStmt.bindString(2, tag)
+                                insertStmt.executeInsert()
+                            }
+                    }
+                }
             }
         }
     }

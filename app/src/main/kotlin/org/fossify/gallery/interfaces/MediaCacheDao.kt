@@ -8,9 +8,6 @@ interface MediaCacheDao {
     @Query("SELECT * FROM media_cache WHERE tags != ''")
     suspend fun getAllTagged(): List<MediaCache>
 
-    @Query("SELECT * FROM media_cache WHERE tags != '' ORDER BY last_scanned DESC LIMIT :limit")
-    suspend fun getRecentTagged(limit: Int): List<MediaCache>
-
     @Query("SELECT * FROM media_cache WHERE tags != '' LIMIT :limit OFFSET :offset")
     suspend fun getTaggedPaged(limit: Int, offset: Int): List<MediaCache>
 
@@ -31,7 +28,4 @@ interface MediaCacheDao {
 
     @Upsert
     suspend fun upsertAll(cache: List<MediaCache>)
-
-    @Query("SELECT * FROM media_cache WHERE full_path LIKE :pattern")
-    suspend fun getTagsInFolder(pattern: String): List<MediaCache>
 }

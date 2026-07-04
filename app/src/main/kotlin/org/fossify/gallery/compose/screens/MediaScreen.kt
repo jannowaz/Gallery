@@ -17,6 +17,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -105,18 +106,17 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.commons.extensions.toast
-import org.fossify.gallery.activities.ComposeVideoPlayerActivity
-import org.fossify.gallery.activities.ComposeViewerActivity
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.MediaTile
 import org.fossify.gallery.R
 import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.compose.components.ConfirmDestructive
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.SelectionTopAppBar
 import org.fossify.gallery.compose.components.RenameDialog
 import org.fossify.gallery.compose.components.UndoBar
-import org.fossify.gallery.compose.components.StarRatingDialog
-import org.fossify.gallery.compose.components.TagInputDialog
+import org.fossify.gallery.compose.components.RateAndTagSheet
+import org.fossify.gallery.compose.util.ScrollToTopEffect
 import org.fossify.gallery.compose.util.dragSelectionGesture
 import org.fossify.gallery.compose.util.rememberSelectionDragState
 import org.fossify.gallery.compose.util.selectableItem
@@ -154,6 +154,7 @@ fun MediaScreen(
     scrollToPath: String = "",
     onClearScrollToPath: () -> Unit = {},
     onSelectionActiveChanged: (Boolean) -> Unit = {},
+    tabIndex: Int? = null,
 ) {
     val ctx = LocalContext.current
     val viewModel: MediaViewModel = viewModel()
@@ -166,11 +167,11 @@ fun MediaScreen(
     LaunchedEffect(ratingFilter, tagFilterPaths, pathFilter, minSizeFilter, dateRangeFilter) { viewModel.setFilter(ratingFilter, tagFilterPaths, pathFilter, minSizeFilter, dateRangeFilter) }
     var selectedPaths by rememberSaveable(stateSaver = selectionSaver) { mutableStateOf<Set<String>>(emptySet()) }
     val dragSelection = rememberSelectionDragState()
-    var showRatingDialog by remember { mutableStateOf(false) }
-    var showTagsDialog by remember { mutableStateOf(false) }
+    var showRateTagSheet by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showFolderPicker by remember { mutableStateOf(false) }
     var folderPickerIsMove by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     var currentRating by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -194,16 +195,7 @@ fun MediaScreen(
 
     fun openViewer(index: Int) {
         val paths = displayMedia.map { it.path }
-        val navigate = onNavigateToViewer
-        if (navigate != null) {
-            navigate(paths, index)
-        } else {
-            ctx.startActivity(Intent(ctx, ComposeViewerActivity::class.java).apply {
-                putStringArrayListExtra("PATHS", ArrayList(paths)); putExtra("START_INDEX", index)
-                heroRect?.let { putExtra("HERO_LEFT",it.left.toFloat()); putExtra("HERO_TOP",it.top.toFloat()); putExtra("HERO_WIDTH",it.width().toFloat()); putExtra("HERO_HEIGHT",it.height().toFloat()) }
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            })
-        }
+        onNavigateToViewer?.invoke(paths, index)
     }
 
     // Viewer swipe-through needs the FULL sorted path list, not just what the grid has paged in so
@@ -212,16 +204,7 @@ fun MediaScreen(
     fun openViewerPaged(index: Int) {
         scope.launch {
             val paths = viewModel.activePathsSorted()
-            val navigate = onNavigateToViewer
-            if (navigate != null) {
-                navigate(paths, index)
-            } else {
-                ctx.startActivity(Intent(ctx, ComposeViewerActivity::class.java).apply {
-                    putStringArrayListExtra("PATHS", ArrayList(paths)); putExtra("START_INDEX", index)
-                    heroRect?.let { putExtra("HERO_LEFT",it.left.toFloat()); putExtra("HERO_TOP",it.top.toFloat()); putExtra("HERO_WIDTH",it.width().toFloat()); putExtra("HERO_HEIGHT",it.height().toFloat()) }
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                })
-            }
+            onNavigateToViewer?.invoke(paths, index)
         }
     }
 
@@ -233,10 +216,7 @@ fun MediaScreen(
     // Modifier.padding() throws on a negative value - coerce here so every use site is safe.
     val rawContentTopInset by androidx.compose.animation.core.animateDpAsState(
         targetValue = if (hasSelection) with(density) { selectionBarHeightPx.toDp() } else 0.dp,
-        animationSpec = androidx.compose.animation.core.spring(
-            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioLowBouncy,
-            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
-        ),
+        animationSpec = org.fossify.gallery.compose.theme.AppMotion.insetSpring,
         label = "selectionTopInset",
     )
     val contentTopInset = rawContentTopInset.coerceAtLeast(0.dp)
@@ -280,6 +260,7 @@ fun MediaScreen(
                         snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
                             .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
                     }
+                    ScrollToTopEffect(tabIndex) { gridState.animateScrollToItem(0) }
                     var showOverlays by remember { mutableStateOf(true) }
                     val isScrolling by remember { derivedStateOf { gridState.isScrollInProgress } }
                     LaunchedEffect(isScrolling) {
@@ -326,6 +307,10 @@ fun MediaScreen(
                                         itemSpacing = itemSpacing,
                                         showFileName = viewSettings.showFileNames,
                                         showVideoDuration = ctx.config.showVideoDurationOnThumbnails,
+                                cropThumbnails = ctx.config.cropThumbnails,
+                                showRating = ctx.config.showRatingOnThumbnails,
+                                showFileType = ctx.config.showThumbnailFileTypes,
+                                markFavorite = ctx.config.markFavoriteItems,
                                         onClick = { if (hasSelection) selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path else openViewerPaged(row.pagingIndex) },
                                         onLongClick = { selectedPaths = selectedPaths + m.path },
                                         onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
@@ -359,6 +344,7 @@ fun MediaScreen(
                         snapshotFlow { mosaicState.firstVisibleItemIndex to mosaicState.firstVisibleItemScrollOffset }
                             .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
                     }
+                    ScrollToTopEffect(tabIndex) { mosaicState.animateScrollToItem(0) }
                     var showOverlaysStag by remember { mutableStateOf(true) }
                     val isScrollingStag by remember { derivedStateOf { mosaicState.isScrollInProgress } }
                     LaunchedEffect(isScrollingStag) {
@@ -407,6 +393,10 @@ fun MediaScreen(
                                             itemSpacing = itemSpacing,
                                             showFileName = viewSettings.showFileNames,
                                             showVideoDuration = ctx.config.showVideoDurationOnThumbnails,
+                                cropThumbnails = ctx.config.cropThumbnails,
+                                showRating = ctx.config.showRatingOnThumbnails,
+                                showFileType = ctx.config.showThumbnailFileTypes,
+                                markFavorite = ctx.config.markFavoriteItems,
                                             onClick = { if (hasSelection) selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path else openViewerPaged(row.pagingIndex) },
                                             onLongClick = { selectedPaths = selectedPaths + m.path },
                                             onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
@@ -429,6 +419,7 @@ fun MediaScreen(
                     snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
                         .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
                 }
+                ScrollToTopEffect(tabIndex) { listState.animateScrollToItem(0) }
                 Box(Modifier.padding(top = contentTopInset).dragSelectionGesture(dragSelection) { path -> selectedPaths = selectedPaths + path }) {
                 LazyColumn(state = listState, reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
                     var headerSeq = 0
@@ -465,7 +456,8 @@ fun MediaScreen(
         }
     }
 
-    PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = { isRefreshing = true; viewModel.refresh(); if (showPaged) lazyPagingItems.refresh(); scope.launch { kotlinx.coroutines.delay(5000); isRefreshing = false } }, modifier = Modifier.fillMaxSize()) {
+    val pullRefreshEnabled = ctx.config.enablePullToRefresh
+    val mediaContent: @Composable BoxScope.() -> Unit = {
         BackHandler(enabled = hasSelection) { selectedPaths = emptySet() }
         Box(modifier = modifier.fillMaxSize()) {
         if (mediaOverride != null && mediaOverride.isEmpty()) {
@@ -538,6 +530,7 @@ fun MediaScreen(
                         snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
                             .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
                     }
+                    ScrollToTopEffect(tabIndex) { gridState.animateScrollToItem(0) }
                     var showOverlays by remember { mutableStateOf(true) }
                     val isScrolling by remember { derivedStateOf { gridState.isScrollInProgress } }
                     LaunchedEffect(isScrolling) {
@@ -577,6 +570,10 @@ fun MediaScreen(
                                 itemSpacing = itemSpacing,
                                 showFileName = viewSettings.showFileNames,
                                 showVideoDuration = ctx.config.showVideoDurationOnThumbnails,
+                                cropThumbnails = ctx.config.cropThumbnails,
+                                showRating = ctx.config.showRatingOnThumbnails,
+                                showFileType = ctx.config.showThumbnailFileTypes,
+                                markFavorite = ctx.config.markFavoriteItems,
                                 onClick = { if (hasSelection) selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path else openViewer(originalIdx) },
                                 onLongClick = { selectedPaths = selectedPaths + m.path },
                                 onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
@@ -608,6 +605,7 @@ fun MediaScreen(
                         snapshotFlow { mosaicState.firstVisibleItemIndex to mosaicState.firstVisibleItemScrollOffset }
                             .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
                     }
+                    ScrollToTopEffect(tabIndex) { mosaicState.animateScrollToItem(0) }
                     var showOverlaysStag by remember { mutableStateOf(true) }
                     val isScrollingStag by remember { derivedStateOf { mosaicState.isScrollInProgress } }
                     LaunchedEffect(isScrollingStag) {
@@ -648,6 +646,10 @@ fun MediaScreen(
                                 itemSpacing = itemSpacing,
                                 showFileName = viewSettings.showFileNames,
                                 showVideoDuration = ctx.config.showVideoDurationOnThumbnails,
+                                cropThumbnails = ctx.config.cropThumbnails,
+                                showRating = ctx.config.showRatingOnThumbnails,
+                                showFileType = ctx.config.showThumbnailFileTypes,
+                                markFavorite = ctx.config.markFavoriteItems,
                                 onClick = { if (hasSelection) selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path else openViewer(originalIdx) },
                                 onLongClick = { selectedPaths = selectedPaths + m.path },
                                 onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
@@ -668,6 +670,7 @@ fun MediaScreen(
                     snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
                         .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
                 }
+                ScrollToTopEffect(tabIndex) { listState.animateScrollToItem(0) }
                 Box(Modifier.padding(top = contentTopInset).dragSelectionGesture(dragSelection) { path -> selectedPaths = selectedPaths + path }) {
                 LazyColumn(state = listState, reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
                     grouped.forEach { (label, groupItems) ->
@@ -704,13 +707,13 @@ fun MediaScreen(
                     else Intent(Intent.ACTION_SEND_MULTIPLE).apply { type = "*/*"; putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                     ctx.startActivity(Intent.createChooser(si, ctx.getString(R.string.action_share)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); selectedPaths = emptySet()
                 },
-                onDelete = { val d = selectedPaths.toSet(); viewModel.softDeletePaths(d); UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE)); selectedPaths = emptySet() },
+                onDelete = { if (ctx.config.skipDeleteConfirmation) { val d = selectedPaths.toSet(); viewModel.softDeletePaths(d); UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE)); selectedPaths = emptySet() } else showDeleteConfirm = true },
                 onSelectAll = { scope.launch { selectedPaths = if (hasFilter) displayMedia.map { it.path }.toSet() else viewModel.activePaths() } },
                 onInvert = { scope.launch { val all = if (hasFilter) displayMedia.map { it.path }.toSet() else viewModel.activePaths(); selectedPaths = all - selectedPaths } },
                 onCopy = { folderPickerIsMove = false; showFolderPicker = true },
                 onMove = { folderPickerIsMove = true; showFolderPicker = true },
-                onRate = { showRatingDialog = true },
-                onTags = { showTagsDialog = true },
+                onRate = { showRateTagSheet = true },
+                onTags = { showRateTagSheet = true },
                 onRename = { showRenameDialog = true },
                 onInfo = { try { selectedPaths.firstOrNull()?.let { p -> (ctx as? android.app.Activity)?.let { a -> PropertiesDialog(a, p, false) } } } catch (e: Exception) { ctx.toast(ctx.getString(R.string.info_error, e.message), Toast.LENGTH_LONG) } },
             )
@@ -719,14 +722,47 @@ fun MediaScreen(
         UndoBar(modifier = Modifier.align(Alignment.BottomCenter))
         }
     }
+    if (pullRefreshEnabled) {
+        PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = { isRefreshing = true; viewModel.refresh(); if (showPaged) lazyPagingItems.refresh(); scope.launch { kotlinx.coroutines.delay(5000); isRefreshing = false } }, modifier = Modifier.fillMaxSize(), content = mediaContent)
+    } else {
+        Box(Modifier.fillMaxSize(), content = mediaContent)
+    }
     // Rate/Tag/Rename keep the selection alive on purpose: the core workflow (rename -> tag ->
     // rate -> move for freshly downloaded files) chains these actions on the same batch, and
     // forcing a re-select between every step was the single biggest UX cost in that flow. Move
     // and Delete still clear the selection since the files leave the current view either way.
-    if (showRatingDialog) { val batch=selectedPaths.toList(); StarRatingDialog(currentRating=currentRating,onRate={i->currentRating=i;viewModel.setRatingFor(batch,i);showRatingDialog=false},onDismiss={showRatingDialog=false}) }
-    if (showTagsDialog) { val batch=selectedPaths.toList(); LaunchedEffect(Unit){viewModel.loadAllTags()}; TagInputDialog(initialTags=selectedCommonTags,suggestedTags=state.allTags,suggestedTagCounts=state.tagCounts,onAddTag={viewModel.addTagFor(batch,it)},onRemoveTag={viewModel.removeTagFor(batch,it)},onDismiss={showTagsDialog=false},batchCount=batch.size) }
+    if (showRateTagSheet) {
+        val batch = selectedPaths.toList()
+        LaunchedEffect(Unit) { viewModel.loadAllTags() }
+        RateAndTagSheet(
+            batchCount = batch.size,
+            currentRating = currentRating,
+            onRate = { i -> currentRating = i; viewModel.setRatingFor(batch, i) },
+            initialTags = selectedCommonTags,
+            onAddTag = { viewModel.addTagFor(batch, it) },
+            onRemoveTag = { viewModel.removeTagFor(batch, it) },
+            suggestedTags = state.allTags,
+            suggestedTagCounts = state.tagCounts,
+            onDismiss = { showRateTagSheet = false },
+        )
+    }
     if (showFolderPicker) { val batch=selectedPaths.toList(); FolderPickerSheet(isMoveOperation=folderPickerIsMove,sourcePaths=batch,onDismiss={showFolderPicker=false;selectedPaths=emptySet()}) }
     if (showRenameDialog) { val batch=selectedPaths.toList(); RenameDialog(paths=batch,onRenamed={mapping->selectedPaths=selectedPaths.map{mapping[it]?:it}.toSet()},onDismiss={showRenameDialog=false;viewModel.silentRefresh()}) }
+    if (showDeleteConfirm) {
+        val itemsCnt = selectedPaths.size
+        val itemsText = ctx.resources.getQuantityString(org.fossify.commons.R.plurals.delete_items, itemsCnt, itemsCnt)
+        val question = ctx.getString(if (ctx.config.useRecycleBin) org.fossify.commons.R.string.move_to_recycle_bin_confirmation else org.fossify.commons.R.string.deletion_confirmation, itemsText)
+        ConfirmDestructive(
+            title = stringResource(org.fossify.commons.R.string.delete),
+            text = question,
+            confirmLabel = stringResource(org.fossify.commons.R.string.delete),
+            onConfirm = {
+                showDeleteConfirm = false
+                val d = selectedPaths.toSet(); viewModel.softDeletePaths(d); UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE)); selectedPaths = emptySet()
+            },
+            onDismiss = { showDeleteConfirm = false },
+        )
+    }
 }
 
 @Composable
@@ -745,7 +781,7 @@ private fun FilterBreadcrumbs(
         if (minSizeFilter > 0) ActiveFilterChip("> ${formatFileSize(minSizeFilter)}") { onClearSize() }
         if (dateRangeFilter > 0) ActiveFilterChip(
             when (dateRangeFilter) {
-                1 -> "Heute"; 2 -> "Letzte 7 Tage"; 3 -> "Letzte 30 Tage"; 4 -> "Letztes Jahr"; else -> ""
+                1 -> stringResource(R.string.today); 2 -> stringResource(R.string.date_range_last_7_days); 3 -> stringResource(R.string.date_range_last_30_days); 4 -> stringResource(R.string.date_range_last_year); else -> ""
             }
         ) { onClearDate() }
         Text(stringResource(R.string.result_count, resultCount), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

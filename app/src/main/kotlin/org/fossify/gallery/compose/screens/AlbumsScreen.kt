@@ -95,6 +95,7 @@ fun AlbumsScreen(
     modifier: Modifier = Modifier,
     viewSettings: ViewSettings = ViewSettings(),
     onSelectionActiveChanged: (Boolean) -> Unit = {},
+    tabIndex: Int? = null,
 ) {
     val ctx = LocalContext.current
     val repo = LocalMediaRepository.current
@@ -106,10 +107,14 @@ fun AlbumsScreen(
     BackHandler(enabled = hasSelection) { selectedPaths = emptySet() }
     var selectionBarHeightPx by remember { mutableIntStateOf(0) }
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val contentTopInset by androidx.compose.animation.core.animateDpAsState(
+    // Bouncy spring can transiently overshoot past 0 while animating the inset closed, and
+    // Modifier.padding() throws on a negative value - coerce here, mirroring MediaScreen.kt.
+    val rawContentTopInset by androidx.compose.animation.core.animateDpAsState(
         targetValue = if (hasSelection) with(density) { selectionBarHeightPx.toDp() } else 0.dp,
+        animationSpec = org.fossify.gallery.compose.theme.AppMotion.insetSpring,
         label = "albumsSelectionInset",
     )
+    val contentTopInset = rawContentTopInset.coerceAtLeast(0.dp)
 
     val sortedDirs = remember(state.directories, viewSettings.sortBy, viewSettings.sortDesc) {
         val sorted = when (viewSettings.sortBy) {
@@ -157,6 +162,7 @@ fun AlbumsScreen(
                     onLongClick = { item -> selectedPaths = selectedPaths + item.key },
                     selectedKeys = selectedPaths,
                     modifier = Modifier.weight(1f),
+                    tabIndex = tabIndex,
                 )
             }
         }

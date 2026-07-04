@@ -107,7 +107,7 @@ fun TagInputDialog(
                 }
 
                 if (folderSuggestions.isNotEmpty() && tags.isEmpty() && tagInput.isBlank()) {
-                    Text("In diesem Ordner häufig:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 6.dp))
+                    Text(stringResource(R.string.frequent_in_folder), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 6.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
                         folderSuggestions.entries.sortedByDescending { it.value }.take(10).forEach { (tag, _) ->
                             Surface(

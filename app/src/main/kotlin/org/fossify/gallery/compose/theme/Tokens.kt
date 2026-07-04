@@ -14,6 +14,25 @@ import androidx.compose.ui.unit.dp
 val RatingStarColor = Color(0xFFFFD700)
 
 /**
+ * Shared black-scrim alphas for legibility overlays atop photos/videos (thumbnail badges, viewer
+ * chrome, gradients). Kept as a fixed black scale independent of the light/dark colour scheme,
+ * since these sit on top of arbitrary image content rather than an app surface - this only
+ * centralises the alpha step so it isn't re-picked ad hoc at every call site. Reuse the nearest
+ * existing step for new UI rather than adding another one-off value.
+ */
+object Scrim {
+    val a20 = Color.Black.copy(alpha = 0.20f)
+    val a22 = Color.Black.copy(alpha = 0.22f)
+    val a30 = Color.Black.copy(alpha = 0.30f)
+    val a32 = Color.Black.copy(alpha = 0.32f)
+    val a35 = Color.Black.copy(alpha = 0.35f)
+    val a40 = Color.Black.copy(alpha = 0.40f)
+    val a50 = Color.Black.copy(alpha = 0.50f)
+    val a60 = Color.Black.copy(alpha = 0.60f)
+    val a85 = Color.Black.copy(alpha = 0.85f)
+}
+
+/**
  * Central design tokens. Use these instead of ad-hoc dp literals so spacing and corner radii are
  * consistent across the whole app.
  *

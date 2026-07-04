@@ -216,7 +216,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                         Icon(Icons.Default.ContentCopy, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
                         Spacer(Modifier.height(16.dp))
                         Text(stringResource(R.string.no_duplicates_found), style = MaterialTheme.typography.bodyLarge)
-                        Text("${state.totalScanned} Dateien geprüft", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.files_scanned_count, state.totalScanned), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -229,7 +229,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
             title = { Text(stringResource(R.string.confirm_delete_title)) },
-            text = { Text("$count Dateien in den Papierkorb verschieben? (${dupFormatBytes(selSize)}) – wiederherstellbar.") },
+            text = { Text(stringResource(R.string.move_to_recycle_bin_confirm_size, count, dupFormatBytes(selSize))) },
             confirmButton = { TextButton(onClick = { showConfirmDialog = false; vm.deleteSelected() }) { Text(stringResource(org.fossify.commons.R.string.delete), color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { showConfirmDialog = false }) { Text(stringResource(R.string.cancel)) } },
         )
@@ -251,7 +251,13 @@ private fun DuplicateGroupCard(
     ) {
         Column(Modifier.padding(12.dp)) {
             Text(
-                "${group.files.size}× ${if (similar) "ähnlich" else "gleich"} · ${dupFormatBytes(group.size)} · ${dupFormatBytes(group.wastedBytes)} sparbar",
+                stringResource(
+                    R.string.duplicate_group_summary,
+                    group.files.size,
+                    if (similar) stringResource(R.string.similar) else stringResource(R.string.identical),
+                    dupFormatBytes(group.size),
+                    dupFormatBytes(group.wastedBytes),
+                ),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.tertiary,

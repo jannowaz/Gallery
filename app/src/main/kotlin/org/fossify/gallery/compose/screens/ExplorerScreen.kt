@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -42,6 +43,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -63,6 +65,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.compose.theme.Scrim
+import org.fossify.gallery.compose.util.ScrollToTopEffect
 import org.fossify.gallery.compose.util.decodeImageAspect
 import org.fossify.gallery.compose.components.FolderTile
 import org.fossify.gallery.compose.components.EmptyState
@@ -92,7 +96,9 @@ fun ExplorerScreen(
     mediaSettings: ViewSettings = ViewSettings(),
     onPathChange: (String) -> Unit = {},
     onSelectionActiveChanged: (Boolean) -> Unit = {},
+    onCanGoUpChanged: (Boolean) -> Unit = {},
     onNavigateToViewer: (List<String>, Int) -> Unit = { _, _ -> },
+    tabIndex: Int? = null,
 ) {
     val context = LocalContext.current
     val repo = LocalMediaRepository.current
@@ -105,6 +111,12 @@ fun ExplorerScreen(
     var selectedFolderPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     val hasFolderSelection = selectedFolderPaths.isNotEmpty()
     LaunchedEffect(hasFolderSelection) { onSelectionActiveChanged(hasFolderSelection) }
+    // SideEffect (synchronous, runs on the same composition pass), not LaunchedEffect (dispatches
+    // a new coroutine, which can lag a frame or more behind) - MainScreen's own BackHandler reads
+    // this via onCanGoUpChanged to decide whether it or ExplorerScreen's BackHandler below should
+    // win, so any lag here reopens the race where a back-press right after navigating into a
+    // folder sees stale (false) state and incorrectly falls through to the tab-switch behavior.
+    SideEffect { onCanGoUpChanged(navStack.size > 1) }
 
     BackHandler(enabled = navStack.size > 1) {
         navStack.removeLastOrNull()
@@ -245,7 +257,9 @@ fun ExplorerScreen(
         } else if (folderItems.isEmpty() && fileItems.isEmpty()) {
             EmptyState(Icons.Default.Folder, stringResource(R.string.no_items), subtitle = stringResource(R.string.no_items_hint))
         } else {
-            LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(4.dp)) {
+            val listState = rememberLazyListState()
+            ScrollToTopEffect(tabIndex) { listState.animateScrollToItem(0) }
+            LazyColumn(state = listState, modifier = Modifier.weight(1f), contentPadding = PaddingValues(4.dp)) {
                 if (folderItems.isNotEmpty()) {
                     item {
                         Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -280,7 +294,7 @@ fun ExplorerScreen(
                                                         Box(Modifier.size(18.dp).background(Color.White, CircleShape))
                                                         Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                                                     } else {
-                                                        Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.20f), CircleShape))
+                                                        Box(Modifier.matchParentSize().background(Scrim.a20, CircleShape))
                                                         Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(22.dp))
                                                     }
                                                 }

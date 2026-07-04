@@ -88,7 +88,7 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<Str
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (jobId != null) "Umbenennen läuft" else "${paths.size} Dateien umbenennen") },
+        title = { Text(if (jobId != null) stringResource(R.string.renaming_in_progress) else stringResource(R.string.rename_files_count, paths.size)) },
         text = {
             if (jobId != null) {
                 val progress = activeWorkInfo?.progress

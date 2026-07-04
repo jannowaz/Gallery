@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import org.fossify.gallery.compose.theme.Scrim
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,6 +57,6 @@ fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier, contentScal
     if (bmp != null) {
         androidx.compose.foundation.Image(bitmap = bmp.asImageBitmap(), contentDescription = "Video", modifier = modifier, contentScale = contentScale)
     } else {
-        Box(modifier.background(Color.Black.copy(alpha = 0.3f)), contentAlignment = Alignment.Center) { Icon(Icons.Default.Videocam, "Video", tint = Color.White, modifier = Modifier.size(24.dp)) }
+        Box(modifier.background(Scrim.a30), contentAlignment = Alignment.Center) { Icon(Icons.Default.Videocam, "Video", tint = Color.White, modifier = Modifier.size(24.dp)) }
     }
 }

@@ -15,11 +15,13 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import org.fossify.gallery.extensions.mediaCacheDB
+import org.fossify.gallery.extensions.mediaTagDB
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.helpers.RefreshBus
 import org.fossify.gallery.helpers.XmpWriter
 import org.fossify.gallery.models.MediaCache
+import org.fossify.gallery.models.MediaTag
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -112,6 +114,7 @@ class MetadataSyncWorker(
                 if (xmp.rating > 0) { foundRatings++; try { applicationContext.mediaDB.updateRating(p, xmp.rating) } catch (_: Exception) { } }
                 if (xmp.hierarchy.isNotEmpty()) hierarchyAccum.putAll(xmp.hierarchy)
                 batch.add(MediaCache(fullPath = p, tags = xmp.tags.joinToString(","), rating = xmp.rating, lastScanned = now))
+                if (xmp.tags.isNotEmpty()) syncMediaTags(p, xmp.tags)
                 if (batch.size >= 200) { applicationContext.mediaCacheDB.upsertAll(batch.toList()); batch.clear() }
             } catch (_: Exception) { }
             processed++
@@ -170,6 +173,7 @@ class MetadataSyncWorker(
                 if (!fullScan && folderPath == null && !hasData) continue
 
                 batch.add(MediaCache(fullPath = m.path, tags = xmp.tags.joinToString(","), rating = xmp.rating, lastScanned = now))
+                if (xmp.tags.isNotEmpty()) syncMediaTags(m.path, xmp.tags)
                 processed++
                 if (batch.size >= 200) { applicationContext.mediaCacheDB.upsertAll(batch.toList()); batch.clear() }
             } catch (_: Exception) { }
@@ -180,6 +184,15 @@ class MetadataSyncWorker(
         if (folderPath != null && !isStopped) {
             showNotification("Scan abgeschlossen", "${File(folderPath).name}: $tagged mit Tags/Bewertungen, $processed synchronisiert")
         }
+    }
+
+    /** Mirrors a scanned file's XMP tags into the normalized `media_tags` table (replace-all for
+     * that path), same as [org.fossify.gallery.helpers.MediaRepository]'s single-file sync. */
+    private suspend fun syncMediaTags(path: String, tags: List<String>) {
+        try {
+            applicationContext.mediaTagDB.deleteAllForPath(path)
+            tags.filter { it.isNotBlank() }.distinct().forEach { applicationContext.mediaTagDB.insert(MediaTag(mediaPath = path, tag = it)) }
+        } catch (_: Exception) { }
     }
 
     private fun showNotification(title: String, text: String) {

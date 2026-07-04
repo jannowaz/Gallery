@@ -16,9 +16,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
@@ -43,6 +45,7 @@ import org.fossify.gallery.compose.screens.ViewSettings
 import org.fossify.gallery.compose.screens.ViewType
 import org.fossify.gallery.compose.theme.LocalSpacing
 import org.fossify.gallery.compose.theme.Radius
+import org.fossify.gallery.compose.util.ScrollToTopEffect
 
 /** Generic "album-like" item used by the shared album/library grid (Albums, Favorites, Tags, Collections). */
 data class AlbumGridItem(
@@ -67,6 +70,7 @@ fun LibraryAlbumGrid(
     countLabel: (Int) -> String = { "$it Medien" },
     selectedKeys: Set<String> = emptySet(),
     subtitle: ((AlbumGridItem) -> String)? = null,
+    tabIndex: Int? = null,
 ) {
     val s = LocalSpacing.current
     val containerColor = when (viewSettings.displayMode) {
@@ -76,7 +80,9 @@ fun LibraryAlbumGrid(
     val itemSpacing = viewSettings.spacing.dp
 
     if (viewSettings.viewType == ViewType.LIST) {
-        LazyColumn(modifier.fillMaxSize()) {
+        val listState = rememberLazyListState()
+        ScrollToTopEffect(tabIndex) { listState.animateScrollToItem(0) }
+        LazyColumn(modifier.fillMaxSize(), state = listState) {
             items(items, key = { it.key }) { item ->
                 val selected = item.key in selectedKeys
                 AppCard(
@@ -109,7 +115,10 @@ fun LibraryAlbumGrid(
             }
         }
     } else {
+        val gridState = rememberLazyGridState()
+        ScrollToTopEffect(tabIndex) { gridState.animateScrollToItem(0) }
         LazyVerticalGrid(
+            state = gridState,
             columns = GridCells.Fixed(viewSettings.columnCount),
             contentPadding = PaddingValues(itemSpacing / 2),
             modifier = modifier.fillMaxSize(),

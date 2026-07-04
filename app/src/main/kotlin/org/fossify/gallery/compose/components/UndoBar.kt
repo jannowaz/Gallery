@@ -61,11 +61,11 @@ fun UndoBar(modifier: Modifier = Modifier, onActionLabel: ((UndoAction) -> Strin
             Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 val label = if (onActionLabel != null && lastAction != null) onActionLabel(lastAction)
                 else when (lastAction?.type) {
-                    UndoType.DELETE -> "${lastAction?.paths?.size ?: 0} gelöscht"
-                    UndoType.MOVE -> "${lastAction?.paths?.size ?: 0} verschoben"
-                    UndoType.TAG_ADD -> "Tag hinzugefügt"
-                    UndoType.TAG_REMOVE -> "Tag entfernt"
-                    UndoType.RATING_CHANGE -> "Bewertung geändert"
+                    UndoType.DELETE -> stringResource(R.string.undo_deleted_count, lastAction?.paths?.size ?: 0)
+                    UndoType.MOVE -> stringResource(R.string.undo_moved_count, lastAction?.paths?.size ?: 0)
+                    UndoType.TAG_ADD -> stringResource(R.string.undo_tag_added)
+                    UndoType.TAG_REMOVE -> stringResource(R.string.undo_tag_removed)
+                    UndoType.RATING_CHANGE -> stringResource(R.string.undo_rating_changed)
                     null -> ""
                 }
                 Text(label, color = MaterialTheme.colorScheme.inverseOnSurface, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))

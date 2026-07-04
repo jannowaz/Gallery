@@ -64,6 +64,7 @@ fun FavoritesScreen(
     viewSettings: ViewSettings = ViewSettings(),
     onNavigateToViewer: ((paths: List<String>, startIndex: Int) -> Unit)? = null,
     onFolderClick: (String) -> Unit = {},
+    tabIndex: Int? = null,
 ) {
     val ctx = LocalContext.current
     val repo = LocalMediaRepository.current
@@ -102,12 +103,13 @@ fun FavoritesScreen(
                         onClick = { onFolderClick(it.key) },
                         onLongClick = { pinTarget = it },
                         modifier = if (favoriteMedia.isEmpty()) Modifier.weight(1f) else Modifier.heightIn(max = 320.dp),
+                        tabIndex = tabIndex,
                     )
                     if (favoriteMedia.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 }
                 if (favoriteMedia.isNotEmpty()) {
                     Text(stringResource(R.string.media), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                    MediaScreen(modifier = Modifier.weight(1f), viewSettings = viewSettings, mediaOverride = favoriteMedia, onNavigateToViewer = onNavigateToViewer)
+                    MediaScreen(modifier = Modifier.weight(1f), viewSettings = viewSettings, mediaOverride = favoriteMedia, onNavigateToViewer = onNavigateToViewer, tabIndex = tabIndex)
                 }
             }
         }

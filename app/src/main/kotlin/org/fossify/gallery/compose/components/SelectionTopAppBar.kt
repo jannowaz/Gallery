@@ -59,8 +59,12 @@ fun SelectionAppBar(
 }
 
 /**
- * Media-specific selection bar: primary Share / Delete actions plus an overflow menu. Built on top of
- * [SelectionAppBar]. Used by the media grids.
+ * Media-specific selection bar. Built on top of [SelectionAppBar]. Used by the media grids.
+ *
+ * The visible actions are Rename/Tags/Rate/Delete - the repeated core loop for this app (rename ->
+ * tag -> rate -> move on freshly downloaded batches) plus delete, which stays visible since it's
+ * common independent of that workflow. Share, Copy/Move, select-all/invert and file info are all
+ * lower-frequency here, so they move to the overflow menu instead of crowding the bar.
  */
 @Composable
 fun SelectionTopAppBar(
@@ -80,7 +84,9 @@ fun SelectionTopAppBar(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     SelectionAppBar(count = count, onClose = onClose, modifier = modifier) {
-        IconButton(onClick = onShare) { Icon(Icons.Default.Share, stringResource(R.string.action_share)) }
+        IconButton(onClick = onRename) { Icon(Icons.Default.Edit, stringResource(R.string.action_rename)) }
+        IconButton(onClick = onTags) { Icon(Icons.AutoMirrored.Filled.Label, stringResource(R.string.action_tags)) }
+        IconButton(onClick = onRate) { Icon(Icons.Default.Star, stringResource(R.string.action_rate)) }
         IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.action_delete)) }
         Box {
             IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions)) }
@@ -88,11 +94,9 @@ fun SelectionTopAppBar(
                 DropdownMenuItem(text = { Text(stringResource(R.string.action_select_all)) }, onClick = { menuOpen = false; onSelectAll() })
                 DropdownMenuItem(text = { Text(stringResource(R.string.action_invert_selection)) }, onClick = { menuOpen = false; onInvert() })
                 HorizontalDivider()
+                DropdownMenuItem(text = { Text(stringResource(R.string.action_share)) }, onClick = { menuOpen = false; onShare() }, leadingIcon = { Icon(Icons.Default.Share, null) })
                 DropdownMenuItem(text = { Text(stringResource(R.string.action_copy)) }, onClick = { menuOpen = false; onCopy() }, leadingIcon = { Icon(Icons.Default.ContentCopy, null) })
                 DropdownMenuItem(text = { Text(stringResource(R.string.action_move)) }, onClick = { menuOpen = false; onMove() }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.DriveFileMove, null) })
-                DropdownMenuItem(text = { Text(stringResource(R.string.action_rate)) }, onClick = { menuOpen = false; onRate() }, leadingIcon = { Icon(Icons.Default.Star, null) })
-                DropdownMenuItem(text = { Text(stringResource(R.string.action_tags)) }, onClick = { menuOpen = false; onTags() }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Label, null) })
-                DropdownMenuItem(text = { Text(stringResource(R.string.action_rename)) }, onClick = { menuOpen = false; onRename() }, leadingIcon = { Icon(Icons.Default.Edit, null) })
                 DropdownMenuItem(text = { Text(stringResource(R.string.action_info)) }, onClick = { menuOpen = false; onInfo() }, leadingIcon = { Icon(Icons.Default.Info, null) })
             }
         }

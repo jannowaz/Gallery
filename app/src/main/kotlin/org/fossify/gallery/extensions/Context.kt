@@ -143,6 +143,8 @@ val Context.mediaDB: MediumDao get() = GalleryDatabase.getInstance(applicationCo
 
 val Context.mediaCacheDB: MediaCacheDao get() = GalleryDatabase.getInstance(applicationContext).MediaCacheDao()
 
+val Context.mediaTagDB: org.fossify.gallery.interfaces.MediaTagDao get() = GalleryDatabase.getInstance(applicationContext).MediaTagDao()
+
 val Context.directoryDB: DirectoryDao
     get() = GalleryDatabase.getInstance(applicationContext).DirectoryDao()
 

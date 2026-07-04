@@ -185,7 +185,7 @@ dependencies {
     detektPlugins(libs.compose.detekt)
 
     // Compose
-    implementation(platform("androidx.compose:compose-bom:2025.01.01"))
+    implementation(platform("androidx.compose:compose-bom:2025.10.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")

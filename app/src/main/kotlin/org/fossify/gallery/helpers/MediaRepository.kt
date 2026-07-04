@@ -11,11 +11,15 @@ import org.fossify.gallery.extensions.favoritesDB
 import org.fossify.gallery.extensions.getFavoriteFromPath
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.extensions.mediaCacheDB
+import org.fossify.gallery.extensions.mediaTagDB
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.models.Directory
 import org.fossify.gallery.models.MediaCollection
 import org.fossify.gallery.models.Medium
 import org.fossify.gallery.models.MediaCache
+import org.fossify.gallery.models.MediaTag
+import org.fossify.gallery.models.TagCount
+import org.fossify.gallery.models.TagPathRow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -78,7 +82,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         }
         // Background sync to avoid blocking the caller
         repositoryScope.launch {
-            syncCache(path, current.tags.joinToString(","), rating)
+            syncCache(path, current.tags, rating)
         }
     }
 
@@ -92,7 +96,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         XmpWriter.write(path, tags, current.rating)
         // Background sync
         repositoryScope.launch {
-            syncCache(path, tags.joinToString(","), current.rating)
+            syncCache(path, tags, current.rating)
         }
     }
 
@@ -102,15 +106,24 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         XmpWriter.write(path, tags, current.rating)
         // Background sync
         repositoryScope.launch {
-            syncCache(path, tags.joinToString(","), current.rating)
+            syncCache(path, tags, current.rating)
         }
     }
 
-    private suspend fun syncCache(path: String, tags: String, rating: Int) {
+    /** Mirrors a file's current XMP tags/rating into the queryable cache: `media_cache` for rating
+     * (still read by the rest of the app) and the normalized `media_tags` table (one row per tag)
+     * for tag browsing/counting/search, which is cheaper and exact-match instead of substring-on-CSV. */
+    private suspend fun syncCache(path: String, tags: List<String>, rating: Int) {
         try {
-            context.mediaCacheDB.upsertAll(listOf(MediaCache(fullPath = path, tags = tags, rating = rating, lastScanned = System.currentTimeMillis())))
+            context.mediaCacheDB.upsertAll(listOf(MediaCache(fullPath = path, tags = tags.joinToString(","), rating = rating, lastScanned = System.currentTimeMillis())))
         } catch (e: Exception) {
             android.util.Log.e("MediaRepository", "syncCache failed for $path", e)
+        }
+        try {
+            context.mediaTagDB.deleteAllForPath(path)
+            tags.filter { it.isNotBlank() }.distinct().forEach { context.mediaTagDB.insert(MediaTag(mediaPath = path, tag = it)) }
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "syncTags failed for $path", e)
         }
     }
 
@@ -118,6 +131,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         try { context.mediaDB.deleteMediumPath(path) } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium DB failed", e) }
         try { context.favoritesDB.deleteFavoritePath(path) } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium Fav failed", e) }
         try { context.mediaCacheDB.deleteByPathSync(path) } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium Cache failed", e) }
+        try { repositoryScope.launch { context.mediaTagDB.deleteAllForPath(path) } } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium Tags failed", e) }
         try { File("$path.xmp").delete() } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium XMP delete failed", e) }
         try { File(path).delete() } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium File delete failed", e) }
     }
@@ -153,23 +167,28 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     } catch (_: Exception) { emptyList() }
 
     suspend fun getTaggedPaths(): Set<String> =
-        try { context.mediaCacheDB.getAllTagged().map { it.fullPath }.toSet() } catch (_: Exception) { emptySet() }
+        try { context.mediaTagDB.getTaggedPaths().toSet() } catch (_: Exception) { emptySet() }
 
     suspend fun getTagCounts(): Map<String, Int> =
-        try {
-            context.mediaCacheDB.getAllTagged()
-                .flatMap { it.tags.split(",").filter(String::isNotBlank) }
-                .groupingBy { it }
-                .eachCount()
-        } catch (_: Exception) { emptyMap() }
+        try { context.mediaTagDB.getTagCounts().associate { it.tag to it.cnt } } catch (_: Exception) { emptyMap() }
 
     suspend fun getAllTags(): List<String> =
-        try {
-            context.mediaCacheDB.getAllTagged()
-                .flatMap { it.tags.split(",").filter(String::isNotBlank) }
-                .distinct()
-                .sorted()
-        } catch (_: Exception) { emptyList() }
+        try { context.mediaTagDB.getTagCounts().map { it.tag }.sorted() } catch (_: Exception) { emptyList() }
+
+    /** Tag -> the file paths carrying it. Backed by the normalized `media_tags` table (exact-match
+     * per tag) instead of splitting/scanning the old comma-joined `media_cache.tags` column, which
+     * could false-match a tag as a substring of another (e.g. "Auto" inside a file tagged "Autobahn"). */
+    suspend fun getAllTagsWithPaths(): Map<String, List<String>> =
+        try { context.mediaTagDB.getAllTagPathPairs().groupBy({ it.tag }, { it.path }) } catch (_: Exception) { emptyMap() }
+
+    /** Tag suggestions ranked by overall usage frequency (previously approximated recency by
+     * sampling the 1000 most-recently-scanned cache rows and recounting client-side; global
+     * frequency via the normalized table is simpler and at least as good a signal). */
+    suspend fun getTagSuggestions(limit: Int): List<Pair<String, Int>> =
+        try { context.mediaTagDB.getTagCounts().take(limit).map { it.tag to it.cnt } } catch (_: Exception) { emptyList() }
+
+    suspend fun getPathsForTag(tag: String): Set<String> =
+        try { context.mediaTagDB.getPathsForTag(tag).toSet() } catch (_: Exception) { emptySet() }
 
     fun getDeletedPaths(): Set<String> =
         try { context.mediaDB.getDeletedMedia().map { it.path }.toSet() } catch (_: Exception) { emptySet() }
@@ -193,28 +212,11 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     fun getDeletedMedia(): List<Medium> =
         try { context.mediaDB.getDeletedMedia() } catch (_: Exception) { emptyList() }
 
-    suspend fun getAllTagged(): List<MediaCache> =
-        try { context.mediaCacheDB.getAllTagged() } catch (_: Exception) { emptyList() }
-
-    suspend fun getRecentTagged(limit: Int): List<MediaCache> =
-        try { context.mediaCacheDB.getRecentTagged(limit) } catch (_: Exception) { emptyList() }
-
     suspend fun getTagsInFolder(folder: String): Map<String, Int> =
         try {
             val pattern = if (folder.endsWith("/")) "$folder%" else "$folder/%"
-            context.mediaCacheDB.getTagsInFolder(pattern)
-                .flatMap { it.tags.split(",").filter(String::isNotBlank) }
-                .groupingBy { it }
-                .eachCount()
+            context.mediaTagDB.getTagCountsInFolder(pattern).associate { it.tag to it.cnt }
         } catch (_: Exception) { emptyMap() }
-
-    suspend fun upsertCache(items: List<MediaCache>) {
-        try {
-            context.mediaCacheDB.upsertAll(items)
-        } catch (e: Exception) {
-            android.util.Log.e("MediaRepository", "upsertCache failed", e)
-        }
-    }
 
     fun getValidFavoritePaths(): List<String> =
         try { context.favoritesDB.getValidFavoritePaths() } catch (_: Exception) { emptyList() }
@@ -239,7 +241,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     fun writeRatingXmp(path: String, rating: Int) {
         val current = XmpWriter.read(path)
         XmpWriter.write(path, current.tags, rating)
-        repositoryScope.launch { syncCache(path, current.tags.joinToString(","), rating) }
+        repositoryScope.launch { syncCache(path, current.tags, rating) }
     }
 
     fun updateMediumPath(oldPath: String, parentPath: String, newName: String, newPath: String) {
@@ -330,8 +332,27 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             if (newMedia.isNotEmpty() || lastSync == 0L) {
                 newMedia.addAll(recentDiskMedia(existingPaths + newMedia.map { it.path } + deletedPaths))
             }
-            
-            if (newMedia.isNotEmpty()) {
+
+            val isFirstSync = lastSync == 0L || existingPaths.isEmpty()
+            if (isFirstSync) {
+                // A first/baseline sync must be exhaustive regardless of whether the incremental
+                // DATE_MODIFIED filter above already matched something: that filter only looks at
+                // files newer than lastSync, so on a genuine first sync any media with an older
+                // DATE_MODIFIED (restored backups, files copied with preserved timestamps, etc.)
+                // would otherwise be silently skipped forever once one newer file made `newMedia`
+                // non-empty. Merge in a full unbounded scan instead of returning early.
+                val diskMedia = scanMediaFromDisk()
+                val merged = (newMedia + diskMedia).distinctBy { it.path }
+                if (merged.isNotEmpty()) {
+                    try {
+                        context.mediaDB.insertAllKeepingExisting(merged)
+                    } catch (e: Exception) {
+                        android.util.Log.e("MediaRepository", "insertAllKeepingExisting failed", e)
+                    }
+                }
+                context.config.lastSyncTimestamp = System.currentTimeMillis()
+                return merged
+            } else if (newMedia.isNotEmpty()) {
                 try {
                     context.mediaDB.insertAllKeepingExisting(newMedia)
                     context.config.lastSyncTimestamp = latestTimestamp
@@ -339,12 +360,6 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                     android.util.Log.e("MediaRepository", "insertAllKeepingExisting failed", e)
                 }
                 return newMedia
-            } else if (lastSync == 0L || existingPaths.isEmpty()) {
-                // Fallback for first sync or empty DB
-                android.util.Log.i("MediaRepository", "No incremental media found, triggering disk scan fallback")
-                val diskMedia = scanMediaFromDisk()
-                context.config.lastSyncTimestamp = System.currentTimeMillis()
-                return diskMedia
             } else {
                 // Update timestamp anyway to skip these items next time
                 context.config.lastSyncTimestamp = System.currentTimeMillis()

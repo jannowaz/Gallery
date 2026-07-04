@@ -109,7 +109,6 @@ import org.fossify.gallery.helpers.EXT_SIZE
 import org.fossify.gallery.helpers.ROTATE_BY_ASPECT_RATIO
 import org.fossify.gallery.helpers.ROTATE_BY_DEVICE_ROTATION
 import org.fossify.gallery.helpers.ROTATE_BY_SYSTEM_SETTING
-import org.fossify.gallery.models.MediaCache
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -249,13 +248,13 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
             SectionLabel(stringResource(R.string.set_tags_ratings))
-            SettingsNav(stringResource(R.string.set_read_metadata)) { MetadataSyncWorker.scheduleFullScan(ctx); Toast.makeText(ctx, "Scan gestartet – Fortschritt in der Benachrichtigung", Toast.LENGTH_SHORT).show() }
+            SettingsNav(stringResource(R.string.set_read_metadata)) { MetadataSyncWorker.scheduleFullScan(ctx); Toast.makeText(ctx, ctx.getString(R.string.scan_started_notification), Toast.LENGTH_SHORT).show() }
             var showAdvancedScan by remember { mutableStateOf(false) }
-            SettingsNav("Erweiterter Metadaten-Scan", "Ordner, Datum und Energie-Optionen wählen") { showAdvancedScan = true }
+            SettingsNav(stringResource(R.string.advanced_metadata_scan), stringResource(R.string.advanced_metadata_scan_subtitle)) { showAdvancedScan = true }
             if (showAdvancedScan) {
                 AdvancedScanDialog(onDismiss = { showAdvancedScan = false }) { folder, start, end, inc, charging ->
                     MetadataSyncWorker.scheduleAdvancedScan(ctx, folder, start, end, inc, charging)
-                    Toast.makeText(ctx, "Erweiterter Scan geplant", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, ctx.getString(R.string.advanced_scan_scheduled), Toast.LENGTH_SHORT).show()
                 }
             }
             SettingsNav(stringResource(R.string.set_cancel_scan)) { MetadataSyncWorker.cancel(ctx); Toast.makeText(ctx, ctx.getString(R.string.set_scan_cancelled), Toast.LENGTH_SHORT).show() }
@@ -426,7 +425,7 @@ internal fun FavoritesExportNav(ctx: Context, conf: org.fossify.gallery.helpers.
             try {
                 val paths = repo.getValidFavoritePaths()
                 ctx.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { w -> paths.forEach { w.write("$it\n") } }
-                withContext(Dispatchers.Main) { Toast.makeText(ctx, "${paths.size} Favoriten exportiert", Toast.LENGTH_SHORT).show() }
+                withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(R.string.favorites_exported, paths.size), Toast.LENGTH_SHORT).show() }
             } catch (_: Exception) { }
         }
     }
@@ -451,10 +450,10 @@ internal fun AdvancedScanDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Erweiterter Scan") },
+        title = { Text(stringResource(R.string.advanced_scan_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text("Ordner auswählen", style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.select_folder), style = MaterialTheme.typography.labelSmall)
                 Surface(
                     onClick = { showFolderPicker = true },
                     shape = RoundedCornerShape(Radius.sm),
@@ -464,34 +463,34 @@ internal fun AdvancedScanDialog(
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Folder, null, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(folderPath ?: "Gesamtes Gerät", style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(folderPath ?: stringResource(R.string.entire_device), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                
+
                 Spacer(Modifier.height(12.dp))
-                Text("Zeitraum", style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.date_range), style = MaterialTheme.typography.labelSmall)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Surface(onClick = { showStartDatePicker = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(Radius.sm), color = MaterialTheme.colorScheme.surfaceVariant) {
-                        Text(if (startDate == 0L) "Von Beginn" else java.text.DateFormat.getDateInstance().format(java.util.Date(startDate)), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+                        Text(if (startDate == 0L) stringResource(R.string.from_beginning) else java.text.DateFormat.getDateInstance().format(java.util.Date(startDate)), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
                     }
                     Surface(onClick = { showEndDatePicker = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(Radius.sm), color = MaterialTheme.colorScheme.surfaceVariant) {
-                        Text(if (endDate == Long.MAX_VALUE) "Bis heute" else java.text.DateFormat.getDateInstance().format(java.util.Date(endDate)), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+                        Text(if (endDate == Long.MAX_VALUE) stringResource(R.string.until_today) else java.text.DateFormat.getDateInstance().format(java.util.Date(endDate)), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
                     }
                 }
 
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = incremental, onValueChange = { incremental = it })
-                    Text("Nur neue Dateien seit letztem Scan", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.only_new_files_since_last_scan), style = MaterialTheme.typography.bodyMedium)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = chargingOnly, onValueChange = { chargingOnly = it })
-                    Text("Nur während des Ladens ausführen", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.only_while_charging), style = MaterialTheme.typography.bodyMedium)
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onStart(folderPath, startDate, endDate, incremental, chargingOnly); onDismiss() }) { Text("Starten") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+        confirmButton = { TextButton(onClick = { onStart(folderPath, startDate, endDate, incremental, chargingOnly); onDismiss() }) { Text(stringResource(R.string.start)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 
     if (showFolderPicker) {
@@ -553,7 +552,7 @@ internal fun FavoritesImportNav(ctx: Context, conf: org.fossify.gallery.helpers.
                 lines.forEach { line ->
                     if (java.io.File(line).exists()) { repo.addFavoriteByPath(line); imported++ }
                 }
-                withContext(Dispatchers.Main) { Toast.makeText(ctx, "$imported Favoriten importiert", Toast.LENGTH_SHORT).show() }
+                withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(R.string.favorites_imported, imported), Toast.LENGTH_SHORT).show() }
             } catch (_: Exception) { }
         }
     }
@@ -568,12 +567,12 @@ internal fun FullBackupExportNav(ctx: Context, scope: CoroutineScope) {
             if (out != null) {
                 val success = SettingsBackupHelper.exportSettings(ctx, out)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(ctx, if (success) "Backup erstellt" else "Export fehlgeschlagen", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, ctx.getString(if (success) R.string.backup_created else R.string.export_failed), Toast.LENGTH_SHORT).show()
                 }
             }
         }
     }
-    SettingsNav("Vollständiges Backup exportieren", "Alle Einstellungen und Pins sichern") {
+    SettingsNav(stringResource(R.string.export_full_backup), stringResource(R.string.export_full_backup_subtitle)) {
         exportLauncher.launch("gallery-full-backup_${java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US).format(java.util.Date())}.json")
     }
 }
@@ -586,7 +585,7 @@ internal fun FullBackupImportNav(ctx: Context, scope: CoroutineScope) {
             if (ins != null) {
                 val success = SettingsBackupHelper.importSettings(ctx, ins)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(ctx, if (success) "Backup wiederhergestellt" else "Import fehlgeschlagen", Toast.LENGTH_LONG).show()
+                    Toast.makeText(ctx, ctx.getString(if (success) R.string.backup_restored else R.string.import_failed), Toast.LENGTH_LONG).show()
                     if (success) {
                         (ctx as? Activity)?.let {
                             it.finish()
@@ -597,7 +596,7 @@ internal fun FullBackupImportNav(ctx: Context, scope: CoroutineScope) {
             }
         }
     }
-    SettingsNav("Vollständiges Backup importieren", "Alle Einstellungen überschreiben") {
+    SettingsNav(stringResource(R.string.import_full_backup), stringResource(R.string.import_full_backup_subtitle)) {
         importLauncher.launch(arrayOf("application/json", "application/octet-stream"))
     }
 }

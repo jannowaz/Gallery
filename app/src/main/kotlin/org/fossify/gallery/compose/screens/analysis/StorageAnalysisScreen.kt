@@ -163,7 +163,7 @@ fun StorageAnalysisScreen(onBack: () -> Unit, onNavigateToViewer: (String) -> Un
                     val selSize = state.results.filter { it.path in state.selectedPaths }.sumOf { it.wastedBytes }
                     Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(Radius.md)) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("${state.selectedPaths.size} ausgewählt · ${formatBytes(selSize)} sparen", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                            Text(stringResource(R.string.selected_count_saving, state.selectedPaths.size, formatBytes(selSize)), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
                             TextButton(onClick = { showConfirmDialog = true }) { Text(stringResource(R.string.optimize)) }
                             TextButton(onClick = { vm.clearSelection() }) { Text(stringResource(R.string.action_empty)) }
                         }
@@ -188,7 +188,7 @@ fun StorageAnalysisScreen(onBack: () -> Unit, onNavigateToViewer: (String) -> Un
                         Icon(Icons.Default.CheckCircle, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
                         Spacer(Modifier.height(16.dp))
                         Text(stringResource(R.string.all_optimal), style = MaterialTheme.typography.bodyLarge)
-                        Text("${state.totalFiles} Dateien analysiert, keine Optimierung nötig", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.analyzed_no_optimization, state.totalFiles), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -205,12 +205,12 @@ fun StorageAnalysisScreen(onBack: () -> Unit, onNavigateToViewer: (String) -> Un
             title = { Text(stringResource(R.string.optimize_confirm_title)) },
             text = {
                 Column {
-                    Text("$losslessCount von $selCount Dateien können verlustfrei optimiert werden.")
+                    Text(stringResource(R.string.lossless_optimizable_count, losslessCount, selCount))
                     Spacer(Modifier.height(6.dp))
-                    Text("Geschätzte Ersparnis: ${formatBytes(selWaste)}. Die Originale wandern in den Papierkorb (wiederherstellbar).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.estimated_savings_recycle_bin, formatBytes(selWaste)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (selCount - losslessCount > 0) {
                         Spacer(Modifier.height(4.dp))
-                        Text("${selCount - losslessCount} Datei(en) ohne verlustfreie Option werden übersprungen.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.skipped_no_lossless_option, selCount - losslessCount), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             },

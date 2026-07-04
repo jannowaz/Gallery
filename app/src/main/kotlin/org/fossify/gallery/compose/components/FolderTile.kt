@@ -1,5 +1,6 @@
 package org.fossify.gallery.compose.components
 import org.fossify.gallery.compose.theme.Radius
+import org.fossify.gallery.compose.theme.Scrim
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -53,7 +54,7 @@ fun FolderTile(
             Box(Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
                     0.55f to Color.Transparent,
-                    1f to Color.Black.copy(alpha = 0.6f),
+                    1f to Scrim.a60,
                 )
             ))
         } else {
@@ -73,7 +74,7 @@ fun FolderTile(
                 Text(
                     text = subtitle,
                     color = if (onThumb) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

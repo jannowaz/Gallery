@@ -2,6 +2,7 @@ package org.fossify.gallery.compose.screens.viewer
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.theme.Radius
+import org.fossify.gallery.compose.theme.Scrim
 
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
@@ -95,11 +96,11 @@ fun VideoPage(
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val zoom = rememberZoomState()
-    var isPlaying by remember { mutableStateOf(true) }
+    var isPlaying by remember { mutableStateOf(ctx.config.autoplayVideos) }
     var playbackSpeed by remember { mutableFloatStateOf(1f) }
     val speeds = listOf(0.5f, 1f, 1.5f, 2f, 3f)
     var backgroundAudio by remember { mutableStateOf(false) }
-    var isMuted by remember { mutableStateOf(false) }
+    var isMuted by remember { mutableStateOf(ctx.config.muteVideos) }
     var trimMode by remember { mutableStateOf(false) }
     var trimStartMs by remember { mutableFloatStateOf(0f) }
     var trimEndMs by remember { mutableFloatStateOf(-1f) }
@@ -158,14 +159,19 @@ fun VideoPage(
     val player = remember(path) {
         ExoPlayer.Builder(ctx).build().apply {
             setMediaItem(MediaItem.fromUri(Uri.fromFile(File(path))))
-            repeatMode = Player.REPEAT_MODE_ONE
+            repeatMode = if (ctx.config.loopVideos) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+            volume = if (ctx.config.muteVideos) 0f else 1f
+            if (ctx.config.rememberLastVideoPosition) {
+                val savedPos = ctx.config.getLastVideoPosition(path)
+                if (savedPos > 0) seekTo(savedPos.toLong())
+            }
         }
     }
     LaunchedEffect(isCurrentPage) {
         if (isCurrentPage) {
             // Only allocate the decoder/codec once this page is actually the visible one.
             if (player.playbackState == Player.STATE_IDLE) player.prepare()
-            player.playWhenReady = true
+            player.playWhenReady = ctx.config.autoplayVideos
         } else {
             player.playWhenReady = false
         }
@@ -174,6 +180,7 @@ fun VideoPage(
         onDispose {
             player.playWhenReady = false
             player.pause()
+            if (ctx.config.rememberLastVideoPosition) ctx.config.saveLastVideoPosition(path, player.currentPosition.toInt())
             player.release()
         }
     }
@@ -210,15 +217,15 @@ fun VideoPage(
                 scaleX = zoom.scale; scaleY = zoom.scale
                 translationX = zoom.offset.x; translationY = zoom.offset.y
             }
-            .pointerInput(Unit) {
+            .pointerInput(ctx.config.allowVideoGestures) {
                 detectTapGestures(
                     onTap = { onToggleUi() },
-                    onDoubleTap = { pos: androidx.compose.ui.geometry.Offset ->
+                    onDoubleTap = if (ctx.config.allowVideoGestures) { pos: androidx.compose.ui.geometry.Offset ->
                         val w = size.width
                         if (pos.x < w / 3f) player.seekTo((player.currentPosition - 10000).coerceAtLeast(0))
                         else if (pos.x > w * 2 / 3f) player.seekTo((player.currentPosition + 10000).coerceAtMost(player.duration))
                         else zoom.cycleZoom(pos, size)
-                    }
+                    } else null
                 )
             }
             .zoomable(zoom, onSingleTap = { onToggleUi() })
@@ -230,7 +237,7 @@ fun VideoPage(
             Box(Modifier.fillMaxSize()) {
                 IconButton(
                     onClick = { if (isPlaying) player.pause() else player.play(); onInteract() },
-                    modifier = Modifier.align(Alignment.Center).size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f))
+                    modifier = Modifier.align(Alignment.Center).size(56.dp).clip(CircleShape).background(Scrim.a50)
                 ) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(R.string.cd_play_pause), tint = Color.White, modifier = Modifier.size(28.dp)) }
 
                 val speedIdx = speeds.indexOf(playbackSpeed)
@@ -246,7 +253,7 @@ fun VideoPage(
                 if (player.duration > 0) {
                     var seekPos by remember { mutableFloatStateOf(-1f) }
                     Row(
-                        Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Color.Black.copy(alpha = 0.6f)).padding(horizontal = 12.dp, vertical = 8.dp).navigationBarsPadding(),
+                        Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Scrim.a60).padding(horizontal = 12.dp, vertical = 8.dp).navigationBarsPadding(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         val posMs = if (seekPos >= 0) seekPos else positionMs.toFloat()
@@ -269,7 +276,7 @@ fun VideoPage(
                     if (scrubFraction >= 0f && frameCache.isNotEmpty()) {
                         val previewBmp = frameCache[(scrubFraction * (frameCache.size - 1)).toInt().coerceIn(0, frameCache.size - 1)]
                         Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 84.dp), contentAlignment = Alignment.Center) {
-                            Surface(shape = RoundedCornerShape(Radius.sm), color = Color.Black.copy(alpha = 0.85f)) {
+                            Surface(shape = RoundedCornerShape(Radius.sm), color = Scrim.a85) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Image(bitmap = previewBmp.asImageBitmap(), contentDescription = null, modifier = Modifier.size(width = 160.dp, height = 90.dp), contentScale = ContentScale.Crop)
                                     Text("%02d:%02d".format(((scrubFraction * player.duration) / 1000).toInt() / 60, ((scrubFraction * player.duration) / 1000).toInt() % 60), color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(4.dp))

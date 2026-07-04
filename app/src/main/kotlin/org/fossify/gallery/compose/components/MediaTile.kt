@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
@@ -50,8 +51,14 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.graphics.graphicsLayer
 import org.fossify.gallery.compose.screens.VideoThumbnail
+import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.RatingStarColor
+import org.fossify.gallery.compose.theme.Scrim
 import org.fossify.gallery.compose.util.selectableItem
+import org.fossify.gallery.compose.util.sharedElementKey
+import org.fossify.gallery.helpers.TYPE_GIFS
+import org.fossify.gallery.helpers.TYPE_RAWS
+import org.fossify.gallery.helpers.TYPE_SVGS
 import org.fossify.gallery.models.Medium
 import org.fossify.gallery.R
 
@@ -74,6 +81,10 @@ fun MediaTile(
     itemSpacing: Dp,
     showFileName: Boolean,
     showVideoDuration: Boolean,
+    cropThumbnails: Boolean = true,
+    showRating: Boolean = true,
+    showFileType: Boolean = true,
+    markFavorite: Boolean = true,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onSwipeToSelect: () -> Unit,
@@ -83,7 +94,7 @@ fun MediaTile(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (isPressed) 0.96f else 1f, label = "pressScale")
+    val scale by animateFloatAsState(if (isPressed) 0.96f else 1f, animationSpec = AppMotion.short, label = "pressScale")
 
     var lastBoundsUpdate by remember { mutableLongStateOf(0L) }
     val durationText = if (showVideoDuration && isVideo && medium.videoDuration > 0)
@@ -118,22 +129,23 @@ fun MediaTile(
                 )
                 .semantics { if (isSelectionMode) selected = isSelected }
         ) {
+            val thumbScale = if (cropThumbnails) ContentScale.Crop else ContentScale.Fit
             if (isVideo) {
-                VideoThumbnail(videoPath = medium.path, modifier = Modifier.fillMaxSize().clip(cornerShape), contentScale = ContentScale.Crop)
+                VideoThumbnail(videoPath = medium.path, modifier = Modifier.fillMaxSize().clip(cornerShape).sharedElementKey("media_${medium.path}"), contentScale = thumbScale)
             } else {
-                GalleryImage(path = medium.path, contentDescription = medium.name, modifier = Modifier.fillMaxSize().clip(cornerShape), contentScale = ContentScale.Crop, placeholderIconSize = 16.dp)
+                GalleryImage(path = medium.path, contentDescription = medium.name, modifier = Modifier.fillMaxSize().clip(cornerShape).sharedElementKey("media_${medium.path}"), contentScale = thumbScale, placeholderIconSize = 16.dp)
             }
 
             if (isVideo) {
-                Box(Modifier.align(Alignment.Center).size(32.dp).background(Color.Black.copy(alpha = 0.35f), CircleShape), contentAlignment = Alignment.Center) {
+                Box(Modifier.align(Alignment.Center).size(32.dp).background(Scrim.a35, CircleShape), contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.PlayArrow, null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(22.dp))
                 }
             }
 
             if (showOverlays) {
-                if (medium.rating > 0) {
+                if (showRating && medium.rating > 0) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-                        Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(bottom = 3.dp).background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(Radius.xs)).padding(horizontal = 4.dp, vertical = 1.dp)) {
+                        Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(bottom = 3.dp).background(Scrim.a40, RoundedCornerShape(Radius.xs)).padding(horizontal = 4.dp, vertical = 1.dp)) {
                             repeat(medium.rating) {
                                 Icon(Icons.Default.Star, contentDescription = null, tint = RatingStarColor, modifier = Modifier.size(11.dp))
                             }
@@ -141,13 +153,30 @@ fun MediaTile(
                     }
                 }
                 if (hasTag) {
-                    Box(Modifier.align(Alignment.TopEnd).padding(4.dp).background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(Radius.xs)).padding(horizontal = 4.dp, vertical = 1.dp)) {
+                    Box(Modifier.align(Alignment.TopEnd).padding(4.dp).background(Scrim.a50, RoundedCornerShape(Radius.xs)).padding(horizontal = 4.dp, vertical = 1.dp)) {
                         Icon(Icons.Default.Label, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(10.dp))
                     }
                 }
                 if (isVideo && durationText.isNotEmpty()) {
-                    Box(Modifier.align(Alignment.BottomEnd).padding(4.dp).background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(Radius.xs)).padding(horizontal = 4.dp, vertical = 1.dp)) {
+                    Box(Modifier.align(Alignment.BottomEnd).padding(4.dp).background(Scrim.a60, RoundedCornerShape(Radius.xs)).padding(horizontal = 4.dp, vertical = 1.dp)) {
                         Text(durationText, style = MaterialTheme.typography.labelSmall, color = Color.White, fontSize = 10.sp)
+                    }
+                }
+                if (markFavorite && medium.isFavorite) {
+                    Box(Modifier.align(Alignment.BottomStart).padding(4.dp).background(Scrim.a50, RoundedCornerShape(Radius.xs)).padding(3.dp)) {
+                        Icon(Icons.Default.Favorite, null, tint = Color(0xFFE91E63), modifier = Modifier.size(11.dp))
+                    }
+                }
+                if (showFileType && !isSelectionMode && medium.type in intArrayOf(TYPE_GIFS, TYPE_RAWS, TYPE_SVGS)) {
+                    val typeLabel = stringResource(
+                        when (medium.type) {
+                            TYPE_GIFS -> R.string.gif
+                            TYPE_RAWS -> R.string.raw
+                            else -> R.string.svg
+                        }
+                    )
+                    Box(Modifier.align(Alignment.TopStart).padding(4.dp).background(Scrim.a50, RoundedCornerShape(Radius.xs)).padding(horizontal = 4.dp, vertical = 1.dp)) {
+                        Text(typeLabel, style = MaterialTheme.typography.labelSmall, color = Color.White, fontSize = 9.sp)
                     }
                 }
             }
@@ -162,7 +191,7 @@ fun MediaTile(
                         Box(Modifier.size(18.dp).background(Color.White, CircleShape))
                         Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                     } else {
-                        Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.20f), CircleShape))
+                        Box(Modifier.matchParentSize().background(Scrim.a20, CircleShape))
                         Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(22.dp))
                     }
                 }
