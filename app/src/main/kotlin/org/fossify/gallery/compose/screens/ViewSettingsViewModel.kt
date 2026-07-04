@@ -83,6 +83,19 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
     private fun loadFromConfig() {
         val ctx = getApplication<Application>().applicationContext
         val c = ctx.config
+        val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(ctx)
+        // Each tab loads its own sort from Config, except the Explorer tab which has its own keys
+        // stored in SharedPreferences so it never interferes with Albums / Media.
+        fun loadExplorerSort(key: String, fallbackSort: Int, fallbackDesc: Boolean): Pair<Int, Boolean> {
+            val s = prefs.getString(key, null)
+            if (s != null) {
+                val parts = s.split(",")
+                if (parts.size == 2) return parts[0].toIntOrNull() to parts[1].toBoolean()
+            }
+            return fallbackSort to fallbackDesc
+        }
+        val (exAlbSort, exAlbDesc) = loadExplorerSort("explorer_albums_sort", c.folderSortBy, c.folderSortDesc)
+        val (exMedSort, exMedDesc) = loadExplorerSort("explorer_media_sort", c.mediaSortBy, c.mediaSortDesc)
         _settings.value = TabViewSettings(
             media = ViewSettings(
                 viewType = ViewType.from(c.viewTypeFiles),
@@ -110,8 +123,8 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
                 displayMode = DisplayMode.from(c.folderDisplayMode),
                 showFileNames = c.displayFileNames,
                 roundedCorners = c.fileRoundedCorners,
-                sortBy = SortField.from(c.folderSortBy),
-                sortDesc = c.folderSortDesc,
+                sortBy = SortField.from(exAlbSort),
+                sortDesc = exAlbDesc,
                 spacing = c.thumbnailSpacing,
                 showFolderThumbnails = c.showFolderThumbnails,
             ),
@@ -120,8 +133,8 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
                 columnCount = c.mediaColumnCnt.coerceIn(2, 6),
                 showFileNames = c.mediaShowFileNames,
                 roundedCorners = c.fileRoundedCorners,
-                sortBy = SortField.from(c.mediaSortBy),
-                sortDesc = c.mediaSortDesc,
+                sortBy = SortField.from(exMedSort),
+                sortDesc = exMedDesc,
                 spacing = c.thumbnailSpacing,
             ),
             folderMedia = ViewSettings(
@@ -192,10 +205,11 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
         ctx.config.folderDisplayMode = s.displayMode.value
         ctx.config.displayFileNames = s.showFileNames
         ctx.config.fileRoundedCorners = s.roundedCorners
-        ctx.config.folderSortBy = s.sortBy.value
-        ctx.config.folderSortDesc = s.sortDesc
         ctx.config.thumbnailSpacing = s.spacing
         ctx.config.showFolderThumbnails = s.showFolderThumbnails
+        // Save explorer Album sort independently so it never interferes with the Albums tab.
+        val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(ctx)
+        prefs.edit().putString("explorer_albums_sort", "${s.sortBy.value},${s.sortDesc}").apply()
     }
 
     private fun persistExplorerMedia(s: ViewSettings) {
@@ -204,9 +218,10 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
         ctx.config.mediaColumnCnt = s.columnCount
         ctx.config.mediaShowFileNames = s.showFileNames
         ctx.config.fileRoundedCorners = s.roundedCorners
-        ctx.config.mediaSortBy = s.sortBy.value
-        ctx.config.mediaSortDesc = s.sortDesc
         ctx.config.thumbnailSpacing = s.spacing
+        // Save explorer File sort independently so it never interferes with the Media tab.
+        val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(ctx)
+        prefs.edit().putString("explorer_media_sort", "${s.sortBy.value},${s.sortDesc}").apply()
     }
 
     private fun persistFavorites(s: ViewSettings) {
