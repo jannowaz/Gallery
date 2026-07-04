@@ -132,6 +132,14 @@ fun ExplorerScreen(
     LaunchedEffect(Unit) {
         allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.mediaEntriesUnder(context, storageRoot) }
     }
+    // Re-fetch after rename/move/mover/delete etc. so the tree doesn't keep showing files/folders
+    // that no longer exist at their old path. isLoading is intentionally left untouched below (see
+    // the loadedPath guard) so this refresh happens quietly instead of flashing the skeleton loader.
+    LaunchedEffect(Unit) {
+        org.fossify.gallery.helpers.RefreshBus.events.collect {
+            allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.mediaEntriesUnder(context, storageRoot) }
+        }
+    }
 
     suspend fun loadFolderContents(path: String) {
         val (sortedFolders, sortedFiles) = withContext(Dispatchers.IO) {
@@ -186,10 +194,15 @@ fun ExplorerScreen(
         fileItems = sortedFiles
     }
 
+    // Tracks which path the currently-shown folderItems/fileItems belong to, so that a silent
+    // background refresh (RefreshBus, same currentPath) can update the list in place instead of
+    // forcing the full-screen skeleton loader back up.
+    var loadedPath by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(currentPath, allEntries, folderSettings.sortBy, folderSettings.sortDesc, mediaSettings.sortBy, mediaSettings.sortDesc) {
         if (currentPath.startsWith(storageRoot) && allEntries == null) { isLoading = true; return@LaunchedEffect }
-        isLoading = true
+        if (loadedPath != currentPath) isLoading = true
         loadFolderContents(currentPath)
+        loadedPath = currentPath
         isLoading = false
     }
 

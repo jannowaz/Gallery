@@ -478,10 +478,14 @@ fun MediaScreen(
         UndoBar(modifier = Modifier.align(Alignment.BottomCenter))
         }
     }
-    if (showRatingDialog) { val batch=selectedPaths.toList(); StarRatingDialog(currentRating=currentRating,onRate={i->currentRating=i;viewModel.setRatingFor(batch,i);selectedPaths=emptySet();showRatingDialog=false},onDismiss={showRatingDialog=false}) }
-    if (showTagsDialog) { val batch=selectedPaths.toList(); LaunchedEffect(Unit){viewModel.loadAllTags()}; TagInputDialog(initialTags=selectedCommonTags,suggestedTags=state.allTags,suggestedTagCounts=state.tagCounts,onAddTag={viewModel.addTagFor(batch,it)},onRemoveTag={viewModel.removeTagFor(batch,it)},onDismiss={showTagsDialog=false;selectedPaths=emptySet()},batchCount=batch.size) }
+    // Rate/Tag/Rename keep the selection alive on purpose: the core workflow (rename -> tag ->
+    // rate -> move for freshly downloaded files) chains these actions on the same batch, and
+    // forcing a re-select between every step was the single biggest UX cost in that flow. Move
+    // and Delete still clear the selection since the files leave the current view either way.
+    if (showRatingDialog) { val batch=selectedPaths.toList(); StarRatingDialog(currentRating=currentRating,onRate={i->currentRating=i;viewModel.setRatingFor(batch,i);showRatingDialog=false},onDismiss={showRatingDialog=false}) }
+    if (showTagsDialog) { val batch=selectedPaths.toList(); LaunchedEffect(Unit){viewModel.loadAllTags()}; TagInputDialog(initialTags=selectedCommonTags,suggestedTags=state.allTags,suggestedTagCounts=state.tagCounts,onAddTag={viewModel.addTagFor(batch,it)},onRemoveTag={viewModel.removeTagFor(batch,it)},onDismiss={showTagsDialog=false},batchCount=batch.size) }
     if (showFolderPicker) { val batch=selectedPaths.toList(); FolderPickerSheet(isMoveOperation=folderPickerIsMove,sourcePaths=batch,onDismiss={showFolderPicker=false;selectedPaths=emptySet()}) }
-    if (showRenameDialog) { val batch=selectedPaths.toList(); RenameDialog(paths=batch,onDismiss={showRenameDialog=false;selectedPaths=emptySet();viewModel.refresh()}) }
+    if (showRenameDialog) { val batch=selectedPaths.toList(); RenameDialog(paths=batch,onRenamed={mapping->selectedPaths=selectedPaths.map{mapping[it]?:it}.toSet()},onDismiss={showRenameDialog=false;viewModel.silentRefresh()}) }
 }
 
 @Composable

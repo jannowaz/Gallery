@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import org.fossify.gallery.interfaces.*
 import org.fossify.gallery.models.*
 
-@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class], version = 14)
+@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class], version = 15)
 abstract class GalleryDatabase : RoomDatabase() {
 
     abstract fun DirectoryDao(): DirectoryDao
@@ -44,6 +44,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                             .addMigrations(MIGRATION_11_12)
                             .addMigrations(MIGRATION_12_13)
                             .addMigrations(MIGRATION_13_14)
+                            .addMigrations(MIGRATION_14_15)
                             .fallbackToDestructiveMigrationFrom(1, 2, 3)
                             .build()
                     }
@@ -123,6 +124,30 @@ abstract class GalleryDatabase : RoomDatabase() {
                 database.execSQL("ALTER TABLE collections ADD COLUMN tag_filter TEXT default '' NOT NULL")
                 database.execSQL("ALTER TABLE collections ADD COLUMN rating_filter INTEGER default 0 NOT NULL")
                 database.execSQL("ALTER TABLE collections ADD COLUMN search_query TEXT default '' NOT NULL")
+            }
+        }
+
+        // Every DAO already queries these path columns with "COLLATE NOCASE" (rename, move,
+        // favorite, rating, soft-delete). SQLite can only use an index when the query's
+        // collating sequence matches the index's declared collation, and these unique indices
+        // were created without one (defaulting to BINARY) - so every one of those writes was
+        // doing a full table scan instead of an index lookup. Recreating the indices with
+        // COLLATE NOCASE baked in fixes this without touching table data; Room's runtime schema
+        // validation (TableInfo) does not compare index collation, only name/uniqueness/columns,
+        // so this is safe to do without a full table rebuild.
+        private val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("DROP INDEX IF EXISTS `index_media_full_path`")
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_media_full_path` ON `media` (`full_path` COLLATE NOCASE)")
+
+                database.execSQL("DROP INDEX IF EXISTS `index_directories_path`")
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_directories_path` ON `directories` (`path` COLLATE NOCASE)")
+
+                database.execSQL("DROP INDEX IF EXISTS `index_favorites_full_path`")
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_favorites_full_path` ON `favorites` (`full_path` COLLATE NOCASE)")
+
+                database.execSQL("DROP INDEX IF EXISTS `index_date_takens_full_path`")
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_date_takens_full_path` ON `date_takens` (`full_path` COLLATE NOCASE)")
             }
         }
     }

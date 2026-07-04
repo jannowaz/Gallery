@@ -13,7 +13,7 @@ import org.fossify.gallery.helpers.RECYCLE_BIN
 @Entity(tableName = "directories", indices = [Index(value = ["path"], unique = true)])
 data class Directory(
     @PrimaryKey(autoGenerate = true) var id: Long?,
-    @ColumnInfo(name = "path") var path: String,
+    @ColumnInfo(name = "path", collate = ColumnInfo.NOCASE) var path: String,
     @ColumnInfo(name = "thumbnail") var tmb: String,
     @ColumnInfo(name = "filename") var name: String,
     @ColumnInfo(name = "media_count") var mediaCnt: Int,

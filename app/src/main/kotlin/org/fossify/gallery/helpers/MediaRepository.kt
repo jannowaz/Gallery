@@ -19,6 +19,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
 
+// SQLite's default host-parameter limit is 999 (older bundled versions; some newer builds raise it,
+// but Android's bundled version cannot be relied on to). Room expands a "full_path IN (:paths)" query
+// into one bound parameter per element, so a single unchunked call with e.g. a "select all" batch of a
+// few thousand paths can exceed that limit and throw at runtime. Chunk comfortably under it instead.
+private const val SQLITE_BATCH_CHUNK_SIZE = 900
+
 class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     private val repositoryScope = CoroutineScope(Dispatchers.IO)
 
@@ -118,7 +124,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         try { context.mediaDB.getByMinRating(minRating) } catch (_: Exception) { emptyList() }
 
     fun getMediaByPaths(paths: List<String>): List<Medium> =
-        try { context.mediaDB.getMediaByPaths(paths) } catch (_: Exception) { emptyList() }
+        try { paths.chunked(SQLITE_BATCH_CHUNK_SIZE).flatMap { context.mediaDB.getMediaByPaths(it) } } catch (_: Exception) { emptyList() }
 
     fun getNewestMedia(limit: Int): List<Medium> =
         try { context.mediaDB.getNewestMedia(limit) } catch (_: Exception) { emptyList() }
@@ -200,7 +206,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     }
 
     fun setDbRatingBatch(paths: Collection<String>, rating: Int) {
-        try { context.mediaDB.updateRatingBatch(paths, rating) } catch (e: Exception) { android.util.Log.e("MediaRepository", "setDbRatingBatch failed", e) }
+        try { paths.chunked(SQLITE_BATCH_CHUNK_SIZE).forEach { context.mediaDB.updateRatingBatch(it, rating) } } catch (e: Exception) { android.util.Log.e("MediaRepository", "setDbRatingBatch failed", e) }
     }
 
     fun updateMediumPath(oldPath: String, parentPath: String, newName: String, newPath: String) {
@@ -220,8 +226,12 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     private val videoExts = setOf("mp4", "mkv", "mov", "3gp", "wmv", "flv", "avi")
     private val imageExts = setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "avif", "bmp", "svg", "apng", "jxl")
 
-    /** Pulls newly added images/videos from MediaStore (plus recent disk folders) into the local DB. */
-    fun syncNewMediaFromStore() {
+    /**
+     * Pulls newly added images/videos from MediaStore (plus recent disk folders) into the local DB.
+     * Returns the media that was actually newly inserted, so callers (e.g. [org.fossify.gallery.workers.MediaSyncWorker])
+     * can limit any follow-up work (like rebuilding directory rows) to just the affected folders.
+     */
+    fun syncNewMediaFromStore(): List<Medium> {
         try {
             val lastSync = context.config.lastSyncTimestamp
             val existingPaths = context.mediaDB.getAllPaths().toSet()
@@ -295,11 +305,13 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                 } catch (e: Exception) {
                     android.util.Log.e("MediaRepository", "insertAllKeepingExisting failed", e)
                 }
+                return newMedia
             } else if (lastSync == 0L || existingPaths.isEmpty()) {
                 // Fallback for first sync or empty DB
                 android.util.Log.i("MediaRepository", "No incremental media found, triggering disk scan fallback")
-                scanMediaFromDisk()
+                val diskMedia = scanMediaFromDisk()
                 context.config.lastSyncTimestamp = System.currentTimeMillis()
+                return diskMedia
             } else {
                 // Update timestamp anyway to skip these items next time
                 context.config.lastSyncTimestamp = System.currentTimeMillis()
@@ -307,6 +319,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         } catch (e: Exception) {
             android.util.Log.e("MediaRepository", "syncNewMediaFromStore failed", e)
         }
+        return emptyList()
     }
 
     /** Full MediaStore enumeration with a recursive disk fallback — used when the local DB is empty. */
@@ -415,7 +428,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     fun moveToRecycleBinBatch(paths: Collection<String>) {
         try {
             val now = System.currentTimeMillis()
-            context.mediaDB.softDeleteBatch(paths, now)
+            paths.chunked(SQLITE_BATCH_CHUNK_SIZE).forEach { context.mediaDB.softDeleteBatch(it, now) }
         } catch (e: Exception) {
             android.util.Log.e("MediaRepository", "moveToRecycleBinBatch failed", e)
         }
@@ -431,7 +444,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
 
     fun restoreFromRecycleBinBatch(paths: Collection<String>) {
         try {
-            context.mediaDB.restoreDeletedBatch(paths)
+            paths.chunked(SQLITE_BATCH_CHUNK_SIZE).forEach { context.mediaDB.restoreDeletedBatch(it) }
         } catch (e: Exception) {
             android.util.Log.e("MediaRepository", "restoreFromRecycleBinBatch failed", e)
         }

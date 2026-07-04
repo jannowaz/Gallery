@@ -48,7 +48,7 @@ import org.fossify.gallery.helpers.RefreshBus
 import java.io.File
 
 @Composable
-fun RenameDialog(paths: List<String>, onDismiss: () -> Unit) {
+fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<String, String>) -> Unit = {}) {
     val ctx = LocalContext.current
     val repo = LocalMediaRepository.current
     var mode by remember { mutableIntStateOf(0) }
@@ -133,8 +133,8 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit) {
                         consent.request(MediaStoreOps.writeRequest(ctx, jobs.map { it.uri }))
                     } catch (_: Exception) { false }
                     if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); return@launch }
-                    val renamed = withContext(Dispatchers.IO) {
-                        var n = 0
+                    val renamedPaths = withContext(Dispatchers.IO) {
+                        val mapping = mutableMapOf<String, String>()
                         jobs.forEach { job ->
                             if (MediaStoreOps.rename(ctx, job.uri, job.newName)) {
                                 val parent = File(job.path).parent ?: ""
@@ -143,13 +143,14 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit) {
                                 // Remove any leftover reference to the old path (MediaCache + stale media row).
                                 try { ctx.mediaCacheDB.deleteByPathSync(job.path) } catch (_: Exception) { }
                                 try { ctx.mediaDB.deleteMediumPath(job.path) } catch (_: Exception) { }
-                                n++
+                                mapping[job.path] = newPath
                             }
                         }
-                        n
+                        mapping
                     }
                     RefreshBus.trigger()
-                    ctx.toast(ctx.getString(R.string.files_renamed, renamed), Toast.LENGTH_SHORT)
+                    ctx.toast(ctx.getString(R.string.files_renamed, renamedPaths.size), Toast.LENGTH_SHORT)
+                    onRenamed(renamedPaths)
                     onDismiss()
                 }
             }) { Text(stringResource(R.string.action_rename)) }

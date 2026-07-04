@@ -18,7 +18,7 @@ import java.util.Locale
 data class Medium(
     @PrimaryKey(autoGenerate = true) var id: Long?,
     @ColumnInfo(name = "filename") var name: String,
-    @ColumnInfo(name = "full_path") var path: String,
+    @ColumnInfo(name = "full_path", collate = ColumnInfo.NOCASE) var path: String,
     @ColumnInfo(name = "parent_path") var parentPath: String,
     @ColumnInfo(name = "last_modified") var modified: Long,
     @ColumnInfo(name = "date_taken") var taken: Long,

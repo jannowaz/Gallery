@@ -1,7 +1,6 @@
 package org.fossify.gallery.workers
 
 import android.content.Context
-import android.provider.MediaStore
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
@@ -11,6 +10,9 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.helpers.LOCATION_INTERNAL
+import org.fossify.gallery.helpers.MediaRepository
+import org.fossify.gallery.models.Directory
 import java.util.concurrent.TimeUnit
 
 class MediaSyncWorker(
@@ -20,65 +22,36 @@ class MediaSyncWorker(
 
     override suspend fun doWork(): Result {
         return try {
-            val mediums = mutableListOf<org.fossify.gallery.models.Medium>()
-            val uri = MediaStore.Files.getContentUri("external")
-            val projection = arrayOf(
-                MediaStore.Files.FileColumns._ID,
-                MediaStore.Files.FileColumns.DATA,
-                MediaStore.Files.FileColumns.DATE_MODIFIED,
-                MediaStore.Files.FileColumns.DATE_TAKEN,
-                MediaStore.Files.FileColumns.SIZE,
-                MediaStore.Files.FileColumns.MIME_TYPE,
-                MediaStore.Files.FileColumns.MEDIA_TYPE,
-                MediaStore.Files.FileColumns.DURATION,
-            )
-            val selection = "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
-            val selectionArgs = arrayOf(
-                MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
-                MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
-            )
-            applicationContext.contentResolver.query(uri, projection, selection, selectionArgs, "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC")?.use { cursor ->
-                val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATA)
-                val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
-                val takenCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_TAKEN)
-                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
-                val typeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MEDIA_TYPE)
-                val durCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DURATION)
-                while (cursor.moveToNext()) {
-                    val path = cursor.getString(dataCol) ?: continue
-                    val name = java.io.File(path).name
-                    val parentPath = java.io.File(path).parent ?: ""
-                    val modified = cursor.getLong(dateCol) * 1000L
-                    val taken = if (!cursor.isNull(takenCol)) cursor.getLong(takenCol) else modified
-                    val size = cursor.getLong(sizeCol)
-                    val mediaType = cursor.getInt(typeCol)
-                    val type = if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) 2 else 1
-                    val duration = if (!cursor.isNull(durCol)) (cursor.getInt(durCol) / 1000) else 0
-                    mediums.add(org.fossify.gallery.models.Medium(
-                        id = null, name = name, path = path, parentPath = parentPath,
-                        modified = modified, taken = taken, size = size, type = type,
-                        videoDuration = duration, isFavorite = false, deletedTS = 0L, mediaStoreId = 0, rating = 0,
-                    ))
-                }
-            }
+            // Delegate the actual MediaStore query to MediaRepository.syncNewMediaFromStore(), which
+            // filters by "DATE_MODIFIED > lastSyncTimestamp" instead of re-scanning every image/video
+            // on the device on every run (this worker used to do its own unfiltered full-volume query
+            // here, which meant every ContentObserver-triggered "incremental" sync was actually a full
+            // scan). Reusing it also means both call paths (this worker and MediaViewModel) share one
+            // tested implementation instead of two that can silently drift apart.
+            val newMedia = MediaRepository(applicationContext).syncNewMediaFromStore()
 
-            if (mediums.isNotEmpty()) {
-                applicationContext.mediaDB.insertAllKeepingExisting(mediums)
-                val dirs = mediums.map { it.parentPath }.distinct()
-                dirs.forEach { dirPath ->
-                    val dirMedia = mediums.filter { it.parentPath == dirPath }
-                    val dirName = java.io.File(dirPath).name
-                    val hasImage = dirMedia.any { it.type == 1 }
-                    val hasVideo = dirMedia.any { it.type == 2 }
-                    val types = if (hasImage && hasVideo) 3 else if (hasVideo) 2 else 1
-                    applicationContext.directoryDB.insertAll(listOf(org.fossify.gallery.models.Directory(
-                        id = null, path = dirPath, tmb = dirMedia.maxByOrNull { it.modified }?.path ?: "",
-                        name = dirName, mediaCnt = dirMedia.size,
-                        modified = dirMedia.maxOf { it.modified },
-                        taken = dirMedia.maxOf { it.taken },
-                        size = dirMedia.size.toLong(),
-                        location = org.fossify.gallery.helpers.LOCATION_INTERNAL, types = types, sortValue = "",
-                    )))
+            if (newMedia.isNotEmpty()) {
+                // Only rebuild directory rows for folders touched by this batch, but read the *full*
+                // current contents of each from the DB (not just the newMedia subset) - otherwise a
+                // small incremental batch would overwrite media_count/thumbnail with a partial count
+                // for folders that already contained many older files.
+                val affectedDirs = newMedia.map { it.parentPath }.distinct()
+                affectedDirs.forEach { dirPath ->
+                    val dirMedia = applicationContext.mediaDB.getMediaFromPath(dirPath)
+                    if (dirMedia.isNotEmpty()) {
+                        val dirName = java.io.File(dirPath).name
+                        val hasImage = dirMedia.any { it.type == 1 }
+                        val hasVideo = dirMedia.any { it.type == 2 }
+                        val types = if (hasImage && hasVideo) 3 else if (hasVideo) 2 else 1
+                        applicationContext.directoryDB.insertAll(listOf(Directory(
+                            id = null, path = dirPath, tmb = dirMedia.maxByOrNull { it.modified }?.path ?: "",
+                            name = dirName, mediaCnt = dirMedia.size,
+                            modified = dirMedia.maxOf { it.modified },
+                            taken = dirMedia.maxOf { it.taken },
+                            size = dirMedia.size.toLong(),
+                            location = LOCATION_INTERNAL, types = types, sortValue = "",
+                        )))
+                    }
                 }
             }
 
