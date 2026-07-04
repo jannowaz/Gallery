@@ -50,7 +50,11 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -103,7 +107,15 @@ fun ExplorerScreen(
     val context = LocalContext.current
     val repo = LocalMediaRepository.current
     val scope = rememberCoroutineScope()
-    val navStack = remember { mutableStateListOf(internalStoragePath) }
+    // rememberSaveable (not remember) - the Home destination's whole composition (MainScreen ->
+    // ... -> ExplorerScreen) is disposed and recreated by Navigation-Compose when navigating to
+    // the Viewer and back, since Viewer is a separate NavHost destination pushed on top. Plain
+    // remember state doesn't survive that dispose/recompose cycle and silently resets to a
+    // 1-entry stack (even though the visible path, driven by the ViewModel-backed
+    // internalStoragePath param, still correctly shows the deep folder) - which made the back
+    // gesture immediately fall through to the tab-switch fallback instead of going up a level,
+    // any time after having viewed at least one image while browsing a subfolder.
+    val navStack = rememberSaveable(saver = listSaver<SnapshotStateList<String>, String>(save = { it.toList() }, restore = { it.toMutableStateList() })) { mutableStateListOf(internalStoragePath) }
     var currentPath by remember { mutableStateOf(internalStoragePath) }
     var folderItems by remember { mutableStateOf<List<ExplorerItem>>(emptyList()) }
     var fileItems by remember { mutableStateOf<List<ExplorerItem>>(emptyList()) }
