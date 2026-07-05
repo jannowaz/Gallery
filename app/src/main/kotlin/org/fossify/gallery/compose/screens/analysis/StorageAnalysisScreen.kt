@@ -147,6 +147,10 @@ fun StorageAnalysisScreen(onBack: () -> Unit, onNavigateToViewer: (String) -> Un
                         FilterMode.VIDEOS -> state.results.filter { it.mediaType == 2 }
                     }
                 }
+                // Sort folded into its own remember(filtered) - previously re-sorted on every
+                // recomposition of this screen (e.g. every selection toggle), not just when the
+                // filtered set actually changed.
+                val sortedFiltered = remember(filtered) { filtered.sortedByDescending { it.wastedBytes } }
                 Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))) {
                     Column(Modifier.padding(12.dp)) {
                         Text("${filtered.size} Dateien · ${formatBytes(totalWasted)} verschwendet", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
@@ -172,7 +176,7 @@ fun StorageAnalysisScreen(onBack: () -> Unit, onNavigateToViewer: (String) -> Un
 
                 // Results list
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp)) {
-                    items(filtered.sortedByDescending { it.wastedBytes }, key = { it.path }) { item ->
+                    items(sortedFiltered, key = { it.path }) { item ->
                         AnalysisCard(
                             item = item,
                             isSelected = item.path in state.selectedPaths,

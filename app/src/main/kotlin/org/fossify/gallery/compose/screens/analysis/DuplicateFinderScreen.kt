@@ -200,7 +200,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                 }
 
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp)) {
-                    items(state.groups, key = { it.files.joinToString { f -> f.path } }) { group ->
+                    items(state.groups, key = { it.hash }) { group ->
                         DuplicateGroupCard(
                             group = group,
                             similar = state.mode == DuplicateMode.SIMILAR,
@@ -245,6 +245,9 @@ private fun DuplicateGroupCard(
     onToggle: (String) -> Unit,
     onView: (String) -> Unit,
 ) {
+    // Hoisted once per card instead of allocating a new SimpleDateFormat (locale data lookup,
+    // not free) per file, per recomposition, inside the forEachIndexed below.
+    val dateFormat = remember { java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()) }
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
         shape = RoundedCornerShape(Radius.md),
@@ -290,7 +293,7 @@ private fun DuplicateGroupCard(
                                 if (file.width > 0 && file.height > 0) append("${file.width}×${file.height} · ")
                                 append(dupFormatBytes(file.size))
                                 append(" · ")
-                                append(dupFormatDate(file.modified))
+                                append(dateFormat.format(java.util.Date(file.modified)))
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -332,9 +335,6 @@ private fun dupFormatBytes(bytes: Long): String = when {
     bytes >= 1_000 -> "${bytes / 1_000} KB"
     else -> "$bytes B"
 }
-
-private fun dupFormatDate(ts: Long): String =
-    java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(ts))
 
 private fun duplicateUriToPath(uri: Uri): String? {
     return try {

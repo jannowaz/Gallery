@@ -157,9 +157,20 @@ fun TagBrowserScreen(
                 // instead of being a direct child of the outer Column, so without this the grid and
                 // the action-buttons row below it would overlay instead of stacking vertically.
                 Column(Modifier.fillMaxSize()) {
-                val filteredTags = if (tagSearchQuery.isBlank()) allTags.entries.toList().sortedWith(compareByDescending<Map.Entry<String, List<String>>> { it.key in hierarchy.values }.thenBy { it.key }) else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
+                // Both the sort/filter and the AlbumGridItem mapping were previously recomputed on
+                // every recomposition of this screen (e.g. every tag selection toggle), not just
+                // when allTags/hierarchy/the search query actually changed.
+                val filteredTags = remember(allTags, hierarchy, tagSearchQuery) {
+                    if (tagSearchQuery.isBlank()) allTags.entries.toList().sortedWith(compareByDescending<Map.Entry<String, List<String>>> { it.key in hierarchy.values }.thenBy { it.key }) else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
+                }
+                val tagGridItems = remember(filteredTags, hierarchy) {
+                    filteredTags.map { AlbumGridItem(key = it.key, name = if (it.key in hierarchy) "↳ ${it.key}" else it.key, thumbnailPath = it.value.firstOrNull() ?: "", count = it.value.size, previewPaths = it.value.take(3)) }
+                }
+                // Precomputed once instead of scanning the whole hierarchy map per visible row
+                // inside subtitle = {...} below (was O(tags²) across all rows).
+                val childrenByParent = remember(hierarchy) { hierarchy.entries.groupBy({ it.value }, { it.key }) }
                 LibraryAlbumGrid(
-                    items = filteredTags.map { AlbumGridItem(key = it.key, name = if (it.key in hierarchy) "↳ ${it.key}" else it.key, thumbnailPath = it.value.firstOrNull() ?: "", count = it.value.size, previewPaths = it.value.take(3)) },
+                    items = tagGridItems,
                     viewSettings = viewSettings,
                     onClick = { item ->
                         if (selectedTags.isNotEmpty()) selectedTags = if (item.key in selectedTags) selectedTags - item.key else selectedTags + item.key
@@ -170,7 +181,7 @@ fun TagBrowserScreen(
                     selectedKeys = selectedTags,
                     subtitle = { item ->
                         val parent = hierarchy[item.key]
-                        val children = hierarchy.filter { it.value == item.key }.keys
+                        val children = childrenByParent[item.key] ?: emptyList()
                         val parts = mutableListOf("${item.count} Dateien")
                         if (parent != null) parts.add("← $parent")
                         if (children.isNotEmpty()) parts.add("→ ${children.size} Kinder")

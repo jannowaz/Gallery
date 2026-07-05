@@ -3,6 +3,7 @@ package org.fossify.gallery.compose.screens
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,7 +29,12 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
     private val _settingsMode = MutableStateFlow(SettingsMode.ALBUMS)
     val settingsMode: StateFlow<SettingsMode> = _settingsMode.asStateFlow()
 
-    init { loadFromConfig() }
+    // Off the main thread - loadFromConfig() reads a couple dozen SharedPreferences values, which
+    // on a cold app start is the first access to that prefs file and was a confirmed
+    // StrictMode DiskReadViolation (~440ms, causing dropped frames right after first launch) when
+    // run synchronously here as part of ViewModel construction during the first composition.
+    // Tabs render with the ViewSettings() defaults for the brief moment until this completes.
+    init { viewModelScope.launch(Dispatchers.IO) { loadFromConfig() } }
 
     fun setSettingsMode(mode: SettingsMode) { _settingsMode.value = mode }
 

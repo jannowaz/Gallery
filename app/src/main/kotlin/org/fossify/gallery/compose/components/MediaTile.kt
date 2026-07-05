@@ -97,8 +97,10 @@ fun MediaTile(
     val scale by animateFloatAsState(if (isPressed) 0.96f else 1f, animationSpec = AppMotion.short, label = "pressScale")
 
     var lastBoundsUpdate by remember { mutableLongStateOf(0L) }
-    val durationText = if (showVideoDuration && isVideo && medium.videoDuration > 0)
-        "%02d:%02d".format(medium.videoDuration / 60, medium.videoDuration % 60) else ""
+    val durationText = remember(medium.videoDuration, isVideo, showVideoDuration) {
+        if (showVideoDuration && isVideo && medium.videoDuration > 0)
+            "%02d:%02d".format(medium.videoDuration / 60, medium.videoDuration % 60) else ""
+    }
 
     Column(
         modifier

@@ -107,8 +107,9 @@ fun FavoritesScreen(
                 else -> Column(Modifier.fillMaxSize().padding(8.dp)) {
                     if (favoriteDirs.isNotEmpty()) {
                         Text(stringResource(R.string.folders), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                        val favoriteDirItems = remember(favoriteDirs) { favoriteDirs.map { AlbumGridItem(key = it.path, name = it.name, thumbnailPath = it.tmb, count = it.mediaCnt) } }
                         LibraryAlbumGrid(
-                            items = favoriteDirs.map { AlbumGridItem(key = it.path, name = it.name, thumbnailPath = it.tmb, count = it.mediaCnt) },
+                            items = favoriteDirItems,
                             viewSettings = viewSettings,
                             onClick = { onFolderClick(it.key) },
                             onLongClick = { pinTarget = it },

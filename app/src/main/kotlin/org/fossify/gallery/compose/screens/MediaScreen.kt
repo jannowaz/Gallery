@@ -286,10 +286,11 @@ fun MediaScreen(
                                 is PagedRow.Item -> {
                                     val m = safeGet(lazyPagingItems, row.pagingIndex) ?: return@items
                                     val isVideo = remember(m.path) { m.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS }
+                                    val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
                                     MediaTile(
                                         medium = m,
                                         isVideo = isVideo,
-                                        isSelected = m.path in selectedPaths,
+                                        isSelected = isSelected,
                                         isSelectionMode = hasSelection,
                                         hasTag = m.path in taggedPaths,
                                         showOverlays = showOverlays,
@@ -369,10 +370,11 @@ fun MediaScreen(
                                     if (m != null) {
                                         val isVideo = remember(m.path) { m.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS }
                                         if (!isVideo) LaunchedEffect(m.path) { viewModel.requestAspect(m.path) }
+                                        val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
                                         MediaTile(
                                             medium = m,
                                             isVideo = isVideo,
-                                            isSelected = m.path in selectedPaths,
+                                            isSelected = isSelected,
                                             isSelectionMode = hasSelection,
                                             hasTag = m.path in taggedPaths,
                                             showOverlays = showOverlaysStag,
@@ -423,10 +425,11 @@ fun MediaScreen(
                                     val m = safeGet(lazyPagingItems, row.pagingIndex)
                                     if (m != null) {
                                         val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
+                                        val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
                                         MediaListRow(
                                             medium = m,
                                             isVideo = isVideo,
-                                            isSelected = m.path in selectedPaths,
+                                            isSelected = isSelected,
                                             hasSelection = hasSelection,
                                             cardColor = mediaCardColor,
                                             fileSizeLabel = formatFileSize(m.size),
@@ -541,10 +544,11 @@ fun MediaScreen(
                         item(span = { GridItemSpan(maxLineSpan) }) { MonthHeader(label = label, count = groupItems.size) }
                         items(groupItems.size, key = { groupItems[it].path }, contentType = { groupItems[it].type }) { idx ->
                             val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
+                            val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
                             MediaTile(
                                 medium = m,
                                 isVideo = isVideo,
-                                isSelected = m.path in selectedPaths,
+                                isSelected = isSelected,
                                 isSelectionMode = hasSelection,
                                 hasTag = m.path in taggedPaths,
                                 showOverlays = showOverlays,
@@ -614,10 +618,11 @@ fun MediaScreen(
                         items(groupItems.size, key = { groupItems[it].path }, contentType = { groupItems[it].type }) { idx ->
                             val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
                             if (!isVideo) LaunchedEffect(m.path) { viewModel.requestAspect(m.path) }
+                            val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
                             MediaTile(
                                 medium = m,
                                 isVideo = isVideo,
-                                isSelected = m.path in selectedPaths,
+                                isSelected = isSelected,
                                 isSelectionMode = hasSelection,
                                 hasTag = m.path in taggedPaths,
                                 showOverlays = showOverlaysStag,
@@ -657,10 +662,11 @@ fun MediaScreen(
                         stickyHeader { MonthHeader(label = label, count = groupItems.size) }
                         items(groupItems.size, key = { groupItems[it].path }, contentType = { groupItems[it].type }) { idx ->
                             val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
+                            val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
                             MediaListRow(
                                 medium = m,
                                 isVideo = isVideo,
-                                isSelected = m.path in selectedPaths,
+                                isSelected = isSelected,
                                 hasSelection = hasSelection,
                                 cardColor = mediaCardColor,
                                 fileSizeLabel = formatFileSize(m.size),

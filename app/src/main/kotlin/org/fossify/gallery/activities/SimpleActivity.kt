@@ -22,9 +22,17 @@ open class SimpleActivity : BaseSimpleActivity() {
 
     private var dialog: AlertDialog? = null
 
+    // Unlike ComposeExplorerActivity's own MediaStore observer (which has the same 1500ms guard),
+    // this one had none - a bulk file operation (import from another app, batch download, ...) can
+    // fire onChange many times in quick succession, and updateDirectoryPath() below does a full
+    // MediaFetcher rescan of the folder on every single call with no debouncing at all.
+    @Volatile private var lastObserverMs = 0L
     private val observer = object : ContentObserver(null) {
         override fun onChange(selfChange: Boolean, uri: Uri?) {
             super.onChange(selfChange, uri)
+            val now = System.currentTimeMillis()
+            if (now - lastObserverMs < 1500) return
+            lastObserverMs = now
             if (uri != null) {
                 val path = getRealPathFromURI(uri)
                 if (path != null) {

@@ -232,17 +232,11 @@ class ComposeExplorerActivity : ComponentActivity() {
             android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, mediaObserver
         )
 
-        // Warm up the SharedPreferences files ViewSettingsViewModel.loadFromConfig() reads
-        // synchronously moments later (during the first composition's viewModel() call). Touching
-        // them here first, off the main thread, means that later synchronous read hits an
-        // already-loaded in-memory cache instead of blocking on disk for the first load - which is
-        // what a StrictMode diskRead violation flagged there.
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                config
-                android.preference.PreferenceManager.getDefaultSharedPreferences(this@ComposeExplorerActivity)
-            } catch (_: Exception) { }
-        }
+        // SharedPreferences (config + the legacy default-named prefs) are now warmed from
+        // App.onCreate() instead - it runs well before this Activity and gives that warm-up a
+        // real head start, unlike doing it here mere microseconds before setContent() below
+        // triggers the same reads on the main thread (ViewSettingsViewModel.loadFromConfig(),
+        // ExplorerViewModel's init).
 
         if (hasMediaPermissions()) {
             setContent { GalleryNavHost() }

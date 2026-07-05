@@ -195,7 +195,7 @@ fun ViewerScreen(
         isCurrentZoomed = false
         withContext(Dispatchers.IO) {
             isFavorite = repo.isFavorite(currentPath)
-            currentRating = try { repo.getMediaFromPath(currentPath).firstOrNull()?.rating ?: 0 } catch (_: Exception) { 0 }
+            currentRating = try { repo.getRating(currentPath) } catch (_: Exception) { 0 }
         }
     }
 

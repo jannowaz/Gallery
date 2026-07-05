@@ -69,7 +69,16 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     }
 
     override fun getRating(path: String): Int {
-        return XmpWriter.read(path).rating
+        // A single-row, indexed-by-full_path DB lookup instead of a live XMP file read (which was
+        // also unused everywhere until now) - the Viewer used to call getMediaFromPath(currentPath)
+        // for this instead, which filters on parent_path and so silently matched nothing for a file
+        // path (always falling back to 0), on top of loading every file in the whole folder.
+        return try {
+            context.mediaDB.getRatingForPath(path) ?: 0
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "getRating failed for $path", e)
+            0
+        }
     }
 
     override fun updateRating(path: String, rating: Int) {
@@ -248,10 +257,6 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         val current = XmpWriter.read(path)
         XmpWriter.write(path, current.tags, rating)
         repositoryScope.launch { syncCache(path, current.tags, rating) }
-    }
-
-    fun updateMediumPath(oldPath: String, parentPath: String, newName: String, newPath: String) {
-        try { context.mediaDB.updateMedium(oldPath, parentPath, newName, newPath) } catch (_: Exception) { }
     }
 
     /** Decodes only the bounds of an image to derive its aspect ratio. Lives here so no Composable
