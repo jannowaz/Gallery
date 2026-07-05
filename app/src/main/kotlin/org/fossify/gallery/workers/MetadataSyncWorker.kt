@@ -8,10 +8,8 @@ import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ForegroundInfo
-import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import org.fossify.gallery.extensions.mediaCacheDB
@@ -236,25 +234,6 @@ class MetadataSyncWorker(
 
     companion object {
         private const val WORK_NAME = "metadata_sync"
-
-        fun schedule(context: Context) {
-            val workRequest = PeriodicWorkRequestBuilder<MetadataSyncWorker>(12, TimeUnit.HOURS)
-                .addTag(WORK_NAME)
-                .build()
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
-                workRequest,
-            )
-        }
-
-        fun scheduleNow(context: Context) {
-            val workRequest = OneTimeWorkRequestBuilder<MetadataSyncWorker>()
-                .addTag("${WORK_NAME}_now")
-                .setInitialDelay(3, TimeUnit.SECONDS)
-                .build()
-            WorkManager.getInstance(context).enqueueUniqueWork("${WORK_NAME}_now", ExistingWorkPolicy.REPLACE, workRequest)
-        }
 
         fun scheduleFullScan(context: Context) {
             val workRequest = OneTimeWorkRequestBuilder<MetadataSyncWorker>()

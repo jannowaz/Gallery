@@ -17,7 +17,6 @@ import android.provider.MediaStore
 import android.provider.MediaStore.Files
 import android.provider.MediaStore.Images
 import android.provider.Settings
-import android.util.DisplayMetrics
 import androidx.appcompat.app.AppCompatActivity
 import androidx.exifinterface.media.ExifInterface
 import com.bumptech.glide.Glide
@@ -538,18 +537,6 @@ fun BaseSimpleActivity.updateFavoritePaths(fileDirItems: ArrayList<FileDirItem>,
             updateDBMediaPath(it.path, newPath)
         }
     }
-}
-
-fun Activity.hasNavBar(): Boolean {
-    val display = windowManager.defaultDisplay
-
-    val realDisplayMetrics = DisplayMetrics()
-    display.getRealMetrics(realDisplayMetrics)
-
-    val displayMetrics = DisplayMetrics()
-    display.getMetrics(displayMetrics)
-
-    return (realDisplayMetrics.widthPixels - displayMetrics.widthPixels > 0) || (realDisplayMetrics.heightPixels - displayMetrics.heightPixels > 0)
 }
 
 fun AppCompatActivity.fixDateTaken(

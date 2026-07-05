@@ -56,8 +56,4 @@ object UndoManager {
     fun clear() {
         _actions.value = emptyList()
     }
-
-    fun clearExpired() {
-        _actions.value = _actions.value.filter { System.currentTimeMillis() - it.timestamp < EXPIRE_MS }
-    }
 }

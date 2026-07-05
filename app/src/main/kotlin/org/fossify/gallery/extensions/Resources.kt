@@ -13,22 +13,6 @@ fun Resources.getActionBarHeight(context: Context): Int {
         0
 }
 
-fun Resources.getStatusBarHeight(): Int {
-    val id = getIdentifier("status_bar_height", "dimen", "android")
-    return if (id > 0) {
-        getDimensionPixelSize(id)
-    } else
-        0
-}
-
-fun Resources.getNavBarHeight(): Int {
-    val id = getIdentifier("navigation_bar_height", "dimen", "android")
-    return if (id > 0) {
-        getDimensionPixelSize(id)
-    } else
-        0
-}
-
 fun Resources.getBottomActionsHeight(): Int {
     return getDimensionPixelSize(R.dimen.bottom_actions_height) +
                 getDimensionPixelSize(org.fossify.commons.R.dimen.normal_margin)

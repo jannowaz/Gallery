@@ -44,9 +44,6 @@ object MediaStoreOps {
     fun urisForPaths(context: Context, paths: Collection<String>): List<Pair<String, Uri>> =
         paths.mapNotNull { p -> uriForPath(context, p)?.let { p to it } }
 
-    fun trashRequest(context: Context, uris: List<Uri>): PendingIntent =
-        MediaStore.createTrashRequest(context.contentResolver, uris, true)
-
     fun deleteRequest(context: Context, uris: List<Uri>): PendingIntent =
         MediaStore.createDeleteRequest(context.contentResolver, uris)
 

@@ -602,12 +602,6 @@ fun Context.rescanFolderMediaSync(path: String) {
     }
 }
 
-fun Context.storeDirectoryItems(items: ArrayList<Directory>) {
-    ensureBackgroundThread {
-        directoryDB.insertAll(items)
-    }
-}
-
 fun Context.checkAppendingHidden(
     path: String,
     hidden: String,
@@ -1095,12 +1089,6 @@ fun Context.updateDBDirectory(directory: Directory) {
         )
     } catch (ignored: Exception) {
     }
-}
-
-fun Context.getOTGFolderChildren(path: String) = getDocumentFile(path)?.listFiles()
-
-fun Context.getOTGFolderChildrenNames(path: String): MutableList<String?>? {
-    return getOTGFolderChildren(path)?.map { it.name }?.toMutableList()
 }
 
 fun Context.getFavoritePaths(): ArrayList<String> {

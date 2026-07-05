@@ -509,10 +509,6 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getInt(EXTENDED_DETAILS, EXT_RESOLUTION or EXT_LAST_MODIFIED or EXT_EXIF_PROPERTIES)
         set(extendedDetails) = prefs.edit().putInt(EXTENDED_DETAILS, extendedDetails).apply()
 
-    var wasNewAppShown: Boolean
-        get() = prefs.getBoolean(WAS_NEW_APP_SHOWN, false)
-        set(wasNewAppShown) = prefs.edit().putBoolean(WAS_NEW_APP_SHOWN, wasNewAppShown).apply()
-
     var lastFilepickerPath: String
         get() = prefs.getString(LAST_FILEPICKER_PATH, "") ?: ""
         set(lastFilepickerPath) = prefs.edit().putString(LAST_FILEPICKER_PATH, lastFilepickerPath).apply()
@@ -524,18 +520,6 @@ class Config(context: Context) : BaseConfig(context) {
     var tempSkipRecycleBin: Boolean
         get() = prefs.getBoolean(TEMP_SKIP_RECYCLE_BIN, false)
         set(tempSkipRecycleBin) = prefs.edit().putBoolean(TEMP_SKIP_RECYCLE_BIN, tempSkipRecycleBin).apply()
-
-    var wereFavoritesPinned: Boolean
-        get() = prefs.getBoolean(WERE_FAVORITES_PINNED, false)
-        set(wereFavoritesPinned) = prefs.edit().putBoolean(WERE_FAVORITES_PINNED, wereFavoritesPinned).apply()
-
-    var wasRecycleBinPinned: Boolean
-        get() = prefs.getBoolean(WAS_RECYCLE_BIN_PINNED, false)
-        set(wasRecycleBinPinned) = prefs.edit().putBoolean(WAS_RECYCLE_BIN_PINNED, wasRecycleBinPinned).apply()
-
-    var wasSVGShowingHandled: Boolean
-        get() = prefs.getBoolean(WAS_SVG_SHOWING_HANDLED, false)
-        set(wasSVGShowingHandled) = prefs.edit().putBoolean(WAS_SVG_SHOWING_HANDLED, wasSVGShowingHandled).apply()
 
     var groupBy: Int
         get() = prefs.getInt(GROUP_BY, GROUP_BY_NONE)
@@ -608,10 +592,6 @@ class Config(context: Context) : BaseConfig(context) {
     var allowZoomingImages: Boolean
         get() = prefs.getBoolean(ALLOW_ZOOMING_IMAGES, true)
         set(allowZoomingImages) = prefs.edit().putBoolean(ALLOW_ZOOMING_IMAGES, allowZoomingImages).apply()
-
-    var lastBinCheck: Long
-        get() = prefs.getLong(LAST_BIN_CHECK, 0L)
-        set(lastBinCheck) = prefs.edit().putLong(LAST_BIN_CHECK, lastBinCheck).apply()
 
     var showHighestQuality: Boolean
         get() = prefs.getBoolean(SHOW_HIGHEST_QUALITY, false)
