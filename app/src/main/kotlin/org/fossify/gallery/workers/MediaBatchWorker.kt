@@ -48,12 +48,12 @@ class MediaBatchWorker(
         val jobId = inputData.getString(KEY_JOB_ID) ?: ""
         val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Dateien verschieben/umbenennen", NotificationManager.IMPORTANCE_LOW))
+            nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, applicationContext.getString(org.fossify.gallery.R.string.notif_channel_batch_ops), NotificationManager.IMPORTANCE_LOW))
         }
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setContentTitle(titleFor(inputData.getString(KEY_OPERATION)))
-            .setContentText(if (total > 0) "$done/$total" else "Vorbereiten…")
+            .setContentText(if (total > 0) "$done/$total" else applicationContext.getString(org.fossify.gallery.R.string.notif_preparing))
             .setProgress(total.coerceAtLeast(1), done.coerceAtMost(total.coerceAtLeast(1)), total == 0)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -71,13 +71,13 @@ class MediaBatchWorker(
             .putExtra(org.fossify.gallery.receivers.CancelBatchOpReceiver.EXTRA_JOB_ID, jobId)
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val pi = PendingIntent.getBroadcast(applicationContext, jobId.hashCode(), intent, flags)
-        return NotificationCompat.Action(android.R.drawable.ic_menu_close_clear_cancel, "Abbrechen", pi)
+        return NotificationCompat.Action(android.R.drawable.ic_menu_close_clear_cancel, applicationContext.getString(org.fossify.gallery.R.string.cancel), pi)
     }
 
     private fun titleFor(operation: String?) = when (operation) {
-        BatchOperation.RENAME.name -> "Dateien werden umbenannt"
-        BatchOperation.COPY.name -> "Dateien werden kopiert"
-        else -> "Dateien werden verschoben"
+        BatchOperation.RENAME.name -> applicationContext.getString(org.fossify.gallery.R.string.notif_batch_renaming)
+        BatchOperation.COPY.name -> applicationContext.getString(org.fossify.gallery.R.string.notif_batch_copying)
+        else -> applicationContext.getString(org.fossify.gallery.R.string.notif_batch_moving)
     }
 
     override suspend fun doWork(): Result {

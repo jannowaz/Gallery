@@ -34,12 +34,12 @@ class MetadataSyncWorker(
         val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = "metadata_sync"
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            nm.createNotificationChannel(NotificationChannel(channelId, "Metadaten-Scan", NotificationManager.IMPORTANCE_LOW))
+            nm.createNotificationChannel(NotificationChannel(channelId, applicationContext.getString(org.fossify.gallery.R.string.notif_channel_metadata_sync), NotificationManager.IMPORTANCE_LOW))
         }
         val notification = NotificationCompat.Builder(applicationContext, channelId)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setContentTitle("Tags & Bewertungen scannen")
-            .setContentText(if (total > 0) "$done/$total · $tags Tags · $ratings Bewertungen" else "Vorbereiten…")
+            .setContentTitle(applicationContext.getString(org.fossify.gallery.R.string.notif_metadata_scanning_title))
+            .setContentText(if (total > 0) applicationContext.getString(org.fossify.gallery.R.string.notif_metadata_scanning_progress, done, total, tags, ratings) else applicationContext.getString(org.fossify.gallery.R.string.notif_preparing))
             .setProgress(total.coerceAtLeast(1), done.coerceAtMost(total.coerceAtLeast(1)), total == 0)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -56,7 +56,7 @@ class MetadataSyncWorker(
             .setAction(org.fossify.gallery.receivers.CancelMetadataScanReceiver.ACTION)
         val flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         val pi = android.app.PendingIntent.getBroadcast(applicationContext, 0, intent, flags)
-        return NotificationCompat.Action(android.R.drawable.ic_menu_close_clear_cancel, "Abbrechen", pi)
+        return NotificationCompat.Action(android.R.drawable.ic_menu_close_clear_cancel, applicationContext.getString(org.fossify.gallery.R.string.cancel), pi)
     }
 
     override suspend fun doWork(): Result {
@@ -74,12 +74,12 @@ class MetadataSyncWorker(
             }
             if (isStopped) {
                 cancelProgress()
-                showNotification("Scan abgebrochen", "Der Scan wurde gestoppt.")
+                showNotification(applicationContext.getString(org.fossify.gallery.R.string.notif_scan_cancelled_title), applicationContext.getString(org.fossify.gallery.R.string.notif_scan_cancelled_text))
             }
             Result.success()
         } catch (e: kotlinx.coroutines.CancellationException) {
             cancelProgress()
-            showNotification("Scan abgebrochen", "Der Scan wurde gestoppt.")
+            showNotification(applicationContext.getString(org.fossify.gallery.R.string.notif_scan_cancelled_title), applicationContext.getString(org.fossify.gallery.R.string.notif_scan_cancelled_text))
             throw e
         } catch (e: Exception) {
             android.util.Log.e("MetadataSync", "Sync failed", e)
@@ -122,7 +122,10 @@ class MetadataSyncWorker(
         if (batch.isNotEmpty()) applicationContext.mediaCacheDB.upsertAll(batch.toList())
         if (hierarchyAccum.isNotEmpty()) try { applicationContext.config.tagHierarchy = hierarchyAccum.toMutableMap() } catch (_: Exception) { }
         RefreshBus.trigger()
-        if (!isStopped) showNotification("Scan abgeschlossen", "$total Dateien · $foundTags mit Tags · $foundRatings bewertet")
+        if (!isStopped) showNotification(
+            applicationContext.getString(org.fossify.gallery.R.string.notif_scan_complete_title),
+            applicationContext.getString(org.fossify.gallery.R.string.notif_scan_complete_full_text, total, foundTags, foundRatings),
+        )
     }
 
     private suspend fun dbScan(fullScan: Boolean, folderPath: String?, dateStart: Long = 0L, dateEnd: Long = Long.MAX_VALUE, incremental: Boolean = false) {
@@ -180,7 +183,10 @@ class MetadataSyncWorker(
         android.util.Log.i(logTag, "Done: ${allMedia.size} files, $processed synced, $tagged tagged")
         if (processed > 0) RefreshBus.trigger()
         if (folderPath != null && !isStopped) {
-            showNotification("Scan abgeschlossen", "${File(folderPath).name}: $tagged mit Tags/Bewertungen, $processed synchronisiert")
+            showNotification(
+                applicationContext.getString(org.fossify.gallery.R.string.notif_scan_complete_title),
+                applicationContext.getString(org.fossify.gallery.R.string.notif_scan_complete_folder_text, File(folderPath).name, tagged, processed),
+            )
         }
     }
 
@@ -198,7 +204,7 @@ class MetadataSyncWorker(
             val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             val channelId = "metadata_sync"
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                nm.createNotificationChannel(NotificationChannel(channelId, "Metadaten-Scan", NotificationManager.IMPORTANCE_LOW))
+                nm.createNotificationChannel(NotificationChannel(channelId, applicationContext.getString(org.fossify.gallery.R.string.notif_channel_metadata_sync), NotificationManager.IMPORTANCE_LOW))
             }
             nm.notify(2001, NotificationCompat.Builder(applicationContext, channelId)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
@@ -214,12 +220,12 @@ class MetadataSyncWorker(
             val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             val channelId = "metadata_sync"
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                nm.createNotificationChannel(NotificationChannel(channelId, "Metadaten-Scan", NotificationManager.IMPORTANCE_LOW))
+                nm.createNotificationChannel(NotificationChannel(channelId, applicationContext.getString(org.fossify.gallery.R.string.notif_channel_metadata_sync), NotificationManager.IMPORTANCE_LOW))
             }
             nm.notify(2002, NotificationCompat.Builder(applicationContext, channelId)
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
-                .setContentTitle("Tags & Bewertungen scannen")
-                .setContentText("$done/$total · $tags Tags · $ratings Bewertungen")
+                .setContentTitle(applicationContext.getString(org.fossify.gallery.R.string.notif_metadata_scanning_title))
+                .setContentText(applicationContext.getString(org.fossify.gallery.R.string.notif_metadata_scanning_progress, done, total, tags, ratings))
                 .setProgress(total.coerceAtLeast(1), done.coerceAtMost(total.coerceAtLeast(1)), total == 0)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)

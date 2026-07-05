@@ -1,4 +1,5 @@
 package org.fossify.gallery.compose.screens
+import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.Radius
 
 import android.net.Uri
@@ -296,7 +297,7 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
             collections.isEmpty() -> "empty"
             else -> "content"
         }
-        Crossfade(targetState = contentState, label = "collectionsContent", modifier = Modifier.weight(1f)) { s ->
+        Crossfade(targetState = contentState, animationSpec = AppMotion.short, label = "collectionsContent", modifier = Modifier.weight(1f)) { s ->
             when (s) {
                 "loading" -> MediaSkeleton(columns = viewSettings.columnCount)
                 "empty" -> EmptyState(Icons.Default.CollectionsBookmark, stringResource(R.string.no_collections), subtitle = stringResource(R.string.tap_to_create_collection))

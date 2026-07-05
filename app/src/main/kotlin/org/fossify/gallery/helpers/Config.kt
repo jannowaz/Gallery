@@ -42,7 +42,7 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getStringSet(PINNED_FAV_FOLDERS, emptySet()) ?: emptySet()
         set(value) = prefs.edit().putStringSet(PINNED_FAV_FOLDERS, value).apply()
 
-    /** Collection ids pinned as quick-nav previews under "Sammlungen" in the navigation drawer. */
+    /** Collection ids pinned as quick-nav previews under "Collections" in the navigation drawer. */
     var pinnedCollections: Set<String>
         get() = prefs.getStringSet(PINNED_COLLECTIONS, emptySet()) ?: emptySet()
         set(value) = prefs.edit().putStringSet(PINNED_COLLECTIONS, value).apply()

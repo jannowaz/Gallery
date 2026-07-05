@@ -131,7 +131,10 @@ fun AlbumsScreen(
     val isGrid = viewSettings.viewType == ViewType.GRID
     val itemSpacing = viewSettings.spacing.dp
     val containerColor = when (viewSettings.displayMode) {
-        DisplayMode.COMPACT, DisplayMode.NORMAL -> MaterialTheme.colorScheme.surface
+        // Not colorScheme.surface - this app's custom ColorScheme sets background == surface, so a
+        // folder tile with no thumbnail (empty folder) would be visually indistinguishable from the
+        // screen behind it, leaving no indication a tappable card is even there.
+        DisplayMode.COMPACT, DisplayMode.NORMAL -> MaterialTheme.colorScheme.surfaceContainerHigh
         DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant
     }
 
@@ -150,7 +153,7 @@ fun AlbumsScreen(
     Box(Modifier.fillMaxSize()) {
         Column(modifier = modifier.fillMaxSize().padding(top = contentTopInset)) {
             // Crossfade instead of an instant swap - see MediaScreen's paged content for why.
-            Crossfade(targetState = if (state.isLoading) "loading" else if (state.directories.isEmpty()) "empty" else "content", label = "albumsContent") { s ->
+            Crossfade(targetState = if (state.isLoading) "loading" else if (state.directories.isEmpty()) "empty" else "content", animationSpec = AppMotion.short, label = "albumsContent") { s ->
                 when (s) {
                     "loading" -> MediaSkeleton(columns = viewSettings.columnCount)
                     "empty" -> EmptyState(Icons.Default.Folder, stringResource(R.string.no_albums))

@@ -22,18 +22,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,6 +37,7 @@ import org.fossify.gallery.R
 import org.fossify.gallery.compose.screens.VideoThumbnail
 import org.fossify.gallery.compose.theme.Radius
 import org.fossify.gallery.compose.util.selectableItem
+import org.fossify.gallery.compose.util.throttledBoundsReporting
 import org.fossify.gallery.models.Medium
 
 /**
@@ -63,19 +60,10 @@ fun MediaListRow(
     onBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var lastBoundsUpdate by remember { mutableLongStateOf(0L) }
     Surface(
         modifier = modifier.fillMaxWidth()
             .background(cardColor, RoundedCornerShape(Radius.sm))
-            .onGloballyPositioned { coords ->
-                val now = System.currentTimeMillis()
-                if (now - lastBoundsUpdate > 300) {
-                    lastBoundsUpdate = now
-                    val p = coords.positionInWindow()
-                    val s = coords.size
-                    onBoundsChanged(Rect(p, Size(s.width.toFloat(), s.height.toFloat())))
-                }
-            }
+            .throttledBoundsReporting(onBoundsChanged = onBoundsChanged)
             .selectableItem(isSelectionMode = hasSelection, onClick = onClick, onLongClick = onLongClick, onSwipeToSelect = onSwipeToSelect),
         color = Color.Transparent,
     ) {

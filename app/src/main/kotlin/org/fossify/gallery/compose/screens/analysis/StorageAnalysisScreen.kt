@@ -134,7 +134,7 @@ fun StorageAnalysisScreen(onBack: () -> Unit, onNavigateToViewer: (String) -> Un
 
             if (state.isScanning) {
                 LinearProgressIndicator(progress = { state.progress / 100f }, modifier = Modifier.fillMaxWidth())
-                Text("${state.scannedCount} / ${state.totalFiles} Dateien gescannt", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.storage_files_scanned, state.scannedCount, state.totalFiles), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             // Summary header
@@ -153,7 +153,7 @@ fun StorageAnalysisScreen(onBack: () -> Unit, onNavigateToViewer: (String) -> Un
                 val sortedFiltered = remember(filtered) { filtered.sortedByDescending { it.wastedBytes } }
                 Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))) {
                     Column(Modifier.padding(12.dp)) {
-                        Text("${filtered.size} Dateien · ${formatBytes(totalWasted)} verschwendet", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.storage_files_wasted, filtered.size, formatBytes(totalWasted)), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                         Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             FilterChip(selected = state.filterMode == FilterMode.ALL, onClick = { vm.setFilterMode(FilterMode.ALL) }, label = { Text(stringResource(R.string.filter_all)) })
                             FilterChip(selected = state.filterMode == FilterMode.IMAGES, onClick = { vm.setFilterMode(FilterMode.IMAGES) }, label = { Text(stringResource(R.string.images)) })

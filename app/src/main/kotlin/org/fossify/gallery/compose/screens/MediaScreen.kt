@@ -468,7 +468,7 @@ fun MediaScreen(
                 lazyPagingItems.itemCount == 0 -> "empty"
                 else -> "content"
             }
-            Crossfade(targetState = pagedContentState, label = "pagedMediaContent") { s ->
+            Crossfade(targetState = pagedContentState, animationSpec = AppMotion.short, label = "pagedMediaContent") { s ->
                 when (s) {
                     "loading" -> MediaSkeleton(columns = columnCount)
                     "error" -> EmptyState(

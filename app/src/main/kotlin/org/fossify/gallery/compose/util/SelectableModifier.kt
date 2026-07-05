@@ -9,14 +9,18 @@ import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 
 @Stable
 class SelectionDragState {
@@ -67,10 +71,10 @@ fun Modifier.selectableItem(
     onSwipeToSelect: () -> Unit = {},
     interactionSource: MutableInteractionSource? = null,
 ): Modifier = composed {
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberGalleryHaptics()
     this.combinedClickable(
         onClick = onClick,
-        onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLongClick() },
+        onLongClick = { haptic(HapticFeedbackType.LongPress); onLongClick() },
         interactionSource = interactionSource,
         indication = androidx.compose.foundation.LocalIndication.current
     )
@@ -82,7 +86,7 @@ fun Modifier.dragSelectionGesture(
     staggeredGridState: LazyStaggeredGridState? = null,
     onSelectPath: (String) -> Unit,
 ): Modifier = composed {
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberGalleryHaptics()
     this.pointerInput(gridState, staggeredGridState) {
         val edgeThreshold = 80f
         // Tracks which paths this drag session has already fired a tick for, so extending the drag
@@ -92,7 +96,7 @@ fun Modifier.dragSelectionGesture(
 
         detectDragGesturesAfterLongPress(
             onDragStart = { offset ->
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                haptic(HapticFeedbackType.LongPress)
                 tickedPaths.clear()
                 state.isDragging = true
                 state.dragBounds = Rect(offset, offset)
@@ -110,7 +114,7 @@ fun Modifier.dragSelectionGesture(
                     bottom = maxOf(prev.bottom, change.position.y),
                 )
                 state.getItemsInDragArea().forEach { path ->
-                    if (tickedPaths.add(path)) haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                    if (tickedPaths.add(path)) haptic(HapticFeedbackType.SegmentTick)
                     onSelectPath(path)
                 }
 
@@ -125,5 +129,24 @@ fun Modifier.dragSelectionGesture(
             onDragEnd = { state.reset() },
             onDragCancel = { state.reset() },
         )
+    }
+}
+
+/**
+ * Reports this item's on-screen bounds to [onBoundsChanged] (for drag-select hit-testing), throttled
+ * to at most once per [throttleMs] - grid/list layout passes reposition items far more often than
+ * drag-select needs fresh bounds for. Shared by MediaTile (grid) and MediaListRow (list) so the two
+ * view modes can't drift out of sync on this value.
+ */
+fun Modifier.throttledBoundsReporting(throttleMs: Long = 300L, onBoundsChanged: (Rect) -> Unit): Modifier = composed {
+    var lastUpdate by remember { mutableLongStateOf(0L) }
+    this.onGloballyPositioned { coords ->
+        val now = System.currentTimeMillis()
+        if (now - lastUpdate > throttleMs) {
+            lastUpdate = now
+            val p = coords.positionInWindow()
+            val s = coords.size
+            onBoundsChanged(Rect(p, Size(s.width.toFloat(), s.height.toFloat())))
+        }
     }
 }

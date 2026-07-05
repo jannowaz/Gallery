@@ -147,7 +147,10 @@ fun ExplorerScreen(
     }
 
     val folderCardColor = when (folderSettings.displayMode) {
-        DisplayMode.COMPACT, DisplayMode.NORMAL -> MaterialTheme.colorScheme.surface
+        // Not colorScheme.surface - this app's custom ColorScheme sets background == surface, so a
+        // folder tile with no thumbnail (empty folder) would be visually indistinguishable from the
+        // screen behind it, leaving no indication a tappable card is even there.
+        DisplayMode.COMPACT, DisplayMode.NORMAL -> MaterialTheme.colorScheme.surfaceContainerHigh
         DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant
     }
 
@@ -306,7 +309,7 @@ fun ExplorerScreen(
                                                 showThumbnail = folderSettings.showFolderThumbnails,
                                                 roundedCorners = folderSettings.roundedCorners,
                                                 containerColor = folderCardColor,
-                                                subtitle = if (item.mediaCount > 0) "${item.mediaCount} Medien" else null,
+                                                subtitle = if (item.mediaCount > 0) stringResource(R.string.media_count, item.mediaCount) else null,
                                             )
                                             if (hasFolderSelection) {
                                                 if (item.path in selectedFolderPaths) {
@@ -341,7 +344,7 @@ fun ExplorerScreen(
                                 Row(Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (folderSettings.displayMode == DisplayMode.DARK) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                                        Text("${item.mediaCount} Medien", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(stringResource(R.string.media_count, item.mediaCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                                         if (item.previewPaths.isEmpty()) {

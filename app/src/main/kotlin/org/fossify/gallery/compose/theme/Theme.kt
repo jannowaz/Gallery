@@ -105,6 +105,10 @@ private val DarkColorScheme = darkColorScheme(
  * Activity and in every other already-running Activity in the process, since this is one global
  * object - kept rendering with whatever darkTheme/amoledBlack it read at its last composition.
  */
+// Manual bus + invalidate()-at-every-mutation-site, same idiom as RefreshBus/ScrollToTopBus - a new
+// theme-related Config field needs its setter to call invalidate() too, or it'll silently only apply
+// after an app restart instead of live. Matches the existing precedent elsewhere in the codebase
+// rather than a novel risk, so not worth a bigger Config-observability refactor for 3 call sites.
 object ThemePrefsBus {
     var version by mutableIntStateOf(0)
         private set

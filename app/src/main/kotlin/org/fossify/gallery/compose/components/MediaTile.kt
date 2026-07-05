@@ -26,19 +26,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -57,6 +53,7 @@ import org.fossify.gallery.compose.theme.RatingStarColor
 import org.fossify.gallery.compose.theme.Scrim
 import org.fossify.gallery.compose.util.selectableItem
 import org.fossify.gallery.compose.util.sharedElementKey
+import org.fossify.gallery.compose.util.throttledBoundsReporting
 import org.fossify.gallery.helpers.TYPE_GIFS
 import org.fossify.gallery.helpers.TYPE_RAWS
 import org.fossify.gallery.helpers.TYPE_SVGS
@@ -96,7 +93,6 @@ fun MediaTile(
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(if (isPressed) 0.96f else 1f, animationSpec = AppMotion.short, label = "pressScale")
 
-    var lastBoundsUpdate by remember { mutableLongStateOf(0L) }
     val durationText = remember(medium.videoDuration, isVideo, showVideoDuration) {
         if (showVideoDuration && isVideo && medium.videoDuration > 0)
             "%02d:%02d".format(medium.videoDuration / 60, medium.videoDuration % 60) else ""
@@ -110,15 +106,7 @@ fun MediaTile(
                 scaleY = scale
             }
             .background(cardColor, cornerShape)
-            .onGloballyPositioned { coords ->
-                val now = System.currentTimeMillis()
-                if (now - lastBoundsUpdate > 300) {
-                    lastBoundsUpdate = now
-                    val p = coords.positionInWindow()
-                    val s = coords.size
-                    onBoundsChanged(Rect(p, Size(s.width.toFloat(), s.height.toFloat())))
-                }
-            }
+            .throttledBoundsReporting(onBoundsChanged = onBoundsChanged)
     ) {
         Box(
             Modifier.aspectRatio(aspectRatio)

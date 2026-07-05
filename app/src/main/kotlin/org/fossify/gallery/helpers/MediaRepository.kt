@@ -22,6 +22,8 @@ import org.fossify.gallery.models.TagCount
 import org.fossify.gallery.models.TagPathRow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -520,11 +522,13 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
 
     fun getFavoritesCached(): Pair<List<Medium>, List<Directory>>? = favoritesCache
 
-    fun refreshFavoritesCache(): Pair<List<Medium>, List<Directory>> {
-        val media = getFavorites()
-        val paths = context.config.favoriteFolders
-        val dirs = if (paths.isEmpty()) emptyList() else getAllDirectories().filter { it.path in paths }
-        return (media to dirs).also { favoritesCache = it }
+    suspend fun refreshFavoritesCache(): Pair<List<Medium>, List<Directory>> = coroutineScope {
+        val mediaDeferred = async(Dispatchers.IO) { getFavorites() }
+        val dirsDeferred = async(Dispatchers.IO) {
+            val paths = context.config.favoriteFolders
+            if (paths.isEmpty()) emptyList() else getAllDirectories().filter { it.path in paths }
+        }
+        (mediaDeferred.await() to dirsDeferred.await()).also { favoritesCache = it }
     }
 
     @Volatile private var collectionsCache: List<MediaCollection>? = null

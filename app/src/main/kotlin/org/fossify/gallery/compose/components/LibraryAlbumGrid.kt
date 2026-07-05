@@ -57,8 +57,8 @@ data class AlbumGridItem(
 )
 
 /**
- * Shared album-style item list, matching the Alben tab: Kacheln (FolderTile grid) or Liste
- * (card row with name, "$count Medien" and up to 3 preview thumbnails). Driven by [viewSettings].
+ * Shared album-style item list, matching the Albums tab: tiles (FolderTile grid) or list
+ * (card row with name, localized item count and up to 3 preview thumbnails). Driven by [viewSettings].
  */
 @Composable
 fun LibraryAlbumGrid(
@@ -67,14 +67,19 @@ fun LibraryAlbumGrid(
     onClick: (AlbumGridItem) -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: ((AlbumGridItem) -> Unit)? = null,
-    countLabel: (Int) -> String = { "$it Medien" },
+    countLabel: ((Int) -> String)? = null,
     selectedKeys: Set<String> = emptySet(),
     subtitle: ((AlbumGridItem) -> String)? = null,
     tabIndex: Int? = null,
 ) {
     val s = LocalSpacing.current
+    val mediaCountFormat = stringResource(R.string.media_count)
+    val resolvedCountLabel = countLabel ?: { count: Int -> mediaCountFormat.format(count) }
     val containerColor = when (viewSettings.displayMode) {
-        DisplayMode.COMPACT, DisplayMode.NORMAL -> MaterialTheme.colorScheme.surface
+        // Not colorScheme.surface - this app's custom ColorScheme sets background == surface, so an
+        // item tile with no thumbnail (empty folder/tag/collection) would be visually indistinguishable
+        // from the screen behind it, leaving no indication a tappable card is even there.
+        DisplayMode.COMPACT, DisplayMode.NORMAL -> MaterialTheme.colorScheme.surfaceContainerHigh
         DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant
     }
     val itemSpacing = viewSettings.spacing.dp
@@ -92,7 +97,7 @@ fun LibraryAlbumGrid(
                     Row(Modifier.padding(s.md).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (viewSettings.displayMode == DisplayMode.DARK) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                            Text(subtitle?.invoke(item) ?: countLabel(item.count), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(subtitle?.invoke(item) ?: resolvedCountLabel(item.count), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         if (selected) {
                             Icon(Icons.Default.Check, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = s.sm).size(20.dp))
@@ -131,7 +136,7 @@ fun LibraryAlbumGrid(
                         showThumbnail = viewSettings.showFolderThumbnails,
                         roundedCorners = viewSettings.roundedCorners,
                         containerColor = containerColor,
-                        subtitle = if (item.count > 0) countLabel(item.count) else null,
+                        subtitle = if (item.count > 0) resolvedCountLabel(item.count) else null,
                     )
                     if (item.key in selectedKeys) {
                         Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)))

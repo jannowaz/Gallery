@@ -44,8 +44,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.LibraryAlbumGrid
@@ -80,7 +78,7 @@ fun FavoritesScreen(
     var isLoading by remember { mutableStateOf(cached == null) }
 
     suspend fun reload() {
-        val (media, dirs) = withContext(Dispatchers.IO) { repo.refreshFavoritesCache() }
+        val (media, dirs) = repo.refreshFavoritesCache()
         favoriteMedia = media
         favoriteDirs = dirs
         isLoading = false

@@ -1,6 +1,7 @@
 package org.fossify.gallery.compose.screens.tagbrowser
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
+import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.Radius
 
 import android.widget.Toast
@@ -104,6 +105,8 @@ fun TagBrowserScreen(
     var tagSearchQuery by remember { mutableStateOf("") }
     var refreshTrigger by remember { mutableIntStateOf(0) }
     val hierarchy = remember(refreshTrigger) { ctx.config.tagHierarchy }
+    val filesCountFormat = stringResource(R.string.files_count)
+    val childrenCountFormat = stringResource(R.string.tag_children_count)
 
     LaunchedEffect(refreshTrigger) {
         if (refreshTrigger == 0 && repo.getTagsWithPathsCached() != null) return@LaunchedEffect
@@ -115,10 +118,16 @@ fun TagBrowserScreen(
     }
 
     // Without this, a tag added/removed elsewhere (MediaScreen's quick-tag row, the Viewer's tag
-    // editor) never invalidated this screen's cache - only this screen's own delete/merge/rename
-    // actions incremented refreshTrigger, so externally-made tag edits stayed invisible here.
+    // editor) never invalidated this screen's cache. This refreshes allTags directly instead of
+    // bumping refreshTrigger, so an unrelated app-wide event (e.g. a rating change in another folder)
+    // doesn't flip scanning=true and flash the loading skeleton while the user is browsing tags.
     LaunchedEffect(Unit) {
-        org.fossify.gallery.helpers.RefreshBus.events.collect { refreshTrigger++ }
+        org.fossify.gallery.helpers.RefreshBus.events.collect {
+            withContext(Dispatchers.IO) {
+                val tags = try { repo.refreshTagsWithPathsCache() } catch (_: Exception) { emptyMap() }
+                withContext(Dispatchers.Main) { allTags = tags.entries.sortedByDescending { it.value.size }.associate { it.key to it.value } }
+            }
+        }
     }
 
     Scaffold(
@@ -147,7 +156,7 @@ fun TagBrowserScreen(
             // Crossfade + shimmer skeleton instead of a bare spinner - this is the same "grid of tiles
             // is loading" moment as the media grids elsewhere, so it should look consistent.
             val tagsContentState = if (scanning) "loading" else if (allTags.isEmpty()) "empty" else "content"
-            Crossfade(targetState = tagsContentState, label = "tagsContent", modifier = Modifier.weight(1f)) { tcs ->
+            Crossfade(targetState = tagsContentState, animationSpec = AppMotion.short, label = "tagsContent", modifier = Modifier.weight(1f)) { tcs ->
             if (tcs == "loading") {
                 MediaSkeleton(columns = viewSettings.columnCount)
             } else if (tcs == "empty") {
@@ -177,14 +186,14 @@ fun TagBrowserScreen(
                         else { onTagFilterApplied((allTags[item.key] ?: emptyList()).toSet(), item.key); onBack() }
                     },
                     onLongClick = { item -> selectedTags = if (item.key in selectedTags) selectedTags - item.key else selectedTags + item.key },
-                    countLabel = { "$it Dateien" },
+                    countLabel = { filesCountFormat.format(it) },
                     selectedKeys = selectedTags,
                     subtitle = { item ->
                         val parent = hierarchy[item.key]
                         val children = childrenByParent[item.key] ?: emptyList()
-                        val parts = mutableListOf("${item.count} Dateien")
+                        val parts = mutableListOf(filesCountFormat.format(item.count))
                         if (parent != null) parts.add("← $parent")
-                        if (children.isNotEmpty()) parts.add("→ ${children.size} Kinder")
+                        if (children.isNotEmpty()) parts.add("→ ${childrenCountFormat.format(children.size)}")
                         parts.joinToString(" · ")
                     },
                     modifier = Modifier.weight(1f),

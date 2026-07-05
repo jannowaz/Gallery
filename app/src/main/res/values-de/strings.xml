@@ -338,6 +338,19 @@
     <string name="pin_action">Anpinnen</string>
     <string name="unpin_action">Lösen</string>
     <string name="cancel">Abbrechen</string>
+    <string name="notif_channel_metadata_sync">Metadaten-Scan</string>
+    <string name="notif_metadata_scanning_title">Tags &amp; Bewertungen scannen</string>
+    <string name="notif_metadata_scanning_progress">%1$d/%2$d · %3$d Tags · %4$d Bewertungen</string>
+    <string name="notif_preparing">Vorbereiten…</string>
+    <string name="notif_scan_cancelled_title">Scan abgebrochen</string>
+    <string name="notif_scan_cancelled_text">Der Scan wurde gestoppt.</string>
+    <string name="notif_scan_complete_title">Scan abgeschlossen</string>
+    <string name="notif_scan_complete_full_text">%1$d Dateien · %2$d mit Tags · %3$d bewertet</string>
+    <string name="notif_scan_complete_folder_text">%1$s: %2$d mit Tags/Bewertungen, %3$d synchronisiert</string>
+    <string name="notif_channel_batch_ops">Dateien verschieben/umbenennen</string>
+    <string name="notif_batch_renaming">Dateien werden umbenannt</string>
+    <string name="notif_batch_copying">Dateien werden kopiert</string>
+    <string name="notif_batch_moving">Dateien werden verschoben</string>
     <string name="action_open">Öffnen</string>
     <string name="action_hide">Ausblenden</string>
     <string name="error_loading_media">Medien konnten nicht geladen werden</string>
@@ -434,6 +447,8 @@
     <string name="confirm_delete_title">Löschen bestätigen</string>
     <string name="newest">neueste</string>
     <string name="analyze">Analysieren</string>
+    <string name="storage_files_scanned">%1$d / %2$d Dateien gescannt</string>
+    <string name="storage_files_wasted">%1$d Dateien · %2$s verschwendet</string>
     <string name="optimize">Optimieren</string>
     <string name="all_optimal">Alles optimal!</string>
     <string name="optimize_confirm_title">Optimierung bestätigen</string>
@@ -464,6 +479,7 @@
     <string name="tags_count_title">Tags (%d)</string>
     <string name="search_tag">Tag suchen</string>
     <string name="no_tags_found">Keine Tags gefunden</string>
+    <string name="tag_children_count">%d Kinder</string>
     <string name="no_tags_hint">Tags zu Medien hinzufügen, dann erscheinen sie hier</string>
     <string name="action_filter">Filtern</string>
     <string name="action_parent">Parent</string>
@@ -498,6 +514,7 @@
     <string name="no_items">Keine Elemente</string>
     <string name="no_items_hint">Dieser Ordner enthält keine Medien</string>
     <string name="albums">Alben</string>
+    <string name="settings_mode_folder_content">Ordner-Inhalt</string>
     <string name="set_general">Allgemein</string>
     <string name="set_video">Video</string>
     <string name="set_fullscreen">Vollbild &amp; Anzeige</string>

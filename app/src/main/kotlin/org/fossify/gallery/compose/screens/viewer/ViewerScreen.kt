@@ -95,7 +95,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -110,6 +109,7 @@ import org.fossify.commons.extensions.updateBrightness
 import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.gallery.compose.components.ConfirmDestructive
 import org.fossify.gallery.compose.components.SelectionRow
+import org.fossify.gallery.compose.util.rememberGalleryHaptics
 import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.FavoriteColor
 import org.fossify.gallery.compose.theme.RatingStarColor
@@ -159,7 +159,7 @@ fun ViewerScreen(
     onClose: () -> Unit,
 ) {
     val ctx = LocalContext.current
-    val haptic = LocalHapticFeedback.current
+    val haptic = rememberGalleryHaptics()
     val scope = rememberCoroutineScope()
     val items = remember { paths.toMutableStateList() }
     val pagerState = rememberPagerState(initialPage = startIndex.coerceIn(0, (paths.size - 1).coerceAtLeast(0)), pageCount = { items.size })
@@ -276,7 +276,7 @@ fun ViewerScreen(
                             onVerticalDrag = { _, drag ->
                                 dragOffset += drag
                                 val crossed = dragOffset < -180f || dragOffset > 240f
-                                if (crossed && !dismissThresholdCrossed) haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                                if (crossed && !dismissThresholdCrossed) haptic(HapticFeedbackType.GestureThresholdActivate)
                                 dismissThresholdCrossed = crossed
                             },
                         )
@@ -372,7 +372,7 @@ fun ViewerScreen(
                     Surface(shape = RoundedCornerShape(Radius.xl), color = Scrim.a32) {
                         Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 6.dp)) {
                             for (i in 1..5) {
-                                IconButton(onClick = { haptic.performHapticFeedback(HapticFeedbackType.Confirm); uiInteractionTick++; val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) {
+                                IconButton(onClick = { haptic(HapticFeedbackType.Confirm); uiInteractionTick++; val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) {
                                     Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))
                                 }
                             }
@@ -449,7 +449,7 @@ fun ViewerScreen(
                 if (exifLines.isNotEmpty()) { Spacer(Modifier.height(2.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) { exifLines.take(8).forEach { (label, value) -> Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface); Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } } }
                 Spacer(Modifier.height(12.dp))
                 SheetSectionLabel(stringResource(R.string.rating_title))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { for (i in 1..5) { IconButton(onClick = { haptic.performHapticFeedback(HapticFeedbackType.Confirm); val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) { Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f), modifier = Modifier.size(28.dp)) } } }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { for (i in 1..5) { IconButton(onClick = { haptic(HapticFeedbackType.Confirm); val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) { Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f), modifier = Modifier.size(28.dp)) } } }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 SheetSectionLabel(stringResource(R.string.video_actions))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Share, stringResource(R.string.action_share)) { val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath)); ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, ctx.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); showActionSheet = false }; ActionChip(Icons.Default.Edit, stringResource(R.string.edit)) { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }; ActionChip(Icons.Default.ContentCopy, stringResource(R.string.action_copy)) { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }; ActionChip(Icons.AutoMirrored.Filled.DriveFileMove, stringResource(R.string.action_move)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false } }

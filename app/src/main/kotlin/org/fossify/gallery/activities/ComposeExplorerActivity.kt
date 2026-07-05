@@ -317,6 +317,11 @@ private fun TagBrowserSheet(
             withContext(Dispatchers.Main) { allTags = tags.entries.sortedByDescending { it.value.size }.associate { it.key to it.value }; scanning = false }
         }
     }
+    // Without this, a tag added/removed elsewhere (MediaScreen's quick-tag row, the Viewer's tag
+    // editor) while this sheet is open never invalidated its frozen snapshot of allTags.
+    LaunchedEffect(Unit) {
+        RefreshBus.events.collect { refreshTrigger++ }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -907,7 +912,7 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (i in 1..5) {
                             IconButton(onClick = { ratingFilter = i }, modifier = Modifier.size(48.dp)) {
-                                Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, "Bewertung $i", tint = RatingStarColor, modifier = Modifier.size(36.dp))
+                                Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = RatingStarColor, modifier = Modifier.size(36.dp))
                             }
                         }
                     }
@@ -1115,13 +1120,13 @@ private fun MainSheets(
             },
             onDismiss = onDismissSheet,
             modeTitle = when {
-                selectedTab == 1 -> if (settingsMode == SettingsMode.ALBUMS) "Alben" else "Ordner-Inhalt"
-                selectedTab == 2 -> if (settingsMode == SettingsMode.ALBUMS) "Alben" else "Medien"
+                selectedTab == 1 -> if (settingsMode == SettingsMode.ALBUMS) stringResource(R.string.albums) else stringResource(R.string.settings_mode_folder_content)
+                selectedTab == 2 -> if (settingsMode == SettingsMode.ALBUMS) stringResource(R.string.albums) else stringResource(R.string.media)
                 else -> null
             },
             modeOptions = when (selectedTab) {
-                1 -> listOf("Alben", "Ordner-Inhalt")
-                2 -> listOf("Alben", "Medien")
+                1 -> listOf(stringResource(R.string.albums), stringResource(R.string.settings_mode_folder_content))
+                2 -> listOf(stringResource(R.string.albums), stringResource(R.string.media))
                 else -> null
             },
             onToggleMode = if (isAlbumsTab || isExplorerTab) {{ viewSettingsVM.setSettingsMode(if (settingsMode == SettingsMode.ALBUMS) SettingsMode.MEDIA else SettingsMode.ALBUMS) }} else null,
@@ -1163,6 +1168,16 @@ private fun OmniSearchPanel(
         withContext(Dispatchers.IO) {
             val tags = try { repo.refreshTagsWithPathsCache().mapValues { it.value.toSet() } } catch (_: Exception) { emptyMap() }
             withContext(Dispatchers.Main) { allTags = tags.takeIf { it.isNotEmpty() } ?: emptyMap() }
+        }
+    }
+    // Without this, a tag added/removed elsewhere while this panel stays mounted (search field kept
+    // focus) never invalidated its frozen snapshot of allTags.
+    LaunchedEffect(Unit) {
+        RefreshBus.events.collect {
+            withContext(Dispatchers.IO) {
+                val tags = try { repo.refreshTagsWithPathsCache().mapValues { it.value.toSet() } } catch (_: Exception) { emptyMap() }
+                withContext(Dispatchers.Main) { allTags = tags }
+            }
         }
     }
 

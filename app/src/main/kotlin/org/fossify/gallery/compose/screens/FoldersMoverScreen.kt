@@ -159,7 +159,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
             val destBase = pair.destination
             srcDir.listFiles()?.filter { it.isFile }?.map { it.absolutePath to "$destBase/${it.name}" } ?: emptyList()
         }
-        if (allMoves.isEmpty()) { ctx.toast("Keine Dateien gefunden", Toast.LENGTH_SHORT); return }
+        if (allMoves.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); return }
         scope.launch {
             val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, allMoves.map { it.first }) }
             val granted = try { moverConsent.request(MediaStoreOps.writeRequest(ctx, uris.map { it.second })) } catch (_: Exception) { false }
