@@ -184,7 +184,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                 val totalDupes = remember(state.groups) { state.groups.sumOf { it.files.size - 1 } }
                 Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))) {
                     Column(Modifier.padding(12.dp)) {
-                        Text("${state.groups.size} Gruppen · $totalDupes Duplikate · ${dupFormatBytes(totalWasted)} sparbar", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.duplicate_scan_summary, state.groups.size, totalDupes, dupFormatBytes(totalWasted)), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     }
                 }
 
@@ -192,7 +192,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                     val selSize = state.groups.flatMap { it.files }.filter { it.path in state.selectedForDeletion }.sumOf { it.size }
                     Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(Radius.md)) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("${state.selectedForDeletion.size} markiert · ${dupFormatBytes(selSize)}", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                            Text(stringResource(R.string.duplicate_marked_count, state.selectedForDeletion.size, dupFormatBytes(selSize)), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
                             TextButton(onClick = { showConfirmDialog = true }) { Text(stringResource(org.fossify.commons.R.string.delete), color = MaterialTheme.colorScheme.error) }
                             TextButton(onClick = { vm.clearSelection() }) { Text(stringResource(R.string.action_empty)) }
                         }

@@ -413,7 +413,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
          * isn't thread-safe to share across them. */
         fun monthLabelFor(m: Medium): String {
             val d = if (m.taken > 0) Date(m.taken) else Date(m.modified)
-            return SimpleDateFormat("MMMM yyyy", Locale.GERMANY).format(d).replaceFirstChar { it.uppercase() }
+            return SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(d).replaceFirstChar { it.uppercase() }
         }
     }
 }

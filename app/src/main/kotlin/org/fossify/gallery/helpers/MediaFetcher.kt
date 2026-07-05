@@ -892,7 +892,7 @@ class MediaFetcher(val context: Context) {
 
     private fun formatDate(timestamp: String, showDay: Boolean): String {
         return if (timestamp.areDigitsOnly()) {
-            val cal = Calendar.getInstance(Locale.ENGLISH)
+            val cal = Calendar.getInstance(Locale.getDefault())
             cal.timeInMillis = timestamp.toLong()
             val format = if (showDay) context.config.dateFormat else "MMMM yyyy"
             DateFormat.format(format, cal).toString()

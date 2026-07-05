@@ -346,6 +346,14 @@
     <string name="action_invert_selection">Invert selection</string>
     <string name="action_copy">Copy</string>
     <string name="action_move">Move</string>
+    <string name="folder_picker_move_title">Move to…</string>
+    <string name="folder_picker_copy_title">Copy to…</string>
+    <string name="folder_picker_move_here">Move here</string>
+    <string name="folder_picker_copy_here">Copy here</string>
+    <string name="move_confirm_title">Move?</string>
+    <string name="copy_confirm_title">Copy?</string>
+    <string name="folder_mover_all_moved">All %d moved</string>
+    <string name="folder_mover_stopped">Move stopped: %d done</string>
     <string name="action_rate">Rate</string>
     <string name="action_tags">Tags</string>
     <string name="action_rename">Rename</string>
@@ -499,6 +507,11 @@
     <string name="optimize_confirm_title">Confirm optimization</string>
     <string name="lossless_only">Lossless only</string>
     <string name="optimize_done_title">Optimization complete</string>
+    <string name="optimize_done_text">%1$d successful, %2$d failed. %3$s saved.</string>
+    <string name="tags_removed_count">%d tag(s) removed</string>
+    <string name="notif_batch_cancelled">Cancelled: %d done</string>
+    <string name="notif_batch_done_with_failures">%1$d done, %2$d failed</string>
+    <string name="notif_batch_done">%d done</string>
     <string name="opt_lossless_detail">Lossless: %d files (BMP→PNG, TIFF→PNG, PNG→WebP) – 100%% quality kept</string>
     <string name="opt_lossy_detail">Lossy: %d files (JPEG/PNG recompression) – minimal quality loss</string>
     <string name="exif_resolution">Resolution</string>
@@ -734,6 +747,8 @@
     <string name="similar">similar</string>
     <string name="identical">identical</string>
     <string name="duplicate_group_summary">%1$d× %2$s · %3$s · %4$s savable</string>
+    <string name="duplicate_scan_summary">%1$d groups · %2$d duplicates · %3$s savable</string>
+    <string name="duplicate_marked_count">%1$d marked · %2$s</string>
     <string name="undo_deleted_count">%d deleted</string>
     <string name="undo_moved_count">%d moved</string>
     <string name="undo_tag_added">Tag added</string>

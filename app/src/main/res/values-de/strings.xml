@@ -301,6 +301,14 @@
     <string name="action_invert_selection">Auswahl umkehren</string>
     <string name="action_copy">Kopieren</string>
     <string name="action_move">Verschieben</string>
+    <string name="folder_picker_move_title">Verschieben nach…</string>
+    <string name="folder_picker_copy_title">Kopieren nach…</string>
+    <string name="folder_picker_move_here">Hierher verschieben</string>
+    <string name="folder_picker_copy_here">Hierher kopieren</string>
+    <string name="move_confirm_title">Verschieben?</string>
+    <string name="copy_confirm_title">Kopieren?</string>
+    <string name="folder_mover_all_moved">Alle %d verschoben</string>
+    <string name="folder_mover_stopped">Verschieben beendet: %d erledigt</string>
     <string name="action_rate">Bewerten</string>
     <string name="action_tags">Tags</string>
     <string name="action_rename">Umbenennen</string>
@@ -454,6 +462,11 @@
     <string name="optimize_confirm_title">Optimierung bestätigen</string>
     <string name="lossless_only">Nur Lossless</string>
     <string name="optimize_done_title">Optimierung abgeschlossen</string>
+    <string name="optimize_done_text">%1$d erfolgreich, %2$d fehlgeschlagen. %3$s gespart.</string>
+    <string name="tags_removed_count">%d Tag(s) entfernt</string>
+    <string name="notif_batch_cancelled">Abgebrochen: %d erledigt</string>
+    <string name="notif_batch_done_with_failures">%1$d erledigt, %2$d fehlgeschlagen</string>
+    <string name="notif_batch_done">%d erledigt</string>
     <string name="opt_lossless_detail">Lossless: %d Dateien (BMP→PNG, TIFF→PNG, PNG→WebP) – 100%% Qualität erhalten</string>
     <string name="opt_lossy_detail">Lossy: %d Dateien (JPEG/PNG Rekompression) – minimale Qualitätseinbuße</string>
     <string name="exif_resolution">Auflösung</string>
@@ -689,6 +702,8 @@
     <string name="similar">ähnlich</string>
     <string name="identical">gleich</string>
     <string name="duplicate_group_summary">%1$d× %2$s · %3$s · %4$s sparbar</string>
+    <string name="duplicate_scan_summary">%1$d Gruppen · %2$d Duplikate · %3$s sparbar</string>
+    <string name="duplicate_marked_count">%1$d markiert · %2$s</string>
     <string name="undo_deleted_count">%d gelöscht</string>
     <string name="undo_moved_count">%d verschoben</string>
     <string name="undo_tag_added">Tag hinzugefügt</string>

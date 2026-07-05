@@ -213,7 +213,7 @@ fun FolderPickerSheet(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    if (isMoveOperation) "Verschieben nach..." else "Kopieren nach...",
+                    stringResource(if (isMoveOperation) R.string.folder_picker_move_title else R.string.folder_picker_copy_title),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
@@ -334,7 +334,7 @@ fun FolderPickerSheet(
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                if (isMoveOperation) "Hierher verschieben" else "Hierher kopieren",
+                                stringResource(if (isMoveOperation) R.string.folder_picker_move_here else R.string.folder_picker_copy_here),
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onPrimary
@@ -373,7 +373,7 @@ fun FolderPickerSheet(
         val parentPath = File(dest).parent ?: rootPath
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { confirmTarget = null },
-            title = { Text(if (isMoveOperation) "Verschieben?" else "Kopieren?") },
+            title = { Text(stringResource(if (isMoveOperation) R.string.move_confirm_title else R.string.copy_confirm_title)) },
             text = {
                 Column {
                     Text(stringResource(if (isMoveOperation) R.string.move_files_to else R.string.copy_files_to, sourcePaths.size))
@@ -385,7 +385,7 @@ fun FolderPickerSheet(
                 androidx.compose.material3.TextButton(onClick = {
                     performCopyMove(dest)
                     confirmTarget = null
-                }) { Text(if (isMoveOperation) "Verschieben" else "Kopieren") }
+                }) { Text(stringResource(if (isMoveOperation) R.string.action_move else R.string.action_copy)) }
             },
             dismissButton = {
                 androidx.compose.material3.TextButton(onClick = { confirmTarget = null }) { Text(stringResource(R.string.cancel)) }

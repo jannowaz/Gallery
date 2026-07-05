@@ -235,7 +235,7 @@ fun StorageAnalysisScreen(onBack: () -> Unit, onNavigateToViewer: (String) -> Un
         AlertDialog(
             onDismissRequest = { vm.clearTransformResults() },
             title = { Text(stringResource(R.string.optimize_done_title)) },
-            text = { Text("$success erfolgreich, $failed fehlgeschlagen. ${formatBytes(saved)} gespart.") },
+            text = { Text(stringResource(R.string.optimize_done_text, success, failed, formatBytes(saved))) },
             confirmButton = { TextButton(onClick = { vm.clearTransformResults() }) { Text(stringResource(org.fossify.commons.R.string.ok)) } }
         )
     }

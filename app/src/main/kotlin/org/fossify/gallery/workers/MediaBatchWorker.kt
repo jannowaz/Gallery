@@ -168,9 +168,9 @@ class MediaBatchWorker(
         try {
             val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             val text = when {
-                cancelled -> "Abgebrochen: $done erledigt"
-                failed > 0 -> "$done erledigt, $failed fehlgeschlagen"
-                else -> "$done erledigt"
+                cancelled -> applicationContext.getString(org.fossify.gallery.R.string.notif_batch_cancelled, done)
+                failed > 0 -> applicationContext.getString(org.fossify.gallery.R.string.notif_batch_done_with_failures, done, failed)
+                else -> applicationContext.getString(org.fossify.gallery.R.string.notif_batch_done, done)
             }
             nm.notify(NOTIFICATION_ID, NotificationCompat.Builder(applicationContext, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_upload_done)

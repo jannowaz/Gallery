@@ -308,6 +308,7 @@ private fun TagBrowserSheet(
     var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
     var tagSearchQuery by remember { mutableStateOf("") }
     var refreshTrigger by remember { mutableIntStateOf(0) }
+    val tagsRemovedFormat = stringResource(R.string.tags_removed_count)
 
     LaunchedEffect(refreshTrigger) {
         if (refreshTrigger == 0 && repo.getTagsWithPathsCached() != null) return@LaunchedEffect
@@ -455,7 +456,7 @@ private fun TagBrowserSheet(
                             pathsForTag.forEach { p -> repo.removeTag(p, tag) }
                         }
                         withContext(Dispatchers.Main) {
-                            ctx.toast("${tagsToDelete.size} Tag(s) entfernt", Toast.LENGTH_SHORT)
+                            ctx.toast(tagsRemovedFormat.format(tagsToDelete.size), Toast.LENGTH_SHORT)
                             deleteConfirmTags = emptySet(); refreshTrigger++; selectedTags = emptySet()
                         }
                     }

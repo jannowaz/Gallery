@@ -111,6 +111,8 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     var editingIndex by remember { mutableIntStateOf(-1) }
     val storageRoot = Environment.getExternalStorageDirectory().absolutePath
     val moverConsent = rememberMediaStoreConsent()
+    val allMovedFormat = stringResource(R.string.folder_mover_all_moved)
+    val moveStoppedFormat = stringResource(R.string.folder_mover_stopped)
 
     val workInfo by remember(activeJobId) {
         activeJobId?.let { androidx.work.WorkManager.getInstance(ctx).getWorkInfosForUniqueWorkFlow(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
@@ -122,7 +124,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     val moveTotal = moveProgressData?.getInt("total", 1) ?: 1
     LaunchedEffect(activeWorkInfo?.state) {
         if (activeWorkInfo?.state?.isFinished == true) {
-            ctx.toast(if (activeWorkInfo.state == androidx.work.WorkInfo.State.SUCCEEDED) "Alle $moveProgress verschoben" else "Verschieben beendet: $moveProgress erledigt", Toast.LENGTH_SHORT)
+            ctx.toast(if (activeWorkInfo.state == androidx.work.WorkInfo.State.SUCCEEDED) allMovedFormat.format(moveProgress) else moveStoppedFormat.format(moveProgress), Toast.LENGTH_SHORT)
             activeJobId = null
         }
     }
