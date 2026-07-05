@@ -104,7 +104,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     override fun addTag(path: String, tag: String) {
         val current = XmpWriter.read(path)
         val tags = if (tag in current.tags) current.tags else current.tags + tag
-        XmpWriter.write(path, tags, current.rating)
+        XmpWriter.write(path, tags, current.rating, context.config.tagHierarchy)
         // Background sync
         repositoryScope.launch {
             syncCache(path, tags, current.rating)
@@ -114,7 +114,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     override fun removeTag(path: String, tag: String) {
         val current = XmpWriter.read(path)
         val tags = current.tags.filter { it != tag }
-        XmpWriter.write(path, tags, current.rating)
+        XmpWriter.write(path, tags, current.rating, context.config.tagHierarchy)
         // Background sync
         repositoryScope.launch {
             syncCache(path, tags, current.rating)

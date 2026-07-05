@@ -130,6 +130,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -823,6 +824,7 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                     MainBottomBar(
                         selectedTab = uiState.selectedTab,
                         onTabSelected = { mainVM.setSelectedTab(it) },
+                        onSwipeUp = { activeSheet = ActiveSheet.VIEW_SETTINGS },
                     )
                 }
             }
@@ -867,6 +869,8 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                         mainVM.setTagFilter(tagPaths, tagName)
                         if (rating > 0 || tagPaths != null || textPaths != null) mainVM.setSelectedTab(0)
                     },
+                    onOpenCollection = { coll -> applyCollection(coll, mainVM, ctx, scope); closeSearch() },
+                    onOpenFavorite = { path -> ViewerArgs.paths = listOf(path); closeSearch(); navController.navigate(Viewer(0)) },
                 )
                 }
             }
@@ -943,32 +947,64 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
 }
 
 @Composable
-private fun MainBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
-    // No fixed height here - NavigationBar's default windowInsets already reserve the 56dp content
-    // row plus the real bottom system-bar/gesture-nav inset on top of it. Clamping to a flat 56dp
-    // used to squeeze that reserved inset out of the total height, cramming the icon row into
-    // whatever space was left above the gesture bar on 3-button/gesture-nav devices.
-    NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 0.dp,
-    ) {
-        bottomNavTabs.forEach { tab ->
-            NavigationBarItem(
-                selected = selectedTab == tab.index,
-                onClick = {
-                    if (selectedTab == tab.index) org.fossify.gallery.compose.util.ScrollToTopBus.trigger(tab.index)
-                    else onTabSelected(tab.index)
-                },
-                icon = { Icon(tab.icon, stringResource(tab.labelRes), modifier = Modifier.size(22.dp)) },
-                label = { Text(stringResource(tab.labelRes), style = MaterialTheme.typography.labelSmall) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                ),
+private fun MainBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit, onSwipeUp: () -> Unit) {
+    Column(Modifier.background(MaterialTheme.colorScheme.surfaceContainer)) {
+        // Grab handle: swiping up on it opens the current tab's view/sort settings sheet - the
+        // gesture is scoped to this small strip (not the whole bar) so it can't intercept touches
+        // meant for the NavigationBarItems below it. This replaces the old FAB shortcut that was
+        // removed in the nav restructure (drawer -> "Ansicht" is still there, just slower to reach).
+        val density = LocalDensity.current
+        val swipeThresholdPx = with(density) { 32.dp.toPx() }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .pointerInput(Unit) {
+                    var totalDrag = 0f
+                    detectVerticalDragGestures(
+                        onDragStart = { totalDrag = 0f },
+                        onDragEnd = { if (totalDrag < -swipeThresholdPx) onSwipeUp() },
+                        onDragCancel = { },
+                    ) { change, dragAmount ->
+                        totalDrag += dragAmount
+                        change.consume()
+                    }
+                }
+                .padding(vertical = 6.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                Modifier
+                    .size(width = 32.dp, height = 4.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
             )
+        }
+        // No fixed height here - NavigationBar's default windowInsets already reserve the 56dp content
+        // row plus the real bottom system-bar/gesture-nav inset on top of it. Clamping to a flat 56dp
+        // used to squeeze that reserved inset out of the total height, cramming the icon row into
+        // whatever space was left above the gesture bar on 3-button/gesture-nav devices.
+        NavigationBar(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            tonalElevation = 0.dp,
+        ) {
+            bottomNavTabs.forEach { tab ->
+                NavigationBarItem(
+                    selected = selectedTab == tab.index,
+                    onClick = {
+                        if (selectedTab == tab.index) org.fossify.gallery.compose.util.ScrollToTopBus.trigger(tab.index)
+                        else onTabSelected(tab.index)
+                    },
+                    icon = { Icon(tab.icon, stringResource(tab.labelRes), modifier = Modifier.size(22.dp)) },
+                    label = { Text(stringResource(tab.labelRes), style = MaterialTheme.typography.labelSmall) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                )
+            }
         }
     }
 }
@@ -1144,6 +1180,8 @@ private fun OmniSearchPanel(
     storagePath: String,
     onNavigate: (String) -> Unit,
     onFilterChanged: (filterPaths: Set<String>?, rating: Int, tagPaths: Set<String>?, tagName: String?, fileType: Int, dateRange: Int) -> Unit,
+    onOpenCollection: (MediaCollection) -> Unit,
+    onOpenFavorite: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val ctx = LocalContext.current
@@ -1159,10 +1197,16 @@ private fun OmniSearchPanel(
     var textMatchPaths by remember { mutableStateOf<Set<String>?>(null) }
     var folderResults by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var tagResults by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
+    var collectionResults by remember { mutableStateOf<List<MediaCollection>>(emptyList()) }
+    var favoriteResults by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var fileTypeFilter by remember { mutableIntStateOf(0) }
     var dateFilter by remember { mutableIntStateOf(0) }
     var showFilters by remember { mutableStateOf(false) }
     val searchCache = remember { mutableMapOf<String, Set<String>>() }
+    // Bumped on every new search so slower jobs from a stale query can't clobber a newer query's
+    // results after the user has already kept typing (jobs below run concurrently, unordered).
+    var searchGeneration by remember { mutableIntStateOf(0) }
+    var pendingJobs by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         if (repo.getTagsWithPathsCached() != null) return@LaunchedEffect
@@ -1182,18 +1226,68 @@ private fun OmniSearchPanel(
         }
     }
 
+    // Each source below reports its own result as soon as it's ready instead of all sources being
+    // collected into one final state update - the cheap in-memory/small-table sources (tags,
+    // folders, collections, favorites) used to be held back behind the expensive MediaStore scan
+    // just because they were assigned in the same withContext block at the end of one shared
+    // coroutine. Running them as independent jobs and writing straight to state lets the UI
+    // populate progressively, fastest first, while the MediaStore query keeps running.
     fun performSearch() {
-        if (query.length < 2) { textMatchPaths = null; return }
-        isSearching = true
+        val myGen = ++searchGeneration
+        if (query.length < 2) {
+            textMatchPaths = null; folderResults = emptyList(); tagResults = emptyList()
+            collectionResults = emptyList(); favoriteResults = emptyList(); isSearching = false
+            return
+        }
         val qParts = query.lowercase().split(" ").filter { it.isNotBlank() }
-        if (qParts.isEmpty()) { textMatchPaths = null; isSearching = false; return }
+        if (qParts.isEmpty()) {
+            textMatchPaths = null; folderResults = emptyList(); tagResults = emptyList()
+            collectionResults = emptyList(); favoriteResults = emptyList(); isSearching = false
+            return
+        }
+        pendingJobs = 5
+        isSearching = true
+        // Guarded by myGen so a job from a superseded (stale) search can't decrement the *new*
+        // search's counter and turn the spinner off before the current search actually finished.
+        fun jobDone() { if (myGen == searchGeneration) { pendingJobs--; if (pendingJobs <= 0) isSearching = false } }
+
+        // In-memory tag cache - no I/O at all, so this can resolve on the current thread.
+        scope.launch(Dispatchers.Default) {
+            val tags = mutableListOf<Pair<String, Int>>()
+            try {
+                if (allTags.isNotEmpty()) qParts.forEach { qp -> allTags.entries.forEach { (tag, paths) -> if (tag.lowercase().contains(qp) && tags.none { it.first == tag }) tags.add(tag to paths.size) } }
+            } catch (_: Exception) { }
+            if (myGen == searchGeneration) tagResults = tags.sortedByDescending { it.second }.take(15)
+            jobDone()
+        }
+        // Small Room table (folder count, not file count) - cheap full scan.
+        scope.launch(Dispatchers.IO) {
+            val folders = try { ctx.directoryDB.getAll().mapNotNull { d -> val ln = d.name.lowercase(); if (qParts.all { it in ln }) d.name to d.path else null } } catch (_: Exception) { emptyList() }
+            if (myGen == searchGeneration) folderResults = folders.sortedBy { it.first }.take(15)
+            jobDone()
+        }
+        // Handful of user-defined collections at most.
+        scope.launch(Dispatchers.IO) {
+            val colls = try { repo.getCollections().filter { c -> val ln = c.name.lowercase(); qParts.all { it in ln } } } catch (_: Exception) { emptyList() }
+            if (myGen == searchGeneration) collectionResults = colls.take(10)
+            jobDone()
+        }
+        // Favorites table is a small subset of all media - cheap relative to the full MediaStore scan.
+        scope.launch(Dispatchers.IO) {
+            val favs = try { repo.getFavorites().mapNotNull { m -> val ln = m.name.lowercase(); if (qParts.all { it in ln }) m.name to m.path else null } } catch (_: Exception) { emptyList() }
+            if (myGen == searchGeneration) favoriteResults = favs.take(10)
+            jobDone()
+        }
+        // Most expensive source: full MediaStore cursor scan + per-match filesystem stat.
         scope.launch(Dispatchers.IO) {
             val cacheKey = "${query}_${fileTypeFilter}_${dateFilter}"
-            searchCache[cacheKey]?.let { c -> textMatchPaths = c.filter { java.io.File(it).exists() }.toSet(); isSearching = false; return@launch }
+            searchCache[cacheKey]?.let { c ->
+                val filtered = c.filter { java.io.File(it).exists() }.toSet()
+                if (myGen == searchGeneration) textMatchPaths = filtered
+                jobDone(); return@launch
+            }
             if (searchCache.size > 30) searchCache.clear()
             val matched = mutableSetOf<String>()
-            val folders = mutableListOf<Pair<String, String>>()
-            val tags = mutableListOf<Pair<String, Int>>()
             try {
                 val uri = android.provider.MediaStore.Files.getContentUri("external")
                 val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA, android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
@@ -1205,9 +1299,8 @@ private fun OmniSearchPanel(
                     while (c.moveToNext()) { val path = c.getString(dataCol) ?: continue; val name = c.getString(nameCol) ?: ""; if (qParts.all { it in name.lowercase() } && java.io.File(path).exists()) matched.add(path) }
                 }
             } catch (_: Exception) { }
-            try { ctx.directoryDB.getAll().forEach { d -> val ln = d.name.lowercase(); if (qParts.all { it in ln }) folders.add(d.name to d.path) } } catch (_: Exception) { }
-            if (allTags.isNotEmpty()) qParts.forEach { qp -> allTags.entries.forEach { (tag, paths) -> if (tag.lowercase().contains(qp) && tags.none { it.first == tag }) tags.add(tag to paths.size) } }
-            withContext(Dispatchers.Main) { textMatchPaths = matched.takeIf { it.isNotEmpty() }?.also { searchCache[cacheKey] = it }; folderResults = folders.sortedBy { it.first }.take(15); tagResults = tags.sortedByDescending { it.second }.take(15); isSearching = false }
+            if (myGen == searchGeneration) textMatchPaths = matched.takeIf { it.isNotEmpty() }?.also { searchCache[cacheKey] = it }
+            jobDone()
         }
     }
 
@@ -1273,22 +1366,32 @@ private fun OmniSearchPanel(
             }
 
             // Results
-            if (isSearching) {
+            val hasAnyResults = hasResults || folderResults.isNotEmpty() || tagResults.isNotEmpty() || collectionResults.isNotEmpty() || favoriteResults.isNotEmpty()
+            if (isSearching && !hasAnyResults) {
                 Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
-            } else if (query.length >= 2 && !hasResults && folderResults.isEmpty() && tagResults.isEmpty()) {
+            } else if (query.length >= 2 && !isSearching && !hasAnyResults) {
                 Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
                     Text(stringResource(R.string.no_results), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-            } else if (hasResults || folderResults.isNotEmpty() || tagResults.isNotEmpty()) {
+            } else if (hasAnyResults || isSearching) {
                 Spacer(Modifier.height(4.dp)); HorizontalDivider(); Spacer(Modifier.height(4.dp))
                 LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
                     if (folderResults.isNotEmpty()) {
                         item { Text(stringResource(R.string.folders), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 4.dp)) }
                         items(folderResults.take(5), key = { it.second }) { (name, path) ->
+                            // Parent dir (relative to external storage root) below the name - folders
+                            // sharing a basename in different places were otherwise indistinguishable.
+                            val parentLabel = remember(path) {
+                                val parent = java.io.File(path).parent ?: ""
+                                parent.removePrefix(storagePath).trim('/').ifEmpty { "/" }
+                            }
                             Surface(modifier = Modifier.fillMaxWidth().clickable { onNavigate(path) }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
                                 Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
-                                    Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(parentLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
                                     Icon(Icons.Default.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                                 }
                             }
@@ -1308,12 +1411,49 @@ private fun OmniSearchPanel(
                         }
                         item { Spacer(Modifier.height(8.dp)) }
                     }
+                    if (collectionResults.isNotEmpty()) {
+                        item { Text(stringResource(R.string.nav_collections), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 4.dp)) }
+                        items(collectionResults, key = { it.id }) { coll ->
+                            Surface(modifier = Modifier.fillMaxWidth().clickable { onOpenCollection(coll); onDismiss() }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
+                                Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.CollectionsBookmark, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                                    Text(coll.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                    Icon(Icons.Default.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                        item { Spacer(Modifier.height(8.dp)) }
+                    }
+                    if (favoriteResults.isNotEmpty()) {
+                        item { Text(stringResource(R.string.nav_favorites), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(vertical = 4.dp)) }
+                        items(favoriteResults.take(8), key = { it.second }) { (name, path) ->
+                            Surface(modifier = Modifier.fillMaxWidth().clickable { onOpenFavorite(path); onDismiss() }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
+                                Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Star, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                                    Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                        if (favoriteResults.size > 8) item { Text(stringResource(R.string.plus_n_more, favoriteResults.size - 8), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp)) }
+                        item { Spacer(Modifier.height(8.dp)) }
+                    }
                     if (hasResults) {
                         item { Text(stringResource(R.string.media_count_paren, mc), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(vertical = 4.dp)) }
+                    } else if (isSearching) {
+                        // The MediaStore file scan is usually the slowest source - if the fast
+                        // sources above already rendered, show a small inline spinner instead of
+                        // blanking the whole panel while files are still being matched.
+                        item {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.searching), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                 }
                 Spacer(Modifier.height(4.dp))
-                if (hasResults || folderResults.isNotEmpty() || tagResults.isNotEmpty()) {
+                if (hasAnyResults) {
                     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.Center) {
                         Surface(onClick = {
                             onFilterChanged(textMatchPaths, ratingFilter,
