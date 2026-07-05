@@ -177,7 +177,13 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
 
     /** Tag -> the file paths carrying it. Backed by the normalized `media_tags` table (exact-match
      * per tag) instead of splitting/scanning the old comma-joined `media_cache.tags` column, which
-     * could false-match a tag as a substring of another (e.g. "Auto" inside a file tagged "Autobahn"). */
+     * could false-match a tag as a substring of another (e.g. "Auto" inside a file tagged "Autobahn").
+     *
+     * A GROUP_CONCAT-based variant (one row per tag instead of one row per (tag, path) pair) was
+     * tried here, on the theory that fewer Room rows would be cheaper to materialize. Measured it
+     * was ~3x SLOWER on-device (2.4s vs 0.8s) and confirmed independently via a local sqlite3 EXPLAIN
+     * (GROUP_CONCAT's incremental buffer growth over hundreds of tag groups, several with 600-1000+
+     * paths, costs more than the plain per-pair scan saves) - so it was reverted. */
     suspend fun getAllTagsWithPaths(): Map<String, List<String>> =
         try { context.mediaTagDB.getAllTagPathPairs().groupBy({ it.tag }, { it.path }) } catch (_: Exception) { emptyMap() }
 
@@ -497,4 +503,43 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             android.util.Log.e("MediaRepository", "restoreFromRecycleBinBatch failed", e)
         }
     }
+
+    // ---- Small in-memory caches for screens whose whole composable tree is disposed and recreated
+    // whenever Navigation-Compose pushes another destination (Viewer, Settings, ...) on top of Home
+    // and the user navigates back. A plain remember{} in those screens gets wiped on that round trip,
+    // forcing an expensive DB/query cascade to rerun every time (this is what happened with
+    // ExplorerScreen's full-device MediaStore scan; see MediaStoreOps for the analogous fix there).
+    // This repo instance itself is remember{}-scoped above the NavHost, so it survives that disposal.
+
+    @Volatile private var favoritesCache: Pair<List<Medium>, List<Directory>>? = null
+
+    fun getFavoritesCached(): Pair<List<Medium>, List<Directory>>? = favoritesCache
+
+    fun refreshFavoritesCache(): Pair<List<Medium>, List<Directory>> {
+        val media = getFavorites()
+        val paths = context.config.favoriteFolders
+        val dirs = if (paths.isEmpty()) emptyList() else getAllDirectories().filter { it.path in paths }
+        return (media to dirs).also { favoritesCache = it }
+    }
+
+    @Volatile private var collectionsCache: List<MediaCollection>? = null
+    @Volatile private var collectionMediaCache: Map<Long, List<Medium>> = emptyMap()
+
+    fun getCollectionsCached(): List<MediaCollection>? = collectionsCache
+
+    fun getCollectionMediaCached(collectionId: Long): List<Medium> = collectionMediaCache[collectionId] ?: emptyList()
+
+    fun refreshCollectionsCache(): List<MediaCollection> {
+        val colls = getCollections()
+        collectionMediaCache = colls.associate { c -> c.id to c.getIncludedPaths().flatMap { getMediaFromPath(it) } }
+        collectionsCache = colls
+        return colls
+    }
+
+    @Volatile private var tagsWithPathsCache: Map<String, List<String>>? = null
+
+    fun getTagsWithPathsCached(): Map<String, List<String>>? = tagsWithPathsCache
+
+    suspend fun refreshTagsWithPathsCache(): Map<String, List<String>> =
+        getAllTagsWithPaths().also { tagsWithPathsCache = it }
 }

@@ -207,6 +207,22 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(FORCE_DARK_MODE, false)
         set(forceDarkMode) = prefs.edit().putBoolean(FORCE_DARK_MODE, forceDarkMode).apply()
 
+    // Only consulted by the Compose screens (GalleryTheme) - lets a user on a dark-by-default
+    // system force light mode, which the legacy forceDarkMode on/off switch alone can't express.
+    var forceLightMode: Boolean
+        get() = prefs.getBoolean(FORCE_LIGHT_MODE, false)
+        set(forceLightMode) = prefs.edit().putBoolean(FORCE_LIGHT_MODE, forceLightMode).apply()
+
+    var useAmoledBackground: Boolean
+        get() = prefs.getBoolean(USE_AMOLED_BACKGROUND, false)
+        set(useAmoledBackground) = prefs.edit().putBoolean(USE_AMOLED_BACKGROUND, useAmoledBackground).apply()
+
+    // The viewer's vertical drag gestures (up = actions sheet, down = close) have no visual
+    // affordance, so a one-time hint explains them on the very first viewer open ever.
+    var hasSeenViewerGestureHint: Boolean
+        get() = prefs.getBoolean(HAS_SEEN_VIEWER_GESTURE_HINT, false)
+        set(hasSeenViewerGestureHint) = prefs.edit().putBoolean(HAS_SEEN_VIEWER_GESTURE_HINT, hasSeenViewerGestureHint).apply()
+
     fun addExcludedFolder(path: String) {
         addExcludedFolders(HashSet<String>(Arrays.asList(path)))
     }

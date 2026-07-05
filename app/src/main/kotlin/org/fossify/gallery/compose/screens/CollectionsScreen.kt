@@ -5,6 +5,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -98,34 +99,39 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
     val ctx = LocalContext.current
     val repo = LocalMediaRepository.current
     val scope = rememberCoroutineScope()
-    var collections by remember { mutableStateOf<List<MediaCollection>>(emptyList()) }
+    // Seed both from the repo-level cache instead of empty lists - CollectionsScreen's whole
+    // composable is disposed and recreated whenever the user navigates to Viewer/Settings/etc. and
+    // back, and without this the collections list plus the per-collection getMediaFromPath cascade
+    // reran from scratch on every single round trip.
+    fun toAlbumItems(colls: List<MediaCollection>) = colls.map { coll ->
+        val media = repo.getCollectionMediaCached(coll.id)
+        AlbumGridItem(key = coll.id.toString(), name = coll.name, thumbnailPath = media.firstOrNull()?.path ?: "", count = media.size, previewPaths = media.take(3).map { it.path })
+    }
+    var collections by remember { mutableStateOf(repo.getCollectionsCached() ?: emptyList()) }
+    var albumItems by remember { mutableStateOf(toAlbumItems(collections)) }
     var editingColl by remember { mutableStateOf<MediaCollection?>(null) }
     var showEditDialog by remember { mutableStateOf(false) }
     var deleteConfirm by remember { mutableStateOf<MediaCollection?>(null) }
-
-    // Load collections on IO (Room verbietet Main-Thread)
-    var loadTrigger by remember { mutableIntStateOf(0) }
-    LaunchedEffect(loadTrigger) {
-        collections = withContext(Dispatchers.IO) { repo.getCollections() }
-    }
-    fun refresh() { loadTrigger++ }
-
-    var albumItems by remember { mutableStateOf<List<AlbumGridItem>>(emptyList()) }
     var actionColl by remember { mutableStateOf<MediaCollection?>(null) }
-    LaunchedEffect(collections) {
-        albumItems = withContext(Dispatchers.IO) {
-            collections.map { coll ->
-                val folders = coll.getIncludedPaths()
-                val media = folders.flatMap { repo.getMediaFromPath(it) }
-                AlbumGridItem(
-                    key = coll.id.toString(),
-                    name = coll.name,
-                    thumbnailPath = media.firstOrNull()?.path ?: "",
-                    count = media.size,
-                    previewPaths = media.take(3).map { it.path },
-                )
-            }
-        }
+    // Only true before the very first load ever completes (cache still null) - otherwise a stale
+    // "no collections" EmptyState would flash for a moment before the real, populated grid replaces it.
+    var isLoading by remember { mutableStateOf(repo.getCollectionsCached() == null) }
+
+    // Re-runs both the collections list and the per-collection getMediaFromPath cascade (Room
+    // verbietet Main-Thread) and refreshes the repo-level cache so a later dispose/recompose (e.g. a
+    // Viewer round trip) can seed from it instead of recomputing from scratch.
+    suspend fun reload() {
+        val colls = withContext(Dispatchers.IO) { repo.refreshCollectionsCache() }
+        collections = colls
+        albumItems = toAlbumItems(colls)
+        isLoading = false
+    }
+    LaunchedEffect(Unit) {
+        if (repo.getCollectionsCached() == null) reload()
+    }
+
+    LaunchedEffect(Unit) {
+        org.fossify.gallery.helpers.RefreshBus.events.collect { reload() }
     }
 
     actionColl?.let { coll ->
@@ -152,7 +158,7 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
             confirmLabel = stringResource(org.fossify.commons.R.string.delete),
             onConfirm = {
                 deleteConfirm = null
-                scope.launch(Dispatchers.IO) { try { repo.deleteCollection(coll); withContext(Dispatchers.Main) { refresh() } } catch (_: Exception) { } }
+                scope.launch { try { withContext(Dispatchers.IO) { repo.deleteCollection(coll) }; reload() } catch (_: Exception) { } }
             },
             onDismiss = { deleteConfirm = null },
         )
@@ -188,14 +194,14 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                 ratingFilter = ratingFilter,
                 searchQuery = searchQuery,
             )
-            scope.launch(Dispatchers.IO) {
+            scope.launch {
                 try {
-                    repo.insertCollection(col)
-                    collections = repo.getCollections()
-                    withContext(Dispatchers.Main) { showEditDialog = false }
+                    withContext(Dispatchers.IO) { repo.insertCollection(col) }
+                    reload()
+                    showEditDialog = false
                 } catch (e: Exception) {
                     android.util.Log.e("Collections", "Save failed", e)
-                    withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.error_generic, e.message), Toast.LENGTH_LONG) }
+                    ctx.toast(ctx.getString(R.string.error_generic, e.message), Toast.LENGTH_LONG)
                 }
             }
         }
@@ -217,7 +223,7 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                     includedUris.forEach { uri ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(pathDisplayName(uri), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { includedUris = includedUris - uri }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, stringResource(R.string.action_remove), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
+                            IconButton(onClick = { includedUris = includedUris - uri }, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Delete, stringResource(R.string.action_remove), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
                         }
                     }
                     Surface(onClick = { inclPicker.launch(null) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(Radius.sm), color = MaterialTheme.colorScheme.surfaceVariant) {
@@ -233,7 +239,7 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                     excludedUris.forEach { uri ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(pathDisplayName(uri), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { excludedUris = excludedUris - uri }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Delete, stringResource(R.string.action_remove), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
+                            IconButton(onClick = { excludedUris = excludedUris - uri }, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Delete, stringResource(R.string.action_remove), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) }
                         }
                     }
                     Surface(onClick = { exclPicker.launch(null) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(Radius.sm), color = MaterialTheme.colorScheme.surfaceVariant) {
@@ -266,7 +272,7 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
                     Row(Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.filter_all), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(end = 8.dp, top = 4.dp).clickable { ratingFilter = 0 }, color = if (ratingFilter == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                         for (i in 1..5) {
-                            IconButton(onClick = { ratingFilter = if (ratingFilter == i) 0 else i }, modifier = Modifier.size(36.dp)) {
+                            IconButton(onClick = { ratingFilter = if (ratingFilter == i) 0 else i }, modifier = Modifier.size(44.dp)) {
                                 Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, "$i", tint = RatingStarColor, modifier = Modifier.size(22.dp))
                             }
                         }
@@ -285,16 +291,23 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
             Text(stringResource(R.string.nav_collections), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             IconButton(onClick = { editingColl = null; showEditDialog = true }) { Icon(Icons.Default.Add, stringResource(R.string.new_collection)) }
         }
-        if (collections.isEmpty()) {
-            EmptyState(Icons.Default.CollectionsBookmark, stringResource(R.string.no_collections), subtitle = stringResource(R.string.tap_to_create_collection))
-        } else {
-            LibraryAlbumGrid(
-                items = albumItems,
-                viewSettings = viewSettings,
-                onClick = { item -> collections.find { it.id.toString() == item.key }?.let(onCollectionClick) },
-                onLongClick = { item -> actionColl = collections.find { it.id.toString() == item.key } },
-                modifier = Modifier.weight(1f),
-            )
+        val contentState = when {
+            isLoading -> "loading"
+            collections.isEmpty() -> "empty"
+            else -> "content"
+        }
+        Crossfade(targetState = contentState, label = "collectionsContent", modifier = Modifier.weight(1f)) { s ->
+            when (s) {
+                "loading" -> MediaSkeleton(columns = viewSettings.columnCount)
+                "empty" -> EmptyState(Icons.Default.CollectionsBookmark, stringResource(R.string.no_collections), subtitle = stringResource(R.string.tap_to_create_collection))
+                else -> LibraryAlbumGrid(
+                    items = albumItems,
+                    viewSettings = viewSettings,
+                    onClick = { item -> collections.find { it.id.toString() == item.key }?.let(onCollectionClick) },
+                    onLongClick = { item -> actionColl = collections.find { it.id.toString() == item.key } },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
 }

@@ -14,7 +14,6 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -43,6 +42,7 @@ import org.fossify.gallery.compose.screens.viewer.ViewerScreen
 import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
+import org.fossify.gallery.compose.theme.resolveDarkTheme
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.mediaTagDB
 import org.fossify.gallery.models.MediaTag
@@ -90,15 +90,26 @@ fun GalleryNavHost(
         }
     }
 
-    GalleryTheme(darkTheme = conf.forceDarkMode || isSystemInDarkTheme(), dynamicColor = conf.useDynamicColors) {
+    GalleryTheme(
+        darkTheme = resolveDarkTheme(conf.forceDarkMode, conf.forceLightMode),
+        dynamicColor = conf.useDynamicColors,
+        amoledBlack = conf.useAmoledBackground,
+    ) {
         AppProviders(repo) {
             SharedTransitionLayout(modifier = modifier) {
                 CompositionLocalProvider(LocalSharedTransitionScope provides this) {
                 NavHost(
                     navController = navController,
                     startDestination = Home,
+                    // Push: fade+scale-up the new screen in. Pop: just fade the revealed screen back
+                    // in (it was already fully rendered a moment ago, scaling it up again read as if
+                    // it were new) and fade+scale-down the screen being dismissed, mirroring how it
+                    // originally scaled in. Without popEnterTransition/popExitTransition, Navigation
+                    // Compose reuses enterTransition/exitTransition for pops too.
                     enterTransition = { fadeIn(AppMotion.medium) + scaleIn(initialScale = 0.92f, animationSpec = AppMotion.medium) },
                     exitTransition = { fadeOut(AppMotion.medium) },
+                    popEnterTransition = { fadeIn(AppMotion.medium) },
+                    popExitTransition = { fadeOut(AppMotion.medium) + scaleOut(targetScale = 0.92f, animationSpec = AppMotion.medium) },
                 ) {
                     composable<Home> {
                         CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
@@ -118,7 +129,16 @@ fun GalleryNavHost(
                             )
                         }
                     }
-                    composable<Viewer> { backStackEntry ->
+                    // Plain fade only (no scale) - the tapped thumbnail already morphs into place via
+                    // the shared element transition (see sharedElementKey), so the whole-screen
+                    // scaleIn/scaleOut the other destinations use would compete with that morph
+                    // instead of complementing it.
+                    composable<Viewer>(
+                        enterTransition = { fadeIn(AppMotion.medium) },
+                        exitTransition = { fadeOut(AppMotion.medium) },
+                        popEnterTransition = { fadeIn(AppMotion.medium) },
+                        popExitTransition = { fadeOut(AppMotion.medium) },
+                    ) { backStackEntry ->
                         val route = backStackEntry.toRoute<Viewer>()
                         val viewerPaths = remember { ViewerArgs.paths }
                         CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
@@ -157,18 +177,22 @@ fun GalleryNavHost(
                         )
                     }
                     composable<StorageAnalysis> {
+                        CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
                         StorageAnalysisScreen(
                             onBack = { navController.popBackStack() },
                             onNavigateToViewer = { path -> ViewerArgs.paths = listOf(path); navController.navigate(Viewer(0)) },
                         )
+                        }
                     }
                     composable<DuplicateFinder> { backStackEntry ->
                         val route = backStackEntry.toRoute<DuplicateFinder>()
+                        CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
                         DuplicateFinderScreen(
                             initialFolder = route.folderPath,
                             onBack = { navController.popBackStack() },
                             onNavigateToViewer = { path -> ViewerArgs.paths = listOf(path); navController.navigate(Viewer(0)) },
                         )
+                        }
                     }
                     composable<FoldersMover> {
                         FoldersMoverScreen(onBack = { navController.popBackStack() })

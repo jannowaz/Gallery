@@ -10,11 +10,7 @@
     <string name="pin_to_the_top">Pin to the top</string>
     <string name="show_all">Show all folders content</string>
     <string name="all_folders">All folders</string>
-    <string name="start_tab">Start</string>
-    <string name="media_tab">Medien</string>
-    <string name="folders_tab">Ordner</string>
-    <string name="collections">Sammlungen</string>
-    <string name="explorer2">Durchsuchen</string>
+    <string name="collections">Collections</string>
     <string name="no_collections">No collections\ntap + to create one</string>
     <string name="explorer">Explorer</string>
     <string name="explorer_mode">Explorer mode</string>
@@ -404,6 +400,7 @@
     <string name="action_favorite">Add to favorites</string>
     <string name="action_unfavorite">Remove from favorites</string>
     <string name="scan_started">Scan started for \"%s\"</string>
+    <string name="scan_started_count">Scan started for %d folders</string>
     <string name="create_collection">Create collection</string>
     <string name="action_select">Select</string>
     <string name="action_remove">Remove</string>
@@ -497,6 +494,11 @@
     <string name="favorite">Favorite</string>
     <string name="video_display">Display</string>
     <string name="frame_saved">Frame saved: %s</string>
+    <string name="action_save_frame">Save frame</string>
+    <string name="version_label">Version %s</string>
+    <string name="thumbnail_overlays_scope">Applies to all views</string>
+    <string name="rename_tag_prompt">Rename \"%1$s\" (%2$d files) to:</string>
+    <string name="wasted_space_approx">≈ %s wasted</string>
     <string name="error_generic">Error: %s</string>
     <string name="suggestions">Suggestions</string>
     <string name="add_new_tag">Add \"%s\" as a new tag</string>
@@ -554,6 +556,13 @@
     <string name="set_information">Information</string>
     <string name="set_force_dark">Force dark mode</string>
     <string name="set_dynamic_colors">Dynamic colors (Material You)</string>
+    <string name="theme_mode_label">Theme</string>
+    <string name="theme_mode_light">Light</string>
+    <string name="theme_mode_dark">Dark</string>
+    <string name="theme_mode_system">System default</string>
+    <string name="set_amoled_background">True black (AMOLED) background</string>
+    <string name="viewer_gesture_hint_up">Swipe up for options</string>
+    <string name="viewer_gesture_hint_down">Swipe down to close</string>
     <string name="set_show_hidden">Show hidden files</string>
     <string name="set_animate_gifs">Play animated GIFs</string>
     <string name="set_max_brightness">Max brightness</string>

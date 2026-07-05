@@ -4,6 +4,7 @@ import org.fossify.gallery.R
 import org.fossify.gallery.compose.theme.Radius
 
 import android.widget.Toast
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -68,6 +69,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
+import org.fossify.gallery.compose.screens.MediaSkeleton
 import org.fossify.gallery.compose.screens.VideoThumbnail
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.EmptyState
@@ -89,7 +91,10 @@ fun TagBrowserScreen(
     val scope = rememberCoroutineScope()
     val repo = LocalMediaRepository.current
 
-    var allTags by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
+    // Seed from the repo-level cache instead of an empty map - this whole screen is disposed and
+    // recreated whenever the user navigates away (e.g. to Viewer) and back, and without this the full
+    // media_tags scan reran from scratch on every single round trip.
+    var allTags by remember { mutableStateOf(repo.getTagsWithPathsCached() ?: emptyMap()) }
     var scanning by remember { mutableStateOf(false) }
     var deleteConfirmTags by remember { mutableStateOf<Set<String>>(emptySet()) }
                 var mergeTargetTag by remember { mutableStateOf<String?>(null) }
@@ -101,11 +106,19 @@ fun TagBrowserScreen(
     val hierarchy = remember(refreshTrigger) { ctx.config.tagHierarchy }
 
     LaunchedEffect(refreshTrigger) {
+        if (refreshTrigger == 0 && repo.getTagsWithPathsCached() != null) return@LaunchedEffect
         scanning = true
         withContext(Dispatchers.IO) {
-            val tags = try { repo.getAllTagsWithPaths() } catch (_: Exception) { emptyMap() }
+            val tags = try { repo.refreshTagsWithPathsCache() } catch (_: Exception) { emptyMap() }
             withContext(Dispatchers.Main) { allTags = tags.entries.sortedByDescending { it.value.size }.associate { it.key to it.value }; scanning = false }
         }
+    }
+
+    // Without this, a tag added/removed elsewhere (MediaScreen's quick-tag row, the Viewer's tag
+    // editor) never invalidated this screen's cache - only this screen's own delete/merge/rename
+    // actions incremented refreshTrigger, so externally-made tag edits stayed invisible here.
+    LaunchedEffect(Unit) {
+        org.fossify.gallery.helpers.RefreshBus.events.collect { refreshTrigger++ }
     }
 
     Scaffold(
@@ -124,18 +137,26 @@ fun TagBrowserScreen(
                 placeholder = { Text(stringResource(R.string.search_tag)) },
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Search, stringResource(R.string.cd_search), modifier = Modifier.size(18.dp)) },
-                trailingIcon = { if (tagSearchQuery.isNotEmpty()) IconButton(onClick = { tagSearchQuery = "" }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Close, stringResource(R.string.action_empty), modifier = Modifier.size(16.dp)) } },
+                trailingIcon = { if (tagSearchQuery.isNotEmpty()) IconButton(onClick = { tagSearchQuery = "" }, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Close, stringResource(R.string.action_empty), modifier = Modifier.size(16.dp)) } },
                 modifier = Modifier.fillMaxWidth(),
                 textStyle = MaterialTheme.typography.bodyMedium,
                 colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
                 shape = RoundedCornerShape(Radius.md),
             )
             Spacer(Modifier.height(8.dp))
-            if (scanning) {
-                Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            } else if (allTags.isEmpty()) {
+            // Crossfade + shimmer skeleton instead of a bare spinner - this is the same "grid of tiles
+            // is loading" moment as the media grids elsewhere, so it should look consistent.
+            val tagsContentState = if (scanning) "loading" else if (allTags.isEmpty()) "empty" else "content"
+            Crossfade(targetState = tagsContentState, label = "tagsContent", modifier = Modifier.weight(1f)) { tcs ->
+            if (tcs == "loading") {
+                MediaSkeleton(columns = viewSettings.columnCount)
+            } else if (tcs == "empty") {
                 EmptyState(Icons.AutoMirrored.Filled.Label, stringResource(R.string.no_tags_found), subtitle = stringResource(R.string.no_tags_hint))
             } else {
+                // Explicit Column - this "content" state now lives inside Crossfade's Box slot
+                // instead of being a direct child of the outer Column, so without this the grid and
+                // the action-buttons row below it would overlay instead of stacking vertically.
+                Column(Modifier.fillMaxSize()) {
                 val filteredTags = if (tagSearchQuery.isBlank()) allTags.entries.toList().sortedWith(compareByDescending<Map.Entry<String, List<String>>> { it.key in hierarchy.values }.thenBy { it.key }) else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
                 LibraryAlbumGrid(
                     items = filteredTags.map { AlbumGridItem(key = it.key, name = if (it.key in hierarchy) "↳ ${it.key}" else it.key, thumbnailPath = it.value.firstOrNull() ?: "", count = it.value.size, previewPaths = it.value.take(3)) },
@@ -196,6 +217,8 @@ fun TagBrowserScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                 }
+                }
+            }
             }
         }
     }
@@ -386,7 +409,7 @@ fun TagBrowserScreen(
             title = { Text(stringResource(R.string.rename_tag_title)) },
             text = {
                 Column {
-                    Text("\"$oldName\" ($count Dateien) umbenennen in:", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.rename_tag_prompt, oldName, count), style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(value = newName, onValueChange = { newName = it }, label = { Text(stringResource(R.string.rename_numbered)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }

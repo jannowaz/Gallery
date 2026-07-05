@@ -160,7 +160,7 @@ fun TagInputDialog(
                 if (tagInput.isNotBlank() && filteredSuggestions.none { it.equals(tagInput, ignoreCase = true) }) {
                     Spacer(Modifier.height(8.dp))
                     TextButton(onClick = { addCurrentTag() }) {
-                        Text("\"${tagInput.trim()}\" hinzufügen")
+                        Text(stringResource(R.string.add_new_tag, tagInput.trim()))
                     }
                 }
             }

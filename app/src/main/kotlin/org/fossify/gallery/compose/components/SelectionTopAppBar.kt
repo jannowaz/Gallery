@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import org.fossify.gallery.R
 
 /**
@@ -53,7 +54,10 @@ fun SelectionAppBar(
         navigationIcon = {
             IconButton(onClick = onClose) { Icon(Icons.Default.Close, stringResource(R.string.selection_clear)) }
         },
-        title = { Text(stringResource(R.string.selection_count, count), style = MaterialTheme.typography.titleLarge) },
+        // titleMedium, not titleLarge - the default M3 app bar title size wraps onto a second line
+        // here since the count text shares the bar with 4-5 action icons (Rename/Tags/Rate/Delete/
+        // More), leaving little width; maxLines/overflow is a safety net for long counts either way.
+        title = { Text(stringResource(R.string.selection_count, count), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         actions = actions,
     )
 }

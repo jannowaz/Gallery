@@ -3,6 +3,7 @@ package org.fossify.gallery.compose.theme
 import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -11,7 +12,10 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -41,6 +45,17 @@ private val LightColorScheme = lightColorScheme(
     onSurfaceVariant = md_theme_light_onSurfaceVariant,
     outline = md_theme_light_outline,
     outlineVariant = md_theme_light_outlineVariant,
+    surfaceTint = md_theme_light_primary,
+    surfaceDim = md_theme_light_surfaceDim,
+    surfaceBright = md_theme_light_surfaceBright,
+    surfaceContainerLowest = md_theme_light_surfaceContainerLowest,
+    surfaceContainerLow = md_theme_light_surfaceContainerLow,
+    surfaceContainer = md_theme_light_surfaceContainer,
+    surfaceContainerHigh = md_theme_light_surfaceContainerHigh,
+    surfaceContainerHighest = md_theme_light_surfaceContainerHighest,
+    inverseSurface = md_theme_light_inverseSurface,
+    inverseOnSurface = md_theme_light_inverseOnSurface,
+    inversePrimary = md_theme_light_inversePrimary,
 )
 
 private val DarkColorScheme = darkColorScheme(
@@ -68,12 +83,79 @@ private val DarkColorScheme = darkColorScheme(
     onSurfaceVariant = md_theme_dark_onSurfaceVariant,
     outline = md_theme_light_outline_dark,
     outlineVariant = md_theme_dark_outlineVariant,
+    surfaceTint = md_theme_dark_primary,
+    surfaceDim = md_theme_dark_surfaceDim,
+    surfaceBright = md_theme_dark_surfaceBright,
+    surfaceContainerLowest = md_theme_dark_surfaceContainerLowest,
+    surfaceContainerLow = md_theme_dark_surfaceContainerLow,
+    surfaceContainer = md_theme_dark_surfaceContainer,
+    surfaceContainerHigh = md_theme_dark_surfaceContainerHigh,
+    surfaceContainerHighest = md_theme_dark_surfaceContainerHighest,
+    inverseSurface = md_theme_dark_inverseSurface,
+    inverseOnSurface = md_theme_dark_inverseOnSurface,
+    inversePrimary = md_theme_dark_inversePrimary,
+)
+
+/**
+ * Notifies every [GalleryTheme] host that a theme-affecting Config value (forceDarkMode,
+ * forceLightMode, useAmoledBackground, useDynamicColors) changed. Those are plain SharedPreferences-
+ * backed vars, not Compose State, so writing them alone does not trigger recomposition anywhere -
+ * without this, picking a new theme in Settings only updated that screen's own "Dark"/"Light" label
+ * (via its unrelated local settingsVersion trick) while the actual GalleryTheme wrapper - in this
+ * Activity and in every other already-running Activity in the process, since this is one global
+ * object - kept rendering with whatever darkTheme/amoledBlack it read at its last composition.
+ */
+object ThemePrefsBus {
+    var version by mutableIntStateOf(0)
+        private set
+
+    fun invalidate() {
+        version++
+    }
+}
+
+/**
+ * Resolves the effective dark/light state from the 3-way Light/Dark/System preference. Shared by
+ * every [GalleryTheme] call site so "System" vs "forced" behaves identically everywhere instead of
+ * each Activity re-deriving it (and risking drift, e.g. one forgetting the forceLightMode branch).
+ *
+ * Reads [ThemePrefsBus.version] purely to subscribe the caller's recomposition scope to it - the
+ * value itself is unused. Because Compose recomposition is scoped to the whole enclosing composable
+ * body, this also refreshes any sibling `conf.xxx` reads in that same call (dynamicColor, amoledBlack)
+ * even though they are not routed through this function.
+ */
+@Composable
+fun resolveDarkTheme(forceDarkMode: Boolean, forceLightMode: Boolean): Boolean {
+    ThemePrefsBus.version
+    return when {
+        forceDarkMode -> true
+        forceLightMode -> false
+        else -> isSystemInDarkTheme()
+    }
+}
+
+/**
+ * Overrides the neutral surface family with true black for OLED/AMOLED screens (saves power, max
+ * contrast). Only the background/surface tonal steps are touched - primary/secondary/error/etc.
+ * and their "on" colors are left as-is so contrast and brand colours are unaffected.
+ */
+private fun ColorScheme.withAmoledBlack(): ColorScheme = copy(
+    background = Color.Black,
+    surface = Color.Black,
+    surfaceDim = Color.Black,
+    surfaceBright = Color(0xFF1A1A1A),
+    surfaceContainerLowest = Color.Black,
+    surfaceContainerLow = Color(0xFF0D0D0D),
+    surfaceContainer = Color(0xFF121212),
+    surfaceContainerHigh = Color(0xFF1C1C1C),
+    surfaceContainerHighest = Color(0xFF262626),
 )
 
 @Composable
 fun GalleryTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
+    amoledBlack: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val colorScheme = when {
@@ -83,13 +165,18 @@ fun GalleryTheme(
         }
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
-    }
+    }.let { if (darkTheme && amoledBlack) it.withAmoledBlack() else it }
     val view = LocalView.current
     if (!view.isInEditMode) {
+        // No window.statusBarColor here - the Activity already calls enableEdgeToEdge(), which
+        // makes the system bars transparent/auto-contrast; setting an explicit statusBarColor on
+        // top of that fights edge-to-edge (and the API is deprecated as of API 35). Only the icon
+        // appearance (light vs dark glyphs) still needs to track the theme explicitly.
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.surface.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            val controller = WindowCompat.getInsetsController(window, view)
+            controller.isAppearanceLightStatusBars = !darkTheme
+            controller.isAppearanceLightNavigationBars = !darkTheme
         }
     }
 

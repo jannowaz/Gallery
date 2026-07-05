@@ -1,5 +1,6 @@
 package org.fossify.gallery.compose.screens
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -53,10 +54,13 @@ fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier, contentScal
             try { r.setDataSource(videoPath); val bmp = r.frameAtTime; synchronized(videoThumbnailCache) { videoThumbnailCache[videoPath] = bmp }; bmp } catch (_: Exception) { null } finally { r.release() }
         }
     }
-    val bmp = bitmap
-    if (bmp != null) {
-        androidx.compose.foundation.Image(bitmap = bmp.asImageBitmap(), contentDescription = "Video", modifier = modifier, contentScale = contentScale)
-    } else {
-        Box(modifier.background(Scrim.a30), contentAlignment = Alignment.Center) { Icon(Icons.Default.Videocam, "Video", tint = Color.White, modifier = Modifier.size(24.dp)) }
+    // Crossfade instead of an instant swap - GalleryImage already crossfades via Coil for photos, so
+    // this keeps videos from popping in abruptly and looking inconsistent in a mixed photo/video grid.
+    Crossfade(targetState = bitmap, modifier = modifier, label = "videoThumbnail") { bmp ->
+        if (bmp != null) {
+            androidx.compose.foundation.Image(bitmap = bmp.asImageBitmap(), contentDescription = "Video", modifier = Modifier.fillMaxSize(), contentScale = contentScale)
+        } else {
+            Box(Modifier.fillMaxSize().background(Scrim.a30), contentAlignment = Alignment.Center) { Icon(Icons.Default.Videocam, "Video", tint = Color.White, modifier = Modifier.size(24.dp)) }
+        }
     }
 }

@@ -1,10 +1,12 @@
 package org.fossify.gallery.compose.screens
+import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.Radius
 
 import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -46,7 +48,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -57,13 +58,10 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -79,7 +77,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -89,14 +86,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.paging.LoadState
@@ -106,8 +99,9 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.commons.extensions.toast
-import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.compose.components.MediaListRow
 import org.fossify.gallery.compose.components.MediaTile
+import org.fossify.gallery.compose.components.QuickTagRow
 import org.fossify.gallery.R
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.compose.components.ConfirmDestructive
@@ -119,7 +113,6 @@ import org.fossify.gallery.compose.components.RateAndTagSheet
 import org.fossify.gallery.compose.util.ScrollToTopEffect
 import org.fossify.gallery.compose.util.dragSelectionGesture
 import org.fossify.gallery.compose.util.rememberSelectionDragState
-import org.fossify.gallery.compose.util.selectableItem
 import org.fossify.gallery.helpers.UndoAction
 import org.fossify.gallery.helpers.UndoManager
 import org.fossify.gallery.helpers.UndoType
@@ -176,7 +169,6 @@ fun MediaScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val pendingUndo by UndoManager.actions.collectAsState()
-    var heroRect by remember { mutableStateOf<android.graphics.Rect?>(null) }
     val taggedPaths = state.taggedPaths
     val selectedCommonTags = state.selectedCommonTags
     LaunchedEffect(selectedPaths) { viewModel.loadCommonTags(selectedPaths) }
@@ -230,7 +222,22 @@ fun MediaScreen(
     }
 
     var isRefreshing by remember { mutableStateOf(false) }
-    LaunchedEffect(state.isLoading) { if (!state.isLoading && isRefreshing) isRefreshing = false }
+    // Set once this refresh cycle has actually been observed passing through Paging3's Loading
+    // state - via snapshotFlow rather than a plain recomposition-keyed effect, since a refresh
+    // fast enough to resolve within a single frame could otherwise have its Loading->NotLoading
+    // transition coalesced away between compositions, letting pagingSettled below read "settled"
+    // without the reload ever having visibly started. Reset to false each time onRefresh fires.
+    var pagingRefreshStarted by remember { mutableStateOf(false) }
+    LaunchedEffect(lazyPagingItems) {
+        snapshotFlow { lazyPagingItems.loadState.refresh }.collect { if (it is LoadState.Loading) pagingRefreshStarted = true }
+    }
+    // Clears on the real signal for each path (legacy state.isLoading, or Paging3's own refresh
+    // load state when showPaged is active) instead of guessing a fixed delay. The timeout in
+    // onRefresh below is only a safety net in case neither signal ever resolves.
+    LaunchedEffect(state.isLoading, showPaged, lazyPagingItems.loadState.refresh, pagingRefreshStarted) {
+        val pagingSettled = !showPaged || (pagingRefreshStarted && lazyPagingItems.loadState.refresh !is LoadState.Loading)
+        if (!state.isLoading && pagingSettled && isRefreshing) isRefreshing = false
+    }
 
     @Composable
     fun PagedContent() {
@@ -238,22 +245,7 @@ fun MediaScreen(
             isGrid -> {
                 Column(Modifier.padding(top = contentTopInset)) {
                     val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
-                    AnimatedVisibility(visible = quickTags.isNotEmpty() && hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
-                        if (quickTags.isNotEmpty() && hasSelection) {
-                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                quickTags.forEach { tag ->
-                                    val active = tag in selectedCommonTags
-                                    Surface(
-                                        onClick = { viewModel.toggleQuickTag(selectedPaths, tag) },
-                                        shape = RoundedCornerShape(Radius.lg),
-                                        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                    ) {
-                                        Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    QuickTagRow(quickTags = quickTags, visible = quickTags.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
                     val rows = remember(lazyPagingItems.itemCount) { buildPagedRows(lazyPagingItems.itemSnapshotList) }
                     val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
                     LaunchedEffect(gridState) {
@@ -314,8 +306,7 @@ fun MediaScreen(
                                         onClick = { if (hasSelection) selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path else openViewerPaged(row.pagingIndex) },
                                         onLongClick = { selectedPaths = selectedPaths + m.path },
                                         onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
-                                        onPreview = { openViewerPaged(row.pagingIndex) },
-                                        onBoundsChanged = { r -> heroRect = android.graphics.Rect(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt()); dragSelection.registerItemBounds(m.path, r) },
+                                        onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
                                     )
                                 }
                             }
@@ -335,9 +326,7 @@ fun MediaScreen(
             isMosaic -> {
                 Column(Modifier.padding(top = contentTopInset)) {
                     val quickTagsM = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
-                    AnimatedVisibility(visible = quickTagsM.isNotEmpty() && hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
-                        if (quickTagsM.isNotEmpty() && hasSelection) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { quickTagsM.forEach { tag -> val active = tag in selectedCommonTags; Surface(onClick = { viewModel.toggleQuickTag(selectedPaths, tag) }, shape = RoundedCornerShape(Radius.lg), color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
-                    }
+                    QuickTagRow(quickTags = quickTagsM, visible = quickTagsM.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
                     val rows = remember(lazyPagingItems.itemCount) { buildPagedRows(lazyPagingItems.itemSnapshotList) }
                     val mosaicState = rememberLazyStaggeredGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
                     LaunchedEffect(mosaicState) {
@@ -400,8 +389,7 @@ fun MediaScreen(
                                             onClick = { if (hasSelection) selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path else openViewerPaged(row.pagingIndex) },
                                             onLongClick = { selectedPaths = selectedPaths + m.path },
                                             onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
-                                            onPreview = { openViewerPaged(row.pagingIndex) },
-                                            onBoundsChanged = { r -> heroRect = android.graphics.Rect(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt()); dragSelection.registerItemBounds(m.path, r) },
+                                            onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
                                         )
                                     }
                                 }
@@ -435,16 +423,19 @@ fun MediaScreen(
                                     val m = safeGet(lazyPagingItems, row.pagingIndex)
                                     if (m != null) {
                                         val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
-                                        var lastBoundsUpdate by remember { mutableLongStateOf(0L) }
-                                        Surface(modifier = Modifier.fillMaxWidth().background(mediaCardColor,RoundedCornerShape(Radius.sm)).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt());val now=System.currentTimeMillis();if(now-lastBoundsUpdate>300){lastBoundsUpdate=now;dragSelection.registerItemBounds(m.path,androidx.compose.ui.geometry.Rect(p,androidx.compose.ui.geometry.Size(s.width.toFloat(),s.height.toFloat())))}}.selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewerPaged(row.pagingIndex)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path}),color=Color.Transparent) {
-                                            Row(Modifier.padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
-                                                Box(Modifier.size(56.dp).clip(RoundedCornerShape(Radius.sm))){if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop) else GalleryImage(path=m.path,contentDescription=m.name,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop,placeholderIconSize=18.dp)}
-                                                Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)){Text(m.name,style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis);Text(formatFileSize(m.size),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
-                                                if(hasSelection){IconButton(onClick={openViewerPaged(row.pagingIndex)},modifier=Modifier.size(36.dp)){Icon(Icons.Default.Visibility,stringResource(R.string.cd_preview),tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(20.dp))}}
-                                                if(m.path in selectedPaths) Icon(Icons.Default.CheckCircle,stringResource(R.string.cd_selected),tint=MaterialTheme.colorScheme.primary)
-                                            }
-                                        }
-                                        HorizontalDivider(Modifier.padding(start=76.dp),color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.3f))
+                                        MediaListRow(
+                                            medium = m,
+                                            isVideo = isVideo,
+                                            isSelected = m.path in selectedPaths,
+                                            hasSelection = hasSelection,
+                                            cardColor = mediaCardColor,
+                                            fileSizeLabel = formatFileSize(m.size),
+                                            onClick = { if (hasSelection) selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path else openViewerPaged(row.pagingIndex) },
+                                            onLongClick = { selectedPaths = selectedPaths + m.path },
+                                            onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
+                                            onPreview = { openViewerPaged(row.pagingIndex) },
+                                            onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
+                                        )
                                     }
                                 }
                             }
@@ -464,21 +455,29 @@ fun MediaScreen(
             EmptyState(Icons.Default.Search, stringResource(R.string.no_media_in_folder))
         } else if (showPaged) {
             val refreshState = lazyPagingItems.loadState.refresh
-            when {
-                refreshState is LoadState.Loading && lazyPagingItems.itemCount == 0 -> MediaSkeleton(columns = columnCount)
-                refreshState is LoadState.Error && lazyPagingItems.itemCount == 0 -> {
-                    EmptyState(
+            val refreshErrorMessage = (refreshState as? LoadState.Error)?.error?.message
+            // Crossfade instead of an instant swap - the shimmer skeleton is otherwise torn out and
+            // replaced with the real grid in the same frame, which undercuts how smooth the skeleton
+            // itself looks.
+            val pagedContentState = when {
+                refreshState is LoadState.Loading && lazyPagingItems.itemCount == 0 -> "loading"
+                refreshState is LoadState.Error && lazyPagingItems.itemCount == 0 -> "error"
+                lazyPagingItems.itemCount == 0 -> "empty"
+                else -> "content"
+            }
+            Crossfade(targetState = pagedContentState, label = "pagedMediaContent") { s ->
+                when (s) {
+                    "loading" -> MediaSkeleton(columns = columnCount)
+                    "error" -> EmptyState(
                         icon = Icons.Default.ErrorOutline,
                         title = stringResource(R.string.error_loading_media),
-                        subtitle = refreshState.error.message?.takeIf { it.isNotBlank() },
+                        subtitle = refreshErrorMessage?.takeIf { it.isNotBlank() },
                         actionLabel = stringResource(R.string.retry),
                         onAction = { lazyPagingItems.retry() },
                     )
+                    "empty" -> EmptyState(icon = Icons.Default.Search, title = stringResource(R.string.no_media_found))
+                    else -> PagedContent()
                 }
-                lazyPagingItems.itemCount == 0 -> {
-                    EmptyState(icon = Icons.Default.Search, title = stringResource(R.string.no_media_found))
-                }
-                else -> PagedContent()
             }
         } else {
         when {
@@ -508,22 +507,7 @@ fun MediaScreen(
                         onClearSizeFilter, onClearDateFilter, onClearFilter
                     )
                     val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
-                    AnimatedVisibility(visible = quickTags.isNotEmpty() && hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
-                    if (quickTags.isNotEmpty() && hasSelection) {
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            quickTags.forEach { tag ->
-                                val active = tag in selectedCommonTags
-                                Surface(
-                                    onClick = { viewModel.toggleQuickTag(selectedPaths, tag) },
-                                    shape = RoundedCornerShape(Radius.lg),
-                                    color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                ) {
-                                    Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-                    }
-                    }
+                    QuickTagRow(quickTags = quickTags, visible = quickTags.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
                     val grouped = state.monthGroups
                     val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
                     LaunchedEffect(gridState) {
@@ -577,8 +561,7 @@ fun MediaScreen(
                                 onClick = { if (hasSelection) selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path else openViewer(originalIdx) },
                                 onLongClick = { selectedPaths = selectedPaths + m.path },
                                 onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
-                                onPreview = { openViewer(originalIdx) },
-                                onBoundsChanged = { r -> heroRect = android.graphics.Rect(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt()); dragSelection.registerItemBounds(m.path, r) },
+                                onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
                             )
                         }
                     }
@@ -596,9 +579,7 @@ fun MediaScreen(
                         onClearSizeFilter, onClearDateFilter, onClearFilter
                     )
                     val quickTagsM = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
-                    AnimatedVisibility(visible = quickTagsM.isNotEmpty() && hasSelection, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }) {
-                    if (quickTagsM.isNotEmpty() && hasSelection) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { quickTagsM.forEach { tag -> val active = tag in selectedCommonTags; Surface(onClick = { viewModel.toggleQuickTag(selectedPaths, tag) }, shape = RoundedCornerShape(Radius.lg), color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
-                    }
+                    QuickTagRow(quickTags = quickTagsM, visible = quickTagsM.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
                     val grouped = state.monthGroups
                     val mosaicState = rememberLazyStaggeredGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
                     LaunchedEffect(mosaicState) {
@@ -653,8 +634,7 @@ fun MediaScreen(
                                 onClick = { if (hasSelection) selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path else openViewer(originalIdx) },
                                 onLongClick = { selectedPaths = selectedPaths + m.path },
                                 onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
-                                onPreview = { openViewer(originalIdx) },
-                                onBoundsChanged = { r -> heroRect = android.graphics.Rect(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt()); dragSelection.registerItemBounds(m.path, r) },
+                                onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
                             )
                         }
                     }
@@ -677,17 +657,19 @@ fun MediaScreen(
                         stickyHeader { MonthHeader(label = label, count = groupItems.size) }
                         items(groupItems.size, key = { groupItems[it].path }, contentType = { groupItems[it].type }) { idx ->
                             val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
-                            val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
-                            var lastBoundsUpdate by remember { mutableLongStateOf(0L) }
-                            Surface(modifier = Modifier.fillMaxWidth().background(mediaCardColor,RoundedCornerShape(Radius.sm)).onGloballyPositioned{coords->val p=coords.positionInWindow();val s=coords.size;heroRect=android.graphics.Rect(p.x.toInt(),p.y.toInt(),(p.x+s.width).toInt(),(p.y+s.height).toInt());val now=System.currentTimeMillis();if(now-lastBoundsUpdate>300){lastBoundsUpdate=now;dragSelection.registerItemBounds(m.path,androidx.compose.ui.geometry.Rect(p,androidx.compose.ui.geometry.Size(s.width.toFloat(),s.height.toFloat())))}}.selectableItem(isSelectionMode=hasSelection,onClick={if(hasSelection)selectedPaths=if(m.path in selectedPaths)selectedPaths-m.path else selectedPaths+m.path else openViewer(originalIdx)},onLongClick={selectedPaths=selectedPaths+m.path},onSwipeToSelect={selectedPaths=selectedPaths+m.path}),color=Color.Transparent) {
-                                Row(Modifier.padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
-                                    Box(Modifier.size(56.dp).clip(RoundedCornerShape(Radius.sm))){if(isVideo)VideoThumbnail(videoPath=m.path,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop) else GalleryImage(path=m.path,contentDescription=m.name,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop,placeholderIconSize=18.dp)}
-                                    Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)){Text(m.name,style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis);Text(formatFileSize(m.size),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
-                                    if(hasSelection){IconButton(onClick={openViewer(originalIdx)},modifier=Modifier.size(36.dp)){Icon(Icons.Default.Visibility,stringResource(R.string.cd_preview),tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(20.dp))}}
-                                    if(m.path in selectedPaths) Icon(Icons.Default.CheckCircle,stringResource(R.string.cd_selected),tint=MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                            HorizontalDivider(Modifier.padding(start=76.dp),color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.3f))
+                            MediaListRow(
+                                medium = m,
+                                isVideo = isVideo,
+                                isSelected = m.path in selectedPaths,
+                                hasSelection = hasSelection,
+                                cardColor = mediaCardColor,
+                                fileSizeLabel = formatFileSize(m.size),
+                                onClick = { if (hasSelection) selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path else openViewer(originalIdx) },
+                                onLongClick = { selectedPaths = selectedPaths + m.path },
+                                onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
+                                onPreview = { openViewer(originalIdx) },
+                                onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
+                            )
                         }
                     }
                 }
@@ -695,7 +677,7 @@ fun MediaScreen(
             }
         }
         }
-        AnimatedVisibility(visible=hasSelection,enter=slideInVertically(initialOffsetY={-it})+fadeIn(),exit=slideOutVertically(targetOffsetY={-it})+fadeOut(),modifier=Modifier.align(Alignment.TopCenter)) {
+        AnimatedVisibility(visible=hasSelection,enter=slideInVertically(initialOffsetY={-it})+fadeIn(AppMotion.medium),exit=slideOutVertically(targetOffsetY={-it})+fadeOut(AppMotion.medium),modifier=Modifier.align(Alignment.TopCenter)) {
             SelectionTopAppBar(
                 modifier = Modifier.onGloballyPositioned { selectionBarHeightPx = it.size.height },
                 count = selectedPaths.size,
@@ -723,7 +705,7 @@ fun MediaScreen(
         }
     }
     if (pullRefreshEnabled) {
-        PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = { isRefreshing = true; viewModel.refresh(); if (showPaged) lazyPagingItems.refresh(); scope.launch { kotlinx.coroutines.delay(5000); isRefreshing = false } }, modifier = Modifier.fillMaxSize(), content = mediaContent)
+        PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = { isRefreshing = true; pagingRefreshStarted = false; viewModel.refresh(); if (showPaged) lazyPagingItems.refresh(); scope.launch { kotlinx.coroutines.delay(15000); isRefreshing = false } }, modifier = Modifier.fillMaxSize(), content = mediaContent)
     } else {
         Box(Modifier.fillMaxSize(), content = mediaContent)
     }

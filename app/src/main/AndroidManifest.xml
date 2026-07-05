@@ -105,14 +105,6 @@
             android:parentActivityName=".activities.ComposeExplorerActivity" />
 
         <activity
-            android:name=".activities.SearchActivity"
-            android:configChanges="orientation"
-            android:exported="false"
-            android:label="@string/search"
-            android:parentActivityName=".activities.ComposeExplorerActivity"
-            android:resizeableActivity="true" />
-
-        <activity
             android:name=".activities.ViewPagerActivity"
             android:configChanges="orientation|keyboardHidden|screenSize"
             android:exported="true"

@@ -232,22 +232,39 @@ class ComposeExplorerActivity : ComponentActivity() {
             android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, mediaObserver
         )
 
+        // Warm up the SharedPreferences files ViewSettingsViewModel.loadFromConfig() reads
+        // synchronously moments later (during the first composition's viewModel() call). Touching
+        // them here first, off the main thread, means that later synchronous read hits an
+        // already-loaded in-memory cache instead of blocking on disk for the first load - which is
+        // what a StrictMode diskRead violation flagged there.
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                config
+                android.preference.PreferenceManager.getDefaultSharedPreferences(this@ComposeExplorerActivity)
+            } catch (_: Exception) { }
+        }
+
         if (hasMediaPermissions()) {
-            RecycleBinCleanupWorker.schedule(this)
-            MediaSyncWorker.schedule(this)
-            MediaSyncWorker.scheduleInitialSync(this)
-            MetadataSyncWorker.cancelAutomatic(this)
-            MetadataSyncWorker.cancel(this)
-            // Sweep batch_job_items left behind by a MediaBatchWorker job that was interrupted and
-            // never retried (e.g. app force-stopped mid-batch).
+            setContent { GalleryNavHost() }
+            // Fire-and-forget scheduling/cleanup: none of it needs to complete before the first
+            // frame, and each call already hands its actual work off to WorkManager's/Room's own
+            // background executor - running the WorkManager.getInstance()+enqueue setup itself off
+            // the main thread here keeps all of it off the path to first frame, not just the part
+            // each call was already deferring internally.
             lifecycleScope.launch(Dispatchers.IO) {
+                RecycleBinCleanupWorker.schedule(this@ComposeExplorerActivity)
+                MediaSyncWorker.schedule(this@ComposeExplorerActivity)
+                MediaSyncWorker.scheduleInitialSync(this@ComposeExplorerActivity)
+                MetadataSyncWorker.cancelAutomatic(this@ComposeExplorerActivity)
+                MetadataSyncWorker.cancel(this@ComposeExplorerActivity)
+                // Sweep batch_job_items left behind by a MediaBatchWorker job that was interrupted
+                // and never retried (e.g. app force-stopped mid-batch).
                 try { batchJobItemDB.deleteStale(System.currentTimeMillis() - 24 * 60 * 60 * 1000L) } catch (_: Exception) { }
             }
-            setContent { GalleryNavHost() }
         } else {
             requestPermissionLauncher.launch(getMediaPermissionStrings())
-            RecycleBinCleanupWorker.schedule(this)
             setContent { GalleryNavHost() }
+            lifecycleScope.launch(Dispatchers.IO) { RecycleBinCleanupWorker.schedule(this@ComposeExplorerActivity) }
         }
     }
 
@@ -285,7 +302,11 @@ private fun TagBrowserSheet(
     mainVM: ExplorerViewModel,
     onDismiss: () -> Unit,
 ) {
-    var allTags by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
+    val scope = rememberCoroutineScope()
+    val repo = LocalMediaRepository.current
+    // Seed from the repo-level cache instead of an empty map - this sheet is a fresh composable every
+    // time it's opened, and without this the full media_tags scan reran from scratch on every open.
+    var allTags by remember { mutableStateOf(repo.getTagsWithPathsCached() ?: emptyMap()) }
     var scanning by remember { mutableStateOf(false) }
     var deleteConfirmTags by remember { mutableStateOf<Set<String>>(emptySet()) }
     var mergeTargetTag by remember { mutableStateOf<String?>(null) }
@@ -293,13 +314,12 @@ private fun TagBrowserSheet(
     var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
     var tagSearchQuery by remember { mutableStateOf("") }
     var refreshTrigger by remember { mutableIntStateOf(0) }
-    val scope = rememberCoroutineScope()
-    val repo = LocalMediaRepository.current
 
     LaunchedEffect(refreshTrigger) {
+        if (refreshTrigger == 0 && repo.getTagsWithPathsCached() != null) return@LaunchedEffect
         scanning = true
         withContext(Dispatchers.IO) {
-            val tags = try { repo.getAllTagsWithPaths() } catch (_: Exception) { emptyMap() }
+            val tags = try { repo.refreshTagsWithPathsCache() } catch (_: Exception) { emptyMap() }
             withContext(Dispatchers.Main) { allTags = tags.entries.sortedByDescending { it.value.size }.associate { it.key to it.value }; scanning = false }
         }
     }
@@ -322,20 +342,27 @@ private fun TagBrowserSheet(
                 placeholder = { Text(stringResource(R.string.search_tag_hint)) },
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Search, stringResource(R.string.cd_search), modifier = Modifier.size(18.dp)) },
-                trailingIcon = { if (tagSearchQuery.isNotEmpty()) IconButton(onClick = { tagSearchQuery = "" }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Close, stringResource(R.string.clear_field), modifier = Modifier.size(16.dp)) } },
+                trailingIcon = { if (tagSearchQuery.isNotEmpty()) IconButton(onClick = { tagSearchQuery = "" }, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Close, stringResource(R.string.clear_field), modifier = Modifier.size(16.dp)) } },
                 modifier = Modifier.fillMaxWidth(),
                 textStyle = MaterialTheme.typography.bodyMedium,
                 colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
                 shape = RoundedCornerShape(Radius.md),
             )
             Spacer(Modifier.height(8.dp))
-            if (scanning) {
+            // Crossfade instead of an instant swap - see MediaScreen's paged content for why.
+            val tagSheetContentState = if (scanning) "loading" else if (allTags.isEmpty()) "empty" else "content"
+            Crossfade(targetState = tagSheetContentState, label = "tagSheetContent") { tcs ->
+            if (tcs == "loading") {
                 Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            } else if (allTags.isEmpty()) {
+            } else if (tcs == "empty") {
                 Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
                     Text(stringResource(R.string.no_tags_found), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
+                // Explicit Column - this "content" state now lives inside Crossfade's Box slot
+                // instead of being a direct child of the outer Column, so without this the tag list
+                // and the action-buttons row below it would overlay instead of stacking vertically.
+                Column {
                 val filteredTags = if (tagSearchQuery.isBlank()) allTags.entries.toList() else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
                 LazyColumn(Modifier.heightIn(max = if (tagSearchQuery.isNotBlank()) 600.dp else 480.dp)) {
                     items(filteredTags, key = { it.key }) { (tag, paths) ->
@@ -402,6 +429,8 @@ private fun TagBrowserSheet(
                     }
                     Spacer(Modifier.height(8.dp))
                 }
+                }
+            }
             }
         }
     }
@@ -438,7 +467,7 @@ private fun TagBrowserSheet(
     }
 }
 
-private data class NavTab(val index: Int, val label: String, val icon: ImageVector)
+private data class NavTab(val index: Int, @androidx.annotation.StringRes val labelRes: Int, val icon: ImageVector)
 
 /** A pinned quick-nav preview shown in the navigation drawer. */
 data class DrawerPin(val key: String, val name: String, val thumb: String)
@@ -668,12 +697,12 @@ private fun AppNavigationDrawer(
 }
 
 private val navTabs = listOf(
-    NavTab(0, "Medien", Icons.Default.Image),
-    NavTab(1, "Alben", Icons.Default.Folder),
-    NavTab(2, "Pfad", Icons.Default.FolderOpen),
-    NavTab(3, "Sammlung", Icons.Default.CollectionsBookmark),
-    NavTab(4, "Favoriten", Icons.Default.Star),
-    NavTab(5, "Tags", Icons.AutoMirrored.Filled.Label)
+    NavTab(0, R.string.media, Icons.Default.Image),
+    NavTab(1, R.string.albums, Icons.Default.Folder),
+    NavTab(2, R.string.explorer, Icons.Default.FolderOpen),
+    NavTab(3, R.string.nav_collections, Icons.Default.CollectionsBookmark),
+    NavTab(4, R.string.nav_favorites, Icons.Default.Star),
+    NavTab(5, R.string.nav_tags, Icons.AutoMirrored.Filled.Label)
 )
 
 // The bottom bar surfaces the four destinations used every session; Sammlung/Tags stay
@@ -695,9 +724,18 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
     var pinnedFavDirs by remember { mutableStateOf<List<Directory>>(emptyList()) }
     var pinnedColls by remember { mutableStateOf<List<MediaCollection>>(emptyList()) }
     var pinnedCollThumbs by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    // Only re-fetch when the drawer is actually opening (not closing, which also flips
+    // targetValue) and only if the pinned sets themselves changed since the last fetch - otherwise
+    // every open/close toggle reran getAllDirectories()/getCollections()/getMediaFromPath() for no
+    // reason, since most drawer opens don't touch pinning at all.
+    var lastPinnedKey by remember { mutableStateOf<Pair<Set<String>, Set<String>>?>(null) }
     LaunchedEffect(drawerState.targetValue) {
+        if (drawerState.targetValue != DrawerValue.Open) return@LaunchedEffect
         val favPaths = ctx.config.pinnedFavoriteFolders
         val collIds = ctx.config.pinnedCollections
+        val key = favPaths to collIds
+        if (key == lastPinnedKey) return@LaunchedEffect
+        lastPinnedKey = key
         val result = withContext(Dispatchers.IO) {
             val dirs = if (favPaths.isEmpty()) emptyList() else previewRepo.getAllDirectories().filter { it.path in favPaths }
             val colls = if (collIds.isEmpty()) emptyList() else previewRepo.getCollections().filter { it.id.toString() in collIds }
@@ -906,10 +944,13 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
 
 @Composable
 private fun MainBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
+    // No fixed height here - NavigationBar's default windowInsets already reserve the 56dp content
+    // row plus the real bottom system-bar/gesture-nav inset on top of it. Clamping to a flat 56dp
+    // used to squeeze that reserved inset out of the total height, cramming the icon row into
+    // whatever space was left above the gesture bar on 3-button/gesture-nav devices.
     NavigationBar(
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 0.dp,
-        modifier = Modifier.height(56.dp)
     ) {
         bottomNavTabs.forEach { tab ->
             NavigationBarItem(
@@ -918,12 +959,14 @@ private fun MainBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
                     if (selectedTab == tab.index) org.fossify.gallery.compose.util.ScrollToTopBus.trigger(tab.index)
                     else onTabSelected(tab.index)
                 },
-                icon = { Icon(tab.icon, tab.label, modifier = Modifier.size(22.dp)) },
+                icon = { Icon(tab.icon, stringResource(tab.labelRes), modifier = Modifier.size(22.dp)) },
+                label = { Text(stringResource(tab.labelRes), style = MaterialTheme.typography.labelSmall) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.primary,
                     selectedTextColor = MaterialTheme.colorScheme.primary,
                     indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
             )
         }
@@ -944,7 +987,13 @@ private fun MainTabContent(
     onExplorerCanGoUpChanged: (Boolean) -> Unit = {},
     onOpenDrawer: () -> Unit = {},
 ) {
-    if (state.selectedTab <= 2) {
+    // Crossfade keyed on "pager" vs the specific non-pager tab, not on state.selectedTab directly -
+    // switching among tabs 0-2 must stay inside the same "pager" branch so HorizontalPager's own
+    // animateScrollToPage handles that motion, while switching into/out of/between the non-pager
+    // tabs (Sammlung/Favoriten/Tags) now fades instead of hard-cutting like it did before.
+    val contentMode = if (state.selectedTab <= 2) "pager" else state.selectedTab.toString()
+    Crossfade(targetState = contentMode, label = "mainTabContent") { mode ->
+    if (mode == "pager") {
         val pagerState = rememberPagerState(initialPage = state.selectedTab.coerceIn(0, 2), pageCount = { 3 })
         LaunchedEffect(pagerState.settledPage) { mainVM.setSelectedTab(pagerState.settledPage) }
         LaunchedEffect(state.selectedTab) {
@@ -1029,6 +1078,7 @@ private fun MainTabContent(
         )
     }
     }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1100,7 +1150,11 @@ private fun OmniSearchPanel(
     val scope = rememberCoroutineScope()
     var ratingFilter by remember { mutableIntStateOf(0) }
     var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var allTags by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
+    // Seed from the repo-level cache instead of an empty map - this panel is a fresh composable every
+    // time the search field gets focus, and without this the full media_tags scan reran from scratch
+    // on every single tap into search.
+    val repo = LocalMediaRepository.current
+    var allTags by remember { mutableStateOf<Map<String, Set<String>>>(repo.getTagsWithPathsCached()?.mapValues { it.value.toSet() } ?: emptyMap()) }
     var isSearching by remember { mutableStateOf(false) }
     var textMatchPaths by remember { mutableStateOf<Set<String>?>(null) }
     var folderResults by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
@@ -1110,10 +1164,10 @@ private fun OmniSearchPanel(
     var showFilters by remember { mutableStateOf(false) }
     val searchCache = remember { mutableMapOf<String, Set<String>>() }
 
-    val repo = LocalMediaRepository.current
     LaunchedEffect(Unit) {
+        if (repo.getTagsWithPathsCached() != null) return@LaunchedEffect
         withContext(Dispatchers.IO) {
-            val tags = try { repo.getAllTagsWithPaths().mapValues { it.value.toSet() } } catch (_: Exception) { emptyMap() }
+            val tags = try { repo.refreshTagsWithPathsCache().mapValues { it.value.toSet() } } catch (_: Exception) { emptyMap() }
             withContext(Dispatchers.Main) { allTags = tags.takeIf { it.isNotEmpty() } ?: emptyMap() }
         }
     }
@@ -1188,7 +1242,7 @@ private fun OmniSearchPanel(
                 // Rating
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("★", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    for (i in 1..5) IconButton(onClick = { ratingFilter = if (ratingFilter == i) 0 else i }, modifier = Modifier.size(32.dp)) { Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, "$i", tint = if (i <= ratingFilter) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
+                    for (i in 1..5) IconButton(onClick = { ratingFilter = if (ratingFilter == i) 0 else i }, modifier = Modifier.size(40.dp)) { Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, "$i", tint = if (i <= ratingFilter) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
                     Spacer(Modifier.width(4.dp))
                     listOf(stringResource(R.string.everything) to 0, stringResource(R.string.images) to 1, stringResource(R.string.videos) to 2).forEach { (l, v) -> Surface(onClick = { fileTypeFilter = v }, shape = RoundedCornerShape(Radius.md), color = if (fileTypeFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(l, Modifier.padding(horizontal = 7.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = if (fileTypeFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface) } }
                     Spacer(Modifier.width(4.dp))
@@ -1257,7 +1311,10 @@ private fun OmniSearchPanel(
                                 selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", "), fileTypeFilter, dateFilter)
                             onDismiss()
                         }, shape = RoundedCornerShape(Radius.xl), color = MaterialTheme.colorScheme.primary) {
-                            Text(stringResource(R.string.show_results_count, mc + folderResults.size), Modifier.padding(horizontal = 20.dp, vertical = 10.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)
+                            // mc only - folders aren't part of what onFilterChanged below actually
+                            // applies (it only forwards textMatchPaths), so counting them in here
+                            // overstated how many results tapping this button would show.
+                            Text(stringResource(R.string.show_results_count, mc), Modifier.padding(horizontal = 20.dp, vertical = 10.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
                 }

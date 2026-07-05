@@ -14,6 +14,22 @@ import androidx.compose.ui.unit.dp
 val RatingStarColor = Color(0xFFFFD700)
 
 /**
+ * Fixed brand accent for the "favorited" state (filled heart). Kept as one token instead of a
+ * per-file hex literal / the dynamic `primary` colour, so a favorited item reads the same
+ * everywhere (thumbnail badge, viewer bottom bar, viewer action sheet) instead of shifting hue
+ * depending on which screen shows it or what the current dynamic colour scheme happens to be.
+ */
+val FavoriteColor = Color(0xFFE91E63)
+
+/**
+ * Fixed accent colours for the video trim handles (start/end). Kept as tokens for the same reason
+ * as [RatingStarColor] - these mark a start/end pair on a scrubber and need to stay visually
+ * distinct from each other and from the dynamic colour scheme.
+ */
+val TrimStartColor = Color(0xFF64B5F6)
+val TrimEndColor = Color(0xFFEF5350)
+
+/**
  * Shared black-scrim alphas for legibility overlays atop photos/videos (thumbnail badges, viewer
  * chrome, gradients). Kept as a fixed black scale independent of the light/dark colour scheme,
  * since these sit on top of arbitrary image content rather than an app surface - this only

@@ -208,7 +208,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                                     }
                                     Text("${pair.source} → ${pair.destination}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                                 }
-                                IconButton(onClick = { pairs.remove(pair); savePairs() }, modifier = Modifier.size(32.dp), enabled = !isMoving) {
+                                IconButton(onClick = { pairs.remove(pair); savePairs() }, modifier = Modifier.size(40.dp), enabled = !isMoving) {
                                     Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                                 }
                             }

@@ -173,11 +173,11 @@ fun ViewSettingsSheet(
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.spacing), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                IconButton(onClick = { val v = (local.spacing - 1).coerceAtLeast(2); local = local.copy(spacing = v); onSettingsChange(local) }, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = { val v = (local.spacing - 1).coerceAtLeast(2); local = local.copy(spacing = v); onSettingsChange(local) }, modifier = Modifier.size(40.dp)) {
                     Text("-", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 }
                 Text("${local.spacing}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp))
-                IconButton(onClick = { val v = (local.spacing + 1).coerceAtMost(20); local = local.copy(spacing = v); onSettingsChange(local) }, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = { val v = (local.spacing + 1).coerceAtMost(20); local = local.copy(spacing = v); onSettingsChange(local) }, modifier = Modifier.size(40.dp)) {
                     Text("+", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
@@ -193,7 +193,7 @@ fun ViewSettingsSheet(
             HorizontalDivider()
             Spacer(Modifier.height(4.dp))
             Text(stringResource(R.string.thumbnail_overlays), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("Gilt für alle Ansichten", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+            Text(stringResource(R.string.thumbnail_overlays_scope), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
             val ovCtx = LocalContext.current
             var showRatingOv by remember { mutableStateOf(ovCtx.config.showRatingOnThumbnails) }
             var showVideoDurOv by remember { mutableStateOf(ovCtx.config.showVideoDurationOnThumbnails) }

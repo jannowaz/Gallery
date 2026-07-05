@@ -31,6 +31,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.compose.screens.MediaScreen
+import org.fossify.gallery.compose.screens.MediaSkeleton
 import org.fossify.gallery.compose.screens.ViewSettingsSheet
 import org.fossify.gallery.compose.screens.ViewSettingsViewModel
 import org.fossify.gallery.compose.theme.LocalMediaRepository
@@ -40,6 +41,11 @@ import org.fossify.gallery.models.Medium
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
+
+// Process-level cache of the last scan per folder, kept alive across this composable's disposal
+// (see MediaStoreOps for the analogous full-device cache and why a plain remember{} isn't enough).
+// ConcurrentHashMap since it's written from an IO-dispatcher coroutine and read from Compose (main).
+private val folderMediaCache = java.util.concurrent.ConcurrentHashMap<String, List<Medium>>()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,13 +58,25 @@ fun FolderMediaScreen(
     val ctx = LocalContext.current
     val repo = LocalMediaRepository.current
     val tabSettings by viewSettingsVM.settings.collectAsState()
-    var mediaItems by remember { mutableStateOf<List<Medium>?>(null) }
+    // Seed from the process-level cache instead of null - FolderMediaScreen is `composable<Folder>`,
+    // a sibling destination that gets disposed too whenever Viewer is pushed on top of it, and without
+    // this the directory-stream scan reran from disk every time the user opened a photo and came back.
+    var mediaItems by remember { mutableStateOf(folderMediaCache[folderPath]) }
     var showViewSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(folderPath) {
+        if (mediaItems != null) return@LaunchedEffect
         mediaItems = withContext(Dispatchers.IO) {
             val deleted = repo.getDeletedPaths()
-            scanFolderMedia(folderPath, deleted)
+            scanFolderMedia(folderPath, deleted).also { folderMediaCache[folderPath] = it }
+        }
+    }
+    LaunchedEffect(Unit) {
+        org.fossify.gallery.helpers.RefreshBus.events.collect {
+            mediaItems = withContext(Dispatchers.IO) {
+                val deleted = repo.getDeletedPaths()
+                scanFolderMedia(folderPath, deleted).also { folderMediaCache[folderPath] = it }
+            }
         }
     }
 
@@ -76,14 +94,19 @@ fun FolderMediaScreen(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding), contentAlignment = androidx.compose.ui.Alignment.Center) {
             val items = mediaItems
-            if (items == null) {
-                androidx.compose.material3.CircularProgressIndicator()
-            } else {
-                MediaScreen(
-                    viewSettings = tabSettings.folderMedia,
-                    mediaOverride = items,
-                    onNavigateToViewer = onNavigateToViewer,
-                )
+            // Crossfade + shimmer skeleton instead of a bare spinner - this is the same "media grid is
+            // loading" moment as Media/Albums/Explorer, so it should look the same, not like a
+            // different, less-polished screen.
+            androidx.compose.animation.Crossfade(targetState = items == null, label = "folderMediaLoading") { loading ->
+                if (loading) {
+                    MediaSkeleton(columns = tabSettings.folderMedia.columnCount)
+                } else {
+                    MediaScreen(
+                        viewSettings = tabSettings.folderMedia,
+                        mediaOverride = items ?: emptyList(),
+                        onNavigateToViewer = onNavigateToViewer,
+                    )
+                }
             }
         }
     }

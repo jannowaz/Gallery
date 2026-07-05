@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.helpers.UndoAction
 import org.fossify.gallery.helpers.UndoManager
 import org.fossify.gallery.helpers.UndoType
@@ -48,8 +49,8 @@ fun UndoBar(modifier: Modifier = Modifier, onActionLabel: ((UndoAction) -> Strin
 
     AnimatedVisibility(
         visible = lastAction != null,
-        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(AppMotion.medium),
+        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(AppMotion.medium),
         modifier = modifier,
     ) {
         Surface(

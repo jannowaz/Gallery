@@ -2,6 +2,7 @@ package org.fossify.gallery.compose.screens
 import org.fossify.gallery.compose.theme.Radius
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -72,6 +73,7 @@ import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.compose.theme.Scrim
 import org.fossify.gallery.compose.util.ScrollToTopEffect
 import org.fossify.gallery.compose.util.decodeImageAspect
+import org.fossify.gallery.compose.util.sharedElementKey
 import org.fossify.gallery.compose.components.FolderTile
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.SelectionAppBar
@@ -152,16 +154,22 @@ fun ExplorerScreen(
     // Query MediaStore once for every entry under the storage root, then derive each folder view by
     // filtering this cache in memory. Avoids a slow MediaStore round-trip on every navigation.
     val storageRoot = remember { android.os.Environment.getExternalStorageDirectory().absolutePath }
-    var allEntries by remember { mutableStateOf<List<org.fossify.gallery.helpers.MediaStoreOps.MediaEntry>?>(null) }
+    // Seed from the process-level cache (see MediaStoreOps) instead of always starting at null - a
+    // Viewer round-trip disposes and recreates this whole composable, and without this the cache
+    // reset forced a full-device MediaStore re-query every time the user came back from viewing an
+    // image.
+    var allEntries by remember { mutableStateOf(org.fossify.gallery.helpers.MediaStoreOps.cachedEntriesUnder(storageRoot)) }
     LaunchedEffect(Unit) {
-        allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.mediaEntriesUnder(context, storageRoot) }
+        if (allEntries == null) {
+            allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.refreshEntriesUnder(context, storageRoot) }
+        }
     }
     // Re-fetch after rename/move/mover/delete etc. so the tree doesn't keep showing files/folders
     // that no longer exist at their old path. isLoading is intentionally left untouched below (see
     // the loadedPath guard) so this refresh happens quietly instead of flashing the skeleton loader.
     LaunchedEffect(Unit) {
         org.fossify.gallery.helpers.RefreshBus.events.collect {
-            allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.mediaEntriesUnder(context, storageRoot) }
+            allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.refreshEntriesUnder(context, storageRoot) }
         }
     }
 
@@ -254,7 +262,7 @@ fun ExplorerScreen(
             // Breadcrumb navigation bar
             Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)).padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (navStack.size > 1) {
-                    IconButton(onClick = { navStack.removeLastOrNull(); currentPath = navStack.lastOrNull() ?: internalStoragePath }, modifier = Modifier.size(36.dp)) {
+                    IconButton(onClick = { navStack.removeLastOrNull(); currentPath = navStack.lastOrNull() ?: internalStoragePath }, modifier = Modifier.size(44.dp)) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     }
                 } else {
@@ -264,9 +272,12 @@ fun ExplorerScreen(
             }
         }
 
-        if (isLoading) {
+        // Crossfade instead of an instant swap - see MediaScreen's paged content for why.
+        val explorerContentState = if (isLoading) "loading" else if (folderItems.isEmpty() && fileItems.isEmpty()) "empty" else "content"
+        Crossfade(targetState = explorerContentState, label = "explorerContent") { cs ->
+        if (cs == "loading") {
             MediaSkeleton(columns = 3)
-        } else if (folderItems.isEmpty() && fileItems.isEmpty()) {
+        } else if (cs == "empty") {
             EmptyState(Icons.Default.Folder, stringResource(R.string.no_items), subtitle = stringResource(R.string.no_items_hint))
         } else {
             val listState = rememberLazyListState()
@@ -372,8 +383,8 @@ fun ExplorerScreen(
                                         }) {
                                             Column {
                                                 Box(Modifier.aspectRatio(1f).clip(cornerShape)) {
-                                                    if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                                    else GalleryImage(path = item.path, contentDescription = item.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 20.dp)
+                                                    if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop)
+                                                    else GalleryImage(path = item.path, contentDescription = item.name, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop, placeholderIconSize = 20.dp)
                                                 }
                                                 if (mediaSettings.showFileNames) {
                                                     Text(item.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
@@ -413,8 +424,8 @@ fun ExplorerScreen(
                                             Box(Modifier.padding(mediaSettings.spacing.dp / 2).aspectRatio(ar).clip(cornerShape).background(MaterialTheme.colorScheme.surfaceVariant, cornerShape).clickable {
                                                 onNavigateToViewer(fileItems.map { it.path }, fileItems.indexOfFirst { it.path == item.path }.coerceAtLeast(0))
                                             }) {
-                                                if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                                else GalleryImage(path = item.path, contentDescription = item.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 20.dp)
+                                                if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop)
+                                                else GalleryImage(path = item.path, contentDescription = item.name, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop, placeholderIconSize = 20.dp)
                                             }
                                         }
                                     }
@@ -431,8 +442,8 @@ fun ExplorerScreen(
                             }, color = Color.Transparent) {
                                 Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(40.dp).clip(RoundedCornerShape(Radius.sm))) {
-                                        if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                        else GalleryImage(path = item.path, contentDescription = item.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 16.dp)
+                                        if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop)
+                                        else GalleryImage(path = item.path, contentDescription = item.name, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop, placeholderIconSize = 16.dp)
                                     }
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
@@ -447,6 +458,7 @@ fun ExplorerScreen(
                     }
                 }
             }
+        }
         }
 
     }

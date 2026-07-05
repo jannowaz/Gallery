@@ -271,7 +271,13 @@ class MetadataSyncWorker(
                 .setInitialDelay(500, TimeUnit.MILLISECONDS)
                 .setInputData(Data.Builder().putString("folder_path", folderPath).putBoolean("full_scan", true).build())
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork("${WORK_NAME}_folder", ExistingWorkPolicy.REPLACE, workRequest)
+            // Unique name is per-folder (not one name shared by every call) - callers can request a
+            // scan for several different folders in a row (e.g. a multi-select "scan metadata"
+            // batch action), and a single shared name under ExistingWorkPolicy.REPLACE would have
+            // each new folder's request cancel the previous folder's not-yet-started scan, so only
+            // the last folder in the batch ever actually ran. Repeat-tapping the same folder still
+            // coalesces via REPLACE, which is the behavior this was originally written for.
+            WorkManager.getInstance(context).enqueueUniqueWork("${WORK_NAME}_folder_${folderPath.hashCode()}", ExistingWorkPolicy.REPLACE, workRequest)
         }
 
         fun scheduleAdvancedScan(context: Context, folderPath: String?, dateStart: Long, dateEnd: Long, incremental: Boolean, chargingOnly: Boolean) {
@@ -300,7 +306,10 @@ class MetadataSyncWorker(
             wm.cancelUniqueWork(WORK_NAME)
             wm.cancelUniqueWork("${WORK_NAME}_now")
             wm.cancelUniqueWork("${WORK_NAME}_full")
-            wm.cancelUniqueWork("${WORK_NAME}_folder")
+            // Per-folder scans no longer share one unique work name (see scheduleFolderScan), so
+            // cancelUniqueWork can't reach them anymore - cancel by the tag every folder-scan
+            // request still carries instead.
+            wm.cancelAllWorkByTag("${WORK_NAME}_folder")
             try {
                 (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(2002)
             } catch (_: Exception) { }

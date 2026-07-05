@@ -200,10 +200,10 @@ fun ManageCollectionsScreen(
                                     )
                                 }
                             }
-                            IconButton(onClick = { editingColl = coll; showEditDialog = true }, modifier = Modifier.size(36.dp)) {
+                            IconButton(onClick = { editingColl = coll; showEditDialog = true }, modifier = Modifier.size(44.dp)) {
                                 Icon(Icons.Default.Edit, stringResource(R.string.edit), modifier = Modifier.size(20.dp))
                             }
-                            IconButton(onClick = { showDeleteConfirm = coll }, modifier = Modifier.size(36.dp)) {
+                            IconButton(onClick = { showDeleteConfirm = coll }, modifier = Modifier.size(44.dp)) {
                                 Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                             }
                         }
@@ -271,7 +271,7 @@ private fun EditCollectionDialog(
                 includedPaths.forEach { p ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(p.substringAfterLast('/').take(50), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        IconButton(onClick = { includedPaths = includedPaths - p }, modifier = Modifier.size(24.dp)) {
+                        IconButton(onClick = { includedPaths = includedPaths - p }, modifier = Modifier.size(40.dp)) {
                             Icon(Icons.Default.Delete, stringResource(R.string.remove), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                         }
                     }
@@ -293,7 +293,7 @@ private fun EditCollectionDialog(
                 excludedPaths.forEach { p ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(p.substringAfterLast('/').take(50), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        IconButton(onClick = { excludedPaths = excludedPaths - p }, modifier = Modifier.size(24.dp)) {
+                        IconButton(onClick = { excludedPaths = excludedPaths - p }, modifier = Modifier.size(40.dp)) {
                             Icon(Icons.Default.Delete, stringResource(R.string.remove), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                         }
                     }

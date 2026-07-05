@@ -41,6 +41,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -50,6 +51,9 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -89,7 +93,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -104,6 +110,8 @@ import org.fossify.commons.extensions.updateBrightness
 import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.gallery.compose.components.ConfirmDestructive
 import org.fossify.gallery.compose.components.SelectionRow
+import org.fossify.gallery.compose.theme.AppMotion
+import org.fossify.gallery.compose.theme.FavoriteColor
 import org.fossify.gallery.compose.theme.RatingStarColor
 import org.fossify.gallery.compose.components.TagInputDialog
 import org.fossify.gallery.compose.components.UndoBar
@@ -151,6 +159,7 @@ fun ViewerScreen(
     onClose: () -> Unit,
 ) {
     val ctx = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val items = remember { paths.toMutableStateList() }
     val pagerState = rememberPagerState(initialPage = startIndex.coerceIn(0, (paths.size - 1).coerceAtLeast(0)), pageCount = { items.size })
@@ -174,6 +183,14 @@ fun ViewerScreen(
     var showVideoSettings by remember { mutableStateOf(false) }
     var isCurrentZoomed by remember { mutableStateOf(false) }
     var uiInteractionTick by remember { mutableIntStateOf(0) }
+    var showGestureHint by remember { mutableStateOf(!ctx.config.hasSeenViewerGestureHint) }
+    fun dismissGestureHint() {
+        if (showGestureHint) {
+            showGestureHint = false
+            ctx.config.hasSeenViewerGestureHint = true
+        }
+    }
+    LaunchedEffect(showGestureHint) { if (showGestureHint) { delay(3000); dismissGestureHint() } }
     LaunchedEffect(pagerState.currentPage) {
         isCurrentZoomed = false
         withContext(Dispatchers.IO) {
@@ -226,6 +243,9 @@ fun ViewerScreen(
     }
 
     var dragOffset by remember { mutableFloatStateOf(0f) }
+    // Tracks whether the drag is currently past either dismiss threshold, so the haptic tick fires
+    // once on crossing into the zone rather than continuously every frame the drag stays past it.
+    var dismissThresholdCrossed by remember { mutableStateOf(false) }
     val dragScale = (1f - (abs(dragOffset) / 1000f)).coerceIn(0.85f, 1f)
     val dragAlpha = (1f - (abs(dragOffset) / 600f)).coerceIn(0.5f, 1f)
 
@@ -233,6 +253,11 @@ fun ViewerScreen(
         HorizontalPager(
             state = pagerState,
             userScrollEnabled = !isCurrentZoomed,
+            // Preload one neighbour on each side so the adjacent image/video frame is already
+            // decoded by the time a swipe lands on it, instead of a blank frame flashing in.
+            // Video playback itself still only starts on the current page (VideoPage gates it on
+            // isCurrentPage), so this doesn't spin up extra players.
+            beyondViewportPageCount = 1,
             modifier = Modifier.fillMaxSize()
                 .graphicsLayer {
                     translationY = dragOffset
@@ -242,13 +267,18 @@ fun ViewerScreen(
                 .pointerInput(isCurrentZoomed) {
                     if (!isCurrentZoomed) {
                         detectVerticalDragGestures(
-                            onDragStart = { dragOffset = 0f },
+                            onDragStart = { dragOffset = 0f; dismissThresholdCrossed = false; dismissGestureHint() },
                             onDragEnd = {
                                 if (dragOffset < -180f) showActionSheet = true
                                 else if (dragOffset > 240f) { ctx.config.lastViewedPath = currentPath; onClose() }
                                 else { scope.launch { animate(dragOffset, 0f, animationSpec = org.fossify.gallery.compose.theme.AppMotion.gestureSpring) { v, _ -> dragOffset = v } } }
                             },
-                            onVerticalDrag = { _, drag -> dragOffset += drag },
+                            onVerticalDrag = { _, drag ->
+                                dragOffset += drag
+                                val crossed = dragOffset < -180f || dragOffset > 240f
+                                if (crossed && !dismissThresholdCrossed) haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                                dismissThresholdCrossed = crossed
+                            },
                         )
                     }
                 }
@@ -274,7 +304,7 @@ fun ViewerScreen(
         }
 
         // Top bar
-        AnimatedVisibility(visible = showUI, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = showUI, enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium)) {
             Box(Modifier.fillMaxSize()) {
                 IconButton(
                     onClick = { ctx.config.lastViewedPath = currentPath; onClose() },
@@ -292,12 +322,38 @@ fun ViewerScreen(
             }
         }
 
+        // One-time hint for the vertical drag gestures (swipe up = actions sheet, down = close) -
+        // neither has any visual affordance otherwise. Shown once ever, dismissed by any drag,
+        // tap, or after a few seconds on its own.
+        AnimatedVisibility(
+            visible = showGestureHint,
+            enter = fadeIn(AppMotion.medium),
+            exit = fadeOut(AppMotion.medium),
+            modifier = Modifier.align(Alignment.Center),
+        ) {
+            Surface(shape = RoundedCornerShape(Radius.lg), color = Scrim.a60) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.KeyboardArrowUp, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.viewer_gesture_hint_up), color = Color.White, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.KeyboardArrowDown, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.viewer_gesture_hint_down), color = Color.White, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+
         // Soft bottom scrim for control legibility, anchored to the screen bottom so it never floats
         // with a hard edge even when the controls are lifted above the video seek bar.
         AnimatedVisibility(
             visible = showUI,
             modifier = Modifier.align(Alignment.BottomCenter),
-            enter = fadeIn(), exit = fadeOut(),
+            enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium),
         ) {
             Box(Modifier.fillMaxWidth().height(200.dp).background(Brush.verticalGradient(0f to Color.Transparent, 1f to Scrim.a60)))
         }
@@ -311,21 +367,21 @@ fun ViewerScreen(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = bottomGroupOffset),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            AnimatedVisibility(visible = showRatingOverlay, enter = fadeIn(), exit = fadeOut()) {
+            AnimatedVisibility(visible = showRatingOverlay, enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium)) {
                 Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
                     Surface(shape = RoundedCornerShape(Radius.xl), color = Scrim.a32) {
                         Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 6.dp)) {
                             for (i in 1..5) {
-                                IconButton(onClick = { uiInteractionTick++; val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) {
+                                IconButton(onClick = { haptic.performHapticFeedback(HapticFeedbackType.Confirm); uiInteractionTick++; val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) {
                                     Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))
                                 }
                             }
-                            IconButton(onClick = { showRatingOverlay = false; ctx.config.viewerShowRatingBar = false }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Close, stringResource(R.string.action_hide), tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
+                            IconButton(onClick = { showRatingOverlay = false; ctx.config.viewerShowRatingBar = false }, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Close, stringResource(R.string.action_hide), tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
                         }
                     }
                 }
             }
-            AnimatedVisibility(visible = showUI, enter = fadeIn(), exit = fadeOut()) {
+            AnimatedVisibility(visible = showUI, enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium)) {
                 Box(Modifier.fillMaxWidth()) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
@@ -340,7 +396,7 @@ fun ViewerScreen(
                         IconButton(onClick = {
                             uiInteractionTick++
                             val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { repo.toggleFavorite(currentPath, f) }
-                        }) { Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), tint = if (isFavorite) MaterialTheme.colorScheme.primary else Color.White) }
+                        }) { Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), tint = if (isFavorite) FavoriteColor else Color.White) }
                         if (!currentIsVideo) {
                             IconButton(onClick = { uiInteractionTick++; (ctx as? android.app.Activity)?.openEditor(currentPath) }) { Icon(Icons.Default.Edit, stringResource(R.string.edit), tint = Color.White) }
                         }
@@ -393,12 +449,12 @@ fun ViewerScreen(
                 if (exifLines.isNotEmpty()) { Spacer(Modifier.height(2.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) { exifLines.take(8).forEach { (label, value) -> Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface); Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } } }
                 Spacer(Modifier.height(12.dp))
                 SheetSectionLabel(stringResource(R.string.rating_title))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { for (i in 1..5) { IconButton(onClick = { val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) { Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f), modifier = Modifier.size(28.dp)) } } }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { for (i in 1..5) { IconButton(onClick = { haptic.performHapticFeedback(HapticFeedbackType.Confirm); val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) { Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f), modifier = Modifier.size(28.dp)) } } }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 SheetSectionLabel(stringResource(R.string.video_actions))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Share, stringResource(R.string.action_share)) { val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath)); ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, ctx.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); showActionSheet = false }; ActionChip(Icons.Default.Edit, stringResource(R.string.edit)) { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }; ActionChip(Icons.Default.ContentCopy, stringResource(R.string.action_copy)) { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }; ActionChip(Icons.AutoMirrored.Filled.DriveFileMove, stringResource(R.string.action_move)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false } }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Info, stringResource(R.string.action_info)) { try { (ctx as? android.app.Activity)?.let { org.fossify.commons.dialogs.PropertiesDialog(it, currentPath, false) } } catch (e: Exception) { ctx.toast(ctx.getString(R.string.info_error, e.message), android.widget.Toast.LENGTH_SHORT) }; showActionSheet = false }; ActionChip(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), MaterialTheme.colorScheme.error) { showActionSheet = false; deleteCurrent() }; ActionChip(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) { val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { repo.toggleFavorite(currentPath, f) }; showActionSheet = false }; ActionChip(Icons.Default.Star, stringResource(R.string.action_rate), if (showRatingOverlay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) { showRatingOverlay = !showRatingOverlay; ctx.config.viewerShowRatingBar = showRatingOverlay; showActionSheet = false } }
-                if (currentIsVideo) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Star, stringResource(R.string.video_display)) { showVideoSettings = true; showActionSheet = false }; ActionChip(Icons.Default.Close, "Frame") { scope.launch(Dispatchers.IO) { try { val r = android.media.MediaMetadataRetriever(); r.setDataSource(currentPath); val bmp = r.frameAtTime ?: return@launch; r.release(); val parentDir = File(currentPath).parentFile ?: ctx.cacheDir; val outFile = File(parentDir, "frame_${System.currentTimeMillis()}.jpg"); outFile.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }; bmp.recycle(); withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.frame_saved, outFile.name), android.widget.Toast.LENGTH_SHORT) } } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.error_generic, e.message), android.widget.Toast.LENGTH_SHORT) } } }; showActionSheet = false } } }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Info, stringResource(R.string.action_info)) { try { (ctx as? android.app.Activity)?.let { org.fossify.commons.dialogs.PropertiesDialog(it, currentPath, false) } } catch (e: Exception) { ctx.toast(ctx.getString(R.string.info_error, e.message), android.widget.Toast.LENGTH_SHORT) }; showActionSheet = false }; ActionChip(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), MaterialTheme.colorScheme.error) { showActionSheet = false; deleteCurrent() }; ActionChip(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), if (isFavorite) FavoriteColor else MaterialTheme.colorScheme.onSurfaceVariant) { val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { repo.toggleFavorite(currentPath, f) }; showActionSheet = false }; ActionChip(Icons.Default.Star, stringResource(R.string.action_rate), if (showRatingOverlay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) { showRatingOverlay = !showRatingOverlay; ctx.config.viewerShowRatingBar = showRatingOverlay; showActionSheet = false } }
+                if (currentIsVideo) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.AspectRatio, stringResource(R.string.video_display)) { showVideoSettings = true; showActionSheet = false }; ActionChip(Icons.Default.PhotoCamera, stringResource(R.string.action_save_frame)) { scope.launch(Dispatchers.IO) { try { val r = android.media.MediaMetadataRetriever(); r.setDataSource(currentPath); val bmp = r.frameAtTime ?: return@launch; r.release(); val parentDir = File(currentPath).parentFile ?: ctx.cacheDir; val outFile = File(parentDir, "frame_${System.currentTimeMillis()}.jpg"); outFile.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }; bmp.recycle(); withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.frame_saved, outFile.name), android.widget.Toast.LENGTH_SHORT) } } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.error_generic, e.message), android.widget.Toast.LENGTH_SHORT) } } }; showActionSheet = false } } }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 SheetSectionLabel(stringResource(R.string.action_tags))
                 if (currentTags.isNotEmpty()) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { currentTags.forEach { tag -> InputChip(selected = true, onClick = {}, label = { Text(tag, style = MaterialTheme.typography.labelSmall) }, trailingIcon = { Icon(Icons.Default.Close, stringResource(R.string.action_remove), Modifier.size(14.dp).clickable { removeTag(tag) }) }, shape = RoundedCornerShape(Radius.sm), colors = InputChipDefaults.inputChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer, labelColor = MaterialTheme.colorScheme.onPrimaryContainer)) } }; Spacer(Modifier.height(8.dp)) }

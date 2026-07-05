@@ -2,6 +2,7 @@ package org.fossify.gallery.compose.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -77,6 +78,7 @@ import org.fossify.gallery.compose.components.SelectionAppBar
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.R
 import androidx.compose.ui.res.stringResource
@@ -147,43 +149,65 @@ fun AlbumsScreen(
 
     Box(Modifier.fillMaxSize()) {
         Column(modifier = modifier.fillMaxSize().padding(top = contentTopInset)) {
-            if (state.isLoading) {
-                MediaSkeleton(columns = viewSettings.columnCount)
-            } else if (state.directories.isEmpty()) {
-                EmptyState(Icons.Default.Folder, stringResource(R.string.no_albums))
-            } else {
-                LibraryAlbumGrid(
-                    items = albumItems,
-                    viewSettings = viewSettings,
-                    onClick = { item ->
-                        if (hasSelection) selectedPaths = if (item.key in selectedPaths) selectedPaths - item.key else selectedPaths + item.key
-                        else sortedDirs.find { it.path == item.key }?.let(onFolderClick)
-                    },
-                    onLongClick = { item -> selectedPaths = selectedPaths + item.key },
-                    selectedKeys = selectedPaths,
-                    modifier = Modifier.weight(1f),
-                    tabIndex = tabIndex,
-                )
+            // Crossfade instead of an instant swap - see MediaScreen's paged content for why.
+            Crossfade(targetState = if (state.isLoading) "loading" else if (state.directories.isEmpty()) "empty" else "content", label = "albumsContent") { s ->
+                when (s) {
+                    "loading" -> MediaSkeleton(columns = viewSettings.columnCount)
+                    "empty" -> EmptyState(Icons.Default.Folder, stringResource(R.string.no_albums))
+                    else -> LibraryAlbumGrid(
+                        items = albumItems,
+                        viewSettings = viewSettings,
+                        onClick = { item ->
+                            if (hasSelection) selectedPaths = if (item.key in selectedPaths) selectedPaths - item.key else selectedPaths + item.key
+                            else sortedDirs.find { it.path == item.key }?.let(onFolderClick)
+                        },
+                        onLongClick = { item -> selectedPaths = selectedPaths + item.key },
+                        selectedKeys = selectedPaths,
+                        modifier = Modifier.weight(1f),
+                        tabIndex = tabIndex,
+                    )
+                }
             }
         }
 
         AnimatedVisibility(
             visible = hasSelection,
-            enter = slideInVertically { -it } + fadeIn(),
-            exit = slideOutVertically { -it } + fadeOut(),
+            enter = slideInVertically { -it } + fadeIn(AppMotion.medium),
+            exit = slideOutVertically { -it } + fadeOut(AppMotion.medium),
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            val selPath = selectedPaths.firstOrNull() ?: ""
-            val isFav = selPath in favorites
+            val isSingle = selectedPaths.size == 1
+            // "All favorited" (not just the first path) decides the icon/label - toggling then
+            // favorites every not-yet-favorited folder in the batch, or un-favorites all of them
+            // if the whole batch was already favorited, rather than only ever acting on one path.
+            val allFav = selectedPaths.isNotEmpty() && selectedPaths.all { it in favorites }
             SelectionAppBar(
                 modifier = Modifier.onGloballyPositioned { selectionBarHeightPx = it.size.height },
                 count = selectedPaths.size,
                 onClose = { selectedPaths = emptySet() },
                 actions = {
-                    IconButton(onClick = { selectedPaths.firstOrNull()?.let { p -> sortedDirs.find { it.path == p }?.let { d -> onFolderClick(d) } }; selectedPaths = emptySet() }) { Icon(Icons.Default.Folder, stringResource(R.string.action_open)) }
-                    IconButton(onClick = { if (isFav) ctx.config.removeFavoriteFolder(selPath) else ctx.config.addFavoriteFolder(selPath); favorites = ctx.config.favoriteFolders; selectedPaths = emptySet() }) { Icon(if (isFav) Icons.Default.Star else Icons.Default.StarBorder, stringResource(if (isFav) R.string.action_unfavorite else R.string.action_favorite)) }
-                    IconButton(onClick = { selectedPaths.firstOrNull()?.let { (ctx as? android.app.Activity)?.let { a -> PropertiesDialog(a, it, true) } } }) { Icon(Icons.Default.Info, stringResource(R.string.action_info)) }
-                    IconButton(onClick = { selectedPaths.firstOrNull()?.let { path -> MetadataSyncWorker.scheduleFolderScan(ctx, path); ctx.toast(ctx.getString(R.string.scan_started, File(path).name), Toast.LENGTH_SHORT) }; selectedPaths = emptySet() }) { Icon(Icons.AutoMirrored.Filled.Label, stringResource(R.string.action_scan_metadata)) }
+                    // Open/Info only make sense for exactly one target folder.
+                    if (isSingle) {
+                        IconButton(onClick = { selectedPaths.firstOrNull()?.let { p -> sortedDirs.find { it.path == p }?.let { d -> onFolderClick(d) } }; selectedPaths = emptySet() }) { Icon(Icons.Default.Folder, stringResource(R.string.action_open)) }
+                    }
+                    IconButton(onClick = {
+                        selectedPaths.forEach { p -> if (allFav) ctx.config.removeFavoriteFolder(p) else ctx.config.addFavoriteFolder(p) }
+                        favorites = ctx.config.favoriteFolders
+                        selectedPaths = emptySet()
+                    }) { Icon(if (allFav) Icons.Default.Star else Icons.Default.StarBorder, stringResource(if (allFav) R.string.action_unfavorite else R.string.action_favorite)) }
+                    if (isSingle) {
+                        IconButton(onClick = { selectedPaths.firstOrNull()?.let { (ctx as? android.app.Activity)?.let { a -> PropertiesDialog(a, it, true) } } }) { Icon(Icons.Default.Info, stringResource(R.string.action_info)) }
+                    }
+                    IconButton(onClick = {
+                        val batch = selectedPaths.toList()
+                        batch.forEach { path -> MetadataSyncWorker.scheduleFolderScan(ctx, path) }
+                        ctx.toast(
+                            if (batch.size == 1) ctx.getString(R.string.scan_started, File(batch.first()).name)
+                            else ctx.getString(R.string.scan_started_count, batch.size),
+                            Toast.LENGTH_SHORT,
+                        )
+                        selectedPaths = emptySet()
+                    }) { Icon(Icons.AutoMirrored.Filled.Label, stringResource(R.string.action_scan_metadata)) }
                 },
             )
         }

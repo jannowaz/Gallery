@@ -355,6 +355,7 @@
     <string name="action_favorite">Favorisieren</string>
     <string name="action_unfavorite">Aus Favoriten entfernen</string>
     <string name="scan_started">Scan für „%s“ gestartet</string>
+    <string name="scan_started_count">Scan für %d Ordner gestartet</string>
     <string name="create_collection">Sammlung erstellen</string>
     <string name="action_select">Auswählen</string>
     <string name="action_remove">Entfernen</string>
@@ -448,6 +449,11 @@
     <string name="favorite">Favorit</string>
     <string name="video_display">Anzeige</string>
     <string name="frame_saved">Frame gespeichert: %s</string>
+    <string name="action_save_frame">Frame speichern</string>
+    <string name="version_label">Version %s</string>
+    <string name="thumbnail_overlays_scope">Gilt für alle Ansichten</string>
+    <string name="rename_tag_prompt">„%1$s“ (%2$d Dateien) umbenennen in:</string>
+    <string name="wasted_space_approx">≈ %s verschwendet</string>
     <string name="error_generic">Fehler: %s</string>
     <string name="suggestions">Vorschläge</string>
     <string name="add_new_tag">„%s“ als neuen Tag hinzufügen</string>
@@ -505,6 +511,13 @@
     <string name="set_information">Information</string>
     <string name="set_force_dark">Dunkelmodus erzwingen</string>
     <string name="set_dynamic_colors">Dynamische Farben (Material You)</string>
+    <string name="theme_mode_label">Design</string>
+    <string name="theme_mode_light">Hell</string>
+    <string name="theme_mode_dark">Dunkel</string>
+    <string name="theme_mode_system">Systemstandard</string>
+    <string name="set_amoled_background">Echtes Schwarz (AMOLED) im Hintergrund</string>
+    <string name="viewer_gesture_hint_up">Nach oben wischen für Optionen</string>
+    <string name="viewer_gesture_hint_down">Nach unten wischen zum Schließen</string>
     <string name="set_show_hidden">Versteckte Dateien anzeigen</string>
     <string name="set_animate_gifs">Animierte GIFs abspielen</string>
     <string name="set_max_brightness">Maximale Helligkeit</string>

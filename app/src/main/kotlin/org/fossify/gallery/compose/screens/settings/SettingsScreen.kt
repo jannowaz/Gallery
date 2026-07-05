@@ -119,6 +119,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     var showExtendedDialog by remember { mutableStateOf(false) }
     var showBottomActionsDialog by remember { mutableStateOf(false) }
+    var showThemeModeDialog by remember { mutableStateOf(false) }
     var settingsVersion by remember { mutableStateOf(0) }
 
     Scaffold(
@@ -132,8 +133,14 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             @Suppress("UNUSED_EXPRESSION") settingsVersion // re-read config-derived labels after a change
 
             SectionLabel(stringResource(R.string.set_general))
-            SettingsSwitch(stringResource(R.string.set_force_dark), conf.forceDarkMode) { conf.forceDarkMode = it }
-            SettingsSwitch(stringResource(R.string.set_dynamic_colors), conf.useDynamicColors) { conf.useDynamicColors = it }
+            val themeModeLabel = when {
+                conf.forceDarkMode -> stringResource(R.string.theme_mode_dark)
+                conf.forceLightMode -> stringResource(R.string.theme_mode_light)
+                else -> stringResource(R.string.theme_mode_system)
+            }
+            SettingsNav(stringResource(R.string.theme_mode_label), themeModeLabel) { showThemeModeDialog = true }
+            SettingsSwitch(stringResource(R.string.set_amoled_background), conf.useAmoledBackground) { conf.useAmoledBackground = it; org.fossify.gallery.compose.theme.ThemePrefsBus.invalidate() }
+            SettingsSwitch(stringResource(R.string.set_dynamic_colors), conf.useDynamicColors) { conf.useDynamicColors = it; org.fossify.gallery.compose.theme.ThemePrefsBus.invalidate() }
             SettingsSwitch(stringResource(R.string.set_show_hidden), conf.showHiddenMedia) { conf.showHiddenMedia = it }
             SettingsSwitch(stringResource(R.string.set_animate_gifs), conf.animateGifs) { conf.animateGifs = it }
             SettingsSwitch(stringResource(R.string.set_max_brightness), conf.maxBrightness) { conf.maxBrightness = it }
@@ -290,6 +297,47 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             current = conf.visibleBottomActions,
             onDismiss = { showBottomActionsDialog = false },
             onSave = { conf.visibleBottomActions = it }
+        )
+    }
+
+    if (showThemeModeDialog) {
+        AlertDialog(
+            onDismissRequest = { showThemeModeDialog = false },
+            title = { Text(stringResource(R.string.theme_mode_label)) },
+            text = {
+                Column {
+                    listOf(
+                        stringResource(R.string.theme_mode_light) to 1,
+                        stringResource(R.string.theme_mode_dark) to 2,
+                        stringResource(R.string.theme_mode_system) to 0,
+                    ).forEach { (label, mode) ->
+                        val selected = when (mode) {
+                            1 -> conf.forceLightMode
+                            2 -> conf.forceDarkMode
+                            else -> !conf.forceLightMode && !conf.forceDarkMode
+                        }
+                        TextButton(
+                            onClick = {
+                                conf.forceLightMode = mode == 1
+                                conf.forceDarkMode = mode == 2
+                                org.fossify.gallery.compose.theme.ThemePrefsBus.invalidate()
+                                showThemeModeDialog = false
+                                settingsVersion++
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                label,
+                                modifier = Modifier.weight(1f),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Start,
+                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showThemeModeDialog = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }

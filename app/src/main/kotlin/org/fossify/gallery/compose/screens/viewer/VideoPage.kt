@@ -1,8 +1,11 @@
 package org.fossify.gallery.compose.screens.viewer
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
+import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.Radius
 import org.fossify.gallery.compose.theme.Scrim
+import org.fossify.gallery.compose.theme.TrimEndColor
+import org.fossify.gallery.compose.theme.TrimStartColor
 
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
@@ -233,7 +236,7 @@ fun VideoPage(
 
         ZoomMinimap(zoom, modifier = Modifier.align(Alignment.TopEnd).padding(top = 72.dp, end = 12.dp))
 
-        AnimatedVisibility(visible = showUi, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = showUi, enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium)) {
             Box(Modifier.fillMaxSize()) {
                 IconButton(
                     onClick = { if (isPlaying) player.pause() else player.play(); onInteract() },
@@ -288,11 +291,11 @@ fun VideoPage(
                     if (trimMode) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = { trimStartMs = player.currentPosition.toFloat() }) {
-                                Text(stringResource(R.string.trim_start).format((trimStartMs / 1000).toInt() / 60, (trimStartMs / 1000).toInt() % 60), color = Color(0xFF64B5F6), style = MaterialTheme.typography.labelSmall)
+                                Text(stringResource(R.string.trim_start).format((trimStartMs / 1000).toInt() / 60, (trimStartMs / 1000).toInt() % 60), color = TrimStartColor, style = MaterialTheme.typography.labelSmall)
                             }
                             Spacer(Modifier.weight(1f))
                             TextButton(onClick = { trimEndMs = player.currentPosition.toFloat() }) {
-                                Text(stringResource(R.string.trim_end).format((trimEndMs / 1000).toInt() / 60, (trimEndMs / 1000).toInt() % 60), color = Color(0xFFEF5350), style = MaterialTheme.typography.labelSmall)
+                                Text(stringResource(R.string.trim_end).format((trimEndMs / 1000).toInt() / 60, (trimEndMs / 1000).toInt() % 60), color = TrimEndColor, style = MaterialTheme.typography.labelSmall)
                             }
                             Spacer(Modifier.weight(1f))
                             TextButton(onClick = {

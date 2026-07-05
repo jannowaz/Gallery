@@ -231,7 +231,7 @@ fun FolderPickerSheet(
                 leadingIcon = { Icon(Icons.Default.Search, stringResource(R.string.cd_search), modifier = Modifier.size(20.dp)) },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
+                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(40.dp)) {
                             Icon(Icons.Default.Close, stringResource(R.string.action_empty), modifier = Modifier.size(16.dp))
                         }
                     }
@@ -271,20 +271,20 @@ fun FolderPickerSheet(
             } else {
                 // Breadcrumb + directory listing
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { navStack.clear(); navStack.add(rootPath); currentPath = rootPath }, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = { navStack.clear(); navStack.add(rootPath); currentPath = rootPath }, modifier = Modifier.size(40.dp)) {
                         Icon(Icons.Default.Home, null, tint = if (currentPath == rootPath) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     }
                     if (navStack.size > 1) {
-                        IconButton(onClick = { navStack.removeAt(navStack.lastIndex); currentPath = navStack.last() }, modifier = Modifier.size(32.dp)) {
+                        IconButton(onClick = { navStack.removeAt(navStack.lastIndex); currentPath = navStack.last() }, modifier = Modifier.size(40.dp)) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                         }
                     }
                     val breadcrumbScroll = rememberScrollState()
                     Row(Modifier.weight(1f).horizontalScroll(breadcrumbScroll).padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         val parts = currentPath.removePrefix(rootPath).split("/").filter { it.isNotBlank() }
-                        Text(if (parts.isEmpty()) "Interner Speicher" else parts.joinToString(" › "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        Text(if (parts.isEmpty()) stringResource(R.string.internal_storage) else parts.joinToString(" › "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     }
-                    IconButton(onClick = { pendingCreateFolder = true }, modifier = Modifier.size(28.dp)) {
+                    IconButton(onClick = { pendingCreateFolder = true }, modifier = Modifier.size(40.dp)) {
                         Icon(Icons.Default.CreateNewFolder, stringResource(R.string.new_folder), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     }
                 }

@@ -252,7 +252,7 @@ private fun AnalysisCard(item: AnalysisResult, isSelected: Boolean, onClick: () 
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                IconButton(onClick = onView, modifier = Modifier.size(28.dp)) {
+                IconButton(onClick = onView, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Default.Visibility, stringResource(R.string.cd_preview), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.width(4.dp))
@@ -271,7 +271,7 @@ private fun AnalysisCard(item: AnalysisResult, isSelected: Boolean, onClick: () 
                 }
             }
             if (item.wastedBytes > 0) {
-                Text("≈ ${formatBytes(item.wastedBytes)} verschwendet", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(top = 2.dp))
+                Text(stringResource(R.string.wasted_space_approx, formatBytes(item.wastedBytes)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(top = 2.dp))
             }
         }
     }

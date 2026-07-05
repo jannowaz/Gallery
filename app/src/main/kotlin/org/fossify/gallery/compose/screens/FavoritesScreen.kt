@@ -1,5 +1,6 @@
 package org.fossify.gallery.compose.screens
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,7 +31,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -69,47 +69,58 @@ fun FavoritesScreen(
     val ctx = LocalContext.current
     val repo = LocalMediaRepository.current
     var pinTarget by remember { mutableStateOf<AlbumGridItem?>(null) }
-    var favoriteMedia by remember { mutableStateOf<List<Medium>>(emptyList()) }
-    var favoriteDirs by remember { mutableStateOf<List<Directory>>(emptyList()) }
-    var refreshTrigger by remember { mutableIntStateOf(0) }
+    // Seed from the repo-level cache instead of empty lists - the whole FavoritesScreen composable is
+    // disposed and recreated whenever the user opens a photo (navigates to Viewer) and comes back, and
+    // without this the favorites/dirs queries reran from scratch on every single round trip.
+    val cached = repo.getFavoritesCached()
+    var favoriteMedia by remember { mutableStateOf(cached?.first ?: emptyList()) }
+    var favoriteDirs by remember { mutableStateOf(cached?.second ?: emptyList()) }
+    // Only true before the very first load ever completes (cache still null) - otherwise a stale
+    // "no favorites" EmptyState would flash for a moment before the real, populated grid replaces it.
+    var isLoading by remember { mutableStateOf(cached == null) }
 
-    LaunchedEffect(Unit) {
-        org.fossify.gallery.helpers.RefreshBus.events.collect { refreshTrigger++ }
+    suspend fun reload() {
+        val (media, dirs) = withContext(Dispatchers.IO) { repo.refreshFavoritesCache() }
+        favoriteMedia = media
+        favoriteDirs = dirs
+        isLoading = false
     }
 
-    LaunchedEffect(refreshTrigger) {
-        favoriteMedia = withContext(Dispatchers.IO) {
-            repo.getFavorites()
-        }
-        favoriteDirs = withContext(Dispatchers.IO) {
-            try {
-                val paths = ctx.config.favoriteFolders.toList()
-                if (paths.isEmpty()) emptyList()
-                else repo.getAllDirectories().filter { it.path in paths }
-            } catch (_: Exception) { emptyList() }
-        }
+    LaunchedEffect(Unit) {
+        if (repo.getFavoritesCached() == null) reload()
+    }
+
+    LaunchedEffect(Unit) {
+        org.fossify.gallery.helpers.RefreshBus.events.collect { reload() }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        if (favoriteMedia.isEmpty() && favoriteDirs.isEmpty()) {
-            EmptyState(Icons.Default.Star, stringResource(R.string.no_favorites), subtitle = stringResource(R.string.no_favorites_hint))
-        } else {
-            Column(Modifier.fillMaxSize().padding(8.dp)) {
-                if (favoriteDirs.isNotEmpty()) {
-                    Text(stringResource(R.string.folders), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                    LibraryAlbumGrid(
-                        items = favoriteDirs.map { AlbumGridItem(key = it.path, name = it.name, thumbnailPath = it.tmb, count = it.mediaCnt) },
-                        viewSettings = viewSettings,
-                        onClick = { onFolderClick(it.key) },
-                        onLongClick = { pinTarget = it },
-                        modifier = if (favoriteMedia.isEmpty()) Modifier.weight(1f) else Modifier.heightIn(max = 320.dp),
-                        tabIndex = tabIndex,
-                    )
-                    if (favoriteMedia.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                }
-                if (favoriteMedia.isNotEmpty()) {
-                    Text(stringResource(R.string.media), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                    MediaScreen(modifier = Modifier.weight(1f), viewSettings = viewSettings, mediaOverride = favoriteMedia, onNavigateToViewer = onNavigateToViewer, tabIndex = tabIndex)
+        val contentState = when {
+            isLoading -> "loading"
+            favoriteMedia.isEmpty() && favoriteDirs.isEmpty() -> "empty"
+            else -> "content"
+        }
+        Crossfade(targetState = contentState, label = "favoritesContent") { s ->
+            when (s) {
+                "loading" -> MediaSkeleton(columns = viewSettings.columnCount)
+                "empty" -> EmptyState(Icons.Default.Star, stringResource(R.string.no_favorites), subtitle = stringResource(R.string.no_favorites_hint))
+                else -> Column(Modifier.fillMaxSize().padding(8.dp)) {
+                    if (favoriteDirs.isNotEmpty()) {
+                        Text(stringResource(R.string.folders), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                        LibraryAlbumGrid(
+                            items = favoriteDirs.map { AlbumGridItem(key = it.path, name = it.name, thumbnailPath = it.tmb, count = it.mediaCnt) },
+                            viewSettings = viewSettings,
+                            onClick = { onFolderClick(it.key) },
+                            onLongClick = { pinTarget = it },
+                            modifier = if (favoriteMedia.isEmpty()) Modifier.weight(1f) else Modifier.heightIn(max = 320.dp),
+                            tabIndex = tabIndex,
+                        )
+                        if (favoriteMedia.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                    }
+                    if (favoriteMedia.isNotEmpty()) {
+                        Text(stringResource(R.string.media), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                        MediaScreen(modifier = Modifier.weight(1f), viewSettings = viewSettings, mediaOverride = favoriteMedia, onNavigateToViewer = onNavigateToViewer, tabIndex = tabIndex)
+                    }
                 }
             }
         }

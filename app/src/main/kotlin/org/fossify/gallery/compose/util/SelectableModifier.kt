@@ -14,7 +14,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 
 @Stable
 class SelectionDragState {
@@ -65,9 +67,10 @@ fun Modifier.selectableItem(
     onSwipeToSelect: () -> Unit = {},
     interactionSource: MutableInteractionSource? = null,
 ): Modifier = composed {
+    val haptic = LocalHapticFeedback.current
     this.combinedClickable(
         onClick = onClick,
-        onLongClick = onLongClick,
+        onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLongClick() },
         interactionSource = interactionSource,
         indication = androidx.compose.foundation.LocalIndication.current
     )
@@ -78,37 +81,49 @@ fun Modifier.dragSelectionGesture(
     gridState: LazyGridState? = null,
     staggeredGridState: LazyStaggeredGridState? = null,
     onSelectPath: (String) -> Unit,
-): Modifier = pointerInput(gridState, staggeredGridState) {
-    val edgeThreshold = 80f
+): Modifier = composed {
+    val haptic = LocalHapticFeedback.current
+    this.pointerInput(gridState, staggeredGridState) {
+        val edgeThreshold = 80f
+        // Tracks which paths this drag session has already fired a tick for, so extending the drag
+        // over an already-selected item (or jittering back and forth near the boundary) doesn't
+        // re-trigger the tick - only a path newly entering the selection gets one.
+        val tickedPaths = mutableSetOf<String>()
 
-    detectDragGesturesAfterLongPress(
-        onDragStart = { offset ->
-            state.isDragging = true
-            state.dragBounds = Rect(offset, offset)
-            val item = state.findItemAt(offset)
-            state.anchorPath = item
-            item?.let { onSelectPath(it) }
-        },
-        onDrag = { change, _ ->
-            change.consume()
-            val prev = state.dragBounds ?: return@detectDragGesturesAfterLongPress
-            state.dragBounds = Rect(
-                left = minOf(prev.left, change.position.x),
-                top = minOf(prev.top, change.position.y),
-                right = maxOf(prev.right, change.position.x),
-                bottom = maxOf(prev.bottom, change.position.y),
-            )
-            state.getItemsInDragArea().forEach { onSelectPath(it) }
+        detectDragGesturesAfterLongPress(
+            onDragStart = { offset ->
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                tickedPaths.clear()
+                state.isDragging = true
+                state.dragBounds = Rect(offset, offset)
+                val item = state.findItemAt(offset)
+                state.anchorPath = item
+                item?.let { tickedPaths.add(it); onSelectPath(it) }
+            },
+            onDrag = { change, _ ->
+                change.consume()
+                val prev = state.dragBounds ?: return@detectDragGesturesAfterLongPress
+                state.dragBounds = Rect(
+                    left = minOf(prev.left, change.position.x),
+                    top = minOf(prev.top, change.position.y),
+                    right = maxOf(prev.right, change.position.x),
+                    bottom = maxOf(prev.bottom, change.position.y),
+                )
+                state.getItemsInDragArea().forEach { path ->
+                    if (tickedPaths.add(path)) haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                    onSelectPath(path)
+                }
 
-            val containerHeight = size.height.toFloat()
-            val posY = change.position.y
-            state.autoScrollSpeed = when {
-                posY < edgeThreshold -> ((posY - edgeThreshold) / edgeThreshold * 4f).coerceIn(-4f, 0f)
-                posY > containerHeight - edgeThreshold -> ((posY - (containerHeight - edgeThreshold)) / edgeThreshold * 4f).coerceIn(0f, 4f)
-                else -> 0f
-            }
-        },
-        onDragEnd = { state.reset() },
-        onDragCancel = { state.reset() },
-    )
+                val containerHeight = size.height.toFloat()
+                val posY = change.position.y
+                state.autoScrollSpeed = when {
+                    posY < edgeThreshold -> ((posY - edgeThreshold) / edgeThreshold * 4f).coerceIn(-4f, 0f)
+                    posY > containerHeight - edgeThreshold -> ((posY - (containerHeight - edgeThreshold)) / edgeThreshold * 4f).coerceIn(0f, 4f)
+                    else -> 0f
+                }
+            },
+            onDragEnd = { state.reset() },
+            onDragCancel = { state.reset() },
+        )
+    }
 }

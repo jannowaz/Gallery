@@ -50,3 +50,31 @@ val md_theme_dark_onSurface = Color(0xFFE8E2D0)
 val md_theme_dark_surfaceVariant = Color(0xFF4A4639)
 val md_theme_dark_onSurfaceVariant = Color(0xFFCCC6B5)
 val md_theme_dark_outlineVariant = Color(0xFF49453A)
+
+// Surface-container tonal steps and inverse roles, completing the custom scheme above. Without
+// these, Material3's lightColorScheme()/darkColorScheme() factories silently fall back to the
+// library's baseline (unrelated) palette for any role not passed explicitly - visible as an
+// off-hue NavigationBar/TopAppBar/UndoBar whenever dynamic color is off. Tones are hand-picked to
+// sit in the same warm-neutral family as the existing surface/surfaceVariant/background colors
+// above rather than computed from the true HCT tonal-palette algorithm.
+val md_theme_light_surfaceDim = Color(0xFFDED8CB)
+val md_theme_light_surfaceBright = Color(0xFFFFFBFF)
+val md_theme_light_surfaceContainerLowest = Color(0xFFFFFFFF)
+val md_theme_light_surfaceContainerLow = Color(0xFFF8F2E5)
+val md_theme_light_surfaceContainer = Color(0xFFF2ECDF)
+val md_theme_light_surfaceContainerHigh = Color(0xFFECE6D9)
+val md_theme_light_surfaceContainerHighest = Color(0xFFE6E0D3)
+val md_theme_light_inverseSurface = Color(0xFF322F27)
+val md_theme_light_inverseOnSurface = Color(0xFFF5EFDF)
+val md_theme_light_inversePrimary = md_theme_dark_primary
+
+val md_theme_dark_surfaceDim = Color(0xFF1D1B16)
+val md_theme_dark_surfaceBright = Color(0xFF433F35)
+val md_theme_dark_surfaceContainerLowest = Color(0xFF120F0A)
+val md_theme_dark_surfaceContainerLow = Color(0xFF26231D)
+val md_theme_dark_surfaceContainer = Color(0xFF2A2721)
+val md_theme_dark_surfaceContainerHigh = Color(0xFF34302A)
+val md_theme_dark_surfaceContainerHighest = Color(0xFF3F3B34)
+val md_theme_dark_inverseSurface = Color(0xFFE8E2D0)
+val md_theme_dark_inverseOnSurface = Color(0xFF322F27)
+val md_theme_dark_inversePrimary = md_theme_light_primary

@@ -36,7 +36,6 @@ import org.fossify.commons.models.FAQItem
 import org.fossify.commons.models.FileDirItem
 import org.fossify.gallery.BuildConfig
 import org.fossify.gallery.R
-import org.fossify.gallery.activities.MediaActivity
 import org.fossify.gallery.activities.ComposeSettingsActivity
 import org.fossify.gallery.activities.SimpleActivity
 import org.fossify.gallery.activities.VideoPlayerActivity
@@ -44,6 +43,7 @@ import org.fossify.gallery.dialogs.AllFilesPermissionDialog
 import org.fossify.gallery.dialogs.PickDirectoryDialog
 import org.fossify.gallery.dialogs.ResizeMultipleImagesDialog
 import org.fossify.gallery.dialogs.ResizeWithPathDialog
+import org.fossify.gallery.activities.MediaActivity
 import org.fossify.gallery.helpers.DIRECTORY
 import org.fossify.gallery.helpers.RECYCLE_BIN
 import org.fossify.gallery.helpers.TEMP_FOLDER_NAME

@@ -68,6 +68,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.compose.util.sharedElementKey
 import org.fossify.gallery.compose.theme.RatingStarColor
 import kotlin.math.roundToInt
 
@@ -265,7 +266,7 @@ private fun DuplicateGroupCard(
             group.files.forEachIndexed { index, file ->
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(64.dp)) {
-                        GalleryImage(path = file.path, contentDescription = file.name, modifier = Modifier.size(64.dp).clip(RoundedCornerShape(Radius.sm)))
+                        GalleryImage(path = file.path, contentDescription = file.name, modifier = Modifier.size(64.dp).clip(RoundedCornerShape(Radius.sm)).sharedElementKey("media_${file.path}"))
                         if (file.mediaType == 2) {
                             Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
                                 Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(24.dp))
@@ -307,7 +308,7 @@ private fun DuplicateGroupCard(
                             }
                         }
                     }
-                    IconButton(onClick = { onView(file.path) }, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = { onView(file.path) }, modifier = Modifier.size(40.dp)) {
                         Icon(Icons.Default.Visibility, stringResource(R.string.cd_preview), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     }
                     Checkbox(checked = file.path in selected, onCheckedChange = { onToggle(file.path) })

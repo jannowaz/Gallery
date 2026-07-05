@@ -79,9 +79,14 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
         _state.update { it.copy(lastViewedPath = "") }
     }
 
+    // onComplete only fires on this ViewModel's actual first-ever run (before dbInitialized flips to
+    // true) - MainScreen calls this again on every Viewer round trip since it's just a LaunchedEffect(Unit)
+    // in a composable that gets disposed and recreated, and re-invoking onComplete every time would
+    // trigger a real MediaStore sync + bounded DB query (MediaViewModel.silentRefresh) on every single
+    // round trip. Real subsequent changes are already covered by RefreshBus (see init{} above).
     fun initializeDatabase(onComplete: (() -> Unit)? = null) {
         val s = _state.value
-        if (s.dbInitialized) { onComplete?.invoke(); return }
+        if (s.dbInitialized) return
         viewModelScope.launch {
             val ctx = getApplication<Application>()
             withContext(Dispatchers.IO) {

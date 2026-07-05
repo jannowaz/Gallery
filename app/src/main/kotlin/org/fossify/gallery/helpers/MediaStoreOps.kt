@@ -153,4 +153,37 @@ object MediaStoreOps {
         } catch (_: Exception) { }
         return out
     }
+
+    // In-memory cache of the last mediaEntriesUnder() result, kept alive at the process level (not
+    // tied to any composable's remember{} scope). ExplorerScreen's whole composition is disposed and
+    // recreated whenever the user opens the Viewer (a separate NavHost destination) and navigates
+    // back, which previously reset a composable-scoped cache to null and forced a full-device
+    // MediaStore re-query every single time - the reported "Explorer reloads every time" slowness.
+    @Volatile private var cachedRoot: String? = null
+    @Volatile private var cachedEntries: List<MediaEntry>? = null
+
+    fun cachedEntriesUnder(rootPath: String): List<MediaEntry>? {
+        val root = rootPath.trimEnd('/')
+        return cachedEntries?.takeIf { cachedRoot == root }
+    }
+
+    /** Re-queries MediaStore and refreshes the cache used by [cachedEntriesUnder].
+     *
+     * A local-Room-DB-backed variant (via a `full_path LIKE` query against the already-synced
+     * `media` table) was tried here instead of this raw ContentResolver scan, on the theory that
+     * `media.full_path`'s index (see Medium.kt) would make it a range scan instead of a linear scan.
+     * Measured on-device on a ~200k-item library it was consistently SLOWER (7.5-10.3s vs ~6s for
+     * this version, even after forcing the index with `INDEXED BY` once EXPLAIN QUERY PLAN showed
+     * SQLite's planner was picking a different index by default) - so it was reverted. Left as a
+     * cautionary note: a query that looks like a clear win on paper (and even checks out via
+     * EXPLAIN QUERY PLAN / a desktop sqlite3 sanity check) still needs an actual on-device
+     * measurement before assuming it's faster.
+     */
+    fun refreshEntriesUnder(context: Context, rootPath: String): List<MediaEntry> {
+        val root = rootPath.trimEnd('/')
+        val fresh = mediaEntriesUnder(context, root)
+        cachedRoot = root
+        cachedEntries = fresh
+        return fresh
+    }
 }

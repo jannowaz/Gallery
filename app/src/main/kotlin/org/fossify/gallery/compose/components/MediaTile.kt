@@ -52,6 +52,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.graphics.graphicsLayer
 import org.fossify.gallery.compose.screens.VideoThumbnail
 import org.fossify.gallery.compose.theme.AppMotion
+import org.fossify.gallery.compose.theme.FavoriteColor
 import org.fossify.gallery.compose.theme.RatingStarColor
 import org.fossify.gallery.compose.theme.Scrim
 import org.fossify.gallery.compose.util.selectableItem
@@ -88,7 +89,6 @@ fun MediaTile(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onSwipeToSelect: () -> Unit,
-    onPreview: () -> Unit,
     onBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -159,12 +159,12 @@ fun MediaTile(
                 }
                 if (isVideo && durationText.isNotEmpty()) {
                     Box(Modifier.align(Alignment.BottomEnd).padding(4.dp).background(Scrim.a60, RoundedCornerShape(Radius.xs)).padding(horizontal = 4.dp, vertical = 1.dp)) {
-                        Text(durationText, style = MaterialTheme.typography.labelSmall, color = Color.White, fontSize = 10.sp)
+                        Text(durationText, style = MaterialTheme.typography.labelSmall, color = Color.White, fontSize = 11.sp)
                     }
                 }
                 if (markFavorite && medium.isFavorite) {
                     Box(Modifier.align(Alignment.BottomStart).padding(4.dp).background(Scrim.a50, RoundedCornerShape(Radius.xs)).padding(3.dp)) {
-                        Icon(Icons.Default.Favorite, null, tint = Color(0xFFE91E63), modifier = Modifier.size(11.dp))
+                        Icon(Icons.Default.Favorite, null, tint = FavoriteColor, modifier = Modifier.size(11.dp))
                     }
                 }
                 if (showFileType && !isSelectionMode && medium.type in intArrayOf(TYPE_GIFS, TYPE_RAWS, TYPE_SVGS)) {
@@ -176,7 +176,7 @@ fun MediaTile(
                         }
                     )
                     Box(Modifier.align(Alignment.TopStart).padding(4.dp).background(Scrim.a50, RoundedCornerShape(Radius.xs)).padding(horizontal = 4.dp, vertical = 1.dp)) {
-                        Text(typeLabel, style = MaterialTheme.typography.labelSmall, color = Color.White, fontSize = 9.sp)
+                        Text(typeLabel, style = MaterialTheme.typography.labelSmall, color = Color.White, fontSize = 10.sp)
                     }
                 }
             }
@@ -191,7 +191,10 @@ fun MediaTile(
                         Box(Modifier.size(18.dp).background(Color.White, CircleShape))
                         Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                     } else {
-                        Box(Modifier.matchParentSize().background(Scrim.a20, CircleShape))
+                        // a20 read as near-invisible behind bright photos (sky, snow, ...) - the
+                        // white ring had almost nothing to contrast against. a35 keeps the badge
+                        // legible on any thumbnail without turning it into a solid dark disc.
+                        Box(Modifier.matchParentSize().background(Scrim.a35, CircleShape))
                         Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(22.dp))
                     }
                 }

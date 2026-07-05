@@ -1,4 +1,5 @@
 package org.fossify.gallery.compose.screens.viewer
+import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.Radius
 import org.fossify.gallery.compose.theme.Scrim
 
@@ -164,7 +165,7 @@ fun Modifier.zoomable(state: ZoomState, onSingleTap: () -> Unit): Modifier = thi
 fun ZoomMinimap(state: ZoomState, modifier: Modifier = Modifier, boxWidth: Dp = 56.dp) {
     val size = state.viewSize
     val visible = state.isZoomed && state.interacting && size.width > 0 && size.height > 0
-    AnimatedVisibility(visible = visible, modifier = modifier, enter = fadeIn(), exit = fadeOut()) {
+    AnimatedVisibility(visible = visible, modifier = modifier, enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium)) {
         val aspect = (size.width / size.height.toFloat()).coerceAtLeast(0.01f)
         val boxH = boxWidth / aspect
         val scale = state.scale
