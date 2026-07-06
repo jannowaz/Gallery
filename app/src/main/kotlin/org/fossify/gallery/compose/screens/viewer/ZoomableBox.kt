@@ -69,6 +69,11 @@ class ZoomState(private val scope: CoroutineScope) {
 
     private val zoomLevels = listOf(1f, 2f, 4f)
 
+    /** What [cycleZoom] would zoom to next, without actually triggering it - lets a caller decide
+     * whether an imminent double-tap is zooming in (e.g. to switch to a full-resolution tiled
+     * renderer) or back out to 1x, before the animation actually starts. */
+    fun peekNextZoomLevel(): Float = zoomLevels.firstOrNull { it > scale + 0.01f } ?: 1f
+
     private fun clampOffset(candidate: Offset, s: Float, size: IntSize): Offset {
         val w = size.width.toFloat(); val h = size.height.toFloat()
         var dispW = w; var dispH = h
@@ -144,8 +149,19 @@ fun rememberZoomState(): ZoomState {
  * `detectTapGestures` alongside this modifier, so a double-tap fired both this zoom-cycle and the
  * caller's own seek handler at once, and its "allow video gestures" setting only gated the
  * caller's handler, not this one - a real, reproducible double-fire bug, not just untidy code.
+ *
+ * @param onZoomGestureStart fires once, the moment a second finger joins while at rest (scale 1) -
+ * i.e. the start of a pinch-to-zoom. Used by ImagePage to hand off to a full-resolution tiled
+ * renderer for the rest of the gesture; the initial pinch delta on the frame it fires is not
+ * itself applied to [state] (that renderer takes over from here), so callers that pass this must
+ * actually take over the gesture, or the first pinch will silently do nothing.
  */
-fun Modifier.zoomable(state: ZoomState, onSingleTap: () -> Unit, onDoubleTap: ((Offset, IntSize) -> Unit)? = null): Modifier = this
+fun Modifier.zoomable(
+    state: ZoomState,
+    onSingleTap: () -> Unit,
+    onDoubleTap: ((Offset, IntSize) -> Unit)? = null,
+    onZoomGestureStart: (() -> Unit)? = null,
+): Modifier = this
     .pointerInput(onDoubleTap) {
         detectTapGestures(
             onTap = { onSingleTap() },
@@ -155,12 +171,14 @@ fun Modifier.zoomable(state: ZoomState, onSingleTap: () -> Unit, onDoubleTap: ((
     .pointerInput(Unit) {
         awaitEachGesture {
             awaitFirstDown(requireUnconsumed = false)
+            var zoomStartNotified = false
             do {
                 val event = awaitPointerEvent()
                 val pressedCount = event.changes.count { it.pressed }
                 // At scale 1 a single finger must pass through to the pager; only handle
                 // transforms when already zoomed or when at least two fingers are down (pinch).
                 if (state.isZoomed || pressedCount >= 2) {
+                    if (!state.isZoomed && !zoomStartNotified) { zoomStartNotified = true; onZoomGestureStart?.invoke() }
                     val zoom = event.calculateZoom()
                     val pan = event.calculatePan()
                     if (zoom != 1f || pan != androidx.compose.ui.geometry.Offset.Zero) {
