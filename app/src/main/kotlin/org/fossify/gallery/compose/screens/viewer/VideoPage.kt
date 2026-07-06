@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCut
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.VolumeOff
@@ -59,8 +60,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -99,14 +98,20 @@ fun VideoPage(
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val zoom = rememberZoomState()
-    var isPlaying by remember { mutableStateOf(ctx.config.autoplayVideos) }
-    var playbackSpeed by remember { mutableFloatStateOf(1f) }
+    // All keyed on path (not just frameCache/positionMs) - the Viewer's pager can reuse the same
+    // slot/index for a different video after one is deleted (no key= on the pager itself, see
+    // ViewerScreen.kt), and without this these UI states (mute/speed/trim/...) used to carry over
+    // from the deleted video's session onto whatever now occupies that slot.
+    var isPlaying by remember(path) { mutableStateOf(ctx.config.autoplayVideos) }
+    var playbackSpeed by remember(path) { mutableFloatStateOf(1f) }
     val speeds = listOf(0.5f, 1f, 1.5f, 2f, 3f)
-    var backgroundAudio by remember { mutableStateOf(false) }
-    var isMuted by remember { mutableStateOf(ctx.config.muteVideos) }
-    var trimMode by remember { mutableStateOf(false) }
-    var trimStartMs by remember { mutableFloatStateOf(0f) }
-    var trimEndMs by remember { mutableFloatStateOf(-1f) }
+    var backgroundAudio by remember(path) { mutableStateOf(false) }
+    var isMuted by remember(path) { mutableStateOf(ctx.config.muteVideos) }
+    var trimMode by remember(path) { mutableStateOf(false) }
+    var trimStartMs by remember(path) { mutableFloatStateOf(0f) }
+    var trimEndMs by remember(path) { mutableFloatStateOf(-1f) }
+    var playerError by remember(path) { mutableStateOf<androidx.media3.common.PlaybackException?>(null) }
+    var isBuffering by remember(path) { mutableStateOf(false) }
 
     var scrubFraction by remember { mutableFloatStateOf(-1f) }
     var frameCache by remember(path) { mutableStateOf<List<Bitmap>>(emptyList()) }
@@ -161,6 +166,16 @@ fun VideoPage(
 
     val player = remember(path) {
         ExoPlayer.Builder(ctx).build().apply {
+            // `true` here is what actually enables Media3's built-in audio-focus handling (duck on
+            // transient loss, pause on an incoming call/another player taking focus, resume after) -
+            // without it the player never requests focus at all, so it plays right through calls.
+            setAudioAttributes(
+                androidx.media3.common.AudioAttributes.Builder()
+                    .setUsage(androidx.media3.common.C.USAGE_MEDIA)
+                    .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .build(),
+                true,
+            )
             setMediaItem(MediaItem.fromUri(Uri.fromFile(File(path))))
             repeatMode = if (ctx.config.loopVideos) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
             volume = if (ctx.config.muteVideos) 0f else 1f
@@ -183,7 +198,11 @@ fun VideoPage(
         onDispose {
             player.playWhenReady = false
             player.pause()
-            if (ctx.config.rememberLastVideoPosition) ctx.config.saveLastVideoPosition(path, player.currentPosition.toInt())
+            // Don't save a position that's at (or within half a second of) the very end - otherwise
+            // reopening a video that was watched to completion immediately re-seeks to the last
+            // frame and looks stuck/ended instead of starting over.
+            val nearEnd = player.duration > 0 && player.currentPosition >= player.duration - 500
+            if (ctx.config.rememberLastVideoPosition && !nearEnd) ctx.config.saveLastVideoPosition(path, player.currentPosition.toInt())
             player.release()
         }
     }
@@ -197,7 +216,15 @@ fun VideoPage(
         onDispose { lifecycleOwner?.lifecycle?.removeObserver(obs) }
     }
 
-    val listener = remember { object : Player.Listener { override fun onIsPlayingChanged(p: Boolean) { isPlaying = p } } }
+    val listener = remember {
+        object : Player.Listener {
+            override fun onIsPlayingChanged(p: Boolean) { isPlaying = p }
+            override fun onPlaybackStateChanged(state: Int) { isBuffering = state == Player.STATE_BUFFERING }
+            // Previously unhandled entirely - a corrupt file or unsupported codec left the player
+            // silently stuck (no error toast, no icon, controls that no longer did anything).
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) { playerError = error }
+        }
+    }
     DisposableEffect(player) {
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
@@ -220,21 +247,32 @@ fun VideoPage(
                 scaleX = zoom.scale; scaleY = zoom.scale
                 translationX = zoom.offset.x; translationY = zoom.offset.y
             }
-            .pointerInput(ctx.config.allowVideoGestures) {
-                detectTapGestures(
-                    onTap = { onToggleUi() },
-                    onDoubleTap = if (ctx.config.allowVideoGestures) { pos: androidx.compose.ui.geometry.Offset ->
-                        val w = size.width
-                        if (pos.x < w / 3f) player.seekTo((player.currentPosition - 10000).coerceAtLeast(0))
-                        else if (pos.x > w * 2 / 3f) player.seekTo((player.currentPosition + 10000).coerceAtMost(player.duration))
-                        else zoom.cycleZoom(pos, size)
-                    } else null
-                )
-            }
-            .zoomable(zoom, onSingleTap = { onToggleUi() })
+            // Single onDoubleTap detector (see zoomable()'s doc) - seeks on the left/right third
+            // when video gestures are allowed, otherwise every double-tap just zooms.
+            .zoomable(zoom, onSingleTap = { onToggleUi() }, onDoubleTap = if (ctx.config.allowVideoGestures) { pos, sz ->
+                val w = sz.width
+                if (pos.x < w / 3f) { player.seekTo((player.currentPosition - 10000).coerceAtLeast(0)); onInteract() }
+                else if (pos.x > w * 2 / 3f) { player.seekTo((player.currentPosition + 10000).coerceAtMost(player.duration)); onInteract() }
+                else zoom.cycleZoom(pos, sz)
+            } else null)
         )
 
         ZoomMinimap(zoom, modifier = Modifier.align(Alignment.TopEnd).padding(top = 72.dp, end = 12.dp))
+
+        if (isBuffering && playerError == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                androidx.compose.material3.CircularProgressIndicator(color = Color.White)
+            }
+        }
+
+        playerError?.let {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.ErrorOutline, null, tint = Color.White, modifier = Modifier.size(48.dp))
+                    Text(stringResource(R.string.error_loading_media), color = Color.White, modifier = Modifier.padding(top = 12.dp))
+                }
+            }
+        }
 
         AnimatedVisibility(visible = showUi, enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium)) {
             Box(Modifier.fillMaxSize()) {
@@ -290,15 +328,16 @@ fun VideoPage(
                     // Trim bar
                     if (trimMode) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { trimStartMs = player.currentPosition.toFloat() }) {
+                            TextButton(onClick = { trimStartMs = player.currentPosition.toFloat(); onInteract() }) {
                                 Text(stringResource(R.string.trim_start).format((trimStartMs / 1000).toInt() / 60, (trimStartMs / 1000).toInt() % 60), color = TrimStartColor, style = MaterialTheme.typography.labelSmall)
                             }
                             Spacer(Modifier.weight(1f))
-                            TextButton(onClick = { trimEndMs = player.currentPosition.toFloat() }) {
+                            TextButton(onClick = { trimEndMs = player.currentPosition.toFloat(); onInteract() }) {
                                 Text(stringResource(R.string.trim_end).format((trimEndMs / 1000).toInt() / 60, (trimEndMs / 1000).toInt() % 60), color = TrimEndColor, style = MaterialTheme.typography.labelSmall)
                             }
                             Spacer(Modifier.weight(1f))
                             TextButton(onClick = {
+                                onInteract()
                                 val start = trimStartMs.toLong() * 1000; val end = trimEndMs.toLong() * 1000
                                 scope.launch(Dispatchers.IO) {
                                     try {

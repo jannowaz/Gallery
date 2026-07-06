@@ -183,6 +183,7 @@ import org.fossify.gallery.compose.theme.LocalSpacing
 import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.extensions.batchJobItemDB
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.helpers.expandTagsWithDescendants
 import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.mediaTagDB
@@ -290,183 +291,6 @@ class ComposeExplorerActivity : ComponentActivity() {
         return perms.toTypedArray()
     }
 }
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
-@Composable
-private fun TagBrowserSheet(
-    ctx: android.content.Context,
-    mainVM: ExplorerViewModel,
-    onDismiss: () -> Unit,
-) {
-    val scope = rememberCoroutineScope()
-    val repo = LocalMediaRepository.current
-    // Seed from the repo-level cache instead of an empty map - this sheet is a fresh composable every
-    // time it's opened, and without this the full media_tags scan reran from scratch on every open.
-    var allTags by remember { mutableStateOf(repo.getTagsWithPathsCached() ?: emptyMap()) }
-    var scanning by remember { mutableStateOf(false) }
-    var deleteConfirmTags by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var mergeTargetTag by remember { mutableStateOf<String?>(null) }
-    var pendingParentAssign by remember { mutableStateOf<Set<String>?>(null) }
-    var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var tagSearchQuery by remember { mutableStateOf("") }
-    var refreshTrigger by remember { mutableIntStateOf(0) }
-    val tagsRemovedFormat = stringResource(R.string.tags_removed_count)
-
-    LaunchedEffect(refreshTrigger) {
-        if (refreshTrigger == 0 && repo.getTagsWithPathsCached() != null) return@LaunchedEffect
-        scanning = true
-        withContext(Dispatchers.IO) {
-            val tags = try { repo.refreshTagsWithPathsCache() } catch (_: Exception) { emptyMap() }
-            withContext(Dispatchers.Main) { allTags = tags.entries.sortedByDescending { it.value.size }.associate { it.key to it.value }; scanning = false }
-        }
-    }
-    // Without this, a tag added/removed elsewhere (MediaScreen's quick-tag row, the Viewer's tag
-    // editor) while this sheet is open never invalidated its frozen snapshot of allTags.
-    LaunchedEffect(Unit) {
-        RefreshBus.events.collect { refreshTrigger++ }
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
-        containerColor = MaterialTheme.colorScheme.surface,
-    ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.tags_count_paren, allTags.size), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, stringResource(R.string.cd_close)) }
-            }
-            OutlinedTextField(
-                value = tagSearchQuery,
-                onValueChange = { tagSearchQuery = it },
-                placeholder = { Text(stringResource(R.string.search_tag_hint)) },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Search, stringResource(R.string.cd_search), modifier = Modifier.size(18.dp)) },
-                trailingIcon = { if (tagSearchQuery.isNotEmpty()) IconButton(onClick = { tagSearchQuery = "" }, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Close, stringResource(R.string.clear_field), modifier = Modifier.size(16.dp)) } },
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = MaterialTheme.typography.bodyMedium,
-                colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
-                shape = RoundedCornerShape(Radius.md),
-            )
-            Spacer(Modifier.height(8.dp))
-            // Crossfade instead of an instant swap - see MediaScreen's paged content for why.
-            val tagSheetContentState = if (scanning) "loading" else if (allTags.isEmpty()) "empty" else "content"
-            Crossfade(targetState = tagSheetContentState, label = "tagSheetContent") { tcs ->
-            if (tcs == "loading") {
-                Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            } else if (tcs == "empty") {
-                Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
-                    Text(stringResource(R.string.no_tags_found), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            } else {
-                // Explicit Column - this "content" state now lives inside Crossfade's Box slot
-                // instead of being a direct child of the outer Column, so without this the tag list
-                // and the action-buttons row below it would overlay instead of stacking vertically.
-                Column {
-                val filteredTags = if (tagSearchQuery.isBlank()) allTags.entries.toList() else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
-                LazyColumn(Modifier.heightIn(max = if (tagSearchQuery.isNotBlank()) 600.dp else 480.dp)) {
-                    items(filteredTags, key = { it.key }) { (tag, paths) ->
-                        val thumbPath = paths.firstOrNull()
-                        val isVideo = thumbPath?.let { it.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS } ?: false
-                        val isSelected = tag in selectedTags
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(
-                                onClick = {
-                                    onDismiss()
-                                    mainVM.setPreFilterTab(1)
-                                    mainVM.setTagFilter(paths.toSet(), tag)
-                                    mainVM.setRatingFilter(0)
-                                    mainVM.setPathFilter(null)
-                                    mainVM.setSelectedTab(0)
-                                },
-                                onLongClick = { selectedTags = if (isSelected) selectedTags - tag else selectedTags + tag }
-                            ),
-                            shape = RoundedCornerShape(Radius.md),
-                            colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                        ) {
-                            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(52.dp).clip(RoundedCornerShape(Radius.sm)).background(MaterialTheme.colorScheme.surface)) {
-                                    if (thumbPath != null && File(thumbPath).exists()) {
-                                        if (isVideo) {
-                                            VideoThumbnail(videoPath = thumbPath, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                        } else {
-                                            GalleryImage(path = thumbPath, contentDescription = tag, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 16.dp)
-                                        }
-                                    } else {
-                                        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                                            Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
-                                        }
-                                    }
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(tag, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(stringResource(R.string.files_count, paths.size), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                if (isSelected) {
-                                    Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                                }
-                            }
-                        }
-                    }
-                }
-                if (selectedTags.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Surface(onClick = {
-                            val tagPaths = selectedTags.flatMap { allTags[it] ?: emptyList() }.toSet()
-                            onDismiss()
-                            mainVM.setTagFilter(tagPaths, selectedTags.joinToString(", "))
-                            mainVM.setRatingFilter(0)
-                            mainVM.setPathFilter(null)
-                            mainVM.setSelectedTab(0)
-                        }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f)) {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.filter_action), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimary) }
-                        }
-                        Surface(onClick = { deleteConfirmTags = selectedTags }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.weight(1f)) {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(org.fossify.commons.R.string.delete), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer) }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-                }
-            }
-            }
-        }
-    }
-
-    if (deleteConfirmTags.isNotEmpty()) {
-        val tagsToDelete = deleteConfirmTags
-        val totalFiles = tagsToDelete.flatMap { allTags[it] ?: emptyList() }.distinct().size
-        AlertDialog(
-            onDismissRequest = { deleteConfirmTags = emptySet() },
-            title = { Text(if (tagsToDelete.size == 1) "Tag entfernen" else "Tags entfernen") },
-            text = {
-                if (tagsToDelete.size == 1) Text(stringResource(R.string.remove_tag_confirm, tagsToDelete.first(), totalFiles))
-                else Text(stringResource(R.string.remove_tags_confirm, tagsToDelete.size, tagsToDelete.joinToString(", "), totalFiles))
-            },
-            confirmButton = {
-                val repo = LocalMediaRepository.current
-                TextButton(onClick = {
-                    scope.launch(Dispatchers.IO) {
-                        // repo.removeTag already keeps the XMP file, media_cache and the normalized
-                        // media_tags table in sync per path - no separate cache cleanup pass needed.
-                        tagsToDelete.forEach { tag ->
-                            val pathsForTag = allTags[tag] ?: return@forEach
-                            pathsForTag.forEach { p -> repo.removeTag(p, tag) }
-                        }
-                        withContext(Dispatchers.Main) {
-                            ctx.toast(tagsRemovedFormat.format(tagsToDelete.size), Toast.LENGTH_SHORT)
-                            deleteConfirmTags = emptySet(); refreshTrigger++; selectedTags = emptySet()
-                        }
-                    }
-                }) { Text(stringResource(R.string.action_remove), color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { deleteConfirmTags = emptySet() }) { Text(stringResource(R.string.cancel)) } }
-        )
-    }
-}
 
 private data class NavTab(val index: Int, @androidx.annotation.StringRes val labelRes: Int, val icon: ImageVector)
 
@@ -487,7 +311,10 @@ private fun applyCollection(
     if (coll.tagFilter.isNotBlank()) {
         scope.launch(Dispatchers.IO) {
             val tagNames = coll.tagFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }
-            val tagPaths = try { ctx.mediaTagDB.getPathsForTags(tagNames).toSet() } catch (_: Exception) { emptySet() }
+            // Expand each filter tag to include its descendants, so a Collection filtered on a parent
+            // tag like "Places" also picks up files only tagged with a nested child like "Berlin".
+            val expandedTagNames = expandTagsWithDescendants(tagNames, ctx.config.tagHierarchy)
+            val tagPaths = try { ctx.mediaTagDB.getPathsForTags(expandedTagNames.toList()).toSet() } catch (_: Exception) { emptySet() }
             withContext(Dispatchers.Main) {
                 mainVM.setTagFilter(tagPaths.ifEmpty { null }, coll.tagFilter.takeIf { it.isNotBlank() })
             }
@@ -754,7 +581,6 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
     val searchActive = searchFocused || omniQuery.isNotBlank()
     val closeSearch: () -> Unit = { omniQuery = ""; searchFocused = false; searchFocusManager.clearFocus(); searchKeyboard?.hide() }
     var showRatingBrowser by remember { mutableStateOf(false) }
-    var showTagBrowser by remember { mutableStateOf(false) }
     var isMediaSelectionActive by remember { mutableStateOf(false) }
     // Lets the Explorer tab's own directory-up BackHandler take priority over this screen's
     // tab-switch fallback below - otherwise both handlers are enabled at once while browsing a
@@ -770,9 +596,8 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
         mainVM.initializeDatabase { mainVM.triggerMediaRefresh() }
     }
 
-    BackHandler(enabled = uiState.activeRatingFilter > 0 || uiState.activeTagFilter != null || uiState.activePathFilter != null || showTagBrowser || searchActive || (uiState.selectedTab != 1 && !isMediaSelectionActive && !(uiState.selectedTab == 2 && explorerCanGoUp))) {
+    BackHandler(enabled = uiState.activeRatingFilter > 0 || uiState.activeTagFilter != null || uiState.activePathFilter != null || searchActive || (uiState.selectedTab != 1 && !isMediaSelectionActive && !(uiState.selectedTab == 2 && explorerCanGoUp))) {
         when {
-            showTagBrowser -> showTagBrowser = false
             searchActive -> closeSearch()
             uiState.activeTagFilter != null -> { val backTab = if (uiState.preFilterTab >= 0) uiState.preFilterTab else 1; mainVM.setTagFilter(null, null); mainVM.setSelectedTab(backTab) }
             uiState.activePathFilter != null -> {
@@ -934,14 +759,6 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                 }
             }) { Text(stringResource(R.string.filter_action)) } },
             dismissButton = { TextButton(onClick = { showRatingBrowser = false }) { Text(stringResource(R.string.cd_close)) } }
-        )
-    }
-
-    if (showTagBrowser) {
-        TagBrowserSheet(
-            ctx = ctx,
-            mainVM = mainVM,
-            onDismiss = { showTagBrowser = false },
         )
     }
 }
@@ -1402,7 +1219,12 @@ private fun OmniSearchPanel(
                     if (tagResults.isNotEmpty()) {
                         item { Text(stringResource(R.string.nav_tags), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(vertical = 4.dp)) }
                         items(tagResults.take(8), key = { it.first }) { (tag, cnt) ->
-                            Surface(modifier = Modifier.fillMaxWidth().clickable { onFilterChanged(null, 0, allTags[tag]?.toSet(), tag, 0, 0); onDismiss() }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
+                            Surface(modifier = Modifier.fillMaxWidth().clickable {
+                                // Include descendant tags' paths too, so tapping a parent like "Places"
+                                // also surfaces files only tagged with a nested child like "Berlin".
+                                val paths = expandTagsWithDescendants(setOf(tag), ctx.config.tagHierarchy).flatMap { allTags[it] ?: emptyList() }.toSet()
+                                onFilterChanged(null, 0, paths, tag, 0, 0); onDismiss()
+                            }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
                                 Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
                                     Text(tag, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f)); Text("$cnt", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -1,6 +1,6 @@
 package org.fossify.gallery
 
-import android.graphics.Bitmap
+import android.os.Build
 import android.os.StrictMode
 import coil.ImageLoader
 import coil.ImageLoaderFactory
@@ -35,8 +35,20 @@ class App : FossifyApp(), ImageLoaderFactory {
             }
             .components {
                 add(coil.decode.VideoFrameDecoder.Factory())
+                add(coil.decode.SvgDecoder.Factory())
+                // ImageDecoderDecoder needs API 28's platform ImageDecoder; GifDecoder is the
+                // movie-based fallback for the API 26/27 devices this app's minSdk still covers.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    add(coil.decode.ImageDecoderDecoder.Factory())
+                } else {
+                    add(coil.decode.GifDecoder.Factory())
+                }
             }
-            .bitmapConfig(Bitmap.Config.RGB_565)
+            // No RGB_565 override - it drops the alpha channel entirely, flattening transparent
+            // PNG/WEBP (screenshots, stickers, exported graphics) onto an opaque background. Coil's
+            // default (ARGB_8888) is what actually renders transparency correctly; the size cap on
+            // individual requests (e.g. ImagePage's 2560px viewer request) already bounds per-image
+            // memory regardless of bit depth.
             .crossfade(true)
             .build()
     }

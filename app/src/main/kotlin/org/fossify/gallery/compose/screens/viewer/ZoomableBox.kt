@@ -43,7 +43,6 @@ import kotlin.math.abs
 
 const val ZOOM_MIN = 1f
 const val ZOOM_MAX = 6f
-const val ZOOM_DOUBLE_TAP = 2.5f
 
 class ZoomState(private val scope: CoroutineScope) {
     var scale by mutableFloatStateOf(1f)
@@ -134,11 +133,23 @@ fun rememberZoomState(): ZoomState {
     return remember { ZoomState(scope) }
 }
 
-fun Modifier.zoomable(state: ZoomState, onSingleTap: () -> Unit): Modifier = this
-    .pointerInput(Unit) {
+/**
+ * @param onDoubleTap overrides the default zoom-cycle behavior on double-tap (e.g. VideoPage uses
+ * this to seek when the tap lands on the left/right third of the screen, only zooming from the
+ * center third) - receives the tap position and the element's current [IntSize] (the caller has no
+ * other way to reach the enclosing PointerInputScope's `size`, since this lambda is written at the
+ * call site, outside any `pointerInput{}` block, so it can't read an ambient `size` itself).
+ * Passing null keeps the default zoom-cycle - this must be the *only* double-tap detector on the
+ * element: an earlier version of VideoPage additionally registered its own separate
+ * `detectTapGestures` alongside this modifier, so a double-tap fired both this zoom-cycle and the
+ * caller's own seek handler at once, and its "allow video gestures" setting only gated the
+ * caller's handler, not this one - a real, reproducible double-fire bug, not just untidy code.
+ */
+fun Modifier.zoomable(state: ZoomState, onSingleTap: () -> Unit, onDoubleTap: ((Offset, IntSize) -> Unit)? = null): Modifier = this
+    .pointerInput(onDoubleTap) {
         detectTapGestures(
             onTap = { onSingleTap() },
-            onDoubleTap = { pos -> state.cycleZoom(pos, size) },
+            onDoubleTap = { pos -> onDoubleTap?.invoke(pos, size) ?: state.cycleZoom(pos, size) },
         )
     }
     .pointerInput(Unit) {
@@ -163,18 +174,22 @@ fun Modifier.zoomable(state: ZoomState, onSingleTap: () -> Unit): Modifier = thi
 
 @Composable
 fun ZoomMinimap(state: ZoomState, modifier: Modifier = Modifier, boxWidth: Dp = 56.dp) {
+    // viewSize/isZoomed/interacting only change at gesture start/end or on layout, so reading them
+    // here is fine. scale/offset change on every pinch/pan frame though - those are read inside the
+    // Canvas draw lambda below instead of as composable-body vals, so a pinch/pan only triggers a
+    // redraw of this minimap, not a full recomposition of it on every touch-move event.
     val size = state.viewSize
     val visible = state.isZoomed && state.interacting && size.width > 0 && size.height > 0
     AnimatedVisibility(visible = visible, modifier = modifier, enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium)) {
         val aspect = (size.width / size.height.toFloat()).coerceAtLeast(0.01f)
         val boxH = boxWidth / aspect
-        val scale = state.scale
-        val fracW = (1f / scale).coerceIn(0f, 1f)
-        val fracH = (1f / scale).coerceIn(0f, 1f)
-        val centerFracX = (0.5f - state.offset.x / (scale * size.width)).coerceIn(fracW / 2f, 1f - fracW / 2f)
-        val centerFracY = (0.5f - state.offset.y / (scale * size.height)).coerceIn(fracH / 2f, 1f - fracH / 2f)
         Box(Modifier.size(boxWidth, boxH).clip(RoundedCornerShape(Radius.sm)).background(Scrim.a22)) {
             androidx.compose.foundation.Canvas(Modifier.size(boxWidth, boxH)) {
+                val scale = state.scale
+                val fracW = (1f / scale).coerceIn(0f, 1f)
+                val fracH = (1f / scale).coerceIn(0f, 1f)
+                val centerFracX = (0.5f - state.offset.x / (scale * size.width)).coerceIn(fracW / 2f, 1f - fracW / 2f)
+                val centerFracY = (0.5f - state.offset.y / (scale * size.height)).coerceIn(fracH / 2f, 1f - fracH / 2f)
                 val w = this.size.width
                 val h = this.size.height
                 drawRect(

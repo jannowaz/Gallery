@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -246,10 +248,27 @@ fun ViewerScreen(
     // Tracks whether the drag is currently past either dismiss threshold, so the haptic tick fires
     // once on crossing into the zone rather than continuously every frame the drag stays past it.
     var dismissThresholdCrossed by remember { mutableStateOf(false) }
-    val dragScale = (1f - (abs(dragOffset) / 1000f)).coerceIn(0.85f, 1f)
-    val dragAlpha = (1f - (abs(dragOffset) / 600f)).coerceIn(0.5f, 1f)
+    // 0 = dismiss/action-sheet (center third, or anywhere on a non-video page), 1 = brightness
+    // (left third of a video), 2 = volume (right third) - decided once at drag start. This has to
+    // be branches of the *same* detectVerticalDragGestures call, not a second competing detector
+    // layered on top of (or inside) VideoPage: Compose's pointer input consumption is cooperative,
+    // so a child's own vertical-drag detector consuming events would silently stop this one from
+    // ever firing (or vice versa) - the same class of bug already fixed once for double-tap
+    // (see zoomable()'s doc in ZoomableBox.kt), just for drag instead of tap.
+    var dragMode by remember { mutableIntStateOf(0) }
+    var volumeAccum by remember { mutableFloatStateOf(0f) }
+    var brightnessPreview by remember { mutableStateOf<Float?>(null) }
+    val audioManager = remember { ctx.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager }
 
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dragAlpha))) {
+    // dragScale/dragAlpha used to be composable-body vals derived from dragOffset - reading
+    // dragOffset there recomposed the whole ViewerScreen (top bar, bottom controls, everything) on
+    // every touch-move frame of the swipe-up/-down gesture, even though dragScale was only ever
+    // consumed inside graphicsLayer{} and dragAlpha only inside a draw call. Both are now computed
+    // directly inside their respective draw-phase lambdas below, so a drag only triggers a redraw.
+    Box(Modifier.fillMaxSize().drawBehind {
+        val dragAlpha = (1f - (abs(dragOffset) / 600f)).coerceIn(0.5f, 1f)
+        drawRect(Color.Black.copy(alpha = dragAlpha))
+    }) {
         HorizontalPager(
             state = pagerState,
             userScrollEnabled = !isCurrentZoomed,
@@ -258,26 +277,72 @@ fun ViewerScreen(
             // Video playback itself still only starts on the current page (VideoPage gates it on
             // isCurrentPage), so this doesn't spin up extra players.
             beyondViewportPageCount = 1,
+            key = { items.getOrNull(it) ?: it },
             modifier = Modifier.fillMaxSize()
                 .graphicsLayer {
                     translationY = dragOffset
+                    val dragScale = (1f - (abs(dragOffset) / 1000f)).coerceIn(0.85f, 1f)
                     scaleX = dragScale
                     scaleY = dragScale
                 }
-                .pointerInput(isCurrentZoomed) {
+                .pointerInput(isCurrentZoomed, currentIsVideo) {
                     if (!isCurrentZoomed) {
                         detectVerticalDragGestures(
-                            onDragStart = { dragOffset = 0f; dismissThresholdCrossed = false; dismissGestureHint() },
+                            onDragStart = { offset ->
+                                dismissGestureHint()
+                                dragMode = if (currentIsVideo && ctx.config.allowVideoGestures) {
+                                    when {
+                                        offset.x < size.width / 3f -> 1
+                                        offset.x > size.width * 2 / 3f -> 2
+                                        else -> 0
+                                    }
+                                } else 0
+                                if (dragMode == 0) { dragOffset = 0f; dismissThresholdCrossed = false }
+                                volumeAccum = 0f
+                            },
                             onDragEnd = {
-                                if (dragOffset < -180f) showActionSheet = true
-                                else if (dragOffset > 240f) { ctx.config.lastViewedPath = currentPath; onClose() }
-                                else { scope.launch { animate(dragOffset, 0f, animationSpec = org.fossify.gallery.compose.theme.AppMotion.gestureSpring) { v, _ -> dragOffset = v } } }
+                                when (dragMode) {
+                                    0 -> {
+                                        if (dragOffset < -180f) showActionSheet = true
+                                        else if (dragOffset > 240f) { ctx.config.lastViewedPath = currentPath; onClose() }
+                                        else { scope.launch { animate(dragOffset, 0f, animationSpec = org.fossify.gallery.compose.theme.AppMotion.gestureSpring) { v, _ -> dragOffset = v } } }
+                                    }
+                                    1 -> brightnessPreview = null
+                                }
                             },
                             onVerticalDrag = { _, drag ->
-                                dragOffset += drag
-                                val crossed = dragOffset < -180f || dragOffset > 240f
-                                if (crossed && !dismissThresholdCrossed) haptic(HapticFeedbackType.GestureThresholdActivate)
-                                dismissThresholdCrossed = crossed
+                                when (dragMode) {
+                                    0 -> {
+                                        dragOffset += drag
+                                        val crossed = dragOffset < -180f || dragOffset > 240f
+                                        if (crossed && !dismissThresholdCrossed) haptic(HapticFeedbackType.GestureThresholdActivate)
+                                        dismissThresholdCrossed = crossed
+                                    }
+                                    1 -> {
+                                        val window = (ctx as? android.app.Activity)?.window
+                                        if (window != null) {
+                                            val attrs = window.attributes
+                                            val current = if (attrs.screenBrightness in 0f..1f) attrs.screenBrightness else 0.5f
+                                            val updated = (current - drag / size.height).coerceIn(0.01f, 1f)
+                                            attrs.screenBrightness = updated
+                                            window.attributes = attrs
+                                            brightnessPreview = updated
+                                        }
+                                    }
+                                    2 -> audioManager?.let { am ->
+                                        val maxVol = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+                                        // Accumulate fractional steps - a single small drag event's share of the
+                                        // full swipe range often rounds to 0 volume steps on its own, which would
+                                        // make slow drags do nothing.
+                                        volumeAccum += -drag / size.height * maxVol
+                                        if (abs(volumeAccum) >= 1f) {
+                                            val step = volumeAccum.toInt()
+                                            val curVol = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+                                            am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, (curVol + step).coerceIn(0, maxVol), android.media.AudioManager.FLAG_SHOW_UI)
+                                            volumeAccum -= step
+                                        }
+                                    }
+                                }
                             },
                         )
                     }
@@ -301,6 +366,18 @@ fun ViewerScreen(
                 onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
                 isCurrentPage = page == pagerState.currentPage,
             )
+        }
+
+        // Volume has the system's own overlay (FLAG_SHOW_UI); brightness has no OS-level equivalent
+        // so it gets a small custom readout while the left-third drag is actually in progress.
+        brightnessPreview?.let { level ->
+            Surface(modifier = Modifier.align(Alignment.Center), shape = RoundedCornerShape(Radius.md), color = Scrim.a60) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.BrightnessMedium, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("${(level * 100).toInt()}%", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                }
+            }
         }
 
         // Top bar

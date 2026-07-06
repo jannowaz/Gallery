@@ -197,6 +197,8 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-livedata")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-video:2.7.0")
+    implementation("io.coil-kt:coil-svg:2.7.0")
+    implementation("io.coil-kt:coil-gif:2.7.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
     implementation(libs.work.runtime.ktx)
     debugImplementation("androidx.compose.ui:ui-tooling")

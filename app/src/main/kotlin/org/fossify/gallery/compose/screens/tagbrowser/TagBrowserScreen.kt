@@ -79,6 +79,7 @@ import org.fossify.gallery.compose.components.AlbumGridItem
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
+import org.fossify.gallery.helpers.expandTagsWithDescendants
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -183,7 +184,13 @@ fun TagBrowserScreen(
                     viewSettings = viewSettings,
                     onClick = { item ->
                         if (selectedTags.isNotEmpty()) selectedTags = if (item.key in selectedTags) selectedTags - item.key else selectedTags + item.key
-                        else { onTagFilterApplied((allTags[item.key] ?: emptyList()).toSet(), item.key); onBack() }
+                        else {
+                            // Include descendant tags' paths too, so filtering on a parent like "Places"
+                            // also surfaces files only tagged with a nested child like "Berlin".
+                            val paths = expandTagsWithDescendants(setOf(item.key), hierarchy).flatMap { allTags[it] ?: emptyList() }.toSet()
+                            onTagFilterApplied(paths, item.key)
+                            onBack()
+                        }
                     },
                     onLongClick = { item -> selectedTags = if (item.key in selectedTags) selectedTags - item.key else selectedTags + item.key },
                     countLabel = { filesCountFormat.format(it) },
@@ -204,7 +211,7 @@ fun TagBrowserScreen(
                     Spacer(Modifier.height(8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Surface(onClick = {
-                            val tagPaths = selectedTags.flatMap { allTags[it] ?: emptyList() }.toSet()
+                            val tagPaths = expandTagsWithDescendants(selectedTags, hierarchy).flatMap { allTags[it] ?: emptyList() }.toSet()
                             onBack()
                             onTagFilterApplied(tagPaths, selectedTags.joinToString(", "))
                         }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f)) {
