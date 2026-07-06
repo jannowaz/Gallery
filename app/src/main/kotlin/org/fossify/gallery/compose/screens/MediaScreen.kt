@@ -128,8 +128,9 @@ fun MediaScreen(
     modifier: Modifier = Modifier,
     viewSettings: ViewSettings = ViewSettings(),
     ratingFilter: Int = 0,
-    tagFilterPaths: Set<String>? = null,
+    tagFilterNames: Set<String>? = null,
     pathFilter: Set<String>? = null,
+    excludePathFilter: Set<String>? = null,
     activeTagName: String? = null,
     activePathName: String? = null,
     activeCollectionName: String? = null,
@@ -157,7 +158,7 @@ fun MediaScreen(
     LaunchedEffect(refreshTrigger) { if (refreshTrigger > 0) { if (state.allMedia.isNotEmpty()) viewModel.silentRefresh() else viewModel.refresh() } }
     LaunchedEffect(viewSettings.sortBy, viewSettings.sortDesc) { if (mediaOverride == null) viewModel.setSort(viewSettings.sortBy, viewSettings.sortDesc) }
     LaunchedEffect(mediaOverride) { viewModel.setOverride(mediaOverride) }
-    LaunchedEffect(ratingFilter, tagFilterPaths, pathFilter, minSizeFilter, dateRangeFilter) { viewModel.setFilter(ratingFilter, tagFilterPaths, pathFilter, minSizeFilter, dateRangeFilter) }
+    LaunchedEffect(ratingFilter, tagFilterNames, pathFilter, excludePathFilter, minSizeFilter, dateRangeFilter) { viewModel.setFilter(ratingFilter, tagFilterNames, pathFilter, excludePathFilter, minSizeFilter, dateRangeFilter) }
     var selectedPaths by rememberSaveable(stateSaver = selectionSaver) { mutableStateOf<Set<String>>(emptySet()) }
     val dragSelection = rememberSelectionDragState()
     var showRateTagSheet by remember { mutableStateOf(false) }
@@ -175,10 +176,11 @@ fun MediaScreen(
     val columnCount = viewSettings.columnCount
     val isGrid = viewSettings.viewType == ViewType.GRID
     val isMosaic = viewSettings.viewType == ViewType.MOSAIC
-    val hasFilter = ratingFilter > 0 || tagFilterPaths != null || pathFilter != null || minSizeFilter > 0 || dateRangeFilter > 0
-    // Unfiltered, non-override browse: renders from the Paging3 flow instead of state.displayMedia,
-    // so it isn't capped at the legacy path's 20,000-item scan.
-    val showPaged = !hasFilter && mediaOverride == null
+    val hasFilter = ratingFilter > 0 || tagFilterNames != null || pathFilter != null || excludePathFilter != null || minSizeFilter > 0 || dateRangeFilter > 0
+    // Filtered and unfiltered browsing both render from the Paging3 flow now (MediaViewModel picks
+    // the filtered or unfiltered PagingSource based on whether a filter is active) - only Favorites'
+    // externally-supplied mediaOverride still uses the legacy in-memory state.displayMedia path.
+    val showPaged = mediaOverride == null
     val displayMedia = state.displayMedia
     val pathIndexMap = remember(displayMedia) { displayMedia.withIndex().associate { it.value.path to it.index } }
     val cornerShape = if (viewSettings.roundedCorners) RoundedCornerShape(Radius.sm) else RoundedCornerShape(0.dp)
@@ -244,9 +246,20 @@ fun MediaScreen(
         when {
             isGrid -> {
                 Column(Modifier.padding(top = contentTopInset)) {
+                    if (hasFilter) FilterBreadcrumbs(
+                        ratingFilter, activeTagName, activePathName, activeCollectionName,
+                        minSizeFilter, dateRangeFilter,
+                        lazyPagingItems.itemCount, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
+                        onClearSizeFilter, onClearDateFilter, onClearFilter
+                    )
                     val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
                     QuickTagRow(quickTags = quickTags, visible = quickTags.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
-                    val rows = remember(lazyPagingItems.itemCount) { buildPagedRows(lazyPagingItems.itemSnapshotList) }
+                    // Keyed on the filter/sort intent too, not just itemCount - observed live that a filter
+                    // switch landing on a coincidentally-similar item count could otherwise leave `rows` (and
+                    // its PagedRow.Header labels/counts) built from the previous PagingSource's snapshot for
+                    // one extra frame, showing a stale month header while the row content underneath it had
+                    // already updated to the new filtered set.
+                    val rows = remember(lazyPagingItems.itemCount, state.filter, viewSettings.sortBy, viewSettings.sortDesc) { buildPagedRows(lazyPagingItems.itemSnapshotList) }
                     val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
                     LaunchedEffect(gridState) {
                         snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
@@ -326,9 +339,15 @@ fun MediaScreen(
             }
             isMosaic -> {
                 Column(Modifier.padding(top = contentTopInset)) {
+                    if (hasFilter) FilterBreadcrumbs(
+                        ratingFilter, activeTagName, activePathName, activeCollectionName,
+                        minSizeFilter, dateRangeFilter,
+                        lazyPagingItems.itemCount, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
+                        onClearSizeFilter, onClearDateFilter, onClearFilter
+                    )
                     val quickTagsM = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
                     QuickTagRow(quickTags = quickTagsM, visible = quickTagsM.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
-                    val rows = remember(lazyPagingItems.itemCount) { buildPagedRows(lazyPagingItems.itemSnapshotList) }
+                    val rows = remember(lazyPagingItems.itemCount, state.filter, viewSettings.sortBy, viewSettings.sortDesc) { buildPagedRows(lazyPagingItems.itemSnapshotList) }
                     val mosaicState = rememberLazyStaggeredGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
                     LaunchedEffect(mosaicState) {
                         snapshotFlow { mosaicState.firstVisibleItemIndex to mosaicState.firstVisibleItemScrollOffset }
@@ -403,7 +422,7 @@ fun MediaScreen(
                 }
             }
             else -> {
-                val rows = remember(lazyPagingItems.itemCount) { buildPagedRows(lazyPagingItems.itemSnapshotList) }
+                val rows = remember(lazyPagingItems.itemCount, state.filter, viewSettings.sortBy, viewSettings.sortDesc) { buildPagedRows(lazyPagingItems.itemSnapshotList) }
                 val listState = rememberLazyListState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
                 LaunchedEffect(listState) {
                     snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
@@ -478,7 +497,12 @@ fun MediaScreen(
                         actionLabel = stringResource(R.string.retry),
                         onAction = { lazyPagingItems.retry() },
                     )
-                    "empty" -> EmptyState(icon = Icons.Default.Search, title = stringResource(R.string.no_media_found))
+                    "empty" -> EmptyState(
+                        icon = Icons.Default.Search,
+                        title = if (hasFilter) stringResource(R.string.no_results) else stringResource(R.string.no_media_found),
+                        actionLabel = if (hasFilter) stringResource(R.string.clear_filter) else null,
+                        onAction = if (hasFilter) onClearFilter else null,
+                    )
                     else -> PagedContent()
                 }
             }
@@ -696,8 +720,8 @@ fun MediaScreen(
                     ctx.startActivity(Intent.createChooser(si, ctx.getString(R.string.action_share)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); selectedPaths = emptySet()
                 },
                 onDelete = { if (ctx.config.skipDeleteConfirmation) { val d = selectedPaths.toSet(); viewModel.softDeletePaths(d); UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE)); selectedPaths = emptySet() } else showDeleteConfirm = true },
-                onSelectAll = { scope.launch { selectedPaths = if (hasFilter) displayMedia.map { it.path }.toSet() else viewModel.activePaths() } },
-                onInvert = { scope.launch { val all = if (hasFilter) displayMedia.map { it.path }.toSet() else viewModel.activePaths(); selectedPaths = all - selectedPaths } },
+                onSelectAll = { scope.launch { selectedPaths = if (hasFilter) viewModel.activePathsSortedFiltered().toSet() else viewModel.activePaths() } },
+                onInvert = { scope.launch { val all = if (hasFilter) viewModel.activePathsSortedFiltered().toSet() else viewModel.activePaths(); selectedPaths = all - selectedPaths } },
                 onCopy = { folderPickerIsMove = false; showFolderPicker = true },
                 onMove = { folderPickerIsMove = true; showFolderPicker = true },
                 onRate = { showRateTagSheet = true },

@@ -303,22 +303,18 @@ private fun applyCollection(
     coll: MediaCollection,
     mainVM: ExplorerViewModel,
     ctx: android.content.Context,
-    scope: kotlinx.coroutines.CoroutineScope,
 ) {
     mainVM.setPreFilterTab(3)
     mainVM.setCollectionName(coll.name)
     mainVM.setRatingFilter(coll.ratingFilter)
     if (coll.tagFilter.isNotBlank()) {
-        scope.launch(Dispatchers.IO) {
-            val tagNames = coll.tagFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }
-            // Expand each filter tag to include its descendants, so a Collection filtered on a parent
-            // tag like "Places" also picks up files only tagged with a nested child like "Berlin".
-            val expandedTagNames = expandTagsWithDescendants(tagNames, ctx.config.tagHierarchy)
-            val tagPaths = try { ctx.mediaTagDB.getPathsForTags(expandedTagNames.toList()).toSet() } catch (_: Exception) { emptySet() }
-            withContext(Dispatchers.Main) {
-                mainVM.setTagFilter(tagPaths.ifEmpty { null }, coll.tagFilter.takeIf { it.isNotBlank() })
-            }
-        }
+        val tagNames = coll.tagFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }
+        // Expand each filter tag to include its descendants, so a Collection filtered on a parent
+        // tag like "Places" also picks up files only tagged with a nested child like "Berlin". The
+        // expanded name set is passed straight through - MediaViewModel resolves tag names to files
+        // in SQL now, no DB round trip needed here.
+        val expandedTagNames = expandTagsWithDescendants(tagNames, ctx.config.tagHierarchy)
+        mainVM.setTagFilter(expandedTagNames.ifEmpty { null }, coll.tagFilter.takeIf { it.isNotBlank() })
     } else {
         mainVM.setTagFilter(null, null)
     }
@@ -326,35 +322,11 @@ private fun applyCollection(
     val excluded = coll.getExcludedPaths()
     val incPaths = included.mapNotNull { resolveContentUriToPath(it) }.filter { it.isNotEmpty() }.toSet()
     val excPaths = excluded.mapNotNull { resolveContentUriToPath(it) }.filter { it.isNotEmpty() }.toSet()
-    mainVM.setPathFilter(when {
-        incPaths.isNotEmpty() && excPaths.isNotEmpty() -> {
-            scope.launch(Dispatchers.IO) {
-                try {
-                    val allFiles = ctx.mediaDB.getNewestMedia(5000).map { it.path }.toSet()
-                    val excDirs = excPaths.filter { File(it).isDirectory }.toSet()
-                    val incDirs = incPaths.filter { File(it).isDirectory }.toSet()
-                    val result = allFiles.filter { path ->
-                        path in incPaths || incDirs.any { path.startsWith("$it/") }
-                    }.filter { path ->
-                        path !in excPaths && excDirs.none { path.startsWith("$it/") }
-                    }.toSet()
-                    withContext(Dispatchers.Main) { mainVM.setPathFilter(result) }
-                } catch (_: Exception) { }
-            }
-            incPaths
-        }
-        incPaths.isNotEmpty() -> incPaths
-        excPaths.isNotEmpty() -> {
-            scope.launch(Dispatchers.IO) {
-                try {
-                    val allPaths = ctx.mediaDB.getNewestMedia(5000).map { it.path }.toSet()
-                    withContext(Dispatchers.Main) { mainVM.setPathFilter(allPaths - excPaths) }
-                } catch (_: Exception) { }
-            }
-            null
-        }
-        else -> null
-    })
+    // Include/exclude are now plain filter data resolved in SQL (MediaRepository.getMediaPagedFiltered)
+    // instead of a getNewestMedia(5000)-bounded diff computed here - a Collection touching a larger
+    // library no longer silently drops eligible files past that cap.
+    mainVM.setPathFilter(incPaths.ifEmpty { null })
+    mainVM.setExcludePathFilter(excPaths.ifEmpty { null })
     mainVM.setSelectedTab(0)
 }
 
@@ -623,7 +595,7 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                 onSelectTab = { tab -> mainVM.setSelectedTab(tab); scope.launch { drawerState.close() } },
                 onNavigate = { route -> scope.launch { drawerState.close() }; navController.navigate(route) },
                 onOpenPinnedFavorite = { path -> scope.launch { drawerState.close() }; navController.navigate(Folder(path)) },
-                onOpenPinnedCollection = { id -> scope.launch { drawerState.close() }; pinnedColls.find { it.id.toString() == id }?.let { applyCollection(it, mainVM, ctx, scope) } },
+                onOpenPinnedCollection = { id -> scope.launch { drawerState.close() }; pinnedColls.find { it.id.toString() == id }?.let { applyCollection(it, mainVM, ctx) } },
                 onOpenViewSettings = { scope.launch { drawerState.close() }; activeSheet = ActiveSheet.VIEW_SETTINGS },
                 onFilterByRating = { scope.launch { drawerState.close() }; showRatingBrowser = true },
                 onRescanMetadata = { scope.launch { drawerState.close() }; MetadataSyncWorker.scheduleFullScan(ctx) },
@@ -687,14 +659,14 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                     onDismiss = closeSearch,
                     storagePath = android.os.Environment.getExternalStorageDirectory().absolutePath,
                     onNavigate = { path -> mainVM.setExplorerPath(path); closeSearch(); mainVM.setSelectedTab(2) },
-                    onFilterChanged = { textPaths, rating, tagPaths, tagName, _, _ ->
+                    onFilterChanged = { textPaths, rating, tagNames, tagName, _, _ ->
                         mainVM.setRatingFilter(rating)
                         mainVM.setPathFilter(textPaths, if (textPaths != null) "Suche" else null)
                         mainVM.setCollectionName(null)
-                        mainVM.setTagFilter(tagPaths, tagName)
-                        if (rating > 0 || tagPaths != null || textPaths != null) mainVM.setSelectedTab(0)
+                        mainVM.setTagFilter(tagNames, tagName)
+                        if (rating > 0 || tagNames != null || textPaths != null) mainVM.setSelectedTab(0)
                     },
-                    onOpenCollection = { coll -> applyCollection(coll, mainVM, ctx, scope); closeSearch() },
+                    onOpenCollection = { coll -> applyCollection(coll, mainVM, ctx); closeSearch() },
                     onOpenFavorite = { path -> ViewerArgs.paths = listOf(path); closeSearch(); navController.navigate(Viewer(0)) },
                 )
                 }
@@ -876,8 +848,9 @@ private fun MainTabContent(
         0 -> MediaScreen(
             viewSettings = tabSettings.media,
             ratingFilter = state.activeRatingFilter,
-            tagFilterPaths = state.activeTagFilter,
+            tagFilterNames = state.activeTagFilter,
             pathFilter = state.activePathFilter,
+            excludePathFilter = state.activeExcludePathFilter,
             activeTagName = state.activeTagName,
             activePathName = state.activePathName,
             activeCollectionName = state.activeCollectionName,
@@ -885,7 +858,7 @@ private fun MainTabContent(
             onClearFilter = { mainVM.clearFilters() },
             onClearRatingFilter = { mainVM.setRatingFilter(0) },
             onClearTagFilter = { mainVM.setTagFilter(null, null) },
-            onClearPathFilter = { mainVM.setPathFilter(null); mainVM.setCollectionName(null) },
+            onClearPathFilter = { mainVM.setPathFilter(null); mainVM.setExcludePathFilter(null); mainVM.setCollectionName(null) },
             onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) },
             scrollToPath = state.lastViewedPath,
             onClearScrollToPath = { mainVM.clearLastViewedPath() },
@@ -915,16 +888,17 @@ private fun MainTabContent(
         when (state.selectedTab) {
         3 -> CollectionsScreen(
             viewSettings = tabSettings.collections,
-            onCollectionClick = { coll -> applyCollection(coll, mainVM, ctx, scope) },
+            onCollectionClick = { coll -> applyCollection(coll, mainVM, ctx) },
         )
         4 -> FavoritesScreen(viewSettings = tabSettings.favorites, onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) }, onFolderClick = { navController.navigate(Folder(it)) }, tabIndex = 4)
         5 -> TagBrowserScreen(
             onBack = {},
-            onTagFilterApplied = { tagPaths, tagName ->
+            onTagFilterApplied = { tagNames, tagName ->
                 mainVM.setPreFilterTab(5)
                 mainVM.setRatingFilter(0)
-                mainVM.setTagFilter(tagPaths, tagName)
+                mainVM.setTagFilter(tagNames, tagName)
                 mainVM.setPathFilter(null)
+                mainVM.setExcludePathFilter(null)
                 mainVM.setSelectedTab(0)
             },
             viewSettings = tabSettings.tags,
@@ -996,7 +970,7 @@ private fun OmniSearchPanel(
     onDismiss: () -> Unit,
     storagePath: String,
     onNavigate: (String) -> Unit,
-    onFilterChanged: (filterPaths: Set<String>?, rating: Int, tagPaths: Set<String>?, tagName: String?, fileType: Int, dateRange: Int) -> Unit,
+    onFilterChanged: (filterPaths: Set<String>?, rating: Int, tagNames: Set<String>?, tagName: String?, fileType: Int, dateRange: Int) -> Unit,
     onOpenCollection: (MediaCollection) -> Unit,
     onOpenFavorite: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -1220,10 +1194,11 @@ private fun OmniSearchPanel(
                         item { Text(stringResource(R.string.nav_tags), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(vertical = 4.dp)) }
                         items(tagResults.take(8), key = { it.first }) { (tag, cnt) ->
                             Surface(modifier = Modifier.fillMaxWidth().clickable {
-                                // Include descendant tags' paths too, so tapping a parent like "Places"
-                                // also surfaces files only tagged with a nested child like "Berlin".
-                                val paths = expandTagsWithDescendants(setOf(tag), ctx.config.tagHierarchy).flatMap { allTags[it] ?: emptyList() }.toSet()
-                                onFilterChanged(null, 0, paths, tag, 0, 0); onDismiss()
+                                // Include descendant tag names too, so tapping a parent like "Places"
+                                // also surfaces files only tagged with a nested child like "Berlin" -
+                                // resolved to files in SQL by MediaViewModel, not here.
+                                val tagNames = expandTagsWithDescendants(setOf(tag), ctx.config.tagHierarchy)
+                                onFilterChanged(null, 0, tagNames, tag, 0, 0); onDismiss()
                             }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
                                 Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
@@ -1279,7 +1254,7 @@ private fun OmniSearchPanel(
                     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.Center) {
                         Surface(onClick = {
                             onFilterChanged(textMatchPaths, ratingFilter,
-                                selectedTags.let { if (it.isEmpty()) null else allTags.filterKeys { t -> t in it }.values.flatten().toSet() },
+                                selectedTags.takeIf { it.isNotEmpty() },
                                 selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", "), fileTypeFilter, dateFilter)
                             onDismiss()
                         }, shape = RoundedCornerShape(Radius.xl), color = MaterialTheme.colorScheme.primary) {

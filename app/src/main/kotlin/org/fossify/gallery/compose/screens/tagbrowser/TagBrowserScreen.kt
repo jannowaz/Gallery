@@ -86,7 +86,7 @@ import java.io.File
 @Composable
 fun TagBrowserScreen(
     onBack: () -> Unit,
-    onTagFilterApplied: (tagPaths: Set<String>, tagName: String) -> Unit,
+    onTagFilterApplied: (tagNames: Set<String>, displayName: String) -> Unit,
     viewSettings: org.fossify.gallery.compose.screens.ViewSettings = org.fossify.gallery.compose.screens.ViewSettings(),
 ) {
     val ctx = LocalContext.current
@@ -185,10 +185,11 @@ fun TagBrowserScreen(
                     onClick = { item ->
                         if (selectedTags.isNotEmpty()) selectedTags = if (item.key in selectedTags) selectedTags - item.key else selectedTags + item.key
                         else {
-                            // Include descendant tags' paths too, so filtering on a parent like "Places"
-                            // also surfaces files only tagged with a nested child like "Berlin".
-                            val paths = expandTagsWithDescendants(setOf(item.key), hierarchy).flatMap { allTags[it] ?: emptyList() }.toSet()
-                            onTagFilterApplied(paths, item.key)
+                            // Include descendant tag names too, so filtering on a parent like "Places"
+                            // also surfaces files only tagged with a nested child like "Berlin" -
+                            // resolved to files in SQL by MediaViewModel, not here.
+                            val tagNames = expandTagsWithDescendants(setOf(item.key), hierarchy)
+                            onTagFilterApplied(tagNames, item.key)
                             onBack()
                         }
                     },
@@ -211,9 +212,9 @@ fun TagBrowserScreen(
                     Spacer(Modifier.height(8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Surface(onClick = {
-                            val tagPaths = expandTagsWithDescendants(selectedTags, hierarchy).flatMap { allTags[it] ?: emptyList() }.toSet()
+                            val tagNames = expandTagsWithDescendants(selectedTags, hierarchy)
                             onBack()
-                            onTagFilterApplied(tagPaths, selectedTags.joinToString(", "))
+                            onTagFilterApplied(tagNames, selectedTags.joinToString(", "))
                         }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f)) {
                             Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.action_filter), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimary) }
                         }

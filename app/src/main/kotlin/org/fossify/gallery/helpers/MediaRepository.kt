@@ -4,7 +4,10 @@ import android.content.Context
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.paging.PagingSource
+import androidx.sqlite.db.SimpleSQLiteQuery
+import androidx.sqlite.db.SupportSQLiteQuery
 import org.fossify.gallery.compose.screens.SortField
+import org.fossify.gallery.databases.GalleryDatabase
 import org.fossify.gallery.extensions.collectionDB
 import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.favoritesDB
@@ -20,6 +23,7 @@ import org.fossify.gallery.models.MediaCache
 import org.fossify.gallery.models.MediaTag
 import org.fossify.gallery.models.TagCount
 import org.fossify.gallery.models.TagPathRow
+import org.fossify.gallery.viewmodels.MediaFilter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -32,6 +36,12 @@ import java.io.File
 // into one bound parameter per element, so a single unchunked call with e.g. a "select all" batch of a
 // few thousand paths can exceed that limit and throw at runtime. Chunk comfortably under it instead.
 private const val SQLITE_BATCH_CHUNK_SIZE = 900
+
+// Column order shared by every hand-written filtered query below - must match MediumDao's @Query
+// column lists exactly, since Medium's constructor (via FilteredMediaPagingSource.convertRows) reads
+// the cursor positionally.
+private const val MEDIA_COLUMNS =
+    "filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating"
 
 class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     private val repositoryScope = CoroutineScope(Dispatchers.IO)
@@ -176,6 +186,97 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             SortField.RATING -> context.mediaDB.getActivePathsByRating(desc)
         }
     } catch (_: Exception) { emptyList() }
+
+    /** Filtered counterpart of [getMediaPaged] - builds one dynamic SQL query covering every active
+     * [MediaFilter] dimension (rating/tag/path-include/path-exclude/size/date) instead of the old
+     * fetch-then-filter-in-Kotlin pipeline, so filtered browsing pages and invalidates exactly like
+     * the unfiltered grid instead of being capped at a fixed in-memory fetch size. */
+    fun getMediaPagedFiltered(filter: MediaFilter, field: SortField, desc: Boolean): PagingSource<Int, Medium> =
+        FilteredMediaPagingSource(buildFilteredMediaQuery(filter, field, desc, pathsOnly = false), GalleryDatabase.getInstance(context.applicationContext))
+
+    /** Filtered counterpart of [getActivePathsSorted] - full sorted path list (no LIMIT/OFFSET)
+     * matching the same filter, used so Viewer swipe-through and select-all/invert cover the
+     * complete filtered set, not just what the grid has paged in so far. */
+    suspend fun getActivePathsSortedFiltered(filter: MediaFilter, field: SortField, desc: Boolean): List<String> = try {
+        val query = buildFilteredMediaQuery(filter, field, desc, pathsOnly = true)
+        GalleryDatabase.getInstance(context.applicationContext).query(query).use { cursor ->
+            val paths = ArrayList<String>(cursor.count)
+            while (cursor.moveToNext()) paths.add(cursor.getString(0))
+            paths
+        }
+    } catch (_: Exception) { emptyList() }
+
+    private fun escapeLikePrefix(dirPath: String): String =
+        dirPath.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "/%"
+
+    /** Appends an `IN (...)`/`LIKE` predicate for a path set (literal files chunked under the same
+     * [SQLITE_BATCH_CHUNK_SIZE] bound-parameter cap used elsewhere, directories as escaped LIKE
+     * prefixes) - mirrors the include/exclude split `applyCollection`/the old `computePathFallback`
+     * already did in Kotlin, just pushed into SQL so it isn't capped by an in-memory fetch size. */
+    private fun appendPathPredicate(where: StringBuilder, args: MutableList<Any?>, paths: Set<String>, negate: Boolean) {
+        if (paths.isEmpty()) return
+        val dirs = paths.filter { File(it).isDirectory }
+        val files = (paths - dirs.toSet()).toList()
+        val clauses = mutableListOf<String>()
+        files.chunked(SQLITE_BATCH_CHUNK_SIZE).forEach { chunk ->
+            clauses.add("full_path IN (${chunk.joinToString(",") { "?" }})")
+            args.addAll(chunk)
+        }
+        dirs.forEach { d ->
+            clauses.add("full_path LIKE ? ESCAPE '\\'")
+            args.add(escapeLikePrefix(d))
+        }
+        if (clauses.isEmpty()) return
+        val combined = clauses.joinToString(" OR ")
+        where.append(if (negate) " AND NOT ($combined)" else " AND ($combined)")
+    }
+
+    private fun dateRangeCutoff(dateRange: Int): Long = when (dateRange) {
+        1 -> System.currentTimeMillis() - 86400000L
+        2 -> System.currentTimeMillis() - 7 * 86400000L
+        3 -> System.currentTimeMillis() - 30 * 86400000L
+        4 -> System.currentTimeMillis() - 365 * 86400000L
+        else -> 0L
+    }
+
+    private fun buildFilteredMediaQuery(filter: MediaFilter, sortField: SortField, desc: Boolean, pathsOnly: Boolean): SupportSQLiteQuery {
+        val where = StringBuilder("deleted_ts = 0")
+        val args = mutableListOf<Any?>()
+
+        if (filter.rating > 0) {
+            where.append(" AND rating >= ?")
+            args.add(filter.rating)
+        }
+        filter.tagNames?.let { names ->
+            if (names.isEmpty()) {
+                where.append(" AND 0")
+            } else {
+                where.append(" AND full_path IN (SELECT DISTINCT media_path FROM media_tags WHERE tag IN (${names.joinToString(",") { "?" }}))")
+                args.addAll(names)
+            }
+        }
+        filter.pathFilter?.let { appendPathPredicate(where, args, it, negate = false) }
+        filter.excludePaths?.let { appendPathPredicate(where, args, it, negate = true) }
+        if (filter.minSize > 0) {
+            where.append(" AND size >= ?")
+            args.add(filter.minSize)
+        }
+        if (filter.dateRange > 0) {
+            where.append(" AND (CASE WHEN date_taken > 0 THEN date_taken ELSE last_modified END) >= ?")
+            args.add(dateRangeCutoff(filter.dateRange))
+        }
+
+        val mult = if (desc) -1 else 1
+        val orderBy = when (sortField) {
+            SortField.NAME -> "ORDER BY filename COLLATE NOCASE ${if (desc) "DESC" else "ASC"}"
+            SortField.DATE -> "ORDER BY $mult * (CASE WHEN date_taken > 0 THEN date_taken ELSE last_modified END)"
+            SortField.SIZE -> "ORDER BY $mult * size"
+            SortField.RATING -> "ORDER BY $mult * rating, $mult * last_modified"
+        }
+
+        val columns = if (pathsOnly) "full_path" else MEDIA_COLUMNS
+        return SimpleSQLiteQuery("SELECT $columns FROM media WHERE $where $orderBy", args.toTypedArray())
+    }
 
     suspend fun getTaggedPaths(): Set<String> =
         try { context.mediaTagDB.getTaggedPaths().toSet() } catch (_: Exception) { emptySet() }

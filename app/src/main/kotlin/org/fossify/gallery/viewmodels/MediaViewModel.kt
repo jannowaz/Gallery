@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.collect
@@ -22,9 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.compose.screens.SortField
 import org.fossify.gallery.helpers.MediaRepository
-import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import org.fossify.gallery.models.Medium
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -33,15 +32,21 @@ data class MonthGroup(val label: String, val items: List<Medium>)
 
 data class SortSpec(val field: SortField, val desc: Boolean)
 
-/** Active filtering for the media grid. Owned by the ViewModel, never resolved in composition. */
+/** Active filtering for the media grid. Owned by the ViewModel, never resolved in composition.
+ * [tagNames] is a set of tag *names* (already hierarchy-expanded by the caller via
+ * [org.fossify.gallery.helpers.expandTagsWithDescendants]) - resolved to matching files in SQL via
+ * `media_tags`, not pre-resolved to paths, so the resolution scales with the DB instead of a
+ * client-side path-set size. [pathFilter]/[excludePaths] stay path-shaped (literal files and/or
+ * directory prefixes) since search-result and arbitrary-selection callers only ever have paths. */
 data class MediaFilter(
     val rating: Int = 0,
-    val tagPaths: Set<String>? = null,
+    val tagNames: Set<String>? = null,
     val pathFilter: Set<String>? = null,
+    val excludePaths: Set<String>? = null,
     val minSize: Long = 0L,
     val dateRange: Int = 0, // 0: All, 1: Today, 2: 7d, 3: 30d, 4: 1y
 ) {
-    val isActive: Boolean get() = rating > 0 || tagPaths != null || pathFilter != null || minSize > 0 || dateRange > 0
+    val isActive: Boolean get() = rating > 0 || tagNames != null || pathFilter != null || excludePaths != null || minSize > 0 || dateRange > 0
 }
 
 data class MediaUiState(
@@ -71,23 +76,22 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private var sortField = SortField.DATE
     private var sortDesc = true
 
-    // Filter / display pipeline — all owned by the ViewModel.
+    // `override` (Favorites' externally-supplied media list) is the only thing `recompute()` still
+    // handles in-memory. Every MediaFilter dimension (rating/tag/path/size/date) is pushed into SQL
+    // and served through `pagedMedia` below instead (see MediaRepository.getMediaPagedFiltered) -
+    // backed by Room's PagingSource + InvalidationTracker, so it stays fresh across rename/rating/
+    // delete/sync without any manual refresh call, and isn't capped like the old in-memory pipeline.
     private var override: List<Medium>? = null
-    private var filter = MediaFilter()
-    private var ratingDbCache: List<Medium>? = null
-    private var tagDbCache: List<Medium>? = null
-    private var pathDbCache: List<Medium>? = null
 
-    // Unfiltered, non-override browse list. Backed by Room's PagingSource + InvalidationTracker, so
-    // it stays fresh across rename/rating/delete/sync without any manual refresh call, and isn't
-    // capped like the legacy filtered/override path below.
     private val sortSpec = MutableStateFlow(SortSpec(sortField, sortDesc))
+    private val filterFlow = MutableStateFlow(MediaFilter())
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val pagedMedia: Flow<PagingData<Medium>> = sortSpec
-        .flatMapLatest { spec ->
+    val pagedMedia: Flow<PagingData<Medium>> = combine(sortSpec, filterFlow) { spec, f -> spec to f }
+        .flatMapLatest { (spec, f) ->
             Pager(PagingConfig(pageSize = 60, prefetchDistance = 40, enablePlaceholders = false)) {
-                repository.getMediaPaged(spec.field, spec.desc)
+                if (f.isActive) repository.getMediaPagedFiltered(f, spec.field, spec.desc)
+                else repository.getMediaPaged(spec.field, spec.desc)
             }.flow
         }
         .cachedIn(viewModelScope)
@@ -114,92 +118,31 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         recompute()
     }
 
-    /** Drives the display list from an external source (e.g. a folder's media) instead of the scan. */
+    /** Drives the display list from an external source (e.g. Favorites' own fetched list) instead of
+     * the DB scan/filter pipeline - the only remaining consumer of `recompute()`. */
     fun setOverride(media: List<Medium>?) {
         if (media == override) return
         override = media
         recompute()
     }
 
-    /** Resolves DB-backed filters off the main thread, then rebuilds the display list. */
-    fun setFilter(rating: Int, tagPaths: Set<String>?, pathFilter: Set<String>?, minSize: Long = 0, dateRange: Int = 0) {
-        val next = MediaFilter(rating, tagPaths, pathFilter, minSize, dateRange)
-        if (next == filter) return
-        filter = next
+    /** Updates the active DB-pushed filter. `pagedMedia` observes [filterFlow] and reissues a fresh
+     * Pager against [MediaRepository.getMediaPagedFiltered] - Paging3 + Room's InvalidationTracker
+     * handle incremental loading and staleness from there, same as the unfiltered path. */
+    fun setFilter(rating: Int, tagNames: Set<String>?, pathFilter: Set<String>?, excludePaths: Set<String>? = null, minSize: Long = 0, dateRange: Int = 0) {
+        val next = MediaFilter(rating, tagNames, pathFilter, excludePaths, minSize, dateRange)
+        if (next == filterFlow.value) return
+        filterFlow.value = next
         _state.update { it.copy(filter = next) }
-        // Narrow instantly using the already-loaded media (clear stale DB caches first), then refine
-        // once the DB-backed results are resolved off the main thread.
-        ratingDbCache = null; tagDbCache = null; pathDbCache = null
-        recompute()
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                ratingDbCache = if (rating > 0) repository.getByMinRating(rating) else null
-                tagDbCache = if (tagPaths != null) repository.getMediaByPaths(tagPaths.toList()) else null
-                pathDbCache = if (pathFilter != null) computePathFallback(pathFilter) else null
-            }
-            recompute()
-        }
     }
 
-    private fun computePathFallback(pathFilter: Set<String>): List<Medium>? = try {
-        val dirs = pathFilter.filter { File(it).isDirectory }.toSet()
-        repository.getNewestMedia(5000)
-            .filter { p -> (pathFilter + dirs).any { p.path.startsWith("$it/") || p.path == it } }
-            .take(2000)
-    } catch (_: Exception) { null }
-
     private fun recompute() {
-        val base = override ?: _state.value.allMedia
-        val f = filter
+        val ov = override ?: return
         viewModelScope.launch {
-            val display = withContext(Dispatchers.Default) {
-                var m = base
-                if (f.rating > 0) {
-                    val db = ratingDbCache
-                    m = if (!db.isNullOrEmpty()) db else m.filter { it.rating >= f.rating }
-                }
-                if (f.tagPaths != null) {
-                    val tagged = tagDbCache
-                    if (!tagged.isNullOrEmpty()) {
-                        val taggedPaths = tagged.map { it.path }.toSet()
-                        m = m.filter { it.path in taggedPaths }
-                        if (m.isEmpty()) m = tagged
-                    } else {
-                        m = m.filter { it.path in f.tagPaths }
-                        if (m.isEmpty()) m = mediaFromDisk(f.tagPaths)
-                    }
-                }
-                if (f.pathFilter != null) {
-                    val dirs = f.pathFilter.filter { File(it).isDirectory }.toSet()
-                    val filtered = m.filter { p -> p.path in f.pathFilter || dirs.any { p.path.startsWith("$it/") } }
-                    val fb = pathDbCache
-                    m = if (fb != null && fb.size > filtered.size) fb else filtered
-                }
-                if (f.minSize > 0) {
-                    m = m.filter { it.size >= f.minSize }
-                }
-                if (f.dateRange > 0) {
-                    val cutoff = when (f.dateRange) {
-                        1 -> System.currentTimeMillis() - 86400000L
-                        2 -> System.currentTimeMillis() - 7 * 86400000L
-                        3 -> System.currentTimeMillis() - 30 * 86400000L
-                        4 -> System.currentTimeMillis() - 365 * 86400000L
-                        else -> 0L
-                    }
-                    m = m.filter { maxOf(it.taken, it.modified) >= cutoff }
-                }
-                applySort(m)
-            }
+            val display = withContext(Dispatchers.Default) { applySort(ov) }
             val groups = withContext(Dispatchers.Default) { groupByMonth(display) }
             _state.update { it.copy(displayMedia = display, monthGroups = groups) }
         }
-    }
-
-    private fun mediaFromDisk(paths: Set<String>): List<Medium> = paths.mapNotNull {
-        val file = File(it)
-        if (!file.exists()) return@mapNotNull null
-        val type = if (VIDEO_EXTENSIONS.any { e -> it.endsWith(e, true) }) 2 else 1
-        Medium(null, file.name, file.absolutePath, file.parent ?: "", file.lastModified(), file.lastModified(), file.length(), type, 0, false, 0L, 0L, 0)
     }
 
     /** Lazily decodes and caches the aspect ratio of an image (mosaic layout). Decoding runs in the repo. */
@@ -307,9 +250,9 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         rescanAndLoad()
     }
 
-    // NOTE: state.allMedia/displayMedia below only feed the legacy filtered/override rendering path
-    // and the filter's instant-narrow fallback (see setFilter) - the unfiltered/no-override grid
-    // renders from `pagedMedia` instead and doesn't depend on this fetch or its 20,000-item cap.
+    // NOTE: state.allMedia/displayMedia below only feed the override rendering path (Favorites) and
+    // the initial-load error state - every grid render (unfiltered and filtered alike) goes through
+    // `pagedMedia` instead and doesn't depend on this fetch or its 20,000-item cap.
     fun silentRefresh() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -353,6 +296,14 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     /** Full sorted path list (matching the current sort field/direction) for Viewer swipe-through,
      * independent of how much of the paged grid has loaded so far. */
     suspend fun activePathsSorted(): List<String> = withContext(Dispatchers.IO) { repository.getActivePathsSorted(sortField, sortDesc) }
+
+    /** Same as [activePathsSorted] but scoped to the currently active filter - used for Viewer
+     * swipe-through and select-all/invert while a filter is applied, so both cover the complete
+     * filtered set rather than just what's paged into the grid so far. */
+    suspend fun activePathsSortedFiltered(): List<String> = withContext(Dispatchers.IO) {
+        val f = filterFlow.value
+        if (f.isActive) repository.getActivePathsSortedFiltered(f, sortField, sortDesc) else repository.getActivePathsSorted(sortField, sortDesc)
+    }
 
     fun deletePaths(paths: Set<String>) {
         viewModelScope.launch(Dispatchers.IO) {

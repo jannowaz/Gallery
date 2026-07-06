@@ -23,9 +23,11 @@ data class ExplorerUiState(
     val selectedTab: Int = 1,
     val explorerPath: String = "",
     val activeRatingFilter: Int = 0,
+    /** Tag *names* (hierarchy-expanded), resolved to matching files in SQL - see [org.fossify.gallery.viewmodels.MediaFilter]. */
     val activeTagFilter: Set<String>? = null,
     val activeTagName: String? = null,
     val activePathFilter: Set<String>? = null,
+    val activeExcludePathFilter: Set<String>? = null,
     val activePathName: String? = null,
     val activeCollectionName: String? = null,
     val mediaRefreshTrigger: Int = 0,
@@ -54,13 +56,14 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
     fun setSelectedTab(tab: Int) { _state.update { it.copy(selectedTab = tab) } }
     fun setExplorerPath(path: String) { _state.update { it.copy(explorerPath = path) } }
     fun setRatingFilter(rating: Int) { _state.update { it.copy(activeRatingFilter = rating) } }
-    fun setTagFilter(tagPaths: Set<String>?, tagName: String?) { _state.update { it.copy(activeTagFilter = tagPaths, activeTagName = tagName) } }
+    fun setTagFilter(tagNames: Set<String>?, tagName: String?) { _state.update { it.copy(activeTagFilter = tagNames, activeTagName = tagName) } }
     fun setPathFilter(paths: Set<String>?, name: String? = null) { _state.update { it.copy(activePathFilter = paths, activePathName = name) } }
+    fun setExcludePathFilter(paths: Set<String>?) { _state.update { it.copy(activeExcludePathFilter = paths) } }
     fun setCollectionName(name: String?) { _state.update { it.copy(activeCollectionName = name) } }
     fun setPreFilterTab(tab: Int) { _state.update { it.copy(preFilterTab = tab) } }
 
     fun clearFilters() {
-        _state.update { it.copy(activeRatingFilter = 0, activeTagFilter = null, activeTagName = null, activePathFilter = null, activePathName = null, activeCollectionName = null, preFilterTab = -1) }
+        _state.update { it.copy(activeRatingFilter = 0, activeTagFilter = null, activeTagName = null, activePathFilter = null, activeExcludePathFilter = null, activePathName = null, activeCollectionName = null, preFilterTab = -1) }
     }
 
     fun triggerMediaRefresh() {
