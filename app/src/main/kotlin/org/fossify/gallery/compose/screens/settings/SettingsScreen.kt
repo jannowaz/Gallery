@@ -184,6 +184,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             SettingsSwitch(stringResource(R.string.set_show_file_type), conf.showThumbnailFileTypes) { conf.showThumbnailFileTypes = it }
             SettingsSwitch(stringResource(R.string.set_mark_favorites), conf.markFavoriteItems) { conf.markFavoriteItems = it }
             SettingsSwitch(stringResource(R.string.show_rating), conf.showRatingOnThumbnails) { conf.showRatingOnThumbnails = it }
+            SettingsSwitch(stringResource(R.string.blur_all_media), conf.blurAllMedia) { conf.blurAllMedia = it }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
             SectionLabel(stringResource(R.string.nav_recycle_bin))

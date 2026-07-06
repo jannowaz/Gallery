@@ -772,6 +772,13 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(SHOW_VIDEO_DURATION_ON_THUMBNAILS, true)
         set(v) = prefs.edit().putBoolean(SHOW_VIDEO_DURATION_ON_THUMBNAILS, v).apply()
 
+    // Heavily blurs every thumbnail/full-screen image and video surface app-wide - a privacy toggle
+    // for screen-sharing/screenshots, and doubles as a safe way to verify UI changes visually
+    // without the real media content ever being legible.
+    var blurAllMedia: Boolean
+        get() = prefs.getBoolean(BLUR_ALL_MEDIA, false)
+        set(v) = prefs.edit().putBoolean(BLUR_ALL_MEDIA, v).apply()
+
     var viewerShowRatingBar: Boolean
         get() = prefs.getBoolean(VIEWER_SHOW_RATING_BAR, false)
         set(v) = prefs.edit().putBoolean(VIEWER_SHOW_RATING_BAR, v).apply()

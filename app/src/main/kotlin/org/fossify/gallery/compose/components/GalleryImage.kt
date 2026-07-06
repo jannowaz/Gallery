@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -28,6 +29,7 @@ import coil.compose.AsyncImagePainter
 import coil.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.fossify.gallery.extensions.config
 import java.io.File
 
 @Composable
@@ -56,7 +58,7 @@ fun GalleryImage(
                 .apply { if (thumbnailSize != null) size(thumbnailSize, thumbnailSize) }
                 .build(),
             contentDescription = contentDescription,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().let { if (ctx.config.blurAllMedia) it.blur(24.dp) else it },
             contentScale = contentScale,
             onSuccess = { imageState = it },
             onError = { imageState = it },

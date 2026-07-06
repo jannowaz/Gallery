@@ -443,6 +443,7 @@
     <string name="thumbnail_overlays">Overlays auf Thumbnails</string>
     <string name="show_rating">Bewertung anzeigen</string>
     <string name="show_video_duration">Videodauer anzeigen</string>
+    <string name="blur_all_media">Alle Medien weichzeichnen (Privatsphäre)</string>
     <string name="select_old">Alte markieren</string>
     <string name="internal_storage">Interner Speicher</string>
     <string name="scanning_short">Scannt…</string>

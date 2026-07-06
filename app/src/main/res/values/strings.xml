@@ -488,6 +488,7 @@
     <string name="thumbnail_overlays">Thumbnail overlays</string>
     <string name="show_rating">Show rating</string>
     <string name="show_video_duration">Show video duration</string>
+    <string name="blur_all_media">Blur all media (privacy)</string>
     <string name="select_old">Mark older</string>
     <string name="internal_storage">Internal storage</string>
     <string name="scanning_short">Scanning…</string>

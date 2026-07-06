@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -36,6 +37,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.util.sharedElementKey
+import org.fossify.gallery.extensions.config
 import java.io.File
 
 @Composable
@@ -81,7 +83,7 @@ fun ImagePage(
         if (a > 0f) zoom.updateContentAspect(a)
     }
 
-    Box(Modifier.fillMaxSize().clipToBounds().then(modifier)) {
+    Box(Modifier.fillMaxSize().clipToBounds().then(modifier).let { if (ctx.config.blurAllMedia) it.blur(32.dp) else it }) {
         if (useNativeZoom) {
             val view = remember(path) {
                 SubsamplingScaleImageView(ctx).apply {

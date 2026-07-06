@@ -55,6 +55,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
@@ -255,6 +256,7 @@ fun VideoPage(
                 else if (pos.x > w * 2 / 3f) { player.seekTo((player.currentPosition + 10000).coerceAtMost(player.duration)); onInteract() }
                 else zoom.cycleZoom(pos, sz)
             } else null)
+            .let { if (ctx.config.blurAllMedia) it.blur(32.dp) else it }
         )
 
         ZoomMinimap(zoom, modifier = Modifier.align(Alignment.TopEnd).padding(top = 72.dp, end = 12.dp))
@@ -319,7 +321,12 @@ fun VideoPage(
                         Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 84.dp), contentAlignment = Alignment.Center) {
                             Surface(shape = RoundedCornerShape(Radius.sm), color = Scrim.a85) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Image(bitmap = previewBmp.asImageBitmap(), contentDescription = null, modifier = Modifier.size(width = 160.dp, height = 90.dp), contentScale = ContentScale.Crop)
+                                    Image(
+                                        bitmap = previewBmp.asImageBitmap(),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(width = 160.dp, height = 90.dp).let { if (ctx.config.blurAllMedia) it.blur(16.dp) else it },
+                                        contentScale = ContentScale.Crop,
+                                    )
                                     Text("%02d:%02d".format(((scrubFraction * player.duration) / 1000).toInt() / 60, ((scrubFraction * player.duration) / 1000).toInt() % 60), color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(4.dp))
                                 }
                             }
