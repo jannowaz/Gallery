@@ -14,6 +14,8 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -49,6 +51,7 @@ import org.fossify.gallery.models.MediaTag
 import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.helpers.UndoManager
 import org.fossify.gallery.helpers.UndoType
+import org.fossify.gallery.compose.util.PrivacyPauseScrim
 
 val LocalAnimatedVisibilityScope = staticCompositionLocalOf<AnimatedVisibilityScope> {
     error("No AnimatedVisibilityScope provided")
@@ -75,6 +78,29 @@ fun GalleryNavHost(
         UndoManager.registerHandler(UndoType.RATING_CHANGE) { action -> action.paths.forEach { repo.updateRating(it, action.extra["oldRating"]?.toIntOrNull() ?: 0) }; org.fossify.gallery.helpers.RefreshBus.trigger() }
     }
 
+    // The Quick Mover widget's "set up folder pairs" button (shown when no pairs are configured
+    // yet, see MoverWidgetProvider) launches the app with this extra instead of just opening it.
+    // Two paths, since a cold start and an already-running task deliver the request differently:
+    // - Cold start: read once off the Activity's own launch intent, consumed via removeExtra() so
+    //   a later recreation/config change doesn't re-trigger the same navigation.
+    // - Already running: ComposeExplorerActivity.onNewIntent() publishes onto NavigateBus instead,
+    //   since FLAG_ACTIVITY_CLEAR_TOP on an already-top instance never goes through onCreate()
+    //   again, and a plain intent-extra read wouldn't be observed by an already-composed NavHost.
+    LaunchedEffect(Unit) {
+        val activity = ctx as? android.app.Activity
+        if (activity?.intent?.getStringExtra(org.fossify.gallery.helpers.MoverWidgetProvider.EXTRA_NAVIGATE_TO) == org.fossify.gallery.helpers.MoverWidgetProvider.NAVIGATE_TARGET_MOVER) {
+            activity.intent.removeExtra(org.fossify.gallery.helpers.MoverWidgetProvider.EXTRA_NAVIGATE_TO)
+            navController.navigate(FoldersMover)
+        }
+    }
+    LaunchedEffect(Unit) {
+        org.fossify.gallery.compose.util.NavigateBus.events.collect { target ->
+            if (target == org.fossify.gallery.helpers.MoverWidgetProvider.NAVIGATE_TARGET_MOVER) {
+                navController.navigate(FoldersMover)
+            }
+        }
+    }
+
     // One-time sanitisation of cached tags that may contain UTF-16LE byte dumps (e.g. "100 0 97 0 …").
     LaunchedEffect(Unit) {
         withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -95,6 +121,7 @@ fun GalleryNavHost(
         dynamicColor = conf.useDynamicColors,
         amoledBlack = conf.useAmoledBackground,
     ) {
+        Box(Modifier.fillMaxSize()) {
         AppProviders(repo) {
             SharedTransitionLayout(modifier = modifier) {
                 CompositionLocalProvider(LocalSharedTransitionScope provides this) {
@@ -204,5 +231,7 @@ fun GalleryNavHost(
             }
         }
     }
-}
+        PrivacyPauseScrim()
+        }
+    }
 }

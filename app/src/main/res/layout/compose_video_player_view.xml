@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Inflated (not constructed programmatically) by the Compose video viewer specifically to get a
+    TextureView instead of PlayerView's default SurfaceView - surface_type can only be set via this
+    XML attribute at inflate time, PlayerView has no programmatic setter for it. A TextureView
+    composites as a normal layer, so Compose's Modifier.blur()/graphicsLayer (used by the privacy
+    "blur all media" toggle) actually affects it; a SurfaceView's content bypasses that pipeline via
+    a hardware hole-punch and silently ignores any blur applied to it.
+-->
+<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:surface_type="texture_view"
+    app:use_controller="false" />

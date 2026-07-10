@@ -764,6 +764,13 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getString(LAST_COPY_MOVE_DESTINATION, internalStoragePath) ?: internalStoragePath
         set(path) = prefs.edit().putString(LAST_COPY_MOVE_DESTINATION, path).apply()
 
+    // Last folder browsed in the Explorer tab - used to default the destination picker when
+    // turning a folder into a Mover pair's source (see MoverConfig.kt/FolderPathPickerSheet),
+    // since that's usually where the user is about to file things away to next anyway.
+    var lastExplorerPath: String
+        get() = prefs.getString(LAST_EXPLORER_PATH, "") ?: ""
+        set(path) = prefs.edit().putString(LAST_EXPLORER_PATH, path).apply()
+
     var showRatingOnThumbnails: Boolean
         get() = prefs.getBoolean(SHOW_RATING_ON_THUMBNAILS, false)
         set(v) = prefs.edit().putBoolean(SHOW_RATING_ON_THUMBNAILS, v).apply()

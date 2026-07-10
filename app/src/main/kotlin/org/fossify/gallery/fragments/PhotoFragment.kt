@@ -88,6 +88,7 @@ import org.fossify.gallery.helpers.MAX_ZOOM_EQUALITY_TOLERANCE
 import org.fossify.gallery.helpers.MEDIUM
 import org.fossify.gallery.helpers.MyGlideImageDecoder
 import org.fossify.gallery.helpers.NORMAL_TILE_DPI
+import org.fossify.gallery.helpers.applyPrivacyBlur
 import org.fossify.gallery.helpers.PicassoRegionDecoder
 import org.fossify.gallery.helpers.SHOULD_INIT_FRAGMENT
 import org.fossify.gallery.helpers.WEIRD_TILE_DPI
@@ -192,6 +193,12 @@ class PhotoFragment : ViewPagerFragment() {
             }
         }
 
+        // Legacy viewer path (external "open with Gallery" intents) - the Compose viewer already
+        // blurs via Modifier.blur(); this was the gap where that same setting was silently
+        // ignored. photoHolder wraps both gesturesView and subsamplingView, so this covers
+        // whichever of the two is actually visible without needing to target each separately.
+        binding.photoHolder.applyPrivacyBlur(context.config.blurAllMedia)
+
         ViewCompat.setOnApplyWindowInsetsListener(binding.photoHolder) { _, insets ->
             val system = insets.getInsetsIgnoringVisibility(Type.systemBars())
             binding.bottomActionsDummy.updateLayoutParams<ViewGroup.LayoutParams> {
@@ -260,6 +267,11 @@ class PhotoFragment : ViewPagerFragment() {
     override fun onResume() {
         super.onResume()
         val config = requireContext().config
+        // Re-applied here, not just once in onViewCreated - "blur all media" can be changed from the
+        // Compose Settings screen while this legacy viewer sits paused in the back stack (external
+        // "open with Gallery" intents keep their own Activity/back-stack instance), and onViewCreated
+        // alone would leave that already-open frame stuck showing whatever it captured at open time.
+        binding.photoHolder.applyPrivacyBlur(config.blurAllMedia)
         if (mWasInit && (config.showExtendedDetails != mStoredShowExtendedDetails || config.extendedDetails != mStoredExtendedDetails)) {
             initExtendedDetails()
         }

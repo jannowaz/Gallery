@@ -20,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -36,8 +35,10 @@ import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.R
+import org.fossify.gallery.compose.theme.BlurRadius
+import org.fossify.gallery.compose.util.BlurState
+import org.fossify.gallery.compose.util.privacyBlur
 import org.fossify.gallery.compose.util.sharedElementKey
-import org.fossify.gallery.extensions.config
 import java.io.File
 
 @Composable
@@ -83,7 +84,7 @@ fun ImagePage(
         if (a > 0f) zoom.updateContentAspect(a)
     }
 
-    Box(Modifier.fillMaxSize().clipToBounds().then(modifier).let { if (ctx.config.blurAllMedia) it.blur(32.dp) else it }) {
+    Box(Modifier.fillMaxSize().clipToBounds().then(modifier).privacyBlur(BlurRadius.viewer, BlurState.enabled)) {
         if (useNativeZoom) {
             val view = remember(path) {
                 SubsamplingScaleImageView(ctx).apply {
@@ -121,7 +122,7 @@ fun ImagePage(
                 modifier = Modifier
                     .fillMaxSize()
                     .onSizeChanged { }
-                    .sharedElementKey("media_$path")
+                    .then(if (isCurrentPage) Modifier.sharedElementKey("media_$path") else Modifier)
                     .graphicsLayer {
                         scaleX = zoom.scale; scaleY = zoom.scale
                         translationX = zoom.offset.x; translationY = zoom.offset.y
@@ -129,7 +130,16 @@ fun ImagePage(
                     .zoomable(
                         zoom,
                         onSingleTap = onToggleUi,
-                        onDoubleTap = { pos, sz -> if (zoom.peekNextZoomLevel() > 1f) useNativeZoom = true; zoom.cycleZoom(pos, sz) },
+                        // Deliberately NOT handing off to the native tiled view here (only pinch-start
+                        // below does that): this fires and replaces the whole AsyncImage with the
+                        // native view on the very same recomposition, before zoom.cycleZoom()'s 220ms
+                        // Compose animation ever gets a visible frame - the native view then mounts at
+                        // its own default 1x (this library fork has no external scale/center control),
+                        // so the double-tap silently produced no visible zoom at all, and ZoomMinimap
+                        // (only rendered in this Coil branch) disappeared with it. A pinch gesture
+                        // doesn't have this problem since the native view picks up the continuing
+                        // gesture right where the fingers already are.
+                        onDoubleTap = { pos, sz -> zoom.cycleZoom(pos, sz) },
                         onZoomGestureStart = { useNativeZoom = true },
                     ),
                 onSuccess = { imageState = it },

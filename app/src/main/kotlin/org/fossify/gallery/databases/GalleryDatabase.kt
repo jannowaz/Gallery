@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import org.fossify.gallery.interfaces.*
 import org.fossify.gallery.models.*
 
-@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class], version = 18)
+@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class], version = 19)
 abstract class GalleryDatabase : RoomDatabase() {
 
     abstract fun DirectoryDao(): DirectoryDao
@@ -33,6 +33,29 @@ abstract class GalleryDatabase : RoomDatabase() {
     companion object {
         private var db: GalleryDatabase? = null
 
+        // Keeps media.date_sort_key (`date_taken > 0 ? date_taken : last_modified`) auto-maintained
+        // in the database itself, regardless of whether a row was written via Room's own generated
+        // INSERT/UPDATE (which just carries over whatever the Kotlin Medium.dateSortKey field
+        // happened to be, likely its 0L default) or raw SQL. "UPDATE OF date_taken, last_modified"
+        // only fires when those specific columns appear in the triggering UPDATE's SET list, and
+        // this trigger's own body only ever touches date_sort_key, so it can't re-trigger itself.
+        private fun createDateSortKeyTriggers(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS trg_media_date_sort_key_ins AFTER INSERT ON media BEGIN
+                    UPDATE media SET date_sort_key = CASE WHEN NEW.date_taken > 0 THEN NEW.date_taken ELSE NEW.last_modified END WHERE id = NEW.id;
+                END
+                """
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS trg_media_date_sort_key_upd AFTER UPDATE OF date_taken, last_modified ON media BEGIN
+                    UPDATE media SET date_sort_key = CASE WHEN NEW.date_taken > 0 THEN NEW.date_taken ELSE NEW.last_modified END WHERE id = NEW.id;
+                END
+                """
+            )
+        }
+
         fun getInstance(context: Context): GalleryDatabase {
             if (db == null) {
                 synchronized(GalleryDatabase::class) {
@@ -52,7 +75,22 @@ abstract class GalleryDatabase : RoomDatabase() {
                             .addMigrations(MIGRATION_15_16)
                             .addMigrations(MIGRATION_16_17)
                             .addMigrations(MIGRATION_17_18)
+                            .addMigrations(MIGRATION_18_19)
                             .fallbackToDestructiveMigrationFrom(1, 2, 3)
+                            // Room only runs migrations when upgrading an *existing* database - a
+                            // fresh install gets its schema (including date_sort_key and its index)
+                            // straight from the @Entity/@Index annotations, since that column is a
+                            // real plain column now (unlike an earlier, reverted attempt at an
+                            // expression index, which Room's schema validation can't represent at
+                            // all). Only the two triggers that keep date_sort_key in sync aren't
+                            // annotation-expressible, so a fresh install still needs them created
+                            // explicitly here.
+                            .addCallback(object : RoomDatabase.Callback() {
+                                override fun onCreate(db: SupportSQLiteDatabase) {
+                                    super.onCreate(db)
+                                    createDateSortKeyTriggers(db)
+                                }
+                            })
                             .build()
                     }
                 }
@@ -211,6 +249,21 @@ abstract class GalleryDatabase : RoomDatabase() {
                             }
                     }
                 }
+            }
+        }
+
+        // Adds media.date_sort_key - see the field's own doc comment on Medium.kt and
+        // createDateSortKeyTriggers above for the full "why" (replaces an expression-index attempt
+        // that broke Room's schema validation and had to be reverted). Order matters: the column
+        // must exist before it can be backfilled or indexed, and the old expression-shaped index
+        // this replaces has to go since @Entity no longer declares it.
+        private val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE media ADD COLUMN date_sort_key INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("UPDATE media SET date_sort_key = CASE WHEN date_taken > 0 THEN date_taken ELSE last_modified END")
+                database.execSQL("DROP INDEX IF EXISTS `index_media_deleted_ts_date_taken_last_modified`")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_date_sort_key` ON `media` (`deleted_ts`, `date_sort_key`)")
+                createDateSortKeyTriggers(database)
             }
         }
     }

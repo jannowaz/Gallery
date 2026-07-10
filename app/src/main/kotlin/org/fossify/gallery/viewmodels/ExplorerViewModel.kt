@@ -54,7 +54,12 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setSelectedTab(tab: Int) { _state.update { it.copy(selectedTab = tab) } }
-    fun setExplorerPath(path: String) { _state.update { it.copy(explorerPath = path) } }
+    fun setExplorerPath(path: String) {
+        _state.update { it.copy(explorerPath = path) }
+        // Persisted (not just in-memory state) so it survives a process restart too - used to
+        // default the destination picker when turning a folder into a Mover pair's source.
+        getApplication<Application>().config.lastExplorerPath = path
+    }
     fun setRatingFilter(rating: Int) { _state.update { it.copy(activeRatingFilter = rating) } }
     fun setTagFilter(tagNames: Set<String>?, tagName: String?) { _state.update { it.copy(activeTagFilter = tagNames, activeTagName = tagName) } }
     fun setPathFilter(paths: Set<String>?, name: String? = null) { _state.update { it.copy(activePathFilter = paths, activePathName = name) } }

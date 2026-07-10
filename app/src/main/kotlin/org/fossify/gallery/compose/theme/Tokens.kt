@@ -49,6 +49,17 @@ object Scrim {
 }
 
 /**
+ * Radii for `Modifier.privacyBlur()` ("blur all media"), named by where they're applied rather
+ * than picked ad hoc per call site - a small thumbnail needs less blur to fully obscure its content
+ * than a fullscreen viewer frame does, so these are intentionally not all the same value.
+ */
+object BlurRadius {
+    val scrubPreview = 16.dp
+    val thumbnail = 24.dp
+    val viewer = 32.dp
+}
+
+/**
  * Central design tokens. Use these instead of ad-hoc dp literals so spacing and corner radii are
  * consistent across the whole app.
  *

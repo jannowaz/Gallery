@@ -85,6 +85,7 @@ import org.fossify.gallery.helpers.Config
 import org.fossify.gallery.helpers.EXOPLAYER_MAX_BUFFER_MS
 import org.fossify.gallery.helpers.EXOPLAYER_MIN_BUFFER_MS
 import org.fossify.gallery.helpers.FAST_FORWARD_VIDEO_MS
+import org.fossify.gallery.helpers.applyPrivacyBlur
 import org.fossify.gallery.helpers.MEDIUM
 import org.fossify.gallery.helpers.SHOULD_INIT_FRAGMENT
 import org.fossify.gallery.interfaces.PlaybackSpeedListener
@@ -225,6 +226,11 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
             }
             mTextureView = videoSurface
             mTextureView.surfaceTextureListener = this@VideoFragment
+            // Legacy video path (external "open with Gallery" intents) previously ignored "blur
+            // all media" entirely - unlike the Compose viewer's SurfaceView, this player already
+            // renders through a TextureView (see initExoPlayer()'s setVideoSurface), so a real
+            // RenderEffect blur applies to it directly with no surface-type change needed.
+            mTextureView.applyPrivacyBlur(mConfig.blurAllMedia)
 
             val gestureDetector =
                 GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
@@ -381,6 +387,7 @@ class VideoFragment : ViewPagerFragment(), TextureView.SurfaceTextureListener,
         super.onResume()
         mConfig =
             requireContext().config      // make sure we get a new config, in case the user changed something in the app settings
+        mTextureView.applyPrivacyBlur(mConfig.blurAllMedia)
         requireActivity().updateTextColors(binding.videoHolder)
         val allowVideoGestures = mConfig.allowVideoGestures
         mTextureView.beGoneIf(mConfig.gestureVideoPlayer)

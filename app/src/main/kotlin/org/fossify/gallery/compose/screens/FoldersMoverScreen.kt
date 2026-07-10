@@ -1,7 +1,5 @@
 package org.fossify.gallery.compose.screens
 import androidx.compose.ui.res.stringResource
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.theme.Radius
 
@@ -22,7 +20,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PlayArrow
@@ -49,7 +47,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -77,17 +74,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.components.EmptyState
-import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.compose.theme.LocalSpacing
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.helpers.FolderPair
 import org.fossify.gallery.helpers.MediaStoreOps
+import org.fossify.gallery.helpers.flattenMoverPairs
+import org.fossify.gallery.helpers.loadMoverPairs
+import org.fossify.gallery.helpers.saveMoverPairs
 import org.fossify.gallery.models.BatchJobItem
 import org.fossify.gallery.workers.BatchOperation
 import org.fossify.gallery.workers.MediaBatchWorker
 import java.io.File
-
-private data class FolderPair(val source: String = "", val destination: String = "")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -96,13 +94,10 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val s = LocalSpacing.current
     val defPrefs = remember { android.preference.PreferenceManager.getDefaultSharedPreferences(ctx) }
-    val gson = remember { Gson() }
-    fun loadPairs(): List<FolderPair> {
-        val json = defPrefs.getString("mover_pairs", null) ?: return emptyList()
-        return try { gson.fromJson(json, object : TypeToken<List<FolderPair>>() {}.type) } catch (_: Exception) { emptyList() }
-    }
-    val pairs = remember { mutableStateListOf<FolderPair>().also { it.addAll(loadPairs()) } }
-    fun savePairs() { defPrefs.edit().putString("mover_pairs", gson.toJson(pairs.toList())).apply() }
+    val pairs = remember { mutableStateListOf<FolderPair>().also { it.addAll(loadMoverPairs(ctx)) } }
+    // The Quick Mover widget's button label ("Move N files" vs. "Tap to set up folder pairs")
+    // otherwise only reflects an edit made here once the OS's own next periodic refresh happens.
+    fun savePairs() { saveMoverPairs(ctx, pairs.toList()); org.fossify.gallery.helpers.MoverWidgetProvider.requestImmediateUpdate(ctx) }
     var showAddDialog by remember { mutableStateOf(false) }
     // Set once the move job is enqueued; the job keeps running via MediaBatchWorker (with its own
     // foreground notification) even if this screen is left - it no longer depends on this
@@ -119,7 +114,10 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     }.collectAsState(initial = emptyList())
     val activeWorkInfo = workInfo.firstOrNull()
     val isMoving = activeJobId != null && activeWorkInfo?.state?.isFinished != true
-    val moveProgressData = activeWorkInfo?.progress
+    // WorkManager clears WorkInfo.progress back to empty once the worker reaches a terminal state -
+    // the final counts only survive in outputData (see MediaBatchWorker.doWork()), so once finished
+    // that's the one to read, or the toast below always shows 0 regardless of what actually moved.
+    val moveProgressData = if (activeWorkInfo?.state?.isFinished == true) activeWorkInfo.outputData else activeWorkInfo?.progress
     val moveProgress = moveProgressData?.getInt("done", 0) ?: 0
     val moveTotal = moveProgressData?.getInt("total", 1) ?: 1
     LaunchedEffect(activeWorkInfo?.state) {
@@ -141,13 +139,14 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
         } catch (_: Exception) { null }
     }
 
-    fun addOrUpdatePair(source: String, dest: String) {
-        val p = FolderPair(source = source, destination = dest)
+    // sources can carry more than one path when adding a new pair (not when editing an existing
+    // one, see AddPairDialog's isEditing gate) - one FolderPair per source, all to the same dest.
+    fun addOrUpdatePair(sources: List<String>, dest: String) {
         if (editingIndex >= 0) {
-            pairs[editingIndex] = p
+            pairs[editingIndex] = FolderPair(source = sources.first(), destination = dest)
             editingIndex = -1
         } else {
-            pairs.add(p)
+            pairs.addAll(sources.map { FolderPair(source = it, destination = dest) })
         }
         savePairs()
         showAddDialog = false
@@ -155,17 +154,22 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
 
     fun startMove() {
         if (pairs.isEmpty() || isMoving) return
-        val allMoves = pairs.flatMap { pair ->
-            val srcDir = File(pair.source)
-            if (!srcDir.isDirectory) return@flatMap emptyList<Pair<String, String>>()
-            val destBase = pair.destination
-            srcDir.listFiles()?.filter { it.isFile }?.map { it.absolutePath to "$destBase/${it.name}" } ?: emptyList()
-        }
+        val allMoves = flattenMoverPairs(pairs)
         if (allMoves.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); return }
         scope.launch {
-            val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, allMoves.map { it.first }) }
-            val granted = try { moverConsent.request(MediaStoreOps.writeRequest(ctx, uris.map { it.second })) } catch (_: Exception) { false }
-            if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); return@launch }
+            // With MANAGE_EXTERNAL_STORAGE (this app requires it, see all_files_access_title/
+            // require_all_files_access) the app can already read/write/delete any file on shared
+            // storage directly - createWriteRequest's consent dialog is redundant in that case, and
+            // requesting it anyway was the actual cause of "Move all" immediately toasting
+            // R.string.cancelled ("Abgebrochen") instead of moving anything: MoverWidgetProvider's
+            // "move now" button enqueues the exact same worker with no consent step at all and
+            // works fine, which is the tell that consent isn't actually needed here.
+            if (!MediaStoreOps.hasAllFilesAccess(ctx)) {
+                val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, allMoves.map { it.first }) }
+                if (uris.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); return@launch }
+                val granted = try { moverConsent.request(MediaStoreOps.writeRequest(ctx, uris.map { it.second })) } catch (_: Exception) { false }
+                if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); return@launch }
+            }
             val items = allMoves.map { (srcPath, destPath) -> BatchJobItem(jobId = "", sourcePath = srcPath, targetPath = destPath) }
             activeJobId = MediaBatchWorker.enqueue(ctx, BatchOperation.MOVE_COPY_DELETE, items)
         }
@@ -248,7 +252,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
         AddPairDialog(
             initialSource = if (editingIndex >= 0) pairs[editingIndex].source else "",
             initialDest = if (editingIndex >= 0) pairs[editingIndex].destination else "",
-            onConfirm = { src, dest -> addOrUpdatePair(src, dest) },
+            onConfirm = { srcs, dest -> addOrUpdatePair(srcs, dest) },
             onDismiss = { showAddDialog = false; editingIndex = -1 },
             defPrefs = defPrefs,
         )
@@ -257,98 +261,132 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FolderSearchDialog(
-    title: String,
-    onFolderPicked: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val ctx = LocalContext.current
-    val repo = LocalMediaRepository.current
-    var query by remember { mutableStateOf("") }
-    var allDirs by remember { mutableStateOf<List<org.fossify.gallery.models.Directory>>(emptyList()) }
-    LaunchedEffect(Unit) {
-        allDirs = withContext(Dispatchers.IO) { repo.getAllDirectories().sortedBy { it.name.lowercase() } }
-    }
-    val filtered = remember(allDirs, query) {
-        if (query.isBlank()) allDirs.take(50)
-        else allDirs.filter { it.name.contains(query, ignoreCase = true) || it.path.contains(query, ignoreCase = true) }.take(50)
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column(Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
-                OutlinedTextField(value = query, onValueChange = { query = it }, placeholder = { Text(stringResource(R.string.search_folder_hint)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Default.Search, null, modifier = Modifier.size(18.dp)) })
-                Spacer(Modifier.height(8.dp))
-                LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
-                    items(filtered, key = { it.path }) { dir ->
-                        Surface(
-                            onClick = { onFolderPicked(dir.path) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(org.fossify.gallery.compose.theme.Radius.sm),
-                        ) {
-                            Column(Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
-                                Text(dir.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                if (query.isNotBlank()) Text(dir.path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
-}
-
-@Composable
 private fun AddPairDialog(
     initialSource: String,
     initialDest: String,
-    onConfirm: (String, String) -> Unit,
+    onConfirm: (List<String>, String) -> Unit,
     onDismiss: () -> Unit,
     defPrefs: android.content.SharedPreferences,
 ) {
-    var source by remember { mutableStateOf(initialSource) }
+    // Editing one specific existing pair only ever has (and keeps) exactly one source - multiple
+    // sources are only offered while adding a brand new pair (see multiSelect below).
+    val isEditing = initialSource.isNotBlank()
+    val sources = remember { mutableStateListOf<String>().apply { if (initialSource.isNotBlank()) add(initialSource) } }
     var dest by remember { mutableStateOf(initialDest) }
     val ctx = LocalContext.current
     var showSearch by remember { mutableStateOf("") } // "source" or "dest" or ""
+    // Set when "Last source"/"Last dest" is tapped - opens the Explorer sheet navigated straight to
+    // that remembered folder instead of silently filling the field, so picking it is still a
+    // deliberate confirm (and, for source, a jumping-off point to keep browsing/adding more) rather
+    // than a blind paste.
+    var pickerStartOverride by remember { mutableStateOf<String?>(null) }
 
     fun loadLast(name: String): String {
         val saved = defPrefs.getString(name, null) ?: return ""
         return if (File(saved).exists()) saved else ""
     }
 
+    fun openPicker(target: String, startOverride: String? = null) {
+        pickerStartOverride = startOverride
+        showSearch = target
+    }
+
+    // Explorer-style browse-by-tapping-into-subfolders, with its own text search over the
+    // already-indexed folder DB built in (see FolderPathPickerSheet) - the only way to pick a source
+    // or destination here now, since that covers both typing-a-name-to-find and drilling into
+    // subfolders without a second, redundant search field in this dialog.
     if (showSearch.isNotEmpty()) {
-            FolderSearchDialog(
-                title = if (showSearch == "source") stringResource(R.string.mover_select_source) else stringResource(R.string.mover_select_dest),
-                onFolderPicked = { path ->
-                    if (showSearch == "source") { source = path; defPrefs.edit().putString("mover_last_source", path).apply() }
-                    else { dest = path; defPrefs.edit().putString("mover_last_dest", path).apply() }
-                    showSearch = ""
-                },
-                onDismiss = { showSearch = "" },
-            )
+        val isSourcePick = showSearch == "source"
+        // Destination defaults to wherever the user last browsed in the Explorer tab (falling back
+        // to the current field value, then internal storage root) - usually where they're about to
+        // file things away to next anyway.
+        val initialPickerPath = pickerStartOverride
+            ?: if (isSourcePick) sources.lastOrNull() ?: ctx.config.internalStoragePath
+            else dest.ifBlank { ctx.config.lastExplorerPath.ifBlank { ctx.config.internalStoragePath } }
+        FolderPathPickerSheet(
+            title = if (isSourcePick) stringResource(R.string.mover_select_source) else stringResource(R.string.mover_select_dest),
+            initialPath = initialPickerPath,
+            onPathSelected = { path ->
+                if (isSourcePick) { sources.clear(); sources.add(path); defPrefs.edit().putString("mover_last_source", path).apply() }
+                else { dest = path; defPrefs.edit().putString("mover_last_dest", path).apply() }
+            },
+            onDismiss = { showSearch = ""; pickerStartOverride = null },
+            suggestedFolderName = if (!isSourcePick && sources.size == 1) File(sources[0]).name else null,
+            multiSelect = isSourcePick && !isEditing,
+            initialSelectedPaths = sources.toList(),
+            onPathsSelected = { picked ->
+                sources.clear(); sources.addAll(picked)
+                picked.lastOrNull()?.let { defPrefs.edit().putString("mover_last_source", it).apply() }
+            },
+        )
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initialSource.isNotBlank()) stringResource(R.string.mover_edit_pair) else stringResource(R.string.mover_new_pair)) },
+        title = { Text(if (isEditing) stringResource(R.string.mover_edit_pair) else stringResource(R.string.mover_new_pair)) },
         text = {
             Column(Modifier.fillMaxWidth()) {
-                OutlinedTextField(value = source, onValueChange = { source = it }, label = { Text(stringResource(R.string.source)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = { IconButton(onClick = { showSearch = "source" }) { Icon(Icons.Default.Search, stringResource(R.string.cd_search)) } })
-                Text(source, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                TextButton(onClick = { source = loadLast("mover_last_source"); if (source.isNotBlank()) defPrefs.edit().putString("mover_last_source", source).apply() }) { Text(stringResource(R.string.mover_last_source), style = MaterialTheme.typography.labelSmall) }
+                val sourceSummary = when {
+                    sources.isEmpty() -> ""
+                    sources.size == 1 -> sources[0]
+                    else -> stringResource(R.string.mover_n_sources_selected, sources.size)
+                }
+                FolderPickField(label = stringResource(R.string.source), path = sourceSummary, iconTint = MaterialTheme.colorScheme.primary, onClick = { openPicker("source") })
+                if (sources.size > 1) {
+                    Column(Modifier.padding(start = 4.dp, top = 2.dp)) {
+                        sources.forEach { s ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(s, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                IconButton(onClick = { sources.remove(s) }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.Close, stringResource(R.string.action_remove), modifier = Modifier.size(14.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+                TextButton(onClick = {
+                    val last = loadLast("mover_last_source")
+                    if (last.isNotBlank()) openPicker("source", startOverride = last)
+                }) { Text(stringResource(R.string.mover_last_source), style = MaterialTheme.typography.labelSmall) }
                 Spacer(Modifier.height(12.dp))
-                OutlinedTextField(value = dest, onValueChange = { dest = it }, label = { Text(stringResource(R.string.destination)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = { IconButton(onClick = { showSearch = "dest" }) { Icon(Icons.Default.Search, stringResource(R.string.cd_search)) } })
-                Text(dest, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                TextButton(onClick = { dest = loadLast("mover_last_dest"); if (dest.isNotBlank()) defPrefs.edit().putString("mover_last_dest", dest).apply() }) { Text(stringResource(R.string.mover_last_dest), style = MaterialTheme.typography.labelSmall) }
+                FolderPickField(label = stringResource(R.string.destination), path = dest, iconTint = MaterialTheme.colorScheme.tertiary, onClick = { openPicker("dest") })
+                TextButton(onClick = {
+                    val last = loadLast("mover_last_dest")
+                    if (last.isNotBlank()) openPicker("dest", startOverride = last)
+                }) { Text(stringResource(R.string.mover_last_dest), style = MaterialTheme.typography.labelSmall) }
             }
         },
-        confirmButton = { TextButton(onClick = { if (source.isNotBlank() && dest.isNotBlank()) onConfirm(source.trimEnd('/'), dest.trimEnd('/')) }) { Text(stringResource(org.fossify.commons.R.string.save)) } },
+        confirmButton = { TextButton(onClick = { if (sources.isNotEmpty() && dest.isNotBlank()) onConfirm(sources.toList().map { it.trimEnd('/') }, dest.trimEnd('/')) }) { Text(stringResource(org.fossify.commons.R.string.save)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
+}
+
+@Composable
+private fun FolderPickField(label: String, path: String, iconTint: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(org.fossify.gallery.compose.theme.Radius.md),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Folder, null, tint = iconTint, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    path.ifBlank { stringResource(R.string.mover_tap_to_pick) },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = if (path.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+            Icon(Icons.Default.Search, stringResource(R.string.cd_search), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+        }
+    }
 }
 
 private fun uriToPath(uri: Uri, storageRoot: String): String? {

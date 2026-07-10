@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import org.fossify.commons.FossifyApp
+import org.fossify.gallery.compose.util.BlurState
 import org.fossify.gallery.extensions.config
 
 class App : FossifyApp(), ImageLoaderFactory {
@@ -74,6 +75,13 @@ class App : FossifyApp(), ImageLoaderFactory {
         }
         super.onCreate()
         Reprint.initialize(this)
+
+        // Seed the Compose-observable blur mirror from the persisted setting - BlurState (not
+        // Config directly) is what every blur call site and toggle reads/writes through, since
+        // flipping a plain SharedPreferences-backed boolean doesn't recompose anything that
+        // already read it. Read eagerly/synchronously (not in the async warm-up block below) so
+        // there's no window on cold start where a persisted "on" reads back as off.
+        BlurState.enabled = config.blurAllMedia
 
         // Coil's ImageLoader (see newImageLoader() above) is built lazily on whatever thread
         // first requests an image - building its DiskCache does I/O (creates the cache dir and

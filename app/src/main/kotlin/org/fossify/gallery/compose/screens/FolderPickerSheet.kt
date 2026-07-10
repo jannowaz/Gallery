@@ -47,7 +47,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -86,7 +85,6 @@ private data class FolderItem(
     val path: String,
     val isDirectory: Boolean,
     val mediaCount: Int = 0,
-    val matchScore: Int = 0,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -102,8 +100,7 @@ fun FolderPickerSheet(
     val conf = ctx.config
     val rootPath = conf.internalStoragePath.ifBlank { android.os.Environment.getExternalStorageDirectory().absolutePath }
     val startPath = conf.lastCopyMoveDestination.takeIf { it.isNotBlank() && Files.isDirectory(Paths.get(it)) } ?: rootPath
-    val navStack = remember { mutableStateListOf(startPath) }
-    var currentPath by remember { mutableStateOf(navStack.last()) }
+    var currentPath by remember { mutableStateOf(startPath) }
     var folders by remember { mutableStateOf<List<FolderItem>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<FolderItem>>(emptyList()) }
@@ -143,18 +140,21 @@ fun FolderPickerSheet(
         if (qParts.isEmpty()) return@withContext emptyList()
         // Search the already-indexed folder DB instead of walking the filesystem (instant)
         val dirs = repo.getAllDirectories()
-        val results = mutableListOf<Pair<Int, FolderItem>>()
+        // directories.media_count is direct children only, so a shallow "Camera"-style parent with
+        // little of its own but huge subfolders would otherwise rank low - sum it plus every
+        // descendant's count so the folders that actually hold the most media (recursively) surface
+        // first, matching what a move/copy destination search is actually for.
+        fun recursiveCount(path: String): Int {
+            val prefix = path.trimEnd('/') + "/"
+            return dirs.sumOf { if (it.path == path || it.path.startsWith(prefix)) it.mediaCnt else 0 }
+        }
+        val results = mutableListOf<FolderItem>()
         for (d in dirs) {
             val lowerPath = d.path.lowercase()
-            var score = 0
-            for (part in qParts) {
-                val idx = lowerPath.indexOf(part)
-                if (idx < 0) { score = -1; break }
-                score += maxOf(0, 100 - idx)
-            }
-            if (score > 0) results.add(score to FolderItem(name = d.name, path = d.path, isDirectory = true, mediaCount = d.mediaCnt, matchScore = score))
+            if (qParts.any { lowerPath.indexOf(it) < 0 }) continue
+            results.add(FolderItem(name = d.name, path = d.path, isDirectory = true, mediaCount = recursiveCount(d.path)))
         }
-        results.sortedByDescending { it.first }.take(80).map { it.second }
+        results.sortedByDescending { it.mediaCount }.take(80)
     }
 
     LaunchedEffect(currentPath) {
@@ -199,7 +199,9 @@ fun FolderPickerSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
+        // skipPartiallyExpanded - opens straight into the full/expanded state instead of resting
+        // at a partial peek height that needed a drag-up before the folder list was even visible.
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(480.dp)) {
@@ -271,11 +273,18 @@ fun FolderPickerSheet(
             } else {
                 // Breadcrumb + directory listing
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { navStack.clear(); navStack.add(rootPath); currentPath = rootPath }, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = { currentPath = rootPath }, modifier = Modifier.size(40.dp)) {
                         Icon(Icons.Default.Home, null, tint = if (currentPath == rootPath) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     }
-                    if (navStack.size > 1) {
-                        IconButton(onClick = { navStack.removeAt(navStack.lastIndex); currentPath = navStack.last() }, modifier = Modifier.size(40.dp)) {
+                    // Always offered (not just after drilling in from here) as a plain "go to parent
+                    // folder" - bounded at rootPath. The sheet can start on an arbitrary deep folder
+                    // (conf.lastCopyMoveDestination, wherever the user last moved/copied to), where a
+                    // history-based back button had nothing to pop to and stayed hidden.
+                    if (currentPath != rootPath) {
+                        IconButton(onClick = {
+                            val parent = File(currentPath).parent
+                            currentPath = if (parent != null && parent.length >= rootPath.length && parent.startsWith(rootPath)) parent else rootPath
+                        }, modifier = Modifier.size(40.dp)) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                         }
                     }
@@ -293,7 +302,7 @@ fun FolderPickerSheet(
                     items(folders, key = { it.path }) { folder ->
                         Surface(
                             modifier = Modifier.fillMaxWidth().clickable {
-                                navStack.add(folder.path); currentPath = folder.path
+                                currentPath = folder.path
                             },
                             color = Color.Transparent,
                             shape = RoundedCornerShape(Radius.sm),
@@ -359,7 +368,7 @@ fun FolderPickerSheet(
                 TextButton(onClick = {
                     if (newFolderName.isNotBlank()) {
                         val newDir = File(currentPath, newFolderName)
-                        try { newDir.mkdirs(); navStack.add(newDir.path); currentPath = newDir.path } catch (_: Exception) { ctx.toast(ctx.getString(R.string.create_folder_error)) }
+                        try { newDir.mkdirs(); currentPath = newDir.path } catch (_: Exception) { ctx.toast(ctx.getString(R.string.create_folder_error)) }
                         pendingCreateFolder = false; newFolderName = ""
                     }
                 }) { Text(stringResource(R.string.action_create)) }

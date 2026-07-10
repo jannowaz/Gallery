@@ -27,6 +27,9 @@ class SelectionDragState {
     var isDragging by mutableStateOf(false)
     var dragBounds by mutableStateOf<Rect?>(null)
     var anchorPath by mutableStateOf<String?>(null)
+    // The finger-down position the drag rectangle is measured from - see dragSelectionGesture's
+    // onDrag for why this has to be kept separate from dragBounds itself.
+    var anchorOffset by mutableStateOf<androidx.compose.ui.geometry.Offset?>(null)
     var autoScrollSpeed by mutableStateOf(0f)
 
     private val itemBounds = mutableMapOf<String, Rect>()
@@ -54,6 +57,7 @@ class SelectionDragState {
         isDragging = false
         dragBounds = null
         anchorPath = null
+        anchorOffset = null
         autoScrollSpeed = 0f
     }
 }
@@ -62,6 +66,30 @@ class SelectionDragState {
 fun rememberSelectionDragState(): SelectionDragState {
     return androidx.compose.runtime.remember { SelectionDragState() }
 }
+
+/** Backs the selection-mode "preview" affordance (a tile's eye icon, see MediaTile) - lets the user
+ * check a large inline preview of one item without it counting as a tap-to-toggle or long-press
+ * range-select, and without navigating away (which would cost scroll position, since the grid's
+ * LazyGridState is seeded from a plain saved index/offset, not carried across a screen dispose). */
+@Stable
+class PeekState {
+    var path by mutableStateOf<String?>(null)
+        private set
+    var isVideo by mutableStateOf(false)
+        private set
+
+    fun show(path: String, isVideo: Boolean) {
+        this.path = path
+        this.isVideo = isVideo
+    }
+
+    fun hide() {
+        path = null
+    }
+}
+
+@Composable
+fun rememberPeekState(): PeekState = remember { PeekState() }
 
 @OptIn(ExperimentalFoundationApi::class)
 fun Modifier.selectableItem(
@@ -82,10 +110,23 @@ fun Modifier.selectableItem(
 
 fun Modifier.dragSelectionGesture(
     state: SelectionDragState,
+    // Only attached once a selection is already active (started by a tile's own long-press, see
+    // MediaTile/selectableItem's onLongClick) - not while just browsing. This pointerInput and each
+    // tile's own combinedClickable both race to recognize the same long-press gesture on this Box's
+    // full-grid hit area; Compose has no single-owner touch capture between sibling/ancestor
+    // pointerInput blocks, so with this always attached, a plain tap OR the very first long-press
+    // could unpredictably get bogged down in that arbitration (observed live: taps on the Media grid
+    // sometimes silently doing nothing, or a single long-press ending up marking two items) instead
+    // of reaching the tile's own click/long-click handling cleanly. Gating this off entirely until
+    // a selection already exists removes the conflict for those two majority-of-the-time
+    // interactions; drag-to-extend-selection (this modifier's whole purpose) is only ever useful
+    // once a selection has already been started anyway.
+    enabled: Boolean,
     gridState: LazyGridState? = null,
     staggeredGridState: LazyStaggeredGridState? = null,
     onSelectPath: (String) -> Unit,
 ): Modifier = composed {
+    if (!enabled) return@composed this
     val haptic = rememberGalleryHaptics()
     this.pointerInput(gridState, staggeredGridState) {
         val edgeThreshold = 80f
@@ -99,6 +140,7 @@ fun Modifier.dragSelectionGesture(
                 haptic(HapticFeedbackType.LongPress)
                 tickedPaths.clear()
                 state.isDragging = true
+                state.anchorOffset = offset
                 state.dragBounds = Rect(offset, offset)
                 val item = state.findItemAt(offset)
                 state.anchorPath = item
@@ -106,12 +148,21 @@ fun Modifier.dragSelectionGesture(
             },
             onDrag = { change, _ ->
                 change.consume()
-                val prev = state.dragBounds ?: return@detectDragGesturesAfterLongPress
+                // Measured from the fixed anchor point to the current finger position - NOT a
+                // running union of every point touched so far (what this used to do, via
+                // minOf/maxOf against the *previous* dragBounds). That union only ever grew and
+                // never shrank, so the tiny involuntary jitter present in any real long-press
+                // (a human finger is never perfectly still) would permanently widen the rect by a
+                // few pixels and then never let go of that extra sliver - on a tightly-packed grid
+                // that sliver is enough to overlap the next item (typically the one above, since
+                // grid rows are tight vertically), silently multi-selecting it on what the user
+                // experiences as a single plain long-press.
+                val anchor = state.anchorOffset ?: change.position
                 state.dragBounds = Rect(
-                    left = minOf(prev.left, change.position.x),
-                    top = minOf(prev.top, change.position.y),
-                    right = maxOf(prev.right, change.position.x),
-                    bottom = maxOf(prev.bottom, change.position.y),
+                    left = minOf(anchor.x, change.position.x),
+                    top = minOf(anchor.y, change.position.y),
+                    right = maxOf(anchor.x, change.position.x),
+                    bottom = maxOf(anchor.y, change.position.y),
                 )
                 state.getItemsInDragArea().forEach { path ->
                     if (tickedPaths.add(path)) haptic(HapticFeedbackType.SegmentTick)

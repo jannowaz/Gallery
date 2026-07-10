@@ -133,13 +133,16 @@ fun ViewSettingsSheet(
             Text(stringResource(R.string.sorting), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                val sortFields = if (isAlbumMode) SortField.entries.filter { it != SortField.RATING } else SortField.entries
+                // RATING only makes sense per media item, COUNT (file count) only per folder - each
+                // mode gets the other's option filtered out instead of both lists carrying a
+                // meaningless entry.
+                val sortFields = if (isAlbumMode) SortField.entries.filter { it != SortField.RATING } else SortField.entries.filter { it != SortField.COUNT }
                 sortFields.forEachIndexed { i, sf ->
                     SegmentedButton(
                         selected = local.sortBy == sf,
                         onClick = { local = local.copy(sortBy = sf); onSettingsChange(local) },
                         shape = SegmentedButtonDefaults.itemShape(i, sortFields.size)
-                    ) { Text(when(sf) { SortField.NAME -> stringResource(R.string.sort_name); SortField.DATE -> stringResource(R.string.sort_date); SortField.SIZE -> stringResource(R.string.sort_size); SortField.RATING -> stringResource(R.string.sort_rating) }) }
+                    ) { Text(when(sf) { SortField.NAME -> stringResource(R.string.sort_name); SortField.DATE -> stringResource(R.string.sort_date); SortField.SIZE -> stringResource(R.string.sort_size); SortField.RATING -> stringResource(R.string.sort_rating); SortField.COUNT -> stringResource(R.string.sort_by_item_count) }) }
                 }
             }
 
@@ -197,6 +200,17 @@ fun ViewSettingsSheet(
             val ovCtx = LocalContext.current
             var showRatingOv by remember { mutableStateOf(ovCtx.config.showRatingOnThumbnails) }
             var showVideoDurOv by remember { mutableStateOf(ovCtx.config.showVideoDurationOnThumbnails) }
+            var cropThumbnailsOv by remember { mutableStateOf(ovCtx.config.cropThumbnails) }
+            // Grid-only: Mosaic already varies each tile's own height by its image's aspect ratio
+            // (see MediaScreen.kt's mosaic call site), so there's no square-crop-vs-letterbox choice
+            // to make there the way there is for Grid's fixed square tiles.
+            if (local.viewType == ViewType.GRID) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.set_crop_thumbnails), style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.weight(1f))
+                    Switch(checked = cropThumbnailsOv, onCheckedChange = { cropThumbnailsOv = it; ovCtx.config.cropThumbnails = it })
+                }
+            }
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.show_rating), style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.weight(1f))

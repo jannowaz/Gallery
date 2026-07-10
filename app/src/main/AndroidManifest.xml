@@ -343,6 +343,23 @@
         </receiver>
 
         <receiver
+            android:name=".helpers.MoverWidgetProvider"
+            android:exported="true"
+            android:icon="@drawable/img_widget_preview"
+            android:label="@string/mover_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="org.fossify.gallery.MOVER_WIDGET_MOVE_NOW" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_mover_info" />
+        </receiver>
+
+        <receiver
             android:name=".receivers.BootCompletedReceiver"
             android:enabled="true"
             android:exported="true">

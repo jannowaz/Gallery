@@ -16,7 +16,6 @@ import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.extensions.batchJobItemDB
-import org.fossify.gallery.extensions.deleteMediumWithPath
 import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MediaStoreOps
@@ -121,8 +120,17 @@ class MediaBatchWorker(
                 UndoManager.push(UndoAction(paths = succeededPaths.toSet(), type = UndoType.MOVE))
             }
             RefreshBus.trigger()
+            // A move/rename here can change what either home-screen widget should be showing (a
+            // folder's thumbnail/count for MyWidgetProvider, the "recent media"/pending-move-count
+            // for MoverWidgetProvider) - both otherwise only redraw on the OS's own schedule.
+            org.fossify.gallery.helpers.MyWidgetProvider.requestImmediateUpdate(applicationContext)
+            org.fossify.gallery.helpers.MoverWidgetProvider.requestImmediateUpdate(applicationContext)
             showResultNotification(operation, done, failed, isStopped)
-            Result.success()
+            // WorkInfo.progress (set via setProgress above) is only readable while the worker is
+            // RUNNING - WorkManager clears it back to Data.EMPTY once the worker reaches a terminal
+            // state, so callers observing WorkInfo after completion (see FoldersMoverScreen) must read
+            // the final counts from outputData instead, not progress.
+            Result.success(androidx.work.workDataOf("done" to done, "failed" to failed, "total" to total))
         } catch (e: Exception) {
             android.util.Log.e("MediaBatchWorker", "Job $jobId failed", e)
             Result.failure()
@@ -144,7 +152,16 @@ class MediaBatchWorker(
                 val uri = MediaStoreOps.uriForPath(applicationContext, item.sourcePath) ?: return false
                 val targetRel = MediaStoreOps.relativePathFor(File(item.targetPath).parent ?: "")
                 if (!MediaStoreOps.move(applicationContext, uri, targetRel)) return false
-                applicationContext.deleteMediumWithPath(item.sourcePath)
+                // Repoint the existing Room row's path columns in place (exactly what RENAME already
+                // does below) instead of deleting it and waiting for a MediaStore rescan to reinsert
+                // it - that rescan only knows MediaStore's own date_modified/date_taken, and Android's
+                // MediaProvider resets date_modified to "now" on any write regardless of what's asked
+                // for (confirmed live: an explicit ContentValues override for it is silently ignored),
+                // which was the actual bug behind a moved file jumping to the top of the date-sorted
+                // grid as if newly added. Updating in place keeps last_modified/date_taken/rating/
+                // is_favorite exactly as they were.
+                applicationContext.mediaDB.updateMedium(item.sourcePath, File(item.targetPath).parent ?: "", File(item.targetPath).name, item.targetPath)
+                applicationContext.mediaCacheDB.deleteByPathSync(item.sourcePath)
                 true
             }
             BatchOperation.MOVE_COPY_DELETE -> {
@@ -153,7 +170,14 @@ class MediaBatchWorker(
                 val newUri = MediaStoreOps.copy(applicationContext, uri, File(item.targetPath).name, targetRel, MediaStoreOps.isVideoPath(item.sourcePath))
                     ?: return false
                 applicationContext.contentResolver.delete(uri, null, null)
-                applicationContext.deleteMediumWithPath(item.sourcePath)
+                // Same reasoning as MOVE_FAST above - this op additionally goes through a fresh
+                // MediaStore insert() (see MediaStoreOps.copy()), whose own date_taken/date_modified
+                // are best-effort at most (also confirmed live: MediaProvider's scanner can null out
+                // date_taken again on a file with no real EXIF, which is the common case for e.g.
+                // downloaded social-media images the Mover feature usually moves) - the local DB row
+                // carrying the correct dates over directly is what actually matters for sort order.
+                applicationContext.mediaDB.updateMedium(item.sourcePath, File(item.targetPath).parent ?: "", File(item.targetPath).name, item.targetPath)
+                applicationContext.mediaCacheDB.deleteByPathSync(item.sourcePath)
                 true
             }
             BatchOperation.COPY -> {

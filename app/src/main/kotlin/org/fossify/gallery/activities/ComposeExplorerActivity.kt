@@ -57,6 +57,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -81,6 +82,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -96,9 +99,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.ShortNavigationBar
+import androidx.compose.material3.ShortNavigationBarItem
+import androidx.compose.material3.ShortNavigationBarItemDefaults
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.NavigationDrawerItem
@@ -117,6 +120,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -146,6 +150,8 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.fossify.gallery.compose.util.BlurState
+import org.fossify.gallery.helpers.MyWidgetProvider
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.screens.AlbumsScreen
 import org.fossify.gallery.compose.screens.CollectionsScreen
@@ -223,16 +229,23 @@ class ComposeExplorerActivity : ComponentActivity() {
         }
     }
 
+    // Reached when this Activity is already running and gets re-launched (e.g. the Quick Mover
+    // widget's "set up folder pairs" button, see MoverWidgetProvider) - FLAG_ACTIVITY_CLEAR_TOP on
+    // an already-top instance delivers here instead of a fresh onCreate(). setIntent() alone isn't
+    // enough to reach the NavHost (it's already composed and won't re-run a one-shot LaunchedEffect
+    // just because the Activity's own intent field changed), so this also publishes onto
+    // NavigateBus, which GalleryNavHost's effect collects from in addition to the cold-start check.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(org.fossify.gallery.helpers.MoverWidgetProvider.EXTRA_NAVIGATE_TO)?.let {
+            org.fossify.gallery.compose.util.NavigateBus.trigger(it)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        contentResolver.registerContentObserver(
-            android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, mediaObserver
-        )
-        contentResolver.registerContentObserver(
-            android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, mediaObserver
-        )
 
         // SharedPreferences (config + the legacy default-named prefs) are now warmed from
         // App.onCreate() instead - it runs well before this Activity and gives that warm-up a
@@ -273,8 +286,25 @@ class ComposeExplorerActivity : ComponentActivity() {
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
+    // Registered/unregistered here rather than onCreate/onDestroy - this Activity's process (and
+    // therefore this observer) stays alive across a home-press/task-switch, so binding to
+    // onCreate/onDestroy meant every MediaStore write from *any* app (camera, chat auto-download,
+    // screenshots, background sync) kept triggering a RefreshBus fan-out + incremental sync while
+    // Gallery itself sat in the background doing nothing the user could see - a steady background
+    // battery drain with no benefit, since none of that refreshed state is visible again until the
+    // user actually returns to onStart().
+    override fun onStart() {
+        super.onStart()
+        contentResolver.registerContentObserver(
+            android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, mediaObserver
+        )
+        contentResolver.registerContentObserver(
+            android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, mediaObserver
+        )
+    }
+
+    override fun onStop() {
+        super.onStop()
         contentResolver.unregisterContentObserver(mediaObserver)
     }
 
@@ -505,9 +535,9 @@ private val navTabs = listOf(
     NavTab(5, R.string.nav_tags, Icons.AutoMirrored.Filled.Label)
 )
 
-// The bottom bar surfaces the four destinations used every session; Sammlung/Tags stay
-// drawer-only since they're set-up-once/occasional rather than part of the daily browse loop.
-private val bottomNavTabs = listOf(navTabs[0], navTabs[1], navTabs[2], navTabs[4])
+// Collections got its own bottom-bar tab per explicit request; Tags stays drawer-only since it's
+// set-up-once/occasional rather than part of the daily browse loop.
+private val bottomNavTabs = listOf(navTabs[0], navTabs[1], navTabs[2], navTabs[3], navTabs[4])
 
 @Composable
 fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
@@ -604,27 +634,32 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
     ) {
     Scaffold(
         bottomBar = {
-            Column(Modifier.imePadding()) {
-                if (!isMediaSelectionActive) {
-                    BottomSearchField(
-                        value = omniQuery,
-                        onValueChange = { omniQuery = it },
-                        focusRequester = searchFocusRequester,
-                        onFocusChanged = { searchFocused = it },
-                        onClear = closeSearch,
-                        onMenuClick = { scope.launch { drawerState.open() } },
-                        isActive = searchActive,
-                        onSearch = { searchKeyboard?.hide() },
-                    )
-                }
-                if (!searchActive && !isMediaSelectionActive) {
-                    MainBottomBar(
-                        selectedTab = uiState.selectedTab,
-                        onTabSelected = { mainVM.setSelectedTab(it) },
-                        onSwipeUp = { activeSheet = ActiveSheet.VIEW_SETTINGS },
-                    )
-                }
-            }
+            BottomChrome(
+                isMediaSelectionActive = isMediaSelectionActive,
+                searchActive = searchActive,
+                omniQuery = omniQuery,
+                onQueryChange = { omniQuery = it },
+                searchFocusRequester = searchFocusRequester,
+                onFocusChanged = { searchFocused = it },
+                onClear = closeSearch,
+                onMenuClick = { scope.launch { drawerState.open() } },
+                onSearch = { searchKeyboard?.hide() },
+                blurEnabled = BlurState.enabled,
+                // Plain persistent toggle - defaults off (see Config.blurAllMedia) and only ever
+                // changes on an explicit tap here or in Settings, no auto-revert. A previous
+                // "momentary reveal" version snapped back on after 15s (or immediately on
+                // backgrounding) regardless of what the user was doing - including mid-selection -
+                // which was surprising and is exactly what was asked to be removed.
+                onToggleBlur = {
+                    val next = !BlurState.enabled
+                    BlurState.enabled = next
+                    ctx.config.blurAllMedia = next
+                    MyWidgetProvider.requestImmediateUpdate(ctx)
+                },
+                onSwipeUp = { activeSheet = ActiveSheet.VIEW_SETTINGS },
+                selectedTab = uiState.selectedTab,
+                onTabSelected = { mainVM.setSelectedTab(it) },
+            )
         }
     ) { padding ->
         BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
@@ -659,15 +694,16 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                     onDismiss = closeSearch,
                     storagePath = android.os.Environment.getExternalStorageDirectory().absolutePath,
                     onNavigate = { path -> mainVM.setExplorerPath(path); closeSearch(); mainVM.setSelectedTab(2) },
-                    onFilterChanged = { textPaths, rating, tagNames, tagName, _, _ ->
+                    onFilterChanged = { textPaths, rating, tagNames, tagName, _, _, textQuery ->
                         mainVM.setRatingFilter(rating)
-                        mainVM.setPathFilter(textPaths, if (textPaths != null) "Suche" else null)
+                        mainVM.setPathFilter(textPaths, textQuery)
                         mainVM.setCollectionName(null)
                         mainVM.setTagFilter(tagNames, tagName)
                         if (rating > 0 || tagNames != null || textPaths != null) mainVM.setSelectedTab(0)
                     },
                     onOpenCollection = { coll -> applyCollection(coll, mainVM, ctx); closeSearch() },
                     onOpenFavorite = { path -> ViewerArgs.paths = listOf(path); closeSearch(); navController.navigate(Viewer(0)) },
+                    onOpenMedia = { path -> ViewerArgs.paths = listOf(path); closeSearch(); navController.navigate(Viewer(0)) },
                 )
                 }
             }
@@ -735,49 +771,100 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
     }
 }
 
+/**
+ * Search field + nav bar + the swipe-up-to-open-view-settings gesture spanning both, extracted out
+ * of [MainScreen] (previously ~60 lines inline in its `bottomBar` slot) so that god-composable
+ * doesn't keep absorbing every future bottom-chrome change too.
+ */
 @Composable
-private fun MainBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit, onSwipeUp: () -> Unit) {
-    Column(Modifier.background(MaterialTheme.colorScheme.surfaceContainer)) {
-        // Grab handle: swiping up on it opens the current tab's view/sort settings sheet - the
-        // gesture is scoped to this small strip (not the whole bar) so it can't intercept touches
-        // meant for the NavigationBarItems below it. This replaces the old FAB shortcut that was
-        // removed in the nav restructure (drawer -> "Ansicht" is still there, just slower to reach).
-        val density = LocalDensity.current
-        val swipeThresholdPx = with(density) { 32.dp.toPx() }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .pointerInput(Unit) {
-                    var totalDrag = 0f
-                    detectVerticalDragGestures(
-                        onDragStart = { totalDrag = 0f },
-                        onDragEnd = { if (totalDrag < -swipeThresholdPx) onSwipeUp() },
-                        onDragCancel = { },
-                    ) { change, dragAmount ->
-                        totalDrag += dragAmount
-                        change.consume()
+private fun BottomChrome(
+    isMediaSelectionActive: Boolean,
+    searchActive: Boolean,
+    omniQuery: String,
+    onQueryChange: (String) -> Unit,
+    searchFocusRequester: FocusRequester,
+    onFocusChanged: (Boolean) -> Unit,
+    onClear: () -> Unit,
+    onMenuClick: () -> Unit,
+    onSearch: () -> Unit,
+    blurEnabled: Boolean,
+    onToggleBlur: () -> Unit,
+    onSwipeUp: () -> Unit,
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
+) {
+    Column(Modifier.imePadding()) {
+        if (!isMediaSelectionActive) {
+            val showNavBar = !searchActive
+            // Swipe-up-to-open-view-settings spans the whole bottom chrome (search field + nav
+            // bar), not just a thin grab-handle strip - Jannik found that strip too small a target
+            // to reliably hit. A tap still reaches every button normally here:
+            // detectVerticalDragGestures only starts consuming once the touch-slop threshold is
+            // exceeded, so a plain tap on a button/tab passes through untouched, and Material's own
+            // clickable naturally cancels its press if the pointer moves away instead (covered by
+            // the drag) - no separate dedicated gesture row needed, unlike the old strip, which
+            // saves that whole row's height too.
+            val density = LocalDensity.current
+            val swipeThresholdPx = with(density) { 32.dp.toPx() }
+            Column(
+                modifier = if (showNavBar) {
+                    Modifier.pointerInput(Unit) {
+                        var totalDrag = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { totalDrag = 0f },
+                            onDragEnd = { if (totalDrag < -swipeThresholdPx) onSwipeUp() },
+                            onDragCancel = { },
+                        ) { change, dragAmount ->
+                            totalDrag += dragAmount
+                            change.consume()
+                        }
                     }
+                } else {
+                    Modifier
+                },
+            ) {
+                BottomSearchField(
+                    value = omniQuery,
+                    onValueChange = onQueryChange,
+                    focusRequester = searchFocusRequester,
+                    onFocusChanged = onFocusChanged,
+                    onClear = onClear,
+                    onMenuClick = onMenuClick,
+                    isActive = searchActive,
+                    onSearch = onSearch,
+                    blurEnabled = blurEnabled,
+                    onToggleBlur = onToggleBlur,
+                )
+                if (showNavBar) {
+                    MainBottomBar(
+                        selectedTab = selectedTab,
+                        onTabSelected = onTabSelected,
+                    )
                 }
-                .padding(vertical = 6.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                Modifier
-                    .size(width = 32.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
-            )
+            }
         }
-        // No fixed height here - NavigationBar's default windowInsets already reserve the 56dp content
-        // row plus the real bottom system-bar/gesture-nav inset on top of it. Clamping to a flat 56dp
-        // used to squeeze that reserved inset out of the total height, cramming the icon row into
-        // whatever space was left above the gesture bar on 3-button/gesture-nav devices.
-        NavigationBar(
+    }
+}
+
+@Composable
+private fun MainBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
+    // ShortNavigationBar (Material3 1.4.0, stable) instead of NavigationBar - 64dp content height
+    // vs. NavigationBar's fixed 80dp (both are defaultMinSize-enforced by M3's own token values,
+    // not something a wrapping Modifier.height() can safely trim - clamping NavigationBar itself
+    // to a shorter fixed height was tried before and squeezed out its own reserved system-bar/
+    // gesture-nav inset instead of actually saving space). Same windowInsets handling internally,
+    // just a shorter official variant, so this real ~16dp saving doesn't reintroduce that bug.
+    //
+    // The swipe-up-to-open-view-settings gesture used to live in a dedicated handle strip drawn
+    // over this bar - moved to the call site (wraps this + the search field together) so the
+    // swipe target is the whole bottom chrome instead of a thin strip; this pill is now purely
+    // decorative.
+    Box(Modifier.background(MaterialTheme.colorScheme.surfaceContainer)) {
+        ShortNavigationBar(
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            tonalElevation = 0.dp,
         ) {
             bottomNavTabs.forEach { tab ->
-                NavigationBarItem(
+                ShortNavigationBarItem(
                     selected = selectedTab == tab.index,
                     onClick = {
                         if (selectedTab == tab.index) org.fossify.gallery.compose.util.ScrollToTopBus.trigger(tab.index)
@@ -785,16 +872,24 @@ private fun MainBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit, onSwip
                     },
                     icon = { Icon(tab.icon, stringResource(tab.labelRes), modifier = Modifier.size(22.dp)) },
                     label = { Text(stringResource(tab.labelRes), style = MaterialTheme.typography.labelSmall) },
-                    colors = NavigationBarItemDefaults.colors(
+                    colors = ShortNavigationBarItemDefaults.colors(
                         selectedIconColor = MaterialTheme.colorScheme.primary,
                         selectedTextColor = MaterialTheme.colorScheme.primary,
-                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedIndicatorColor = MaterialTheme.colorScheme.primaryContainer,
                         unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     ),
                 )
             }
         }
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 6.dp)
+                .size(width = 32.dp, height = 4.dp)
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+        )
     }
 }
 
@@ -970,9 +1065,10 @@ private fun OmniSearchPanel(
     onDismiss: () -> Unit,
     storagePath: String,
     onNavigate: (String) -> Unit,
-    onFilterChanged: (filterPaths: Set<String>?, rating: Int, tagNames: Set<String>?, tagName: String?, fileType: Int, dateRange: Int) -> Unit,
+    onFilterChanged: (filterPaths: Set<String>?, rating: Int, tagNames: Set<String>?, tagName: String?, fileType: Int, dateRange: Int, textQuery: String?) -> Unit,
     onOpenCollection: (MediaCollection) -> Unit,
     onOpenFavorite: (String) -> Unit,
+    onOpenMedia: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val ctx = LocalContext.current
@@ -1071,9 +1167,17 @@ private fun OmniSearchPanel(
         }
         // Most expensive source: full MediaStore cursor scan + per-match filesystem stat.
         scope.launch(Dispatchers.IO) {
+            // The raw MediaStore query below sees every file on the volume, including ones the
+            // app's own library considers inactive (excluded/hidden folders, not-yet-synced,
+            // recycle-binned) - intersecting against the same active-path set MediaScreen's
+            // PagingSource ultimately filters against guarantees the count shown here always
+            // matches what "Show N results" actually applies, instead of silently dropping some
+            // matches only after the filter is applied.
+            val activePaths = try { repo.getActivePaths().toSet() } catch (_: Exception) { null }
+            fun List<String>.toActiveSet() = (if (activePaths != null) filter { it in activePaths } else this).toSet()
             val cacheKey = "${query}_${fileTypeFilter}_${dateFilter}"
             searchCache[cacheKey]?.let { c ->
-                val filtered = c.filter { java.io.File(it).exists() }.toSet()
+                val filtered = c.filter { java.io.File(it).exists() }.toActiveSet()
                 if (myGen == searchGeneration) textMatchPaths = filtered
                 jobDone(); return@launch
             }
@@ -1090,7 +1194,10 @@ private fun OmniSearchPanel(
                     while (c.moveToNext()) { val path = c.getString(dataCol) ?: continue; val name = c.getString(nameCol) ?: ""; if (qParts.all { it in name.lowercase() } && java.io.File(path).exists()) matched.add(path) }
                 }
             } catch (_: Exception) { }
-            if (myGen == searchGeneration) textMatchPaths = matched.takeIf { it.isNotEmpty() }?.also { searchCache[cacheKey] = it }
+            // Cache the pre-intersection match set (independent of which library items happen to be
+            // "active" right now) so a later cache hit re-derives against a possibly-updated active set.
+            searchCache[cacheKey] = matched
+            if (myGen == searchGeneration) textMatchPaths = matched.toList().toActiveSet().takeIf { it.isNotEmpty() }
             jobDone()
         }
     }
@@ -1198,7 +1305,7 @@ private fun OmniSearchPanel(
                                 // also surfaces files only tagged with a nested child like "Berlin" -
                                 // resolved to files in SQL by MediaViewModel, not here.
                                 val tagNames = expandTagsWithDescendants(setOf(tag), ctx.config.tagHierarchy)
-                                onFilterChanged(null, 0, tagNames, tag, 0, 0); onDismiss()
+                                onFilterChanged(null, 0, tagNames, tag, 0, 0, null); onDismiss()
                             }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
                                 Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
@@ -1236,6 +1343,29 @@ private fun OmniSearchPanel(
                     }
                     if (hasResults) {
                         item { Text(stringResource(R.string.media_count_paren, mc), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(vertical = 4.dp)) }
+                        // Without this, a query that only matches media (the common case - most
+                        // searches are for a filename, not a folder/tag/collection/favorite name)
+                        // rendered nothing but a header and a button, leaving most of the panel's
+                        // height blank. A tap opens the file directly in the Viewer, skipping the
+                        // "apply as grid filter" step entirely for the single-result case.
+                        item {
+                            LazyRow(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(textMatchPaths!!.take(20).toList(), key = { it }) { path ->
+                                    Surface(
+                                        onClick = { onOpenMedia(path); onDismiss() },
+                                        shape = RoundedCornerShape(Radius.sm),
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                    ) {
+                                        GalleryImage(
+                                            path = path,
+                                            contentDescription = java.io.File(path).name,
+                                            modifier = Modifier.size(64.dp),
+                                            thumbnailSize = 128,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     } else if (isSearching) {
                         // The MediaStore file scan is usually the slowest source - if the fast
                         // sources above already rendered, show a small inline spinner instead of
@@ -1250,17 +1380,19 @@ private fun OmniSearchPanel(
                     }
                 }
                 Spacer(Modifier.height(4.dp))
-                if (hasAnyResults) {
+                // Gated on hasResults (media matches only), not hasAnyResults - the button only
+                // ever applies textMatchPaths (see onFilterChanged below), so showing it while only
+                // folders/tags/collections/favorites matched rendered a confusing "0 Ergebnisse
+                // anzeigen" button that would apply an empty media filter if tapped.
+                if (hasResults) {
                     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.Center) {
                         Surface(onClick = {
                             onFilterChanged(textMatchPaths, ratingFilter,
                                 selectedTags.takeIf { it.isNotEmpty() },
-                                selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", "), fileTypeFilter, dateFilter)
+                                selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", "), fileTypeFilter, dateFilter,
+                                query.trim().takeIf { it.isNotEmpty() })
                             onDismiss()
                         }, shape = RoundedCornerShape(Radius.xl), color = MaterialTheme.colorScheme.primary) {
-                            // mc only - folders aren't part of what onFilterChanged below actually
-                            // applies (it only forwards textMatchPaths), so counting them in here
-                            // overstated how many results tapping this button would show.
                             Text(stringResource(R.string.show_results_count, mc), Modifier.padding(horizontal = 20.dp, vertical = 10.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)
                         }
                     }

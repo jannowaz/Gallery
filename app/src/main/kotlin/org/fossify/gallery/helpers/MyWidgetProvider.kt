@@ -3,6 +3,7 @@ package org.fossify.gallery.helpers
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -30,6 +31,18 @@ class MyWidgetProvider : AppWidgetProvider() {
         const val ACTION_RENAME = "org.fossify.gallery.RENAME_LAST_MEDIA"
         const val EXTRA_COUNT = "count"
         const val EXTRA_PREFIX = "prefix"
+
+        // Widgets otherwise only redraw on the OS's own periodic schedule / launcher-driven refresh
+        // - toggling "blur all media" would leave an unblurred thumbnail sitting on the home screen
+        // until whenever that next cycle happens to land. Call this right after writing the setting
+        // so the widget picks it up immediately instead. Safe to call with zero widgets placed.
+        fun requestImmediateUpdate(context: Context) {
+            val manager = AppWidgetManager.getInstance(context)
+            val ids = manager.getAppWidgetIds(ComponentName(context, MyWidgetProvider::class.java))
+            if (ids.isNotEmpty()) {
+                MyWidgetProvider().onUpdate(context, manager, ids)
+            }
+        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -72,44 +85,68 @@ class MyWidgetProvider : AppWidgetProvider() {
         super.onUpdate(context, appWidgetManager, appWidgetIds)
         ensureBackgroundThread {
             val config = context.config
-            context.widgetsDB.getWidgets().filter { appWidgetIds.contains(it.widgetId) }.forEach {
+            context.widgetsDB.getWidgets().filter { appWidgetIds.contains(it.widgetId) }.forEach { widget ->
                 val views = RemoteViews(context.packageName, R.layout.widget).apply {
                     applyColorFilter(R.id.widget_background, config.widgetBgColor)
                     setVisibleIf(R.id.widget_folder_name, config.showWidgetFolderName)
                     setTextColor(R.id.widget_folder_name, config.widgetTextColor)
-                    setText(R.id.widget_folder_name, context.getFolderNameFromPath(it.folderPath))
+                    setText(R.id.widget_folder_name, context.getFolderNameFromPath(widget.folderPath))
                 }
 
-                val path = context.directoryDB.getDirectoryThumbnail(it.folderPath) ?: return@forEach
-                val options = RequestOptions()
-                    .signature(path.getFileSignature())
-                    .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
+                // Was `return@forEach` on a null thumbnail - bailed out of the whole widget update
+                // (including the app-open/rename PendingIntents and the actual push below) just
+                // because a folder had no cached thumbnail yet. Now only the image step is skipped;
+                // everything else still gets set up and pushed.
+                val path = context.directoryDB.getDirectoryThumbnail(widget.folderPath)
+                if (path != null) {
+                    val options = RequestOptions()
+                        .signature(path.getFileSignature())
+                        .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
 
-                if (context.config.cropThumbnails) {
-                    options.centerCrop()
-                } else {
-                    options.fitCenter()
+                    if (config.cropThumbnails) {
+                        options.centerCrop()
+                    } else {
+                        options.fitCenter()
+                    }
+
+                    val density = context.resources.displayMetrics.density
+                    // Was appWidgetIds.first() - every widget instance's thumbnail was sized using
+                    // the *first* placed widget's dimensions instead of its own, so a second folder
+                    // widget of a different size got a wrongly-sized (stretched/cropped) thumbnail.
+                    val appWidgetOptions = appWidgetManager.getAppWidgetOptions(widget.widgetId)
+                    val width = appWidgetOptions.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)
+                    val height = appWidgetOptions.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)
+
+                    val widgetSize = (Math.max(width, height) * density).toInt()
+                    try {
+                        var image = Glide.with(context)
+                            .asBitmap()
+                            .load(path)
+                            .apply(options)
+                            .submit(widgetSize, widgetSize)
+                            .get()
+                        // RemoteViews (this widget runs in the host launcher's process) can't apply a
+                        // live Modifier.blur()/RenderEffect - the only thing it can display is a plain
+                        // static Bitmap, so "blur all media" is honored here by baking a solid scrim
+                        // directly into the bitmap before handing it off. Previously this ignored the
+                        // setting entirely and always showed the real thumbnail on the home screen.
+                        if (config.blurAllMedia) {
+                            image = image.withPrivacyScrim()
+                        }
+                        views.setImageViewBitmap(R.id.widget_imageview, image)
+                    } catch (e: Exception) {
+                    }
                 }
 
-                val density = context.resources.displayMetrics.density
-                val appWidgetOptions = appWidgetManager.getAppWidgetOptions(appWidgetIds.first())
-                val width = appWidgetOptions.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)
-                val height = appWidgetOptions.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)
+                setupAppOpenIntent(context, views, R.id.widget_holder, widget)
+                setupRenameIntent(context, views, R.id.widget_rename_btn, widget.widgetId)
 
-                val widgetSize = (Math.max(width, height) * density).toInt()
-                try {
-                    val image = Glide.with(context)
-                        .asBitmap()
-                        .load(path)
-                        .apply(options)
-                        .submit(widgetSize, widgetSize)
-                        .get()
-                    views.setImageViewBitmap(R.id.widget_imageview, image)
-                } catch (e: Exception) {
-                }
-
-                setupAppOpenIntent(context, views, R.id.widget_holder, it)
-                setupRenameIntent(context, views, R.id.widget_rename_btn, it.widgetId)
+                // The actual bug: everything above was computed and then just discarded - nothing
+                // ever pushed these RemoteViews to the real widget surface, so the home screen kept
+                // showing whatever WidgetConfigureActivity's own one-time save had pushed (just a
+                // background color) - no thumbnail, no folder name, no working PendingIntents, and
+                // the rename button stuck on its static XML placeholder text forever.
+                appWidgetManager.updateAppWidget(widget.widgetId, views)
             }
         }
     }

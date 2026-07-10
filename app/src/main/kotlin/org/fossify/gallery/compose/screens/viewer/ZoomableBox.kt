@@ -67,12 +67,9 @@ class ZoomState(private val scope: CoroutineScope) {
         hideJob = scope.launch { delay(900); interacting = false }
     }
 
-    private val zoomLevels = listOf(1f, 2f, 4f)
-
-    /** What [cycleZoom] would zoom to next, without actually triggering it - lets a caller decide
-     * whether an imminent double-tap is zooming in (e.g. to switch to a full-resolution tiled
-     * renderer) or back out to 1x, before the animation actually starts. */
-    fun peekNextZoomLevel(): Float = zoomLevels.firstOrNull { it > scale + 0.01f } ?: 1f
+    // Double-tap cycles just these two steps (1x <-> 2x) - pinch-to-zoom still goes up to ZOOM_MAX
+    // via onTransform, this only bounds the tap-cycle shortcut.
+    private val zoomLevels = listOf(1f, 2f)
 
     private fun clampOffset(candidate: Offset, s: Float, size: IntSize): Offset {
         val w = size.width.toFloat(); val h = size.height.toFloat()

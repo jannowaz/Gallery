@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.compose.screens.SortField
 import org.fossify.gallery.helpers.MediaRepository
+import org.fossify.gallery.helpers.RefreshBus
 import org.fossify.gallery.models.Medium
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -76,6 +77,39 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private var sortField = SortField.DATE
     private var sortDesc = true
 
+    // Cache for activePathsSorted() below - the underlying query (MediumDao.getActivePathsByDate,
+    // the default sort) has no way to avoid a full-table sort on a real library (its ORDER BY key is
+    // a per-row fallback expression - date_taken if set, else last_modified - which no plain-column
+    // index can satisfy; confirmed live that trying to add a matching SQLite expression index breaks
+    // Room's schema validation outright, since Room's TableInfo introspection can't represent
+    // expression indices at all). Without this cache, every single tap to open the Viewer re-ran
+    // that full sort from scratch - on a large library (this app is used with ~200k+ media) that was
+    // a real, reported "opening the Viewer has a noticeable delay" bug. Caching means only the
+    // *first* tap per session/sort-change pays that cost; every subsequent one in the same browsing
+    // session is instant. Invalidated below whenever the sort changes or the underlying data does.
+    private var cachedSortedPaths: List<String>? = null
+    private var cachedSortedPathsKey: Pair<SortField, Boolean>? = null
+
+    // Same caching problem as [cachedSortedPaths] above, for the filtered case (e.g. opening the
+    // Viewer from inside a Collection): [activePathsSortedFiltered] used to re-run its SQL query on
+    // every single tap with no cache at all, reintroducing the exact "noticeable delay opening the
+    // Viewer" bug the unfiltered cache above was built to fix. Prefetched whenever the filter or sort
+    // changes; served straight from cache on tap.
+    private var cachedFilteredPaths: List<String>? = null
+    private var cachedFilteredPathsKey: Triple<MediaFilter, SortField, Boolean>? = null
+    private var filteredPrefetchJob: kotlinx.coroutines.Job? = null
+    private fun prefetchFilteredPathsAsync() {
+        val filter = filterFlow.value
+        if (!filter.isActive) return
+        val key = Triple(filter, sortField, sortDesc)
+        filteredPrefetchJob?.cancel()
+        filteredPrefetchJob = viewModelScope.launch(Dispatchers.IO) {
+            val paths = repository.getActivePathsSortedFiltered(filter, sortField, sortDesc)
+            cachedFilteredPaths = paths
+            cachedFilteredPathsKey = key
+        }
+    }
+
     // `override` (Favorites' externally-supplied media list) is the only thing `recompute()` still
     // handles in-memory. Every MediaFilter dimension (rating/tag/path/size/date) is pushed into SQL
     // and served through `pagedMedia` below instead (see MediaRepository.getMediaPagedFiltered) -
@@ -106,6 +140,9 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             SortField.DATE -> list.sortedBy { it.modified }
             SortField.SIZE -> list.sortedBy { it.size }
             SortField.RATING -> list
+            // COUNT (file count) is a folder-only sort option, never reachable for a media list -
+            // falls back to name here purely so this `when` stays exhaustive.
+            SortField.COUNT -> list.sortedBy { it.name.lowercase() }
         }
         return if (sortDesc) sorted.reversed() else sorted
     }
@@ -116,6 +153,25 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         sortDesc = desc
         sortSpec.value = SortSpec(field, desc)
         recompute()
+        prefetchSortedPathsAsync()
+        prefetchFilteredPathsAsync()
+    }
+
+    // The DB query itself (`getActivePathsSorted`) is fast (index-backed, no full sort) but reading
+    // and marshaling ~200k full_path Strings out of the cursor still costs real time on-device
+    // (measured 1-3.7s on a 202k-item real library, all cursor/JNI overhead - not the query plan).
+    // So this must never run synchronously on a tap: kick it off in the background whenever the
+    // underlying data/sort could have changed, and let activePathsSorted() serve the (possibly
+    // slightly stale - fine for swipe-through ordering) cache instead of blocking on a fresh fetch.
+    private var prefetchJob: kotlinx.coroutines.Job? = null
+    private fun prefetchSortedPathsAsync() {
+        val key = sortField to sortDesc
+        prefetchJob?.cancel()
+        prefetchJob = viewModelScope.launch(Dispatchers.IO) {
+            val paths = repository.getActivePathsSorted(sortField, sortDesc)
+            cachedSortedPaths = paths
+            cachedSortedPathsKey = key
+        }
     }
 
     /** Drives the display list from an external source (e.g. Favorites' own fetched list) instead of
@@ -134,6 +190,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         if (next == filterFlow.value) return
         filterFlow.value = next
         _state.update { it.copy(filter = next) }
+        prefetchFilteredPathsAsync()
     }
 
     private fun recompute() {
@@ -230,6 +287,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 silentRefresh()
             } catch (e: Exception) {
                 android.util.Log.e("MediaViewModel", "setRatingFor failed", e)
+                _state.update { it.copy(error = e.message) }
             }
         }
     }
@@ -237,6 +295,24 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     init {
         load()
         loadTaggedPaths()
+        prefetchSortedPathsAsync()
+    }
+
+    // Keeps the Viewer's swipe-through path caches (both above) fresh while the user stays put inside
+    // a filtered view (e.g. a Collection) - moving/deleting/renaming files there used to only refresh
+    // via MediaScreen's own refreshTrigger param, which in practice only ever bumps once at app start
+    // (ExplorerViewModel.triggerMediaRefresh() has no other caller), so mid-session moves left the
+    // cached filtered path list stale until the user backed out and re-entered the Collection (which
+    // re-runs setFilter() and refreshes it as a side effect). Subscribing here directly, like several
+    // other screens already do (CollectionsScreen, FavoritesScreen), fixes it regardless of whether
+    // that other wiring ever gets fixed.
+    init {
+        viewModelScope.launch {
+            RefreshBus.events.collect {
+                prefetchSortedPathsAsync()
+                prefetchFilteredPathsAsync()
+            }
+        }
     }
 
     fun load() {
@@ -248,21 +324,23 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     fun refresh() {
         loaded = false
         rescanAndLoad()
+        prefetchSortedPathsAsync()
+        prefetchFilteredPathsAsync()
     }
 
-    // NOTE: state.allMedia/displayMedia below only feed the override rendering path (Favorites) and
-    // the initial-load error state - every grid render (unfiltered and filtered alike) goes through
-    // `pagedMedia` instead and doesn't depend on this fetch or its 20,000-item cap.
+    // NOTE: state.allMedia/displayMedia only feed the override rendering path (Favorites, which
+    // refreshes independently via its own RefreshBus subscription and never reads this
+    // ViewModel's state) and the initial-load error state (only ever set by rescanAndLoad(),
+    // never here) - every grid render (unfiltered and filtered alike) goes through `pagedMedia`
+    // instead. This used to also re-fetch and re-sort up to 20,000 rows into `state.allMedia` on
+    // every single call - i.e. every RefreshBus tick, which under the ContentObserver fired for
+    // every MediaStore write from *any* app - even though nothing actually read the result.
     fun silentRefresh() {
+        prefetchSortedPathsAsync()
+        prefetchFilteredPathsAsync()
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 repository.syncNewMediaFromStore()
-                val media = try { repository.getNewestMedia(20000).sortedByDescending { it.modified } } catch (e: Exception) {
-                    android.util.Log.e("MediaViewModel", "silentRefresh getNewestMedia failed, falling back to disk scan", e)
-                    repository.scanMediaFromDisk()
-                }
-                _state.update { it.copy(allMedia = applySort(media)) }
-                recompute()
             } catch (e: Exception) {
                 android.util.Log.e("MediaViewModel", "silentRefresh failed", e)
             }
@@ -294,15 +372,26 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun activePaths(): Set<String> = withContext(Dispatchers.IO) { repository.getActivePaths().toSet() }
 
     /** Full sorted path list (matching the current sort field/direction) for Viewer swipe-through,
-     * independent of how much of the paged grid has loaded so far. */
-    suspend fun activePathsSorted(): List<String> = withContext(Dispatchers.IO) { repository.getActivePathsSorted(sortField, sortDesc) }
+     * independent of how much of the paged grid has loaded so far. Cached - see cachedSortedPaths. */
+    suspend fun activePathsSorted(): List<String> = withContext(Dispatchers.IO) {
+        val key = sortField to sortDesc
+        cachedSortedPaths?.takeIf { cachedSortedPathsKey == key } ?: repository.getActivePathsSorted(sortField, sortDesc).also {
+            cachedSortedPaths = it
+            cachedSortedPathsKey = key
+        }
+    }
 
     /** Same as [activePathsSorted] but scoped to the currently active filter - used for Viewer
      * swipe-through and select-all/invert while a filter is applied, so both cover the complete
      * filtered set rather than just what's paged into the grid so far. */
     suspend fun activePathsSortedFiltered(): List<String> = withContext(Dispatchers.IO) {
         val f = filterFlow.value
-        if (f.isActive) repository.getActivePathsSortedFiltered(f, sortField, sortDesc) else repository.getActivePathsSorted(sortField, sortDesc)
+        if (!f.isActive) return@withContext activePathsSorted()
+        val key = Triple(f, sortField, sortDesc)
+        cachedFilteredPaths?.takeIf { cachedFilteredPathsKey == key } ?: repository.getActivePathsSortedFiltered(f, sortField, sortDesc).also {
+            cachedFilteredPaths = it
+            cachedFilteredPathsKey = key
+        }
     }
 
     fun deletePaths(paths: Set<String>) {
@@ -359,12 +448,21 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
         /** Shared with MediaScreen's paged-grid header scan so both label the same item identically.
-         * Allocates its own SimpleDateFormat per call - it's called from both a background dispatcher
-         * (recompute's groupByMonth) and Compose's main thread (paged header scan), and SimpleDateFormat
-         * isn't thread-safe to share across them. */
+         * Called from both a background dispatcher (recompute's groupByMonth) and Compose's main
+         * thread (paged header scan, once per item on every buildPagedRows rebuild - i.e. on every
+         * single Paging3 page load), and SimpleDateFormat isn't thread-safe to share across threads.
+         * A ThreadLocal gives each caller thread its own reused instance - same isolation as
+         * allocating fresh every call, but without paying SimpleDateFormat's pattern-compile +
+         * locale-data-lookup cost per item, which on a large library was the dominant cost of every
+         * paged-grid rebuild (confirmed via profiling: the per-item work in buildPagedRows was almost
+         * entirely this allocation, not the list scan itself). Locale.getDefault() is read once per
+         * thread's first call - a runtime locale switch mid-session won't retroactively update an
+         * already-cached formatter, an acceptable tradeoff shared by most per-thread formatter caches. */
+        private val monthLabelFormat = ThreadLocal.withInitial { SimpleDateFormat("MMMM yyyy", Locale.getDefault()) }
+
         fun monthLabelFor(m: Medium): String {
             val d = if (m.taken > 0) Date(m.taken) else Date(m.modified)
-            return SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(d).replaceFirstChar { it.uppercase() }
+            return monthLabelFormat.get()!!.format(d).replaceFirstChar { it.uppercase() }
         }
     }
 }

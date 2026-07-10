@@ -18,7 +18,7 @@ import java.util.Locale
     tableName = "media",
     indices = [
         Index(value = ["full_path"], unique = true),
-        Index(value = ["deleted_ts", "date_taken", "last_modified"]),
+        Index(value = ["deleted_ts", "date_sort_key"]),
         Index(value = ["deleted_ts", "size"]),
         Index(value = ["deleted_ts", "rating", "last_modified"]),
     ],
@@ -38,7 +38,18 @@ data class Medium(
     @ColumnInfo(name = "media_store_id") var mediaStoreId: Long,
     @ColumnInfo(name = "rating") var rating: Int = 0,
 
-    @Ignore var gridPosition: Int = 0   // used at grid view decoration at Grouping enabled
+    @Ignore var gridPosition: Int = 0,   // used at grid view decoration at Grouping enabled
+
+    // Denormalized `date_taken > 0 ? date_taken : last_modified` - the actual "effective date" this
+    // app sorts/groups by everywhere (mirrors MediaViewModel.groupByMonth's grouping key and
+    // MediumDao's old CASE-based ORDER BY). Kept as a real, plain, auto-maintained column (via two
+    // SQLite triggers - see GalleryDatabase's MIGRATION_18_19/onCreate callback) purely so it can be
+    // indexed: SQLite can only use an index to skip a sort when the ORDER BY key is a literal column
+    // it covers, never a computed expression - and Room's own schema validation can't represent a
+    // raw SQL expression index at all (confirmed live: it crashes with "Migration didn't properly
+    // handle" every time, since TableInfo introspection silently drops the expression term instead
+    // of matching it). This is what makes the date sort - the default one - actually indexable.
+    @ColumnInfo(name = "date_sort_key") var dateSortKey: Long = 0L,
 ) : Serializable, ThumbnailItem() {
 
     constructor() : this(null, "", "", "", 0L, 0L, 0L, 0, 0, false, 0L, 0L, 0, 0)

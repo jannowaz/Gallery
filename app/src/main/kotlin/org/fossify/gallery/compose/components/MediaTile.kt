@@ -86,6 +86,7 @@ fun MediaTile(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onSwipeToSelect: () -> Unit,
+    onPreviewClick: () -> Unit = {},
     onBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -110,6 +111,11 @@ fun MediaTile(
     ) {
         Box(
             Modifier.aspectRatio(aspectRatio)
+                // Fit mode (cropThumbnails off) leaves empty space on two sides of the image inside
+                // this still-square box - a solid black letterbox/pillarbox behind it, regardless of
+                // the current theme, rather than whatever cardColor (surfaceVariant etc.) would
+                // otherwise show through.
+                .then(if (!cropThumbnails) Modifier.background(Color.Black) else Modifier)
                 .selectableItem(
                     isSelectionMode = isSelectionMode,
                     onClick = onClick,
@@ -123,7 +129,14 @@ fun MediaTile(
             if (isVideo) {
                 VideoThumbnail(videoPath = medium.path, modifier = Modifier.fillMaxSize().clip(cornerShape).sharedElementKey("media_${medium.path}"), contentScale = thumbScale)
             } else {
-                GalleryImage(path = medium.path, contentDescription = medium.name, modifier = Modifier.fillMaxSize().clip(cornerShape).sharedElementKey("media_${medium.path}"), contentScale = thumbScale, placeholderIconSize = 16.dp)
+                GalleryImage(
+                    path = medium.path,
+                    contentDescription = medium.name,
+                    modifier = Modifier.fillMaxSize().clip(cornerShape).sharedElementKey("media_${medium.path}"),
+                    contentScale = thumbScale,
+                    placeholderIconSize = 16.dp,
+                    backgroundColor = if (cropThumbnails) MaterialTheme.colorScheme.surfaceVariant else Color.Black,
+                )
             }
 
             if (isVideo) {
@@ -187,6 +200,18 @@ fun MediaTile(
                         Box(Modifier.matchParentSize().background(Scrim.a35, CircleShape))
                         Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(22.dp))
                     }
+                }
+                // Lets the user check a large preview of this exact item before deciding to select
+                // it, without the tap toggling selection or a long-press triggering range-select -
+                // a dedicated tap target sidesteps both existing selection gestures entirely instead
+                // of racing them.
+                Box(
+                    Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp)
+                        .background(Scrim.a35, CircleShape)
+                        .clickable(onClick = onPreviewClick),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Default.Visibility, stringResource(R.string.cd_preview), tint = Color.White, modifier = Modifier.size(15.dp))
                 }
             }
         }

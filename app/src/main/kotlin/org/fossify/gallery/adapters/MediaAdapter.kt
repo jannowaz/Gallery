@@ -81,6 +81,7 @@ import org.fossify.gallery.extensions.updateFavorite
 import org.fossify.gallery.extensions.updateFavoritePaths
 import org.fossify.gallery.helpers.PATH
 import org.fossify.gallery.helpers.RECYCLE_BIN
+import org.fossify.gallery.helpers.applyPrivacyBlur
 import org.fossify.gallery.helpers.ROUNDED_CORNERS_BIG
 import org.fossify.gallery.helpers.ROUNDED_CORNERS_NONE
 import org.fossify.gallery.helpers.ROUNDED_CORNERS_SMALL
@@ -758,6 +759,7 @@ class MediaAdapter(
 
             mediumThumbnail.tag = medium.path
             mediumThumbnail.transitionName = "medium_${medium.path}"
+            mediumThumbnail.applyPrivacyBlur(config.blurAllMedia)
 
             activity.loadImage(
                 type = medium.type,

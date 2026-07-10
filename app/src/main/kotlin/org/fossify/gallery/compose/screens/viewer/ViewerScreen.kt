@@ -109,6 +109,15 @@ import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.commons.extensions.updateBrightness
 import org.fossify.commons.dialogs.PropertiesDialog
+import org.fossify.gallery.helpers.EXT_NAME
+import org.fossify.gallery.helpers.EXT_PATH
+import org.fossify.gallery.helpers.EXT_SIZE
+import org.fossify.gallery.helpers.EXT_RESOLUTION
+import org.fossify.gallery.helpers.EXT_LAST_MODIFIED
+import org.fossify.gallery.helpers.EXT_DATE_TAKEN
+import org.fossify.gallery.helpers.EXT_CAMERA_MODEL
+import org.fossify.gallery.helpers.EXT_EXIF_PROPERTIES
+import org.fossify.gallery.helpers.EXT_GPS
 import org.fossify.gallery.compose.components.ConfirmDestructive
 import org.fossify.gallery.compose.components.SelectionRow
 import org.fossify.gallery.compose.util.rememberGalleryHaptics
@@ -201,20 +210,51 @@ fun ViewerScreen(
         }
     }
 
+    var extendedDetailsText by remember { mutableStateOf("") }
+    LaunchedEffect(currentPath, currentIsVideo) {
+        extendedDetailsText = if (ctx.config.showExtendedDetails) withContext(Dispatchers.IO) { buildExtendedDetailsText(ctx, currentPath, currentIsVideo) } else ""
+    }
+
     val autoHideMs = ctx.config.viewerAutoHideMs
     LaunchedEffect(showUI, uiInteractionTick) { if (showUI) { delay(autoHideMs.toLong()); showUI = false } }
+
+    // "Hide system UI" ties the status/nav bars to the same auto-hide chrome state as the in-app
+    // overlay (mirrors the legacy ViewPagerActivity's hideSystemUI()/showSystemUI() calls, which
+    // fire from the identical auto-hide-controls callback) instead of being a separate always-on
+    // immersive mode - so it can reuse showUI's existing timer/tap-to-toggle logic below.
+    LaunchedEffect(showUI) {
+        val window = (ctx as? android.app.Activity)?.window ?: return@LaunchedEffect
+        if (!ctx.config.hideSystemUI) return@LaunchedEffect
+        val controller = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+        if (showUI) {
+            controller.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
+    }
 
     DisposableEffect(Unit) {
         val window = (ctx as? android.app.Activity)?.window
         var originalBrightness: Float? = null
+        var originalCutoutMode: Int? = null
         if (window != null) {
             if (ctx.config.keepScreenOn) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             if (ctx.config.maxBrightness) originalBrightness = window.updateBrightness(true, null)
+            // showNotch=false lets fullscreen photo/video content extend behind the display cutout
+            // instead of the system reserving a permanent letterboxed strip for it (mirrors
+            // BaseViewerActivity's identical cutout-mode toggle for the legacy Views viewer).
+            if (!ctx.config.showNotch && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                originalCutoutMode = window.attributes.layoutInDisplayCutoutMode
+                window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES }
+            }
         }
         onDispose {
             if (window != null) {
                 if (ctx.config.keepScreenOn) window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 if (ctx.config.maxBrightness) window.updateBrightness(false, originalBrightness)
+                if (ctx.config.hideSystemUI) androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                if (originalCutoutMode != null) window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = originalCutoutMode }
             }
         }
     }
@@ -399,6 +439,25 @@ fun ViewerScreen(
             }
         }
 
+        // "Hide extended details" (default on) ties this overlay's visibility to the same chrome
+        // state as the top/bottom bars; turning it off keeps the details on screen even in
+        // fullscreen (mirrors the legacy Views viewer's identical `!hideExtendedDetails ||
+        // !isFullscreen` alpha logic in PhotoFragment/VideoFragment).
+        AnimatedVisibility(
+            visible = extendedDetailsText.isNotEmpty() && (showUI || !ctx.config.hideExtendedDetails),
+            enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium),
+            modifier = Modifier.align(Alignment.TopStart).padding(top = 72.dp, start = 16.dp, end = 16.dp),
+        ) {
+            Surface(shape = RoundedCornerShape(Radius.md), color = Scrim.a40) {
+                Text(
+                    extendedDetailsText,
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+        }
+
         // One-time hint for the vertical drag gestures (swipe up = actions sheet, down = close) -
         // neither has any visual affordance otherwise. Shown once ever, dismissed by any drag,
         // tap, or after a few seconds on its own.
@@ -579,4 +638,50 @@ fun ViewerScreen(
             onDismiss = { showDeleteConfirm = false },
         )
     }
+}
+
+/** Builds the on-screen extended-details overlay text per [org.fossify.gallery.helpers.Config.extendedDetails]'s
+ * bitmask - a persistent-on-photo readout, distinct from (and less detailed than) the action
+ * sheet's own tap-to-open EXIF strip/Properties dialog above. Mirrors the field set and bit
+ * semantics of the legacy Views viewer's ViewPagerFragment.getMediumExtendedDetails(), reusing the
+ * same android.media.ExifInterface tag reads already used for this screen's info-sheet strip
+ * (line ~546) rather than introducing the androidx EXIF library the legacy Fragment used. */
+private fun buildExtendedDetailsText(ctx: android.content.Context, path: String, isVideo: Boolean): String {
+    val file = File(path)
+    if (!file.exists()) return ""
+    val flags = ctx.config.extendedDetails
+    val lines = mutableListOf<String>()
+    if (flags and EXT_NAME != 0) lines.add(file.name)
+    if (flags and EXT_PATH != 0) lines.add("${file.parent?.trimEnd('/') ?: ""}/")
+    if (flags and EXT_SIZE != 0) lines.add(if (file.length() > 1_000_000) "${file.length() / 1_000_000} MB" else "${file.length() / 1_000} KB")
+    if (!isVideo) {
+        val exif = try { android.media.ExifInterface(path) } catch (_: Exception) { null }
+        if (flags and EXT_RESOLUTION != 0) {
+            val w = exif?.getAttribute(android.media.ExifInterface.TAG_IMAGE_WIDTH)
+            val h = exif?.getAttribute(android.media.ExifInterface.TAG_IMAGE_LENGTH)
+            if (w != null && h != null) lines.add("$w × $h")
+        }
+        if (flags and EXT_LAST_MODIFIED != 0) lines.add(java.text.DateFormat.getDateInstance().format(java.util.Date(file.lastModified())))
+        if (flags and EXT_DATE_TAKEN != 0) exif?.getAttribute(android.media.ExifInterface.TAG_DATETIME)?.take(10)?.let { lines.add(it) }
+        if (flags and EXT_CAMERA_MODEL != 0) {
+            val make = exif?.getAttribute(android.media.ExifInterface.TAG_MAKE) ?: ""
+            val model = exif?.getAttribute(android.media.ExifInterface.TAG_MODEL) ?: ""
+            if (make.isNotBlank() || model.isNotBlank()) lines.add("$make $model".trim())
+        }
+        if (flags and EXT_EXIF_PROPERTIES != 0) {
+            val props = mutableListOf<String>()
+            exif?.getAttribute(android.media.ExifInterface.TAG_FOCAL_LENGTH)?.let { props.add(it) }
+            exif?.getAttribute(android.media.ExifInterface.TAG_F_NUMBER)?.let { props.add("f/$it") }
+            exif?.getAttribute(android.media.ExifInterface.TAG_EXPOSURE_TIME)?.let { props.add("${it}s") }
+            exif?.getAttribute(android.media.ExifInterface.TAG_ISO)?.let { props.add("ISO$it") }
+            if (props.isNotEmpty()) lines.add(props.joinToString("  "))
+        }
+        if (flags and EXT_GPS != 0) {
+            val latLon = FloatArray(2)
+            if (exif != null && exif.getLatLong(latLon)) lines.add("${latLon[0]}, ${latLon[1]}")
+        }
+    } else if (flags and EXT_LAST_MODIFIED != 0) {
+        lines.add(java.text.DateFormat.getDateInstance().format(java.util.Date(file.lastModified())))
+    }
+    return lines.joinToString("\n")
 }

@@ -9,7 +9,7 @@ enum class ViewType(val value: Int) {
 }
 
 enum class SortField(val value: Int) {
-    NAME(0), DATE(1), SIZE(2), RATING(3);
+    NAME(0), DATE(1), SIZE(2), RATING(3), COUNT(4);
 
     companion object {
         fun from(value: Int) = entries.find { it.value == value } ?: DATE

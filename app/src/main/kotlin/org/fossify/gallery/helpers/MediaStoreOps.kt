@@ -17,6 +17,18 @@ import java.io.File
  */
 object MediaStoreOps {
 
+    /**
+     * True when the app holds MANAGE_EXTERNAL_STORAGE ("All files access") - which, per Android's
+     * own scoped-storage docs, exempts it from the ownership/ [createWriteRequest] consent dance
+     * entirely (it can already read/write/delete any file on shared storage directly). Callers
+     * asking for a write/delete consent dialog should skip that step when this is true - requesting
+     * it anyway is not just redundant, it can outright fail (e.g. [MoverWidgetProvider]'s "move now"
+     * already skips consent unconditionally and works, since this permission covers it).
+     */
+    fun hasAllFilesAccess(context: Context): Boolean =
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) android.os.Environment.isExternalStorageManager()
+        else true
+
     /** Resolves the MediaStore content URI for a given absolute file path, or null if unknown. */
     fun uriForPath(context: Context, path: String): Uri? {
         val collection = MediaStore.Files.getContentUri("external")
@@ -75,17 +87,43 @@ object MediaStoreOps {
             val rel = targetRelativePath.trim('/') + "/"
             val collection = if (isVideo) MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
             else MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            // Carry the original capture/modified dates over from the source row - a plain insert()
+            // with neither set defaults both to "now", which is exactly what made a moved file (the
+            // Mover feature and any cross-volume move both go through this copy-then-delete) jump
+            // back to the top of any date-sorted view as if it were brand new. date_taken is what
+            // MediumDao's sort actually keys on (falling back to last_modified only when it's <= 0,
+            // see getMediaPagedByDate) - date_modified is set best-effort too, but MediaProvider may
+            // still override it with the real write timestamp regardless of what's requested here.
+            val dateProjection = arrayOf(MediaStore.MediaColumns.DATE_TAKEN, MediaStore.MediaColumns.DATE_MODIFIED)
+            var origDateTaken = 0L
+            var origDateModified = 0L
+            context.contentResolver.query(sourceUri, dateProjection, null, null, null)?.use { c ->
+                if (c.moveToFirst()) {
+                    val tIdx = c.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN)
+                    val mIdx = c.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
+                    if (tIdx >= 0) origDateTaken = c.getLong(tIdx)
+                    if (mIdx >= 0) origDateModified = c.getLong(mIdx)
+                }
+            }
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
                 put(MediaStore.MediaColumns.RELATIVE_PATH, rel)
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
+                if (origDateTaken > 0) put(MediaStore.MediaColumns.DATE_TAKEN, origDateTaken)
+                if (origDateModified > 0) put(MediaStore.MediaColumns.DATE_MODIFIED, origDateModified)
             }
             val newUri = context.contentResolver.insert(collection, values) ?: return null
             context.contentResolver.openInputStream(sourceUri)?.use { input ->
                 context.contentResolver.openOutputStream(newUri)?.use { output -> input.copyTo(output) }
                     ?: return null.also { context.contentResolver.delete(newUri, null, null) }
             } ?: return null.also { context.contentResolver.delete(newUri, null, null) }
-            val done = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
+            val done = ContentValues().apply {
+                put(MediaStore.MediaColumns.IS_PENDING, 0)
+                // Re-applied: clearing IS_PENDING is itself a write, which can bump DATE_MODIFIED
+                // back to now again on some providers.
+                if (origDateTaken > 0) put(MediaStore.MediaColumns.DATE_TAKEN, origDateTaken)
+                if (origDateModified > 0) put(MediaStore.MediaColumns.DATE_MODIFIED, origDateModified)
+            }
             context.contentResolver.update(newUri, done, null, null)
             newUri
         } catch (_: Exception) { null }

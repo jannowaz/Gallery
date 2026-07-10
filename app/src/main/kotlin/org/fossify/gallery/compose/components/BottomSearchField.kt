@@ -22,6 +22,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,11 +37,14 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.LocalSpacing
 import org.fossify.gallery.compose.theme.Radius
+import org.fossify.gallery.compose.util.rememberGalleryHaptics
 
 /**
  * Editable, thumb-reachable search field shown at the bottom (above the nav bar / keyboard).
@@ -61,8 +66,11 @@ fun BottomSearchField(
     onSearch: () -> Unit = {},
     modifier: Modifier = Modifier,
     searching: Boolean = false,
+    blurEnabled: Boolean = false,
+    onToggleBlur: () -> Unit = {},
 ) {
     val s = LocalSpacing.current
+    val haptic = rememberGalleryHaptics()
     Surface(
         modifier = modifier.fillMaxWidth().padding(horizontal = s.md, vertical = s.xs),
         shape = RoundedCornerShape(Radius.xl),
@@ -70,8 +78,11 @@ fun BottomSearchField(
         border = if (isActive) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
         tonalElevation = 2.dp,
     ) {
+        // IconButtons below are explicitly sized to 40dp, not Material's 48dp default - a deliberate
+        // trade-off (below the recommended a11y touch target) to save a few dp of row height, per
+        // Jannik's request to make the combined bottom chrome (this + the nav bar) less tall.
         Row(Modifier.padding(horizontal = s.xs, vertical = s.xs), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = if (isActive) onClear else onMenuClick) {
+            IconButton(onClick = if (isActive) onClear else onMenuClick, modifier = Modifier.size(40.dp)) {
                 Icon(
                     if (isActive) Icons.AutoMirrored.Filled.ArrowBack else Icons.Default.Menu,
                     contentDescription = stringResource(if (isActive) R.string.cd_close else R.string.nav_more),
@@ -80,7 +91,13 @@ fun BottomSearchField(
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                 if (value.isEmpty()) {
-                    Text(stringResource(R.string.search_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // maxLines/overflow needed now that the row has one more trailing icon (the
+                    // blur toggle) - the placeholder previously fit on one line at the old width,
+                    // wrapping to two otherwise, which grew this row's height right back up again.
+                    Text(
+                        stringResource(R.string.search_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 BasicTextField(
                     value = value,
@@ -95,10 +112,26 @@ fun BottomSearchField(
             }
             AnimatedContent(targetState = searching to value.isNotEmpty(), transitionSpec = { fadeIn(AppMotion.short) togetherWith fadeOut(AppMotion.short) }, label = "searchTrailingIcon") { (isSearching, hasValue) ->
                 when {
-                    isSearching -> Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) }
-                    hasValue -> IconButton(onClick = onClear) { Icon(Icons.Default.Close, stringResource(R.string.action_empty), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    else -> Spacer(Modifier.size(48.dp))
+                    isSearching -> Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) }
+                    hasValue -> IconButton(onClick = onClear, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Close, stringResource(R.string.action_empty), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    else -> Spacer(Modifier.size(40.dp))
                 }
+            }
+            // Quick, unlabeled privacy-blur toggle - lives in this always-visible row instead of its
+            // own dedicated strip (an earlier version added a separate row for it, which stacked on
+            // top of the search field and nav bar and visibly ate into the content area; this adds
+            // width to an existing row instead of a whole new row, so it costs no extra height).
+            // Deliberately kept at the full 48dp a11y touch target (unlike its 40dp siblings above) -
+            // a mis-tap here toggles whether real media is visible, so it doesn't get the same
+            // compactness trade-off as purely navigational icons; the row grows by 8dp for this one
+            // button. Haptic confirmation on top since there's no other visible feedback besides the
+            // icon swap for a toggle whose whole point is "did that actually register".
+            IconButton(onClick = { haptic(HapticFeedbackType.Confirm); onToggleBlur() }, modifier = Modifier.size(48.dp)) {
+                Icon(
+                    if (blurEnabled) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = stringResource(R.string.cd_toggle_blur),
+                    tint = if (blurEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

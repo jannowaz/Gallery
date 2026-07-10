@@ -166,8 +166,10 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     fun getNewestMedia(limit: Int): List<Medium> =
         try { context.mediaDB.getNewestMedia(limit) } catch (_: Exception) { emptyList() }
 
+    // COUNT (file count) is a folder-only sort option, never reachable for a media query - falls
+    // back to name here purely so this `when` stays exhaustive.
     fun getMediaPaged(field: SortField, desc: Boolean): PagingSource<Int, Medium> = when (field) {
-        SortField.NAME -> if (desc) context.mediaDB.getMediaPagedByNameDesc() else context.mediaDB.getMediaPagedByNameAsc()
+        SortField.NAME, SortField.COUNT -> if (desc) context.mediaDB.getMediaPagedByNameDesc() else context.mediaDB.getMediaPagedByNameAsc()
         SortField.DATE -> context.mediaDB.getMediaPagedByDate(desc)
         SortField.SIZE -> context.mediaDB.getMediaPagedBySize(desc)
         SortField.RATING -> context.mediaDB.getMediaPagedByRating(desc)
@@ -180,12 +182,23 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
      * list regardless of how much of the grid has been paged in. Cheap: full_path only, no thumbnails. */
     suspend fun getActivePathsSorted(field: SortField, desc: Boolean): List<String> = try {
         when (field) {
-            SortField.NAME -> if (desc) context.mediaDB.getActivePathsByNameDesc() else context.mediaDB.getActivePathsByNameAsc()
+            SortField.NAME, SortField.COUNT -> if (desc) context.mediaDB.getActivePathsByNameDesc() else context.mediaDB.getActivePathsByNameAsc()
             SortField.DATE -> context.mediaDB.getActivePathsByDate(desc)
             SortField.SIZE -> context.mediaDB.getActivePathsBySize(desc)
             SortField.RATING -> context.mediaDB.getActivePathsByRating(desc)
         }
-    } catch (_: Exception) { emptyList() }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        // MediaViewModel's prefetchSortedPathsAsync() deliberately cancels a still-running previous
+        // call here whenever a newer one supersedes it (sort change, refresh, ...) - that's routine,
+        // not a failure. Must rethrow (never fold into the catch-all below): a broad `catch (Exception)`
+        // also matches CancellationException (and Compose's ForgottenCoroutineScopeException, thrown
+        // when rememberCoroutineScope's scope leaves composition mid-call) since both are Exception
+        // subtypes in Kotlin - swallowing it here previously turned a routine cancellation into a
+        // cached emptyList() result (see MediaViewModel.activePathsSorted's cache), permanently
+        // breaking the Media tab's Viewer entry (opened with zero pages - confirmed live via
+        // `ViewerScreen ENTER paths.size=0`) until something happened to change the cache key.
+        throw e
+    } catch (e: Exception) { emptyList() }
 
     /** Filtered counterpart of [getMediaPaged] - builds one dynamic SQL query covering every active
      * [MediaFilter] dimension (rating/tag/path-include/path-exclude/size/date) instead of the old
@@ -268,7 +281,9 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
 
         val mult = if (desc) -1 else 1
         val orderBy = when (sortField) {
-            SortField.NAME -> "ORDER BY filename COLLATE NOCASE ${if (desc) "DESC" else "ASC"}"
+            // COUNT (file count) is a folder-only sort option, never reachable for a media query -
+            // falls back to name here purely so this `when` stays exhaustive.
+            SortField.NAME, SortField.COUNT -> "ORDER BY filename COLLATE NOCASE ${if (desc) "DESC" else "ASC"}"
             SortField.DATE -> "ORDER BY $mult * (CASE WHEN date_taken > 0 THEN date_taken ELSE last_modified END)"
             SortField.SIZE -> "ORDER BY $mult * size"
             SortField.RATING -> "ORDER BY $mult * rating, $mult * last_modified"
@@ -383,14 +398,22 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     fun syncNewMediaFromStore(): List<Medium> {
         try {
             val lastSync = context.config.lastSyncTimestamp
-            val existingPaths = context.mediaDB.getAllPaths().toSet()
-            val newMedia = mutableListOf<Medium>()
+            // Was `context.mediaDB.getAllPaths().toSet()` - materialized every path in the entire
+            // library (200,000+ rows on a large library) into memory on *every single call* just to
+            // do an in-memory `in` check against a handful of recently-modified rows below. This
+            // ContentObserver-triggered sync fires often (see ComposeExplorerActivity's mediaObserver),
+            // so that cost was paid repeatedly, not just once. Replaced with `getExistingPaths()`
+            // batch-checked below, scoped to just the bounded candidate set this function actually
+            // needs to dedup (the incremental MediaStore query is already capped at 10,000 rows).
+            val isFirstSync = lastSync == 0L || !context.mediaDB.hasAnyMedia()
+            val candidates = mutableListOf<Medium>()
             val uri = MediaStore.Files.getContentUri("external")
             val proj = arrayOf(
                 MediaStore.MediaColumns.DATA,
                 MediaStore.MediaColumns.RELATIVE_PATH,
                 MediaStore.MediaColumns.DISPLAY_NAME,
                 MediaStore.MediaColumns.DATE_MODIFIED,
+                MediaStore.MediaColumns.DATE_TAKEN,
                 MediaStore.MediaColumns.SIZE,
                 MediaStore.Files.FileColumns.MEDIA_TYPE,
             )
@@ -412,6 +435,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                 val relPathIdx = c.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
                 val nameIdx = c.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
                 val dateIdx = c.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
+                val takenIdx = c.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN)
                 val sizeIdx = c.getColumnIndex(MediaStore.MediaColumns.SIZE)
                 val typeIdx = c.getColumnIndex(MediaStore.Files.FileColumns.MEDIA_TYPE)
                 var scanned = 0
@@ -423,31 +447,47 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                         val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "" else ""
                         path = "$storageRoot/$relPath$name"
                     }
-                    if (path.isNullOrBlank() || path in existingPaths) continue
+                    if (path.isNullOrBlank()) continue
                     val name = File(path).name
                     val modifiedSec = if (dateIdx >= 0) c.getLong(dateIdx) else 0L
                     val modified = modifiedSec * 1000L
                     latestTimestamp = maxOf(latestTimestamp, modified)
-                    
+                    // date_taken (already millis, unlike date_modified/date_added which are seconds)
+                    // is what MediumDao's sort actually keys on when present - falling back to
+                    // modified here too (not just in the DAO's own CASE) means a file whose
+                    // date_taken MediaStore doesn't know (e.g. a non-EXIF file) doesn't end up with
+                    // an inconsistent 0. Without reading this at all, every newly-synced file
+                    // (including one just moved via the Mover, see MediaStoreOps.copy()) got
+                    // taken == modified == "now", which is what made moved files jump to the top of
+                    // the date-sorted grid as if they were brand new.
+                    val taken = (if (takenIdx >= 0) c.getLong(takenIdx) else 0L).takeIf { it > 0 } ?: modified
+
                     val size = if (sizeIdx >= 0) c.getLong(sizeIdx) else 0L
                     val mediaType = if (typeIdx >= 0) c.getInt(typeIdx) else 1
                     val type = if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) 2 else 1
-                    newMedia.add(Medium(null, name, path, File(path).parent ?: "", modified, modified, size, type, 0, false, 0L, 0L, 0))
+                    candidates.add(Medium(null, name, path, File(path).parent ?: "", modified, taken, size, type, 0, false, 0L, 0L, 0))
                 }
             }
+            // Batch-check just this bounded candidate set (<=10,000, typically far fewer) against the
+            // DB instead of the whole-library set this used to dedup against in memory.
+            val existingCandidatePaths = candidates.map { it.path }
+                .chunked(SQLITE_BATCH_CHUNK_SIZE)
+                .flatMap { context.mediaDB.getExistingPaths(it) }
+                .toSet()
+            val newMedia = candidates.filterTo(mutableListOf()) { it.path !in existingCandidatePaths }
+
             val deletedPaths = try {
                 context.mediaDB.getDeletedMedia().map { it.path }.toSet()
             } catch (e: Exception) {
                 android.util.Log.e("MediaRepository", "getDeletedMedia failed", e)
                 emptySet()
             }
-            
+
             // Only scan recent disk folders if we found something new or if it's the first sync
             if (newMedia.isNotEmpty() || lastSync == 0L) {
-                newMedia.addAll(recentDiskMedia(existingPaths + newMedia.map { it.path } + deletedPaths))
+                newMedia.addAll(recentDiskMedia(newMedia.map { it.path }.toSet() + deletedPaths))
             }
 
-            val isFirstSync = lastSync == 0L || existingPaths.isEmpty()
             if (isFirstSync) {
                 // A first/baseline sync must be exhaustive regardless of whether the incremental
                 // DATE_MODIFIED filter above already matched something: that filter only looks at
@@ -532,8 +572,12 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         return allMedia.sortedByDescending { it.modified }
     }
 
+    // [knownPaths] only needs to cover paths this same sync pass already decided to insert (or that
+    // are in the recycle bin) - not the whole library. Whether a found file already exists in the DB
+    // is checked below via a batch query scoped to just this function's own (small, non-recursive,
+    // ~7-folder) candidate set, the same pattern syncNewMediaFromStore() uses for its own candidates.
     private fun recentDiskMedia(knownPaths: Set<String>): List<Medium> {
-        val result = mutableListOf<Medium>()
+        val candidates = mutableListOf<Medium>()
         val exts = videoExts + imageExts
         try {
             val root = Environment.getExternalStorageDirectory()
@@ -555,11 +599,16 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                     val ext = f.extension.lowercase()
                     if (ext !in exts) continue
                     val modified = f.lastModified()
-                    result.add(Medium(null, f.name, p, f.parent ?: "", modified, modified, f.length(), if (ext in videoExts) 2 else 1, 0, false, 0L, 0L, 0))
+                    candidates.add(Medium(null, f.name, p, f.parent ?: "", modified, modified, f.length(), if (ext in videoExts) 2 else 1, 0, false, 0L, 0L, 0))
                 }
             }
         } catch (_: Exception) { }
-        return result
+        if (candidates.isEmpty()) return candidates
+        val existing = candidates.map { it.path }
+            .chunked(SQLITE_BATCH_CHUNK_SIZE)
+            .flatMap { context.mediaDB.getExistingPaths(it) }
+            .toSet()
+        return candidates.filterNot { it.path in existing }
     }
 
     private fun scanFile(dir: File, result: MutableList<Medium>, seen: MutableSet<String>, depth: Int, exts: Set<String>) {

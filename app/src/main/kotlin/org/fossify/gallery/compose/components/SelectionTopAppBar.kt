@@ -2,6 +2,7 @@ package org.fossify.gallery.compose.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.automirrored.filled.Label
@@ -30,6 +31,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import org.fossify.gallery.R
 
@@ -46,18 +49,33 @@ fun SelectionAppBar(
     modifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
+    val countDescription = stringResource(R.string.selection_count, count)
     TopAppBar(
         modifier = modifier,
+        // This bar floats over already-inset-safe content (see the AnimatedVisibility/Box it's
+        // placed in in MediaScreen/ExplorerScreen etc.), it isn't the physical top-of-screen app
+        // bar - TopAppBar's own default windowInsets otherwise pads it for the status bar a
+        // second time on top of that, showing as a large empty strip above the icon row.
+        windowInsets = WindowInsets(0, 0, 0, 0),
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
         ),
         navigationIcon = {
             IconButton(onClick = onClose) { Icon(Icons.Default.Close, stringResource(R.string.selection_clear)) }
         },
-        // titleMedium, not titleLarge - the default M3 app bar title size wraps onto a second line
-        // here since the count text shares the bar with 4-5 action icons (Rename/Tags/Rate/Delete/
-        // More), leaving little width; maxLines/overflow is a safety net for long counts either way.
-        title = { Text(stringResource(R.string.selection_count, count), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        // Shows just the bare number, not "N ausgewählt"/"N selected" - tried shrinking that full
+        // phrase down to labelLarge (14sp) first, but it still clipped to "2 ausg…" on a real
+        // OnePlus/ColorOS device: after the nav icon + 5 action icons (Rename/Tags/Rate/Delete/
+        // More) there's only ~100dp left, and "ausgewählt" alone is too long to fit at any
+        // reasonable size once you account for a real (non-Roboto) system font's actual metrics.
+        // The full phrase is still exposed to screen readers via clearAndSetSemantics below -
+        // sighted users already see per-item checkmarks, so the bare count is sufficient there.
+        title = {
+            Text(
+                "$count", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clearAndSetSemantics { contentDescription = countDescription },
+            )
+        },
         actions = actions,
     )
 }

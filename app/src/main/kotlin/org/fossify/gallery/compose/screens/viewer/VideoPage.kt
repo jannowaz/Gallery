@@ -2,6 +2,7 @@ package org.fossify.gallery.compose.screens.viewer
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.theme.AppMotion
+import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.theme.Radius
 import org.fossify.gallery.compose.theme.Scrim
 import org.fossify.gallery.compose.theme.TrimEndColor
@@ -55,7 +56,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
@@ -76,6 +76,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
+import org.fossify.gallery.compose.util.BlurState
+import org.fossify.gallery.compose.util.privacyBlur
 import org.fossify.gallery.extensions.config
 import java.io.File
 
@@ -135,31 +137,36 @@ fun VideoPage(
                 } catch (_: Exception) { }
             }
         }
-        // Pre-extract a sparse set of scaled scrub thumbnails once (after the player has settled), so
-        // the seek preview never has to decode in real time — real-time decoding contends with
-        // ExoPlayer's decoder and frequently returns nothing. While seeking, the nearest cached frame
-        // is shown.
-        if (retrieverReady) {
-            delay(400)
-            val frames = withContext(Dispatchers.IO) {
-                frameMutex.withLock {
-                    val dur = try { retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L } catch (_: Exception) { 0L }
-                    if (dur <= 0L) return@withLock emptyList<Bitmap>()
-                    val n = 24
-                    val out = ArrayList<Bitmap>(n)
-                    for (i in 0 until n) {
-                        val t = dur * i / (n - 1)
-                        val bmp = try {
-                            if (android.os.Build.VERSION.SDK_INT >= 27) retriever.getScaledFrameAtTime(t * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 256, 144)
-                            else retriever.getFrameAtTime(t * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                        } catch (_: Exception) { null }
-                        if (bmp != null) out.add(bmp)
-                    }
-                    out
+    }
+    // Pre-extract a sparse set of scaled scrub thumbnails once this page is actually the visible one
+    // - not merely preloaded into a neighbor slot by the pager's beyondViewportPageCount=1 - so the
+    // seek preview never has to decode in real time (real-time decoding contends with ExoPlayer's
+    // decoder and frequently returns nothing; while seeking, the nearest cached frame is shown
+    // instead). Decoding 24 sync-frames is real codec work; doing it for a page the user may never
+    // swipe to wasted CPU/battery for nothing ever shown. Guarded on frameCache staying empty so
+    // toggling isCurrentPage false->true while swiping back and forth doesn't re-decode frames
+    // already cached for this path.
+    LaunchedEffect(path, isCurrentPage, retrieverReady) {
+        if (!isCurrentPage || !retrieverReady || frameCache.isNotEmpty()) return@LaunchedEffect
+        delay(400)
+        val frames = withContext(Dispatchers.IO) {
+            frameMutex.withLock {
+                val dur = try { retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L } catch (_: Exception) { 0L }
+                if (dur <= 0L) return@withLock emptyList<Bitmap>()
+                val n = 24
+                val out = ArrayList<Bitmap>(n)
+                for (i in 0 until n) {
+                    val t = dur * i / (n - 1)
+                    val bmp = try {
+                        if (android.os.Build.VERSION.SDK_INT >= 27) retriever.getScaledFrameAtTime(t * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 256, 144)
+                        else retriever.getFrameAtTime(t * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    } catch (_: Exception) { null }
+                    if (bmp != null) out.add(bmp)
                 }
+                out
             }
-            frameCache = frames
         }
+        frameCache = frames
     }
     DisposableEffect(path) {
         onDispose { try { retriever.release() } catch (_: Exception) { } }
@@ -231,11 +238,25 @@ fun VideoPage(
         onDispose { player.removeListener(listener) }
     }
 
-    val spv = remember { androidx.media3.ui.PlayerView(ctx).apply { useController = false } }
-    LaunchedEffect(player) { spv.player = player }
+    // Inflated from XML (see compose_video_player_view.xml), not constructed via PlayerView(ctx) -
+    // that's the only way to get surface_type=texture_view, required so the blur toggle below can
+    // actually affect the live video frame (SurfaceView's content bypasses Compose's draw pipeline
+    // entirely - confirmed live on-device that a plain PlayerView(ctx) here left video completely
+    // unblurred despite the same .privacyBlur() call applying correctly to every other surface).
+    val spv = remember {
+        (android.view.LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView)
+            .apply { useController = false }
+    }
+    LaunchedEffect(player) { spv.player = player; positionMs = player.currentPosition }
     LaunchedEffect(scalingMode) { spv.resizeMode = scalingMode }
+    // Only polls while actually playing - currentPosition only advances on its own during playback,
+    // so ticking this every 500ms while paused (the previous condition was just `isCurrentPage`, true
+    // for as long as the user simply leaves a paused video open in the Viewer) was a perpetual,
+    // pointless recomposition source. The three discrete seek sites below (double-tap skip, scrub
+    // drag-release) now sync `positionMs` directly so the position readout stays correct immediately
+    // after a seek made while paused, without needing the poll to catch up.
     LaunchedEffect(isCurrentPage, isPlaying) {
-        while (isCurrentPage) {
+        while (isCurrentPage && isPlaying) {
             positionMs = player.currentPosition
             delay(500)
         }
@@ -252,11 +273,11 @@ fun VideoPage(
             // when video gestures are allowed, otherwise every double-tap just zooms.
             .zoomable(zoom, onSingleTap = { onToggleUi() }, onDoubleTap = if (ctx.config.allowVideoGestures) { pos, sz ->
                 val w = sz.width
-                if (pos.x < w / 3f) { player.seekTo((player.currentPosition - 10000).coerceAtLeast(0)); onInteract() }
-                else if (pos.x > w * 2 / 3f) { player.seekTo((player.currentPosition + 10000).coerceAtMost(player.duration)); onInteract() }
+                if (pos.x < w / 3f) { val t = (player.currentPosition - 10000).coerceAtLeast(0); player.seekTo(t); positionMs = t; onInteract() }
+                else if (pos.x > w * 2 / 3f) { val t = (player.currentPosition + 10000).coerceAtMost(player.duration); player.seekTo(t); positionMs = t; onInteract() }
                 else zoom.cycleZoom(pos, sz)
             } else null)
-            .let { if (ctx.config.blurAllMedia) it.blur(32.dp) else it }
+            .privacyBlur(BlurRadius.viewer, BlurState.enabled)
         )
 
         ZoomMinimap(zoom, modifier = Modifier.align(Alignment.TopEnd).padding(top = 72.dp, end = 12.dp))
@@ -272,11 +293,15 @@ fun VideoPage(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.ErrorOutline, null, tint = Color.White, modifier = Modifier.size(48.dp))
                     Text(stringResource(R.string.error_loading_media), color = Color.White, modifier = Modifier.padding(top = 12.dp))
+                    Text(File(path).name, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
                 }
             }
         }
 
-        AnimatedVisibility(visible = showUi, enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium)) {
+        // Gated on playerError == null too - none of play/pause/seek/mute/trim do anything useful
+        // once the player has hit a fatal error, and the play button previously overlapped the
+        // error icon pixel-for-pixel since both are center-aligned.
+        AnimatedVisibility(visible = showUi && playerError == null, enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium)) {
             Box(Modifier.fillMaxSize()) {
                 IconButton(
                     onClick = { if (isPlaying) player.pause() else player.play(); onInteract() },
@@ -309,7 +334,7 @@ fun VideoPage(
                                 player.seekTo((fraction * player.duration).toLong())
                                 onInteract()
                             },
-                            onValueChangeFinished = { seekPos = -1f; scrubFraction = -1f },
+                            onValueChangeFinished = { if (seekPos >= 0) positionMs = seekPos.toLong(); seekPos = -1f; scrubFraction = -1f },
                             modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                             colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
                         )
@@ -324,7 +349,7 @@ fun VideoPage(
                                     Image(
                                         bitmap = previewBmp.asImageBitmap(),
                                         contentDescription = null,
-                                        modifier = Modifier.size(width = 160.dp, height = 90.dp).let { if (ctx.config.blurAllMedia) it.blur(16.dp) else it },
+                                        modifier = Modifier.size(width = 160.dp, height = 90.dp).privacyBlur(BlurRadius.scrubPreview, BlurState.enabled),
                                         contentScale = ContentScale.Crop,
                                     )
                                     Text("%02d:%02d".format(((scrubFraction * player.duration) / 1000).toInt() / 60, ((scrubFraction * player.duration) / 1000).toInt() % 60), color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(4.dp))

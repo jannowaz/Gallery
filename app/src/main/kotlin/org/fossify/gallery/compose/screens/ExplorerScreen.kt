@@ -3,6 +3,8 @@ import org.fossify.gallery.compose.theme.Radius
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,6 +28,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
@@ -39,6 +42,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -58,6 +62,9 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -67,6 +74,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.compose.theme.LocalMediaRepository
@@ -81,6 +89,7 @@ import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.R
 import androidx.compose.ui.res.stringResource
+import org.fossify.commons.extensions.toast
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import java.io.File
@@ -125,6 +134,15 @@ fun ExplorerScreen(
     var selectedFolderPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     val hasFolderSelection = selectedFolderPaths.isNotEmpty()
     LaunchedEffect(hasFolderSelection) { onSelectionActiveChanged(hasFolderSelection) }
+    // Set once "Use as mover source" is tapped (can be several folders at once) - the destination
+    // picker (search + Explorer browse, see FolderPathPickerSheet) then decides the pair(s)' shared
+    // other half, and one FolderPair per source gets created against it.
+    var pendingMoverSources by remember { mutableStateOf<List<String>?>(null) }
+    // Re-read every time a selection session starts/ends (not just once for the whole tab visit,
+    // and not left stale from the previous session) - mirrors FolderPathPickerSheet's own "already a
+    // mover source" marker (same tertiary-tinted DriveFileMove icon), just applied to the selection
+    // toolbar's action icon instead of a per-row badge.
+    val moverSourcePaths = remember(hasFolderSelection) { org.fossify.gallery.helpers.loadMoverPairs(context).map { it.source }.toSet() }
     // SideEffect (synchronous, runs on the same composition pass), not LaunchedEffect (dispatches
     // a new coroutine, which can lag a frame or more behind) - MainScreen's own BackHandler reads
     // this via onCanGoUpChanged to decide whether it or ExplorerScreen's BackHandler below should
@@ -216,12 +234,16 @@ fun ExplorerScreen(
                 SortField.DATE -> folders.sortedBy { it.lastModified }
                 SortField.SIZE -> folders.sortedBy { it.size }
                 SortField.RATING -> folders.sortedBy { it.name.lowercase() }
+                SortField.COUNT -> folders.sortedBy { it.mediaCount }
             }.let { if (folderSettings.sortDesc) it.reversed() else it }
+            // COUNT (file count) is a folder-only sort option, filtered out of the media sort UI
+            // (see ViewSettingsSheet) - falls back to name here purely so this `when` stays exhaustive.
             val sfi = when (mediaSettings.sortBy) {
                 SortField.NAME -> files.sortedBy { it.name.lowercase() }
                 SortField.DATE -> files.sortedBy { it.lastModified }
                 SortField.SIZE -> files.sortedBy { it.size }
                 SortField.RATING -> files.sortedBy { it.name.lowercase() }
+                SortField.COUNT -> files.sortedBy { it.name.lowercase() }
             }.let { if (mediaSettings.sortDesc) it.reversed() else it }
             Pair(sf, sfi)
         }
@@ -259,6 +281,20 @@ fun ExplorerScreen(
                     }) {
                         Icon(Icons.Default.VisibilityOff, stringResource(R.string.action_hide))
                     }
+                    val allAlreadyMoverSources = selectedFolderPaths.isNotEmpty() && selectedFolderPaths.all { it in moverSourcePaths }
+                    IconButton(onClick = {
+                        pendingMoverSources = selectedFolderPaths.toList()
+                        selectedFolderPaths = emptySet()
+                    }) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.DriveFileMove,
+                            stringResource(if (allAlreadyMoverSources) R.string.mover_source_marker else R.string.action_use_as_mover_source),
+                            // error/red instead of tertiary - tertiary read as too close to the
+                            // toolbar's other icons to notice at a glance, and this is a state the
+                            // user needs to actually see before tapping (already-configured vs. new).
+                            tint = if (allAlreadyMoverSources) MaterialTheme.colorScheme.error else LocalContentColor.current,
+                        )
+                    }
                 },
             )
         } else {
@@ -279,7 +315,26 @@ fun ExplorerScreen(
         val explorerContentState = if (isLoading) "loading" else if (folderItems.isEmpty() && fileItems.isEmpty()) "empty" else "content"
         Crossfade(targetState = explorerContentState, label = "explorerContent") { cs ->
         if (cs == "loading") {
-            MediaSkeleton(columns = 3)
+            Box(Modifier.fillMaxSize()) {
+                MediaSkeleton(columns = 3)
+                // The first Explorer visit runs an uncached full-device MediaStore scan (multiple
+                // seconds on a large real library, see MediaStoreOps.kt) with nothing but a bare
+                // shimmer to look at - easy to mistake for a hang. Delayed so it doesn't flash on
+                // the common fast path (cached allEntries, near-instant folder navigation).
+                var showHint by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) { delay(1200); showHint = true }
+                androidx.compose.animation.AnimatedVisibility(visible = showHint, modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp), enter = fadeIn(), exit = fadeOut()) {
+                    Surface(shape = RoundedCornerShape(Radius.xl), color = MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 2.dp) {
+                        Text(
+                            stringResource(R.string.scanning_folders), style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            // A screen-reader user gets nothing but a bare shimmer otherwise - a new
+                            // Text node appearing off-focus isn't announced by TalkBack on its own.
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                        )
+                    }
+                }
+            }
         } else if (cs == "empty") {
             EmptyState(Icons.Default.Folder, stringResource(R.string.no_items), subtitle = stringResource(R.string.no_items_hint))
         } else {
@@ -464,6 +519,22 @@ fun ExplorerScreen(
         }
         }
 
+    }
+
+    pendingMoverSources?.let { sources ->
+        val addedFormat = stringResource(R.string.mover_pair_added)
+        val addedCountFormat = stringResource(R.string.mover_pairs_added_count)
+        FolderPathPickerSheet(
+            title = stringResource(R.string.mover_select_dest),
+            initialPath = context.config.lastExplorerPath.ifBlank { context.config.internalStoragePath },
+            onPathSelected = { destination ->
+                org.fossify.gallery.helpers.addMoverPairs(context, sources, destination)
+                val msg = if (sources.size == 1) addedFormat.format(File(sources[0]).name, File(destination).name) else addedCountFormat.format(sources.size, File(destination).name)
+                context.toast(msg, android.widget.Toast.LENGTH_SHORT)
+            },
+            onDismiss = { pendingMoverSources = null },
+            suggestedFolderName = if (sources.size == 1) File(sources[0]).name else null,
+        )
     }
 }
 

@@ -108,7 +108,9 @@ import org.fossify.gallery.helpers.EXT_RESOLUTION
 import org.fossify.gallery.helpers.EXT_SIZE
 import org.fossify.gallery.helpers.ROTATE_BY_ASPECT_RATIO
 import org.fossify.gallery.helpers.ROTATE_BY_DEVICE_ROTATION
+import org.fossify.gallery.compose.util.BlurState
 import org.fossify.gallery.helpers.ROTATE_BY_SYSTEM_SETTING
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -145,7 +147,9 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             SettingsSwitch(stringResource(R.string.set_animate_gifs), conf.animateGifs) { conf.animateGifs = it }
             SettingsSwitch(stringResource(R.string.set_max_brightness), conf.maxBrightness) { conf.maxBrightness = it }
             SettingsSwitch(stringResource(R.string.set_search_all_files), conf.searchAllFilesByDefault) { conf.searchAllFilesByDefault = it }
-            SettingsSwitch(stringResource(R.string.set_scroll_horizontally), conf.scrollHorizontally) { conf.scrollHorizontally = it }
+            // Hidden, not deleted: needs an alternate horizontal-scrolling grid layout in Compose
+            // (the legacy Views grid supports it via StaggeredGridLayoutManager.HORIZONTAL) that
+            // doesn't exist yet - showing the toggle with no effect was worse than not showing it.
             SettingsSwitch(stringResource(R.string.set_pull_refresh), conf.enablePullToRefresh) { conf.enablePullToRefresh = it }
             SettingsNav(stringResource(R.string.set_folder_type), getViewTypeLabel(ctx, conf.viewTypeFolders)) { conf.viewTypeFolders = if (conf.viewTypeFolders == VIEW_TYPE_GRID) VIEW_TYPE_LIST else VIEW_TYPE_GRID; settingsVersion++ }
             SettingsNav(stringResource(R.string.set_included_folders)) { a?.startActivity(Intent(a, IncludedFoldersActivity::class.java)) }
@@ -167,7 +171,11 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             SettingsSwitch(stringResource(R.string.set_keep_screen_on), conf.keepScreenOn) { conf.keepScreenOn = it }
             SettingsSwitch(stringResource(R.string.set_show_notch), conf.showNotch) { conf.showNotch = it }
             SettingsSwitch(stringResource(R.string.set_swipe_close), conf.allowDownGesture) { conf.allowDownGesture = it }
-            SettingsSwitch(stringResource(R.string.set_instant_change), conf.allowInstantChange) { conf.allowInstantChange = it }
+            // Hidden, not deleted: the legacy Views viewer maps this to left/right edge-tap zones
+            // for instant prev/next. The Compose Viewer's pager already uses edge-thirds for the
+            // video brightness/volume drag gestures and center-vs-edge for drag-to-dismiss/action
+            // sheet - adding another tap zone on top needs a dedicated gesture-conflict pass, not a
+            // quick wire (this screen has repeatedly needed exactly that kind of dedicated pass).
             SettingsNav(stringResource(R.string.set_screen_rotation), getRotationLabel(ctx, conf.screenRotation)) {
                 conf.screenRotation = when (conf.screenRotation) {
                     ROTATE_BY_SYSTEM_SETTING -> ROTATE_BY_DEVICE_ROTATION
@@ -184,7 +192,19 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             SettingsSwitch(stringResource(R.string.set_show_file_type), conf.showThumbnailFileTypes) { conf.showThumbnailFileTypes = it }
             SettingsSwitch(stringResource(R.string.set_mark_favorites), conf.markFavoriteItems) { conf.markFavoriteItems = it }
             SettingsSwitch(stringResource(R.string.show_rating), conf.showRatingOnThumbnails) { conf.showRatingOnThumbnails = it }
-            SettingsSwitch(stringResource(R.string.blur_all_media), conf.blurAllMedia) { conf.blurAllMedia = it }
+            SettingsSwitch(stringResource(R.string.blur_all_media), BlurState.enabled) {
+                conf.blurAllMedia = it
+                BlurState.enabled = it
+                org.fossify.gallery.helpers.MyWidgetProvider.requestImmediateUpdate(ctx)
+            }
+            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
+                Text(
+                    stringResource(R.string.blur_all_media_legacy_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp),
+                )
+            }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
             SectionLabel(stringResource(R.string.nav_recycle_bin))
@@ -207,6 +227,13 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             SettingsNav(stringResource(R.string.set_manage_details), getExtendedDetailsSummary(ctx, conf.extendedDetails)) { showExtendedDialog = true }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
+            // Not wired into the Compose Viewer: the legacy Views viewer renders this bitmask as a
+            // persistent bottom action bar, but the Compose Viewer already uses a different,
+            // deliberate design (swipe-up action sheet, see showActionSheet below) - mapping a
+            // bitmask onto that shape is an information-architecture decision, not a quick wire, so
+            // left as a documented gap rather than rushed. Kept visible (unlike the two toggles
+            // hidden above) since it's a real Settings feature for the legacy viewer, just inert
+            // for the Compose one.
             SectionLabel(stringResource(R.string.set_screen_actions))
             SettingsSwitch(stringResource(R.string.set_show_actions), conf.bottomActions) { conf.bottomActions = it }
             SettingsNav(stringResource(R.string.set_manage_actions), getBottomActionsSummary(ctx, conf.visibleBottomActions)) { showBottomActionsDialog = true }
@@ -456,11 +483,21 @@ internal fun BottomActionsDialog(current: Int, onDismiss: () -> Unit, onSave: (I
     )
 }
 
+// Plain integer division (bytes/1000, bytes/1_000_000) truncated anything under 1000 bytes/1MB
+// down to "0 KB"/"N KB" with no decimal - misleading since it read as "the cache is empty" even
+// when it wasn't. Formats with one decimal and a dedicated Bytes tier instead.
+private fun formatCacheSize(bytes: Long): String = when {
+    bytes >= 1_000_000 -> String.format(Locale.US, "%.1f MB", bytes / 1_000_000.0)
+    bytes >= 1_000 -> String.format(Locale.US, "%.1f KB", bytes / 1_000.0)
+    bytes > 0 -> "$bytes B"
+    else -> "0 KB"
+}
+
 @Composable
 internal fun ClearCacheNav(ctx: Context, scope: CoroutineScope) {
     val a = ctx as? Activity
     var cacheSize by remember { mutableStateOf("") }
-    LaunchedEffect(Unit) { cacheSize = withContext(Dispatchers.IO) { a?.cacheDir?.let { dir -> if (dir.exists()) dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }.let { bytes -> if (bytes > 1_000_000) "${bytes / 1_000_000} MB" else "${bytes / 1_000} KB" } else "" } ?: "" } }
+    LaunchedEffect(Unit) { cacheSize = withContext(Dispatchers.IO) { a?.cacheDir?.let { dir -> if (dir.exists()) formatCacheSize(dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }) else "" } ?: "" } }
     SettingsNav(stringResource(R.string.set_clear_cache), cacheSize.ifEmpty { "0 KB" }) {
         scope.launch(Dispatchers.IO) { a?.cacheDir?.deleteRecursively(); withContext(Dispatchers.Main) { cacheSize = "0 KB" } }
     }

@@ -18,7 +18,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -29,7 +28,9 @@ import coil.compose.AsyncImagePainter
 import coil.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.fossify.gallery.extensions.config
+import org.fossify.gallery.compose.theme.BlurRadius
+import org.fossify.gallery.compose.util.BlurState
+import org.fossify.gallery.compose.util.privacyBlur
 import java.io.File
 
 @Composable
@@ -40,6 +41,10 @@ fun GalleryImage(
     contentScale: ContentScale = ContentScale.Crop,
     placeholderIconSize: Dp = 24.dp,
     thumbnailSize: Int? = 384,
+    // Fit-scaled images (see MediaTile's cropThumbnails=false mode) don't cover the full box, so
+    // this shows through as the letterbox/pillarbox color - callers that want solid black bars
+    // instead of the default theme surface pass Color.Black here.
+    backgroundColor: Color = MaterialTheme.colorScheme.surfaceVariant,
 ) {
     val ctx = LocalContext.current
     val file = File(path)
@@ -50,7 +55,7 @@ fun GalleryImage(
         fileExists = withContext(Dispatchers.IO) { file.exists() }
     }
 
-    Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
+    Box(modifier.background(backgroundColor)) {
         AsyncImage(
             model = ImageRequest.Builder(ctx)
                 .data(if (fileExists) Uri.fromFile(file) else null)
@@ -58,7 +63,7 @@ fun GalleryImage(
                 .apply { if (thumbnailSize != null) size(thumbnailSize, thumbnailSize) }
                 .build(),
             contentDescription = contentDescription,
-            modifier = Modifier.fillMaxSize().let { if (ctx.config.blurAllMedia) it.blur(24.dp) else it },
+            modifier = Modifier.fillMaxSize().privacyBlur(BlurRadius.thumbnail, BlurState.enabled),
             contentScale = contentScale,
             onSuccess = { imageState = it },
             onError = { imageState = it },
