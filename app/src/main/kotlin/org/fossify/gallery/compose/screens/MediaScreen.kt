@@ -388,7 +388,7 @@ fun MediaScreen(
                         }
                     }
                     val currentLabel by remember(rows) { derivedStateOf { currentSectionLabel(rows, gridState.firstVisibleItemIndex) } }
-                    FloatingSectionLabel(currentLabel, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
+                    FloatingSectionLabel(currentLabel, isScrolling, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
                     }
                     }
                 }
@@ -483,7 +483,7 @@ fun MediaScreen(
                         }
                     }
                     val currentLabelStag by remember(rows) { derivedStateOf { currentSectionLabel(rows, mosaicState.firstVisibleItemIndex) } }
-                    FloatingSectionLabel(currentLabelStag, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
+                    FloatingSectionLabel(currentLabelStag, isScrollingStag, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
                     }
                     }
                 }
@@ -967,8 +967,11 @@ private fun currentSectionLabel(rows: List<PagedRow>, firstVisibleIndex: Int): S
 }
 
 @Composable
-private fun FloatingSectionLabel(label: String?, modifier: Modifier = Modifier) {
-    AnimatedVisibility(visible = label != null, modifier = modifier, enter = fadeIn(AppMotion.short), exit = fadeOut(AppMotion.short)) {
+private fun FloatingSectionLabel(label: String?, isScrolling: Boolean, modifier: Modifier = Modifier) {
+    // Only while actively scrolling, not permanently - it used to float for as long as any content
+    // was loaded (including with a modal sheet open over the grid), duplicating the inline month
+    // header directly below it for no reason once the user had stopped moving.
+    AnimatedVisibility(visible = label != null && isScrolling, modifier = modifier, enter = fadeIn(AppMotion.short), exit = fadeOut(AppMotion.short)) {
         Surface(shape = RoundedCornerShape(Radius.xl), color = MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 2.dp, tonalElevation = 2.dp) {
             Text(
                 label.orEmpty(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
