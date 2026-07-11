@@ -1,5 +1,6 @@
 package org.fossify.gallery.compose.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,13 +22,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,6 +49,7 @@ import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.LibraryAlbumGrid
 import org.fossify.gallery.compose.components.AlbumGridItem
+import org.fossify.gallery.compose.components.SelectionAppBar
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.R
@@ -66,7 +68,13 @@ fun FavoritesScreen(
 ) {
     val ctx = LocalContext.current
     val repo = LocalMediaRepository.current
-    var pinTarget by remember { mutableStateOf<AlbumGridItem?>(null) }
+    // Long-press now starts a multi-select session (matching every other folder grid in the app)
+    // instead of opening a single-item pin/unpin confirmation dialog. The toolbar's Pin action
+    // toggles directly, no confirmation step - mirrors AlbumsScreen's identical Favorite-folder
+    // toggle icon, which also acts immediately since pinning is trivially reversible (tap again).
+    var selectedFolderPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val hasFolderSelection = selectedFolderPaths.isNotEmpty()
+    BackHandler(enabled = hasFolderSelection) { selectedFolderPaths = emptySet() }
     // Seed from the repo-level cache instead of empty lists - the whole FavoritesScreen composable is
     // disposed and recreated whenever the user opens a photo (navigates to Viewer) and comes back, and
     // without this the favorites/dirs queries reran from scratch on every single round trip.
@@ -104,13 +112,35 @@ fun FavoritesScreen(
                 "empty" -> EmptyState(Icons.Default.Star, stringResource(R.string.no_favorites), subtitle = stringResource(R.string.no_favorites_hint))
                 else -> Column(Modifier.fillMaxSize().padding(8.dp)) {
                     if (favoriteDirs.isNotEmpty()) {
-                        Text(stringResource(R.string.folders), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                        if (hasFolderSelection) {
+                            val allPinned = selectedFolderPaths.all { it in ctx.config.pinnedFavoriteFolders }
+                            SelectionAppBar(
+                                count = selectedFolderPaths.size,
+                                onClose = { selectedFolderPaths = emptySet() },
+                                actions = {
+                                    IconButton(onClick = {
+                                        val cur = ctx.config.pinnedFavoriteFolders
+                                        ctx.config.pinnedFavoriteFolders = if (allPinned) cur - selectedFolderPaths else cur + selectedFolderPaths
+                                        org.fossify.gallery.helpers.RefreshBus.trigger()
+                                        selectedFolderPaths = emptySet()
+                                    }) {
+                                        Icon(
+                                            if (allPinned) Icons.Default.Star else Icons.Default.StarBorder,
+                                            stringResource(if (allPinned) R.string.unpin_action else R.string.pin_action),
+                                        )
+                                    }
+                                },
+                            )
+                        } else {
+                            Text(stringResource(R.string.folders), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                        }
                         val favoriteDirItems = remember(favoriteDirs) { favoriteDirs.map { AlbumGridItem(key = it.path, name = it.name, thumbnailPath = it.tmb, count = it.mediaCnt) } }
                         LibraryAlbumGrid(
                             items = favoriteDirItems,
                             viewSettings = viewSettings,
-                            onClick = { onFolderClick(it.key) },
-                            onLongClick = { pinTarget = it },
+                            onClick = { item -> if (hasFolderSelection) selectedFolderPaths = if (item.key in selectedFolderPaths) selectedFolderPaths - item.key else selectedFolderPaths + item.key else onFolderClick(item.key) },
+                            onLongClick = { item -> selectedFolderPaths = selectedFolderPaths + item.key },
+                            selectedKeys = selectedFolderPaths,
                             modifier = if (favoriteMedia.isEmpty()) Modifier.weight(1f) else Modifier.heightIn(max = 320.dp),
                             tabIndex = tabIndex,
                         )
@@ -123,22 +153,5 @@ fun FavoritesScreen(
                 }
             }
         }
-    }
-    pinTarget?.let { item ->
-        val pinned = item.key in ctx.config.pinnedFavoriteFolders
-        AlertDialog(
-            onDismissRequest = { pinTarget = null },
-            title = { Text(item.name) },
-            text = { Text(if (pinned) stringResource(R.string.unpin_favorite_q) else stringResource(R.string.pin_favorite_q)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    val cur = ctx.config.pinnedFavoriteFolders
-                    ctx.config.pinnedFavoriteFolders = if (pinned) cur - item.key else cur + item.key
-                    org.fossify.gallery.helpers.RefreshBus.trigger()
-                    pinTarget = null
-                }) { Text(if (pinned) stringResource(R.string.unpin_action) else stringResource(R.string.pin_action)) }
-            },
-            dismissButton = { TextButton(onClick = { pinTarget = null }) { Text(stringResource(R.string.cancel)) } },
-        )
     }
 }
