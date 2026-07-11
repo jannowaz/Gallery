@@ -124,7 +124,7 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
             val dateTakens = fetcher.getDateTakens()
             var changed = false
 
-            for (directory in dirs) {
+            for ((index, directory) in dirs.withIndex()) {
                 if (!isActive) return@launch
                 val sorting = config.getFolderSorting(directory.path)
                 val grouping = config.getFolderGrouping(directory.path)
@@ -159,13 +159,22 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
                         noMediaFolders = noMediaFolders
                     )
                     if (directory.copy(subfoldersCount = 0, subfoldersMediaCount = 0) != newDir) {
-                        directory.apply {
-                            tmb = newDir.tmb; name = newDir.name; mediaCnt = newDir.mediaCnt
-                            modified = newDir.modified; taken = newDir.taken; this@apply.size = newDir.size
+                        // Replace with a new instance rather than mutating `directory` in place: this
+                        // same object is also referenced (via the shallow ArrayList copies threaded
+                        // through fetchAndApplyDirectories) by fullDirList and the already-emitted
+                        // _state.value.directories - mutating it retroactively changed the "old" state
+                        // snapshot too, so the equals()-based dedup in MutableStateFlow.update{} below
+                        // could see old/new directories as identical and silently drop the emission,
+                        // leaving the grid showing a stale thumbnail/name/count until something else
+                        // happened to trigger a recomposition.
+                        val updatedDirectory = directory.copy(
+                            tmb = newDir.tmb, name = newDir.name, mediaCnt = newDir.mediaCnt,
+                            modified = newDir.modified, taken = newDir.taken, size = newDir.size,
                             types = newDir.types
-                        }
+                        )
+                        dirs[index] = updatedDirectory
                         changed = true
-                        ctx.updateDBDirectory(directory)
+                        ctx.updateDBDirectory(updatedDirectory)
                     }
                 }
             }
