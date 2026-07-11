@@ -176,7 +176,12 @@ fun ViewerScreen(
     val scope = rememberCoroutineScope()
     val items = remember { paths.toMutableStateList() }
     val pagerState = rememberPagerState(initialPage = startIndex.coerceIn(0, (paths.size - 1).coerceAtLeast(0)), pageCount = { items.size })
-    var showUI by remember { mutableStateOf(paths.getOrNull(startIndex.coerceIn(0, (paths.size - 1).coerceAtLeast(0)))?.let { !isVideo(it) } ?: true) }
+    // Always starts visible, videos included - a video used to open with no chrome at all (no
+    // visible exit, no context) since this used to special-case `!isVideo(...)`. The existing
+    // auto-hide effect below (keyed on showUI/uiInteractionTick) already hides it again after a few
+    // seconds regardless of media type, so dropping the video branch here doesn't leave the chrome
+    // stuck on-screen - it just gives a video the same brief, visible-on-open moment a photo gets.
+    var showUI by remember { mutableStateOf(true) }
     var showActionSheet by remember { mutableStateOf(false) }
     val currentPath = items.getOrNull(pagerState.currentPage) ?: ""
     val currentIsVideo = isVideo(currentPath)
