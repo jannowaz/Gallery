@@ -74,6 +74,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -97,6 +98,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.paging.LoadState
@@ -118,7 +120,9 @@ import org.fossify.gallery.compose.components.SelectionTopAppBar
 import org.fossify.gallery.compose.components.RenameDialog
 import org.fossify.gallery.compose.components.UndoBar
 import org.fossify.gallery.compose.components.RateAndTagSheet
+import org.fossify.gallery.compose.util.PeekState
 import org.fossify.gallery.compose.util.ScrollToTopEffect
+import org.fossify.gallery.compose.util.SelectionDragState
 import org.fossify.gallery.compose.util.dragSelectionGesture
 import org.fossify.gallery.compose.util.rememberSelectionDragState
 import org.fossify.gallery.helpers.UndoAction
@@ -127,8 +131,341 @@ import org.fossify.gallery.helpers.UndoType
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import org.fossify.gallery.models.Medium
+import org.fossify.gallery.viewmodels.MediaUiState
 import org.fossify.gallery.viewmodels.MediaViewModel
 import java.io.File
+
+// Extracted to a top-level function (rather than nested inside MediaScreen, as it was before) so the
+// Compose compiler can give it its own restart/skip group - as a zero-parameter local function
+// capturing ~25 outer values by closure, it was the only real UI composable in the app that showed up
+// as neither restartable nor skippable in Compose Compiler Metrics. This is the actual grid/mosaic/list
+// content renderer, so it's the one place in the screen where that matters for scroll/paging performance.
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PagedContent(
+    viewModel: MediaViewModel,
+    lazyPagingItems: androidx.paging.compose.LazyPagingItems<Medium>,
+    state: MediaUiState,
+    viewSettings: ViewSettings,
+    selectedPathsState: MutableState<Set<String>>,
+    rangeAnchorIndexState: MutableState<Int?>,
+    dragSelection: SelectionDragState,
+    peekState: PeekState,
+    contentTopInset: Dp,
+    tabIndex: Int?,
+    hasFilter: Boolean,
+    ratingFilter: Int,
+    activeTagName: String?,
+    activePathName: String?,
+    activeCollectionName: String?,
+    minSizeFilter: Long,
+    dateRangeFilter: Int,
+    onClearRatingFilter: () -> Unit,
+    onClearTagFilter: () -> Unit,
+    onClearPathFilter: () -> Unit,
+    onClearSizeFilter: () -> Unit,
+    onClearDateFilter: () -> Unit,
+    onClearFilter: () -> Unit,
+    onNavigateToViewer: ((paths: List<String>, startIndex: Int) -> Unit)?,
+) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // Delegating to the passed-in MutableState (rather than a plain Set<String>/Int? value param)
+    // matters here: onLongClick below reads then writes both of these within a single event-handler
+    // invocation (val anchor = rangeAnchorIndex; ...; rangeAnchorIndex = row.pagingIndex), and that
+    // handler lambda's captures are fixed at the composition pass that created it. A live MutableState
+    // reference is always read fresh through .value regardless of when/how often that lambda actually
+    // executes; a plain captured value would not be, and range-select silently degraded to single-item
+    // select when this was first tried as value+callback params - verified via before/after A-B test.
+    var selectedPaths by selectedPathsState
+    var rangeAnchorIndex by rangeAnchorIndexState
+    val hasSelection = selectedPaths.isNotEmpty()
+    val taggedPaths = state.taggedPaths
+    val selectedCommonTags = state.selectedCommonTags
+    val columnCount = viewSettings.columnCount
+    val isGrid = viewSettings.viewType == ViewType.GRID
+    val isMosaic = viewSettings.viewType == ViewType.MOSAIC
+    val cornerShape = if (viewSettings.roundedCorners) RoundedCornerShape(Radius.sm) else RoundedCornerShape(0.dp)
+    val itemSpacing = viewSettings.spacing.dp
+    val mediaCardColor = when (viewSettings.displayMode) { DisplayMode.COMPACT,DisplayMode.NORMAL->MaterialTheme.colorScheme.surface; DisplayMode.DARK->MaterialTheme.colorScheme.surfaceVariant }
+
+    // Viewer swipe-through needs the FULL sorted path list, not just what the grid has paged in so
+    // far - fetched fresh on demand (cheap: paths only, no thumbnails) so opening any item can swipe
+    // through the entire library, not just the loaded window. Must respect the active filter (e.g. a
+    // Collection): row.pagingIndex is a position within the filtered grid, so resolving it against the
+    // unfiltered path list would open whatever unrelated file happens to sit at that index instead.
+    fun openViewerPaged(index: Int) {
+        scope.launch {
+            val paths = if (hasFilter) viewModel.activePathsSortedFiltered() else viewModel.activePathsSorted()
+            onNavigateToViewer?.invoke(paths, index)
+        }
+    }
+
+    // Every path whose pagingIndex falls between fromIdx/toIdx (inclusive, either order) - the
+    // paged (Paging3) branches' range-select helper.
+    fun pathsInPagedRange(rows: List<PagedRow>, fromIdx: Int, toIdx: Int): Set<String> {
+        val lo = minOf(fromIdx, toIdx)
+        val hi = maxOf(fromIdx, toIdx)
+        return rows.asSequence()
+            .filterIsInstance<PagedRow.Item>()
+            .filter { it.pagingIndex in lo..hi }
+            .mapNotNull { safePeek(lazyPagingItems, it.pagingIndex)?.path }
+            .toSet()
+    }
+
+    // Computed once here (incrementally) and shared by all three view-type branches, instead of each
+    // branch rebuilding the whole Header/Item list from scratch on every Paging append.
+    val rows = rememberPagedRows(lazyPagingItems, state.filter, viewSettings.sortBy, viewSettings.sortDesc)
+    when {
+        isGrid -> {
+            Column(Modifier.padding(top = contentTopInset)) {
+                if (hasFilter) FilterBreadcrumbs(
+                    ratingFilter, activeTagName, activePathName, activeCollectionName,
+                    minSizeFilter, dateRangeFilter,
+                    lazyPagingItems.itemCount, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
+                    onClearSizeFilter, onClearDateFilter, onClearFilter
+                )
+                val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
+                QuickTagRow(quickTags = quickTags, visible = quickTags.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
+                val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
+                LaunchedEffect(gridState) {
+                    snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
+                        .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
+                }
+                ScrollToTopEffect(tabIndex) { gridState.animateScrollToItem(0) }
+                var showOverlays by remember { mutableStateOf(true) }
+                val isScrolling by remember { derivedStateOf { gridState.isScrollInProgress } }
+                LaunchedEffect(isScrolling) {
+                    if (isScrolling) showOverlays = false
+                    else { delay(300); showOverlays = true }
+                }
+                LaunchedEffect(dragSelection.isDragging) {
+                    if (dragSelection.isDragging) {
+                        var targetIdx = gridState.firstVisibleItemIndex
+                        while (dragSelection.isDragging) {
+                            val s = dragSelection.autoScrollSpeed
+                            if (s < -0.5f) targetIdx = maxOf(targetIdx - 1, 0)
+                            else if (s > 0.5f) targetIdx++
+                            else { kotlinx.coroutines.delay(50); continue }
+                            gridState.animateScrollToItem(targetIdx, 0)
+                            kotlinx.coroutines.delay((100 / kotlin.math.abs(s).coerceAtLeast(0.5f)).toLong().coerceIn(50, 150))
+                        }
+                    }
+                }
+                CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
+                Box(Modifier.dragSelectionGesture(dragSelection, enabled = hasSelection, gridState = gridState) { path -> selectedPaths = selectedPaths + path }) {
+                LazyVerticalGrid(state = gridState, columns = GridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
+                    items(
+                        count = rows.size,
+                        key = { i -> when (val r = rows[i]) { is PagedRow.Header -> "header_${i}_${r.label}"; is PagedRow.Item -> safePeek(lazyPagingItems, r.pagingIndex)?.path ?: "empty_${r.pagingIndex}" } },
+                        span = { i -> if (rows[i] is PagedRow.Header) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
+                        contentType = { i -> if (rows[i] is PagedRow.Header) "header" else (safePeek(lazyPagingItems, (rows[i] as PagedRow.Item).pagingIndex)?.type ?: 0) },
+                    ) { i ->
+                        when (val row = rows[i]) {
+                            is PagedRow.Header -> MonthHeader(label = row.label, count = row.count)
+                            is PagedRow.Item -> {
+                                val m = safeGet(lazyPagingItems, row.pagingIndex) ?: return@items
+                                val isVideo = remember(m.path) { m.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS }
+                                val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
+                                MediaTile(
+                                    medium = m,
+                                    isVideo = isVideo,
+                                    isSelected = isSelected,
+                                    isSelectionMode = hasSelection,
+                                    hasTag = m.path in taggedPaths,
+                                    showOverlays = showOverlays,
+                                    aspectRatio = 1f,
+                                    cornerShape = cornerShape,
+                                    cardColor = mediaCardColor,
+                                    itemSpacing = itemSpacing,
+                                    showFileName = viewSettings.showFileNames,
+                                    showVideoDuration = ctx.config.showVideoDurationOnThumbnails,
+                                    cropThumbnails = ctx.config.cropThumbnails,
+                                    showRating = ctx.config.showRatingOnThumbnails,
+                                    showFileType = ctx.config.showThumbnailFileTypes,
+                                    markFavorite = ctx.config.markFavoriteItems,
+                                    onClick = {
+                                        if (hasSelection) {
+                                            selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path
+                                            rangeAnchorIndex = row.pagingIndex
+                                        } else openViewerPaged(row.pagingIndex)
+                                    },
+                                    onLongClick = {
+                                        val anchor = rangeAnchorIndex
+                                        selectedPaths = if (hasSelection && anchor != null) selectedPaths + pathsInPagedRange(rows, anchor, row.pagingIndex) else selectedPaths + m.path
+                                        rangeAnchorIndex = row.pagingIndex
+                                    },
+                                    onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
+                                    onPreviewClick = { peekState.show(m.path, isVideo) },
+                                    onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
+                                )
+                            }
+                        }
+                    }
+                    if (lazyPagingItems.loadState.append is LoadState.Loading) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                            }
+                        }
+                    }
+                }
+                val currentLabel by remember(rows) { derivedStateOf { currentSectionLabel(rows, gridState.firstVisibleItemIndex) } }
+                FloatingSectionLabel(currentLabel, isScrolling, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
+                }
+                }
+            }
+        }
+        isMosaic -> {
+            Column(Modifier.padding(top = contentTopInset)) {
+                if (hasFilter) FilterBreadcrumbs(
+                    ratingFilter, activeTagName, activePathName, activeCollectionName,
+                    minSizeFilter, dateRangeFilter,
+                    lazyPagingItems.itemCount, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
+                    onClearSizeFilter, onClearDateFilter, onClearFilter
+                )
+                val quickTagsM = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
+                QuickTagRow(quickTags = quickTagsM, visible = quickTagsM.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
+                val mosaicState = rememberLazyStaggeredGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
+                LaunchedEffect(mosaicState) {
+                    snapshotFlow { mosaicState.firstVisibleItemIndex to mosaicState.firstVisibleItemScrollOffset }
+                        .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
+                }
+                ScrollToTopEffect(tabIndex) { mosaicState.animateScrollToItem(0) }
+                var showOverlaysStag by remember { mutableStateOf(true) }
+                val isScrollingStag by remember { derivedStateOf { mosaicState.isScrollInProgress } }
+                LaunchedEffect(isScrollingStag) {
+                    if (isScrollingStag) showOverlaysStag = false
+                    else { delay(300); showOverlaysStag = true }
+                }
+                LaunchedEffect(dragSelection.isDragging) {
+                    if (dragSelection.isDragging) {
+                        var targetIdx = mosaicState.firstVisibleItemIndex
+                        while (dragSelection.isDragging) {
+                            val s = dragSelection.autoScrollSpeed
+                            if (s < -0.5f) targetIdx = maxOf(targetIdx - 1, 0)
+                            else if (s > 0.5f) targetIdx++
+                            else { kotlinx.coroutines.delay(50); continue }
+                            mosaicState.animateScrollToItem(targetIdx, 0)
+                            kotlinx.coroutines.delay((120 / kotlin.math.abs(s).coerceAtLeast(0.5f)).toLong().coerceIn(60, 200))
+                        }
+                    }
+                }
+                CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
+                Box(Modifier.dragSelectionGesture(dragSelection, enabled = hasSelection, staggeredGridState = mosaicState) { path -> selectedPaths = selectedPaths + path }) {
+                LazyVerticalStaggeredGrid(state = mosaicState, columns = StaggeredGridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
+                    rows.forEachIndexed { i, row ->
+                        when (row) {
+                            is PagedRow.Header -> item(key = "header_${i}_${row.label}", span = StaggeredGridItemSpan.FullLine, contentType = "header") {
+                                MonthHeader(label = row.label, count = row.count)
+                            }
+                            is PagedRow.Item -> item(
+                                key = safePeek(lazyPagingItems, row.pagingIndex)?.path ?: "empty_${row.pagingIndex}",
+                                contentType = safePeek(lazyPagingItems, row.pagingIndex)?.type ?: 0,
+                            ) {
+                                val m = safeGet(lazyPagingItems, row.pagingIndex)
+                                if (m != null) {
+                                    val isVideo = remember(m.path) { m.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS }
+                                    if (!isVideo) LaunchedEffect(m.path) { viewModel.requestAspect(m.path) }
+                                    val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
+                                    MediaTile(
+                                        medium = m,
+                                        isVideo = isVideo,
+                                        isSelected = isSelected,
+                                        isSelectionMode = hasSelection,
+                                        hasTag = m.path in taggedPaths,
+                                        showOverlays = showOverlaysStag,
+                                        aspectRatio = if (isVideo) 1f else (state.aspectRatios[m.path] ?: 1f),
+                                        cornerShape = cornerShape,
+                                        cardColor = mediaCardColor,
+                                        itemSpacing = itemSpacing,
+                                        showFileName = viewSettings.showFileNames,
+                                        showVideoDuration = ctx.config.showVideoDurationOnThumbnails,
+                                        cropThumbnails = ctx.config.cropThumbnails,
+                                        showRating = ctx.config.showRatingOnThumbnails,
+                                        showFileType = ctx.config.showThumbnailFileTypes,
+                                        markFavorite = ctx.config.markFavoriteItems,
+                                        onClick = {
+                                            if (hasSelection) {
+                                                selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path
+                                                rangeAnchorIndex = row.pagingIndex
+                                            } else openViewerPaged(row.pagingIndex)
+                                        },
+                                        onLongClick = {
+                                            val anchor = rangeAnchorIndex
+                                            selectedPaths = if (hasSelection && anchor != null) selectedPaths + pathsInPagedRange(rows, anchor, row.pagingIndex) else selectedPaths + m.path
+                                            rangeAnchorIndex = row.pagingIndex
+                                        },
+                                        onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
+                                        onPreviewClick = { peekState.show(m.path, isVideo) },
+                                        onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                val currentLabelStag by remember(rows) { derivedStateOf { currentSectionLabel(rows, mosaicState.firstVisibleItemIndex) } }
+                FloatingSectionLabel(currentLabelStag, isScrollingStag, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
+                }
+                }
+            }
+        }
+        else -> {
+            val listState = rememberLazyListState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
+            LaunchedEffect(listState) {
+                snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+                    .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
+            }
+            ScrollToTopEffect(tabIndex) { listState.animateScrollToItem(0) }
+            Box(Modifier.padding(top = contentTopInset).dragSelectionGesture(dragSelection, enabled = hasSelection) { path -> selectedPaths = selectedPaths + path }) {
+            LazyColumn(state = listState, reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
+                var headerSeq = 0
+                rows.forEach { row ->
+                    when (row) {
+                        is PagedRow.Header -> {
+                            headerSeq++
+                            stickyHeader(key = "header_${headerSeq}_${row.label}") { MonthHeader(label = row.label, count = row.count) }
+                        }
+                        is PagedRow.Item -> {
+                            val path = safePeek(lazyPagingItems, row.pagingIndex)?.path
+                            item(key = path ?: "empty_${row.pagingIndex}", contentType = safePeek(lazyPagingItems, row.pagingIndex)?.type ?: 0) {
+                                val m = safeGet(lazyPagingItems, row.pagingIndex)
+                                if (m != null) {
+                                    val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
+                                    val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
+                                    MediaListRow(
+                                        medium = m,
+                                        isVideo = isVideo,
+                                        isSelected = isSelected,
+                                        hasSelection = hasSelection,
+                                        cardColor = mediaCardColor,
+                                        fileSizeLabel = formatFileSize(m.size),
+                                        onClick = {
+                                            if (hasSelection) {
+                                                selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path
+                                                rangeAnchorIndex = row.pagingIndex
+                                            } else openViewerPaged(row.pagingIndex)
+                                        },
+                                        onLongClick = {
+                                            val anchor = rangeAnchorIndex
+                                            selectedPaths = if (hasSelection && anchor != null) selectedPaths + pathsInPagedRange(rows, anchor, row.pagingIndex) else selectedPaths + m.path
+                                            rangeAnchorIndex = row.pagingIndex
+                                        },
+                                        onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
+                                        onPreview = { openViewerPaged(row.pagingIndex) },
+                                        onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -178,12 +515,14 @@ fun MediaScreen(
             }
         }
     }
-    var selectedPaths by rememberSaveable(stateSaver = selectionSaver) { mutableStateOf<Set<String>>(emptySet()) }
+    val selectedPathsState = rememberSaveable(stateSaver = selectionSaver) { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedPaths by selectedPathsState
     // The last item explicitly tapped or long-pressed while selecting - a long-press on a second
     // item extends the selection to everything between this and that item (inclusive), instead of
     // just adding the one long-pressed item. Index space matches whichever branch is rendering
     // (paged: pagingIndex into the full sorted list; override/Favorites: index into displayMedia).
-    var rangeAnchorIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+    val rangeAnchorIndexState = rememberSaveable { mutableStateOf<Int?>(null) }
+    var rangeAnchorIndex by rangeAnchorIndexState
     val dragSelection = rememberSelectionDragState()
     val peekState = org.fossify.gallery.compose.util.rememberPeekState()
     var showRateTagSheet by remember { mutableStateOf(false) }
@@ -215,30 +554,6 @@ fun MediaScreen(
     fun openViewer(index: Int) {
         val paths = displayMedia.map { it.path }
         onNavigateToViewer?.invoke(paths, index)
-    }
-
-    // Viewer swipe-through needs the FULL sorted path list, not just what the grid has paged in so
-    // far - fetched fresh on demand (cheap: paths only, no thumbnails) so opening any item can swipe
-    // through the entire library, not just the loaded window. Must respect the active filter (e.g. a
-    // Collection): row.pagingIndex is a position within the filtered grid, so resolving it against the
-    // unfiltered path list would open whatever unrelated file happens to sit at that index instead.
-    fun openViewerPaged(index: Int) {
-        scope.launch {
-            val paths = if (hasFilter) viewModel.activePathsSortedFiltered() else viewModel.activePathsSorted()
-            onNavigateToViewer?.invoke(paths, index)
-        }
-    }
-
-    // Every path whose pagingIndex falls between fromIdx/toIdx (inclusive, either order) - the
-    // paged (Paging3) branches' range-select helper.
-    fun pathsInPagedRange(rows: List<PagedRow>, fromIdx: Int, toIdx: Int): Set<String> {
-        val lo = minOf(fromIdx, toIdx)
-        val hi = maxOf(fromIdx, toIdx)
-        return rows.asSequence()
-            .filterIsInstance<PagedRow.Item>()
-            .filter { it.pagingIndex in lo..hi }
-            .mapNotNull { safePeek(lazyPagingItems, it.pagingIndex)?.path }
-            .toSet()
     }
 
     // Same, for the legacy in-memory displayMedia list (Favorites' mediaOverride branch).
@@ -288,262 +603,6 @@ fun MediaScreen(
         if (!state.isLoading && pagingSettled && isRefreshing) isRefreshing = false
     }
 
-    @Composable
-    fun PagedContent() {
-        // Computed once here (incrementally) and shared by all three view-type branches, instead of each
-        // branch rebuilding the whole Header/Item list from scratch on every Paging append.
-        val rows = rememberPagedRows(lazyPagingItems, state.filter, viewSettings.sortBy, viewSettings.sortDesc)
-        when {
-            isGrid -> {
-                Column(Modifier.padding(top = contentTopInset)) {
-                    if (hasFilter) FilterBreadcrumbs(
-                        ratingFilter, activeTagName, activePathName, activeCollectionName,
-                        minSizeFilter, dateRangeFilter,
-                        lazyPagingItems.itemCount, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
-                        onClearSizeFilter, onClearDateFilter, onClearFilter
-                    )
-                    val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
-                    QuickTagRow(quickTags = quickTags, visible = quickTags.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
-                    val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
-                    LaunchedEffect(gridState) {
-                        snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
-                            .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
-                    }
-                    ScrollToTopEffect(tabIndex) { gridState.animateScrollToItem(0) }
-                    var showOverlays by remember { mutableStateOf(true) }
-                    val isScrolling by remember { derivedStateOf { gridState.isScrollInProgress } }
-                    LaunchedEffect(isScrolling) {
-                        if (isScrolling) showOverlays = false
-                        else { delay(300); showOverlays = true }
-                    }
-                    LaunchedEffect(dragSelection.isDragging) {
-                        if (dragSelection.isDragging) {
-                            var targetIdx = gridState.firstVisibleItemIndex
-                            while (dragSelection.isDragging) {
-                                val s = dragSelection.autoScrollSpeed
-                                if (s < -0.5f) targetIdx = maxOf(targetIdx - 1, 0)
-                                else if (s > 0.5f) targetIdx++
-                                else { kotlinx.coroutines.delay(50); continue }
-                                gridState.animateScrollToItem(targetIdx, 0)
-                                kotlinx.coroutines.delay((100 / kotlin.math.abs(s).coerceAtLeast(0.5f)).toLong().coerceIn(50, 150))
-                            }
-                        }
-                    }
-                    CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
-                    Box(Modifier.dragSelectionGesture(dragSelection, enabled = hasSelection, gridState = gridState) { path -> selectedPaths = selectedPaths + path }) {
-                    LazyVerticalGrid(state = gridState, columns = GridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
-                        items(
-                            count = rows.size,
-                            key = { i -> when (val r = rows[i]) { is PagedRow.Header -> "header_${i}_${r.label}"; is PagedRow.Item -> safePeek(lazyPagingItems, r.pagingIndex)?.path ?: "empty_${r.pagingIndex}" } },
-                            span = { i -> if (rows[i] is PagedRow.Header) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
-                            contentType = { i -> if (rows[i] is PagedRow.Header) "header" else (safePeek(lazyPagingItems, (rows[i] as PagedRow.Item).pagingIndex)?.type ?: 0) },
-                        ) { i ->
-                            when (val row = rows[i]) {
-                                is PagedRow.Header -> MonthHeader(label = row.label, count = row.count)
-                                is PagedRow.Item -> {
-                                    val m = safeGet(lazyPagingItems, row.pagingIndex) ?: return@items
-                                    val isVideo = remember(m.path) { m.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS }
-                                    val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
-                                    MediaTile(
-                                        medium = m,
-                                        isVideo = isVideo,
-                                        isSelected = isSelected,
-                                        isSelectionMode = hasSelection,
-                                        hasTag = m.path in taggedPaths,
-                                        showOverlays = showOverlays,
-                                        aspectRatio = 1f,
-                                        cornerShape = cornerShape,
-                                        cardColor = mediaCardColor,
-                                        itemSpacing = itemSpacing,
-                                        showFileName = viewSettings.showFileNames,
-                                        showVideoDuration = ctx.config.showVideoDurationOnThumbnails,
-                                cropThumbnails = ctx.config.cropThumbnails,
-                                showRating = ctx.config.showRatingOnThumbnails,
-                                showFileType = ctx.config.showThumbnailFileTypes,
-                                markFavorite = ctx.config.markFavoriteItems,
-                                        onClick = {
-                                            if (hasSelection) {
-                                                selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path
-                                                rangeAnchorIndex = row.pagingIndex
-                                            } else openViewerPaged(row.pagingIndex)
-                                        },
-                                        onLongClick = {
-                                            val anchor = rangeAnchorIndex
-                                            selectedPaths = if (hasSelection && anchor != null) selectedPaths + pathsInPagedRange(rows, anchor, row.pagingIndex) else selectedPaths + m.path
-                                            rangeAnchorIndex = row.pagingIndex
-                                        },
-                                        onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
-                                        onPreviewClick = { peekState.show(m.path, isVideo) },
-                                        onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
-                                    )
-                                }
-                            }
-                        }
-                        if (lazyPagingItems.loadState.append is LoadState.Loading) {
-                            item(span = { GridItemSpan(maxLineSpan) }) {
-                                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                                }
-                            }
-                        }
-                    }
-                    val currentLabel by remember(rows) { derivedStateOf { currentSectionLabel(rows, gridState.firstVisibleItemIndex) } }
-                    FloatingSectionLabel(currentLabel, isScrolling, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
-                    }
-                    }
-                }
-            }
-            isMosaic -> {
-                Column(Modifier.padding(top = contentTopInset)) {
-                    if (hasFilter) FilterBreadcrumbs(
-                        ratingFilter, activeTagName, activePathName, activeCollectionName,
-                        minSizeFilter, dateRangeFilter,
-                        lazyPagingItems.itemCount, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
-                        onClearSizeFilter, onClearDateFilter, onClearFilter
-                    )
-                    val quickTagsM = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
-                    QuickTagRow(quickTags = quickTagsM, visible = quickTagsM.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
-                    val mosaicState = rememberLazyStaggeredGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
-                    LaunchedEffect(mosaicState) {
-                        snapshotFlow { mosaicState.firstVisibleItemIndex to mosaicState.firstVisibleItemScrollOffset }
-                            .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
-                    }
-                    ScrollToTopEffect(tabIndex) { mosaicState.animateScrollToItem(0) }
-                    var showOverlaysStag by remember { mutableStateOf(true) }
-                    val isScrollingStag by remember { derivedStateOf { mosaicState.isScrollInProgress } }
-                    LaunchedEffect(isScrollingStag) {
-                        if (isScrollingStag) showOverlaysStag = false
-                        else { delay(300); showOverlaysStag = true }
-                    }
-                    LaunchedEffect(dragSelection.isDragging) {
-                        if (dragSelection.isDragging) {
-                            var targetIdx = mosaicState.firstVisibleItemIndex
-                            while (dragSelection.isDragging) {
-                                val s = dragSelection.autoScrollSpeed
-                                if (s < -0.5f) targetIdx = maxOf(targetIdx - 1, 0)
-                                else if (s > 0.5f) targetIdx++
-                                else { kotlinx.coroutines.delay(50); continue }
-                                mosaicState.animateScrollToItem(targetIdx, 0)
-                                kotlinx.coroutines.delay((120 / kotlin.math.abs(s).coerceAtLeast(0.5f)).toLong().coerceIn(60, 200))
-                            }
-                        }
-                    }
-                    CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
-                    Box(Modifier.dragSelectionGesture(dragSelection, enabled = hasSelection, staggeredGridState = mosaicState) { path -> selectedPaths = selectedPaths + path }) {
-                    LazyVerticalStaggeredGrid(state = mosaicState, columns = StaggeredGridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
-                        rows.forEachIndexed { i, row ->
-                            when (row) {
-                                is PagedRow.Header -> item(key = "header_${i}_${row.label}", span = StaggeredGridItemSpan.FullLine, contentType = "header") {
-                                    MonthHeader(label = row.label, count = row.count)
-                                }
-                                is PagedRow.Item -> item(
-                                    key = safePeek(lazyPagingItems, row.pagingIndex)?.path ?: "empty_${row.pagingIndex}",
-                                    contentType = safePeek(lazyPagingItems, row.pagingIndex)?.type ?: 0,
-                                ) {
-                                    val m = safeGet(lazyPagingItems, row.pagingIndex)
-                                    if (m != null) {
-                                        val isVideo = remember(m.path) { m.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS }
-                                        if (!isVideo) LaunchedEffect(m.path) { viewModel.requestAspect(m.path) }
-                                        val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
-                                        MediaTile(
-                                            medium = m,
-                                            isVideo = isVideo,
-                                            isSelected = isSelected,
-                                            isSelectionMode = hasSelection,
-                                            hasTag = m.path in taggedPaths,
-                                            showOverlays = showOverlaysStag,
-                                            aspectRatio = if (isVideo) 1f else (state.aspectRatios[m.path] ?: 1f),
-                                            cornerShape = cornerShape,
-                                            cardColor = mediaCardColor,
-                                            itemSpacing = itemSpacing,
-                                            showFileName = viewSettings.showFileNames,
-                                            showVideoDuration = ctx.config.showVideoDurationOnThumbnails,
-                                cropThumbnails = ctx.config.cropThumbnails,
-                                showRating = ctx.config.showRatingOnThumbnails,
-                                showFileType = ctx.config.showThumbnailFileTypes,
-                                markFavorite = ctx.config.markFavoriteItems,
-                                            onClick = {
-                                                if (hasSelection) {
-                                                    selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path
-                                                    rangeAnchorIndex = row.pagingIndex
-                                                } else openViewerPaged(row.pagingIndex)
-                                            },
-                                            onLongClick = {
-                                                val anchor = rangeAnchorIndex
-                                                selectedPaths = if (hasSelection && anchor != null) selectedPaths + pathsInPagedRange(rows, anchor, row.pagingIndex) else selectedPaths + m.path
-                                                rangeAnchorIndex = row.pagingIndex
-                                            },
-                                            onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
-                                            onPreviewClick = { peekState.show(m.path, isVideo) },
-                                            onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    val currentLabelStag by remember(rows) { derivedStateOf { currentSectionLabel(rows, mosaicState.firstVisibleItemIndex) } }
-                    FloatingSectionLabel(currentLabelStag, isScrollingStag, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
-                    }
-                    }
-                }
-            }
-            else -> {
-                val listState = rememberLazyListState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
-                LaunchedEffect(listState) {
-                    snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-                        .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
-                }
-                ScrollToTopEffect(tabIndex) { listState.animateScrollToItem(0) }
-                Box(Modifier.padding(top = contentTopInset).dragSelectionGesture(dragSelection, enabled = hasSelection) { path -> selectedPaths = selectedPaths + path }) {
-                LazyColumn(state = listState, reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
-                    var headerSeq = 0
-                    rows.forEach { row ->
-                        when (row) {
-                            is PagedRow.Header -> {
-                                headerSeq++
-                                stickyHeader(key = "header_${headerSeq}_${row.label}") { MonthHeader(label = row.label, count = row.count) }
-                            }
-                            is PagedRow.Item -> {
-                                val path = safePeek(lazyPagingItems, row.pagingIndex)?.path
-                                item(key = path ?: "empty_${row.pagingIndex}", contentType = safePeek(lazyPagingItems, row.pagingIndex)?.type ?: 0) {
-                                    val m = safeGet(lazyPagingItems, row.pagingIndex)
-                                    if (m != null) {
-                                        val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
-                                        val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
-                                        MediaListRow(
-                                            medium = m,
-                                            isVideo = isVideo,
-                                            isSelected = isSelected,
-                                            hasSelection = hasSelection,
-                                            cardColor = mediaCardColor,
-                                            fileSizeLabel = formatFileSize(m.size),
-                                            onClick = {
-                                                if (hasSelection) {
-                                                    selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path
-                                                    rangeAnchorIndex = row.pagingIndex
-                                                } else openViewerPaged(row.pagingIndex)
-                                            },
-                                            onLongClick = {
-                                                val anchor = rangeAnchorIndex
-                                                selectedPaths = if (hasSelection && anchor != null) selectedPaths + pathsInPagedRange(rows, anchor, row.pagingIndex) else selectedPaths + m.path
-                                                rangeAnchorIndex = row.pagingIndex
-                                            },
-                                            onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
-                                            onPreview = { openViewerPaged(row.pagingIndex) },
-                                            onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                }
-            }
-        }
-    }
-
     val pullRefreshEnabled = ctx.config.enablePullToRefresh
     val mediaContent: @Composable BoxScope.() -> Unit = {
         BackHandler(enabled = hasSelection) { selectedPaths = emptySet() }
@@ -578,7 +637,32 @@ fun MediaScreen(
                         actionLabel = if (hasFilter) stringResource(R.string.clear_filter) else null,
                         onAction = if (hasFilter) onClearFilter else null,
                     )
-                    else -> PagedContent()
+                    else -> PagedContent(
+                        viewModel = viewModel,
+                        lazyPagingItems = lazyPagingItems,
+                        state = state,
+                        viewSettings = viewSettings,
+                        selectedPathsState = selectedPathsState,
+                        rangeAnchorIndexState = rangeAnchorIndexState,
+                        dragSelection = dragSelection,
+                        peekState = peekState,
+                        contentTopInset = contentTopInset,
+                        tabIndex = tabIndex,
+                        hasFilter = hasFilter,
+                        ratingFilter = ratingFilter,
+                        activeTagName = activeTagName,
+                        activePathName = activePathName,
+                        activeCollectionName = activeCollectionName,
+                        minSizeFilter = minSizeFilter,
+                        dateRangeFilter = dateRangeFilter,
+                        onClearRatingFilter = onClearRatingFilter,
+                        onClearTagFilter = onClearTagFilter,
+                        onClearPathFilter = onClearPathFilter,
+                        onClearSizeFilter = onClearSizeFilter,
+                        onClearDateFilter = onClearDateFilter,
+                        onClearFilter = onClearFilter,
+                        onNavigateToViewer = onNavigateToViewer,
+                    )
                 }
             }
         } else {
