@@ -1,9 +1,11 @@
 package org.fossify.gallery.models
 
+import androidx.compose.runtime.Stable
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
+@Stable
 @Entity(tableName = "media_cache")
 data class MediaCache(
     @PrimaryKey @ColumnInfo(name = "full_path") var fullPath: String,

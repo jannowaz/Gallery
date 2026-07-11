@@ -37,7 +37,7 @@ object AnalysisCriteria {
         val maxMegapixels: Int = 12,             // 12 MP = 4000×3000, mehr ist auf Handy unsichtbar
         val maxFileSize: Long = 500_000_000,     // 500 MB Einzeldatei
     )
-    var thresholds = Thresholds()
+    val thresholds = Thresholds()
 
     fun analyze(path: String, context: Context? = null): AnalysisResult? {
         val isContentUri = path.startsWith("content://")
