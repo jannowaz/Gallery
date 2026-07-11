@@ -150,7 +150,9 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.util.BlurState
+import org.fossify.gallery.compose.util.privacyBlur
 import org.fossify.gallery.helpers.MyWidgetProvider
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.screens.AlbumsScreen
@@ -1094,6 +1096,14 @@ private fun OmniSearchPanel(
     // results after the user has already kept typing (jobs below run concurrently, unordered).
     var searchGeneration by remember { mutableIntStateOf(0) }
     var pendingJobs by remember { mutableIntStateOf(0) }
+    // searchGeneration above only gates *writes* to state - it never stopped a superseded search's
+    // 5 background jobs from actually running to completion, most importantly the "most expensive
+    // source" one (a full MediaStore cursor scan + repo.getActivePaths(), the same ~200k-row full-
+    // library query the Viewer/OOM issues trace back to). Typing a query in two bursts more than
+    // 300ms apart left the first burst's expensive job still running when the second one started,
+    // so their full-library scans ran concurrently - reliably reproduced as an OutOfMemoryError on a
+    // real ~200k-media library. Cancelling the previous batch before launching a new one closes that.
+    val searchJobs = remember { mutableListOf<kotlinx.coroutines.Job>() }
 
     LaunchedEffect(Unit) {
         if (repo.getTagsWithPathsCached() != null) return@LaunchedEffect
@@ -1120,6 +1130,8 @@ private fun OmniSearchPanel(
     // coroutine. Running them as independent jobs and writing straight to state lets the UI
     // populate progressively, fastest first, while the MediaStore query keeps running.
     fun performSearch() {
+        searchJobs.forEach { it.cancel() }
+        searchJobs.clear()
         val myGen = ++searchGeneration
         if (query.length < 2) {
             textMatchPaths = null; folderResults = emptyList(); tagResults = emptyList()
@@ -1139,7 +1151,7 @@ private fun OmniSearchPanel(
         fun jobDone() { if (myGen == searchGeneration) { pendingJobs--; if (pendingJobs <= 0) isSearching = false } }
 
         // In-memory tag cache - no I/O at all, so this can resolve on the current thread.
-        scope.launch(Dispatchers.Default) {
+        searchJobs += scope.launch(Dispatchers.Default) {
             val tags = mutableListOf<Pair<String, Int>>()
             try {
                 if (allTags.isNotEmpty()) qParts.forEach { qp -> allTags.entries.forEach { (tag, paths) -> if (tag.lowercase().contains(qp) && tags.none { it.first == tag }) tags.add(tag to paths.size) } }
@@ -1148,25 +1160,25 @@ private fun OmniSearchPanel(
             jobDone()
         }
         // Small Room table (folder count, not file count) - cheap full scan.
-        scope.launch(Dispatchers.IO) {
+        searchJobs += scope.launch(Dispatchers.IO) {
             val folders = try { ctx.directoryDB.getAll().mapNotNull { d -> val ln = d.name.lowercase(); if (qParts.all { it in ln }) d.name to d.path else null } } catch (_: Exception) { emptyList() }
             if (myGen == searchGeneration) folderResults = folders.sortedBy { it.first }.take(15)
             jobDone()
         }
         // Handful of user-defined collections at most.
-        scope.launch(Dispatchers.IO) {
+        searchJobs += scope.launch(Dispatchers.IO) {
             val colls = try { repo.getCollections().filter { c -> val ln = c.name.lowercase(); qParts.all { it in ln } } } catch (_: Exception) { emptyList() }
             if (myGen == searchGeneration) collectionResults = colls.take(10)
             jobDone()
         }
         // Favorites table is a small subset of all media - cheap relative to the full MediaStore scan.
-        scope.launch(Dispatchers.IO) {
+        searchJobs += scope.launch(Dispatchers.IO) {
             val favs = try { repo.getFavorites().mapNotNull { m -> val ln = m.name.lowercase(); if (qParts.all { it in ln }) m.name to m.path else null } } catch (_: Exception) { emptyList() }
             if (myGen == searchGeneration) favoriteResults = favs.take(10)
             jobDone()
         }
         // Most expensive source: full MediaStore cursor scan + per-match filesystem stat.
-        scope.launch(Dispatchers.IO) {
+        searchJobs += scope.launch(Dispatchers.IO) {
             // The raw MediaStore query below sees every file on the volume, including ones the
             // app's own library considers inactive (excluded/hidden folders, not-yet-synced,
             // recycle-binned) - intersecting against the same active-path set MediaScreen's
@@ -1287,8 +1299,12 @@ private fun OmniSearchPanel(
                                 Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(parentLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        // Folder name and parent path can themselves be the sensitive part (a
+                                        // person's name, a category) - blurring only thumbnails/filenames
+                                        // elsewhere but leaving this suggestion's path in plain text would leak
+                                        // exactly what Privacy Blur exists to hide.
+                                        Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
+                                        Text(parentLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
                                     }
                                     Icon(Icons.Default.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                                 }
@@ -1309,7 +1325,7 @@ private fun OmniSearchPanel(
                             }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
                                 Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
-                                    Text(tag, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f)); Text("$cnt", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(tag, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).privacyBlur(BlurRadius.thumbnail, BlurState.enabled)); Text("$cnt", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
@@ -1321,7 +1337,7 @@ private fun OmniSearchPanel(
                             Surface(modifier = Modifier.fillMaxWidth().clickable { onOpenCollection(coll); onDismiss() }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
                                 Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.CollectionsBookmark, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
-                                    Text(coll.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                    Text(coll.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
                                     Icon(Icons.Default.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                                 }
                             }
@@ -1334,7 +1350,7 @@ private fun OmniSearchPanel(
                             Surface(modifier = Modifier.fillMaxWidth().clickable { onOpenFavorite(path); onDismiss() }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
                                 Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Star, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
-                                    Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                    Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
                                 }
                             }
                         }

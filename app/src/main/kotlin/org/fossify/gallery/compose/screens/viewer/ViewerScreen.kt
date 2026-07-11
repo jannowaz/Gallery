@@ -398,7 +398,12 @@ fun ViewerScreen(
                 }
         ) { page ->
             val path = items.getOrNull(page) ?: ""
-            val file = File(path)
+            val file = remember(path) { File(path) }
+            // file.exists() is a synchronous disk stat; this pager composes/measures every visible and
+            // prefetched neighbor page repeatedly (each recomposition, drag, and Compose measure pass),
+            // and StrictMode measured this call blocking the main thread for up to ~560ms on a real
+            // device under load. remember(path) means every page pays that cost once, not on every pass.
+            val exists = remember(path) { file.exists() }
             if (isVideo(path)) VideoPage(
                 path = path, scalingMode = videoScalingMode,
                 onScalingModeChange = { videoScalingMode = it },
@@ -409,7 +414,7 @@ fun ViewerScreen(
                 onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
                 isCurrentPage = page == pagerState.currentPage,
             )
-            else if (file.exists()) ImagePage(
+            else if (exists) ImagePage(
                 path = path, file = file, onClose = onClose,
                 onToggleUi = { showUI = !showUI },
                 onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },

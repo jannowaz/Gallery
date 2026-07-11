@@ -95,8 +95,18 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    // recheckDirectories re-scans every directory from disk (via MediaFetcher.getFilesFrom), which on
+    // a folder with a six-figure item count materializes a Medium list that size - expensive enough
+    // in time and memory that two runs must never overlap. Without this cancel-previous-first guard,
+    // a RefreshBus event landing while the previous recheck (of the same huge folder) was still
+    // running started a second full rescan concurrently, doubling peak memory at exactly the moment
+    // the heap was already under pressure from that same list - a real OutOfMemoryError observed on
+    // a ~200k-media real-device library. Same cancel-previous-job pattern already used by
+    // MediaViewModel.prefetchSortedPathsAsync/prefetchFilteredPathsAsync for the equivalent reason.
+    private var recheckJob: kotlinx.coroutines.Job? = null
     private fun recheckDirectories(dirs: ArrayList<Directory>) {
-        viewModelScope.launch(Dispatchers.IO) {
+        recheckJob?.cancel()
+        recheckJob = viewModelScope.launch(Dispatchers.IO) {
             val ctx = getApplication<Application>().applicationContext
             val config = ctx.config
             val getImagesOnly = false

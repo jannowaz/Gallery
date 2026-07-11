@@ -7,8 +7,10 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -97,16 +99,17 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     // changes; served straight from cache on tap.
     private var cachedFilteredPaths: List<String>? = null
     private var cachedFilteredPathsKey: Triple<MediaFilter, SortField, Boolean>? = null
-    private var filteredPrefetchJob: kotlinx.coroutines.Job? = null
+    private var filteredPrefetchDeferred: Deferred<List<String>>? = null
     private fun prefetchFilteredPathsAsync() {
         val filter = filterFlow.value
         if (!filter.isActive) return
         val key = Triple(filter, sortField, sortDesc)
-        filteredPrefetchJob?.cancel()
-        filteredPrefetchJob = viewModelScope.launch(Dispatchers.IO) {
-            val paths = repository.getActivePathsSortedFiltered(filter, sortField, sortDesc)
-            cachedFilteredPaths = paths
-            cachedFilteredPathsKey = key
+        filteredPrefetchDeferred?.cancel()
+        filteredPrefetchDeferred = viewModelScope.async(Dispatchers.IO) {
+            repository.getActivePathsSortedFiltered(filter, sortField, sortDesc).also {
+                cachedFilteredPaths = it
+                cachedFilteredPathsKey = key
+            }
         }
     }
 
@@ -165,14 +168,15 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     // So this must never run synchronously on a tap: kick it off in the background whenever the
     // underlying data/sort could have changed, and let activePathsSorted() serve the (possibly
     // slightly stale - fine for swipe-through ordering) cache instead of blocking on a fresh fetch.
-    private var prefetchJob: kotlinx.coroutines.Job? = null
+    private var prefetchDeferred: Deferred<List<String>>? = null
     private fun prefetchSortedPathsAsync() {
         val key = sortField to sortDesc
-        prefetchJob?.cancel()
-        prefetchJob = viewModelScope.launch(Dispatchers.IO) {
-            val paths = repository.getActivePathsSorted(sortField, sortDesc)
-            cachedSortedPaths = paths
-            cachedSortedPathsKey = key
+        prefetchDeferred?.cancel()
+        prefetchDeferred = viewModelScope.async(Dispatchers.IO) {
+            repository.getActivePathsSorted(sortField, sortDesc).also {
+                cachedSortedPaths = it
+                cachedSortedPathsKey = key
+            }
         }
     }
 
@@ -374,10 +378,20 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun activePaths(): Set<String> = withContext(Dispatchers.IO) { repository.getActivePaths().toSet() }
 
     /** Full sorted path list (matching the current sort field/direction) for Viewer swipe-through,
-     * independent of how much of the paged grid has loaded so far. Cached - see cachedSortedPaths. */
+     * independent of how much of the paged grid has loaded so far. Cached - see cachedSortedPaths.
+     *
+     * Joins an in-flight [prefetchDeferred] instead of firing a second concurrent query when one is
+     * already running (e.g. right after cold launch: init{} kicks off a prefetch, and the user can
+     * tap into the Viewer before it finishes). Two concurrent executions of this ~200k-row query
+     * fighting over SQLite's CursorWindow was reliably hanging the Viewer forever on a real ~200k-item
+     * library (repeated `CursorWindow: Failed NO_MEMORY` in a tight retry loop, one worker thread
+     * pinned at ~96% CPU for minutes) - joining the existing query instead of racing it fixes that. */
     suspend fun activePathsSorted(): List<String> = withContext(Dispatchers.IO) {
         val key = sortField to sortDesc
-        cachedSortedPaths?.takeIf { cachedSortedPathsKey == key } ?: repository.getActivePathsSorted(sortField, sortDesc).also {
+        cachedSortedPaths?.takeIf { cachedSortedPathsKey == key }?.let { return@withContext it }
+        prefetchDeferred?.takeIf { it.isActive }?.await()
+        cachedSortedPaths?.takeIf { cachedSortedPathsKey == key }?.let { return@withContext it }
+        repository.getActivePathsSorted(sortField, sortDesc).also {
             cachedSortedPaths = it
             cachedSortedPathsKey = key
         }
@@ -385,12 +399,16 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Same as [activePathsSorted] but scoped to the currently active filter - used for Viewer
      * swipe-through and select-all/invert while a filter is applied, so both cover the complete
-     * filtered set rather than just what's paged into the grid so far. */
+     * filtered set rather than just what's paged into the grid so far. Joins an in-flight prefetch
+     * for the same reason as [activePathsSorted] above. */
     suspend fun activePathsSortedFiltered(): List<String> = withContext(Dispatchers.IO) {
         val f = filterFlow.value
         if (!f.isActive) return@withContext activePathsSorted()
         val key = Triple(f, sortField, sortDesc)
-        cachedFilteredPaths?.takeIf { cachedFilteredPathsKey == key } ?: repository.getActivePathsSortedFiltered(f, sortField, sortDesc).also {
+        cachedFilteredPaths?.takeIf { cachedFilteredPathsKey == key }?.let { return@withContext it }
+        filteredPrefetchDeferred?.takeIf { it.isActive }?.await()
+        cachedFilteredPaths?.takeIf { cachedFilteredPathsKey == key }?.let { return@withContext it }
+        repository.getActivePathsSortedFiltered(f, sortField, sortDesc).also {
             cachedFilteredPaths = it
             cachedFilteredPathsKey = key
         }
