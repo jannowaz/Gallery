@@ -12,6 +12,7 @@ import org.fossify.commons.helpers.SORT_DESCENDING
 import org.fossify.commons.helpers.VIEW_TYPE_GRID
 import org.fossify.gallery.R
 import org.fossify.gallery.models.AlbumCover
+import java.io.File
 import java.util.Arrays
 import java.util.Locale
 
@@ -26,12 +27,17 @@ class Config(context: Context) : BaseConfig(context) {
         private const val PINNED_FAV_FOLDERS = "pinned_fav_folders"
         private const val PINNED_COLLECTIONS = "pinned_collections"
         private const val LAST_SYNC_TIMESTAMP = "last_sync_timestamp"
+        private const val LAST_BOOT_SCAN_TIMESTAMP = "last_boot_scan_timestamp"
         fun newInstance(context: Context) = Config(context)
     }
 
     var lastSyncTimestamp: Long
         get() = prefs.getLong(LAST_SYNC_TIMESTAMP, 0L)
         set(value) = prefs.edit().putLong(LAST_SYNC_TIMESTAMP, value).apply()
+
+    var lastBootScanTimestamp: Long
+        get() = prefs.getLong(LAST_BOOT_SCAN_TIMESTAMP, 0L)
+        set(value) = prefs.edit().putLong(LAST_BOOT_SCAN_TIMESTAMP, value).apply()
 
     var useDynamicColors: Boolean
         get() = prefs.getBoolean(USE_DYNAMIC_COLORS, true)
@@ -554,6 +560,23 @@ class Config(context: Context) : BaseConfig(context) {
 
     fun getAllLastVideoPositions() = prefs.all.filterKeys {
         it.startsWith(LAST_VIDEO_POSITION_PREFIX)
+    }
+
+    // saveLastVideoPosition has no matching cleanup on file deletion - there's no single choke
+    // point for "a video got deleted" (legacy Activity UI, Compose UI, and the recycle-bin cleanup
+    // worker each delete files their own way), so instead of hooking every deletion path, prune
+    // orphaned entries lazily whenever this runs. Called from RecycleBinCleanupWorker's existing
+    // 24h background job, which already runs off the main thread - this does one File.exists()
+    // disk check per saved position, so it must never run on the UI thread.
+    fun pruneOrphanedVideoPositions() {
+        val orphanedKeys = getAllLastVideoPositions().keys.filter { key ->
+            !File(key.removePrefix(LAST_VIDEO_POSITION_PREFIX)).exists()
+        }
+        if (orphanedKeys.isNotEmpty()) {
+            val editor = prefs.edit()
+            orphanedKeys.forEach { editor.remove(it) }
+            editor.apply()
+        }
     }
 
     var rememberLastVideoPosition: Boolean

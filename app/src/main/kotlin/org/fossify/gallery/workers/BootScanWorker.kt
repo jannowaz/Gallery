@@ -8,6 +8,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.updateDirectoryPath
 import org.fossify.gallery.helpers.MediaFetcher
 import java.util.concurrent.TimeUnit
@@ -27,9 +28,20 @@ class BootScanWorker(
 
     override suspend fun doWork(): Result {
         return try {
+            // A full scan's actual purpose is catching changes that happened while the device was
+            // off (e.g. an SD card's contents changed) - that can't have happened again within
+            // minutes of the last one, so this throttle only skips back-to-back reboots (crash
+            // loops, OTA update reboots, troubleshooting) rather than weakening the real guarantee.
+            val config = applicationContext.config
+            val now = System.currentTimeMillis()
+            if (now - config.lastBootScanTimestamp < MIN_INTERVAL_MS) {
+                return Result.success()
+            }
+
             MediaFetcher(applicationContext).getFoldersToScan().forEach {
                 applicationContext.updateDirectoryPath(it)
             }
+            config.lastBootScanTimestamp = now
             Result.success()
         } catch (e: Exception) {
             android.util.Log.e("BootScanWorker", "Boot scan failed", e)
@@ -39,6 +51,7 @@ class BootScanWorker(
 
     companion object {
         private const val WORK_NAME = "boot_scan"
+        private const val MIN_INTERVAL_MS = 60L * 60 * 1000
 
         fun schedule(context: Context) {
             val constraints = Constraints.Builder()

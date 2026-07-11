@@ -6,6 +6,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.favoritesDB
 import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.mediaDB
@@ -40,6 +41,13 @@ class RecycleBinCleanupWorker(
             }
 
             android.util.Log.i("RecycleBinCleanup", "Cleaned $deletedCount expired items")
+
+            try {
+                applicationContext.config.pruneOrphanedVideoPositions()
+            } catch (e: Exception) {
+                android.util.Log.e("RecycleBinCleanup", "Failed to prune orphaned video positions", e)
+            }
+
             Result.success()
         } catch (e: Exception) {
             android.util.Log.e("RecycleBinCleanup", "Cleanup failed", e)
