@@ -29,6 +29,17 @@ base {
     archivesName = "gallery-$versionCode"
 }
 
+composeCompiler {
+    metricsDestination = layout.buildDirectory.dir("compose_metrics")
+    reportsDestination = layout.buildDirectory.dir("compose_reports")
+    // kotlin.collections.List/Set/Map are treated as unstable by default (they could be a mutable
+    // implementation in disguise), which cascades into ~80 of this app's state/model classes and
+    // blocks recomposition skipping for anything holding them. Verified (2026-07-11) that every
+    // producer of these collections in this codebase replaces them wholesale rather than mutating
+    // in place, so trusting them here is safe.
+    stabilityConfigurationFiles.add(layout.projectDirectory.file("compose-stability-config.txt"))
+}
+
 android {
     compileSdk = project.libs.versions.app.build.compileSDKVersion.get().toInt()
 
