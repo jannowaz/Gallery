@@ -137,7 +137,9 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         }
         val sorted = when (sortField) {
             SortField.NAME -> list.sortedBy { it.name.lowercase() }
-            SortField.DATE -> list.sortedBy { it.modified }
+            // date_sort_key (date_added-preferring) - identical key to the paged/SQL date sort, so an
+            // override list (Favorites, a drilled-into folder) orders the same way the main grid does.
+            SortField.DATE -> list.sortedBy { if (it.dateSortKey > 0) it.dateSortKey else if (it.taken > 0) it.taken else it.modified }
             SortField.SIZE -> list.sortedBy { it.size }
             SortField.RATING -> list
             // COUNT (file count) is a folder-only sort option, never reachable for a media list -
@@ -400,6 +402,12 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 paths.forEach { p -> repository.deleteMedium(p) }
                 _state.update { s -> s.copy(allMedia = s.allMedia.filter { it.path !in paths }) }
                 recompute()
+                // activePathsSorted()/activePathsSortedFiltered() cache the full swipe-through path list
+                // keyed only on sort/filter, not on data version - without this, a delete leaves that
+                // cache stale and openViewerPaged() hands the Viewer a list that still contains (or is
+                // shifted around) the just-deleted items, opening the wrong media for a given tap index.
+                prefetchSortedPathsAsync()
+                prefetchFilteredPathsAsync()
             } catch (e: Exception) {
                 android.util.Log.e("MediaViewModel", "deletePaths failed", e)
                 _state.update { it.copy(error = e.message) }
@@ -413,6 +421,9 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 repository.moveToRecycleBinBatch(paths)
                 _state.update { s -> s.copy(allMedia = s.allMedia.filter { it.path !in paths }) }
                 recompute()
+                // Same staleness fix as deletePaths() above.
+                prefetchSortedPathsAsync()
+                prefetchFilteredPathsAsync()
             } catch (e: Exception) {
                 android.util.Log.e("MediaViewModel", "softDeletePaths failed", e)
                 _state.update { it.copy(error = e.message) }
@@ -461,8 +472,16 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         private val monthLabelFormat = ThreadLocal.withInitial { SimpleDateFormat("MMMM yyyy", Locale.getDefault()) }
 
         fun monthLabelFor(m: Medium): String {
-            val d = if (m.taken > 0) Date(m.taken) else Date(m.modified)
-            return monthLabelFormat.get()!!.format(d).replaceFirstChar { it.uppercase() }
+            // Key the month header on date_sort_key (date_added-preferring), the exact value the grid
+            // is ordered by - otherwise a freshly downloaded photo would sort to the top yet display
+            // under its old EXIF-capture month header, i.e. an "old month" group sitting above newer
+            // ones. Fall back to taken/modified for rows written before date_sort_key existed (0).
+            val key = when {
+                m.dateSortKey > 0 -> m.dateSortKey
+                m.taken > 0 -> m.taken
+                else -> m.modified
+            }
+            return monthLabelFormat.get()!!.format(Date(key)).replaceFirstChar { it.uppercase() }
         }
     }
 }

@@ -6,28 +6,28 @@ import org.fossify.gallery.models.Medium
 
 @Dao
 interface MediumDao {
-    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key FROM media WHERE deleted_ts = 0 AND parent_path = :path COLLATE NOCASE")
+    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 AND parent_path = :path COLLATE NOCASE")
     fun getMediaFromPath(path: String): List<Medium>
 
-    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key FROM media WHERE deleted_ts = 0 AND full_path IN (:paths)")
+    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 AND full_path IN (:paths)")
     fun getMediaByPaths(paths: List<String>): List<Medium>
 
     @Query("SELECT rating FROM media WHERE deleted_ts = 0 AND full_path = :path COLLATE NOCASE LIMIT 1")
     fun getRatingForPath(path: String): Int?
 
-    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key FROM media WHERE deleted_ts = 0 AND is_favorite = 1")
+    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 AND is_favorite = 1")
     fun getFavorites(): List<Medium>
 
     @Query("SELECT COUNT(filename) FROM media WHERE deleted_ts = 0 AND is_favorite = 1")
     fun getFavoritesCount(): Long
 
-    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key FROM media WHERE deleted_ts != 0")
+    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts != 0")
     fun getDeletedMedia(): List<Medium>
 
     @Query("SELECT COUNT(filename) FROM media WHERE deleted_ts != 0")
     fun getDeletedMediaCount(): Long
 
-    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key FROM media WHERE deleted_ts < :timestmap AND deleted_ts != 0")
+    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts < :timestmap AND deleted_ts != 0")
     fun getOldRecycleBinItems(timestmap: Long): List<Medium>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -90,7 +90,7 @@ interface MediumDao {
     @Query("DELETE FROM media WHERE deleted_ts != 0")
     fun clearRecycleBin()
 
-    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key FROM media WHERE deleted_ts = 0 ORDER BY date_taken DESC, last_modified DESC LIMIT :limit")
+    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 ORDER BY date_taken DESC, last_modified DESC LIMIT :limit")
     fun getNewestMedia(limit: Int): List<Medium>
 
     @Query("UPDATE media SET rating = :rating WHERE full_path = :path COLLATE NOCASE")
@@ -99,7 +99,7 @@ interface MediumDao {
     @Query("UPDATE media SET rating = :rating WHERE full_path IN (:paths)")
     fun updateRatingBatch(paths: Collection<String>, rating: Int)
 
-    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key FROM media WHERE deleted_ts = 0 AND rating >= :minRating ORDER BY date_taken DESC, last_modified DESC")
+    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 AND rating >= :minRating ORDER BY date_taken DESC, last_modified DESC")
     fun getByMinRating(minRating: Int): List<Medium>
 
     @Query("SELECT full_path FROM media WHERE deleted_ts = 0")
@@ -129,7 +129,7 @@ interface MediumDao {
     // so no call site needs to change.
     @Query(
         """
-        SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key
+        SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added
         FROM media WHERE deleted_ts = 0
         ORDER BY date_sort_key ASC
         """
@@ -138,7 +138,7 @@ interface MediumDao {
 
     @Query(
         """
-        SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key
+        SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added
         FROM media WHERE deleted_ts = 0
         ORDER BY date_sort_key DESC
         """
@@ -149,7 +149,7 @@ interface MediumDao {
 
     @Query(
         """
-        SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key
+        SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added
         FROM media WHERE deleted_ts = 0
         ORDER BY size ASC
         """
@@ -158,7 +158,7 @@ interface MediumDao {
 
     @Query(
         """
-        SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key
+        SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added
         FROM media WHERE deleted_ts = 0
         ORDER BY size DESC
         """
@@ -169,7 +169,7 @@ interface MediumDao {
 
     @Query(
         """
-        SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key
+        SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added
         FROM media WHERE deleted_ts = 0
         ORDER BY rating ASC, last_modified ASC
         """
@@ -178,7 +178,7 @@ interface MediumDao {
 
     @Query(
         """
-        SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key
+        SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added
         FROM media WHERE deleted_ts = 0
         ORDER BY rating DESC, last_modified DESC
         """
@@ -187,10 +187,10 @@ interface MediumDao {
 
     fun getMediaPagedByRating(desc: Boolean): PagingSource<Int, Medium> = if (desc) getMediaPagedByRatingDesc() else getMediaPagedByRatingAsc()
 
-    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE ASC")
+    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE ASC")
     fun getMediaPagedByNameAsc(): PagingSource<Int, Medium>
 
-    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE DESC")
+    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE DESC")
     fun getMediaPagedByNameDesc(): PagingSource<Int, Medium>
 
     // Paths-only mirrors of the getMediaPagedBy* queries above (same ordering, no LIMIT/OFFSET) -

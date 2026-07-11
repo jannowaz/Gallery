@@ -35,12 +35,8 @@ import org.fossify.gallery.compose.screens.MediaSkeleton
 import org.fossify.gallery.compose.screens.ViewSettingsSheet
 import org.fossify.gallery.compose.screens.ViewSettingsViewModel
 import org.fossify.gallery.compose.theme.LocalMediaRepository
-import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
-import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import org.fossify.gallery.models.Medium
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.Paths
 
 // Process-level cache of the last scan per folder, kept alive across this composable's disposal
 // (see MediaStoreOps for the analogous full-device cache and why a plain remember{} isn't enough).
@@ -64,18 +60,21 @@ fun FolderMediaScreen(
     var mediaItems by remember { mutableStateOf(folderMediaCache[folderPath]) }
     var showViewSettings by remember { mutableStateOf(false) }
 
+    // Single source of truth: the same `media` DB table the Media tab pages over (getMediaFromPath =
+    // WHERE deleted_ts = 0 AND parent_path = folderPath, parent_path-indexed). MediaScreen's override
+    // path then sorts it by date_sort_key via applySort, so a drilled-into album shows exactly the
+    // same media, in exactly the same order, as the Media tab - instead of the old direct-disk scan
+    // that sorted by file mtime and could momentarily diverge from the synced DB.
     LaunchedEffect(folderPath) {
         if (mediaItems != null) return@LaunchedEffect
         mediaItems = withContext(Dispatchers.IO) {
-            val deleted = repo.getDeletedPaths()
-            scanFolderMedia(folderPath, deleted).also { folderMediaCache[folderPath] = it }
+            repo.getMediaFromPath(folderPath).also { folderMediaCache[folderPath] = it }
         }
     }
     LaunchedEffect(Unit) {
         org.fossify.gallery.helpers.RefreshBus.events.collect {
             mediaItems = withContext(Dispatchers.IO) {
-                val deleted = repo.getDeletedPaths()
-                scanFolderMedia(folderPath, deleted).also { folderMediaCache[folderPath] = it }
+                repo.getMediaFromPath(folderPath).also { folderMediaCache[folderPath] = it }
             }
         }
     }
@@ -119,30 +118,4 @@ fun FolderMediaScreen(
             onDismiss = { showViewSettings = false }
         )
     }
-}
-
-private fun scanFolderMedia(path: String, deletedPaths: Set<String>): List<Medium> {
-    val result = mutableListOf<Medium>()
-    try {
-        Files.newDirectoryStream(Paths.get(path)).use { stream ->
-            for (entry in stream) {
-                val name = entry.fileName.toString()
-                if (name.startsWith(".")) continue
-                val ext = name.substringAfterLast('.', "").lowercase()
-                if (ext in MEDIA_EXTENSIONS) {
-                    val fPath = entry.toString()
-                    if (fPath in deletedPaths) continue
-                    result.add(Medium(
-                        id = null, name = name, path = fPath, parentPath = path,
-                        modified = Files.getLastModifiedTime(entry).toMillis(),
-                        taken = Files.getLastModifiedTime(entry).toMillis(),
-                        size = Files.size(entry),
-                        type = if (ext in VIDEO_EXTENSIONS) 2 else 1,
-                        videoDuration = 0, isFavorite = false, deletedTS = 0L, mediaStoreId = 0, rating = 0,
-                    ))
-                }
-            }
-        }
-    } catch (_: Exception) { }
-    return result.sortedByDescending { it.modified }
 }

@@ -1277,7 +1277,6 @@ fun Context.createDirectoryFromMedia(
     noMediaFolders: ArrayList<String>,
 ): Directory {
     val OTGPath = config.OTGPath
-    val grouped = MediaFetcher(this).groupMedia(curMedia, path)
     var thumbnail: String? = null
 
     albumCovers.forEach {
@@ -1287,8 +1286,13 @@ fun Context.createDirectoryFromMedia(
     }
 
     if (thumbnail == null) {
-        val sortedMedia = grouped.filter { it is Medium }.toMutableList() as ArrayList<Medium>
-        thumbnail = sortedMedia.firstOrNull { getDoesFilePathExist(it.path, OTGPath) }?.path ?: ""
+        // Newest media in the folder (by date_added, falling back to taken/modified) - the same
+        // "newest" the media grids sort by - instead of "first item in the current folder sort order",
+        // so the folder cover is the newest picture regardless of how the folder itself is sorted.
+        // A user-set album cover (handled above) still wins.
+        thumbnail = curMedia.filter { getDoesFilePathExist(it.path, OTGPath) }
+            .maxByOrNull { if (it.dateAdded > 0) it.dateAdded else if (it.taken > 0) it.taken else it.modified }
+            ?.path ?: ""
     }
 
     if (config.OTGPath.isNotEmpty() && thumbnail!!.startsWith(config.OTGPath)) {

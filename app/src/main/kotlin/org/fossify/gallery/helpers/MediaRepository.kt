@@ -41,7 +41,7 @@ private const val SQLITE_BATCH_CHUNK_SIZE = 900
 // column lists exactly, since Medium's constructor (via FilteredMediaPagingSource.convertRows) reads
 // the cursor positionally.
 private const val MEDIA_COLUMNS =
-    "filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating"
+    "filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added"
 
 class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     private val repositoryScope = CoroutineScope(Dispatchers.IO)
@@ -155,6 +155,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         try { repositoryScope.launch { context.mediaTagDB.deleteAllForPath(path) } } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium Tags failed", e) }
         try { File("$path.xmp").delete() } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium XMP delete failed", e) }
         try { File(path).delete() } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium File delete failed", e) }
+        RefreshBus.trigger()
     }
 
     fun getByMinRating(minRating: Int): List<Medium> =
@@ -284,7 +285,10 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             // COUNT (file count) is a folder-only sort option, never reachable for a media query -
             // falls back to name here purely so this `when` stays exhaustive.
             SortField.NAME, SortField.COUNT -> "ORDER BY filename COLLATE NOCASE ${if (desc) "DESC" else "ASC"}"
-            SortField.DATE -> "ORDER BY $mult * (CASE WHEN date_taken > 0 THEN date_taken ELSE last_modified END)"
+            // date_sort_key (date_added-preferring, trigger-maintained) - same key the unfiltered
+            // paged/sorted queries use, so a filtered view (e.g. a Collection) orders newly added
+            // media to the top too, consistent with the main grid.
+            SortField.DATE -> "ORDER BY $mult * date_sort_key"
             SortField.SIZE -> "ORDER BY $mult * size"
             SortField.RATING -> "ORDER BY $mult * rating, $mult * last_modified"
         }
@@ -414,28 +418,35 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                 MediaStore.MediaColumns.DISPLAY_NAME,
                 MediaStore.MediaColumns.DATE_MODIFIED,
                 MediaStore.MediaColumns.DATE_TAKEN,
+                MediaStore.MediaColumns.DATE_ADDED,
                 MediaStore.MediaColumns.SIZE,
                 MediaStore.Files.FileColumns.MEDIA_TYPE,
             )
-            
-            // Incremental sync: only query items modified since last sync
+
+            // Incremental sync: only query items modified since last sync. `>=`, not `>`: DATE_MODIFIED
+            // has second granularity and lastSyncSec is stored truncated to a second, so a strict `>`
+            // permanently skipped any file whose DATE_MODIFIED landed in the exact same second as the
+            // newest file the previous sync saw - the "everything shows up except the very newest
+            // media" symptom. Re-scanning that one boundary second is free (getExistingPaths dedups it
+            // below), and guarantees nothing on the second boundary is lost.
             val lastSyncSec = lastSync / 1000L
-            val sel = "(${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?) AND ${MediaStore.MediaColumns.DATE_MODIFIED} > ?"
+            val sel = "(${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?) AND ${MediaStore.MediaColumns.DATE_MODIFIED} >= ?"
             val args = arrayOf(
                 MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
                 MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
                 lastSyncSec.toString()
             )
-            
+
             val storageRoot = Environment.getExternalStorageDirectory().absolutePath
             var latestTimestamp = lastSync
-            
+
             context.contentResolver.query(uri, proj, sel, args, "${MediaStore.MediaColumns.DATE_MODIFIED} DESC")?.use { c ->
                 val dataIdx = c.getColumnIndex(MediaStore.MediaColumns.DATA)
                 val relPathIdx = c.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
                 val nameIdx = c.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
                 val dateIdx = c.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
                 val takenIdx = c.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN)
+                val addedIdx = c.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
                 val sizeIdx = c.getColumnIndex(MediaStore.MediaColumns.SIZE)
                 val typeIdx = c.getColumnIndex(MediaStore.Files.FileColumns.MEDIA_TYPE)
                 var scanned = 0
@@ -453,19 +464,22 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                     val modified = modifiedSec * 1000L
                     latestTimestamp = maxOf(latestTimestamp, modified)
                     // date_taken (already millis, unlike date_modified/date_added which are seconds)
-                    // is what MediumDao's sort actually keys on when present - falling back to
-                    // modified here too (not just in the DAO's own CASE) means a file whose
-                    // date_taken MediaStore doesn't know (e.g. a non-EXIF file) doesn't end up with
-                    // an inconsistent 0. Without reading this at all, every newly-synced file
-                    // (including one just moved via the Mover, see MediaStoreOps.copy()) got
-                    // taken == modified == "now", which is what made moved files jump to the top of
-                    // the date-sorted grid as if they were brand new.
+                    // is preserved for grouping/display; the actual sort now keys on date_added (see
+                    // below). Falling back to modified when MediaStore has no date_taken (non-EXIF
+                    // file) keeps taken from being an inconsistent 0.
                     val taken = (if (takenIdx >= 0) c.getLong(takenIdx) else 0L).takeIf { it > 0 } ?: modified
+                    // DATE_ADDED = when the file entered the media library (seconds -> millis). This
+                    // is what date_sort_key keys on, so a just-downloaded photo with an old EXIF
+                    // date_taken still sorts to the top, while a file moved via a RELATIVE_PATH fast
+                    // move (MediaStore keeps its original date_added) stays put instead of jumping.
+                    // Falls back to modified/taken if MediaStore somehow reports no date_added.
+                    val addedSec = if (addedIdx >= 0) c.getLong(addedIdx) else 0L
+                    val added = (addedSec * 1000L).takeIf { it > 0 } ?: maxOf(modified, taken)
 
                     val size = if (sizeIdx >= 0) c.getLong(sizeIdx) else 0L
                     val mediaType = if (typeIdx >= 0) c.getInt(typeIdx) else 1
                     val type = if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) 2 else 1
-                    candidates.add(Medium(null, name, path, File(path).parent ?: "", modified, taken, size, type, 0, false, 0L, 0L, 0))
+                    candidates.add(Medium(null, name, path, File(path).parent ?: "", modified, taken, size, type, 0, false, 0L, 0L, 0, dateAdded = added))
                 }
             }
             // Batch-check just this bounded candidate set (<=10,000, typically far fewer) against the
@@ -534,7 +548,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             val uri = MediaStore.Files.getContentUri("external")
             val proj = arrayOf(
                 MediaStore.MediaColumns.DATA, MediaStore.MediaColumns.DISPLAY_NAME,
-                MediaStore.MediaColumns.DATE_MODIFIED, MediaStore.MediaColumns.SIZE,
+                MediaStore.MediaColumns.DATE_MODIFIED, MediaStore.MediaColumns.DATE_ADDED, MediaStore.MediaColumns.SIZE,
                 MediaStore.MediaColumns.MIME_TYPE, MediaStore.Files.FileColumns.MEDIA_TYPE,
                 MediaStore.Files.FileColumns.DURATION,
             )
@@ -544,6 +558,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                 val dataCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
                 val nameCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                 val dateCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
+                val addedCol = try { c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED) } catch (_: Exception) { -1 }
                 val sizeCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
                 val typeCol = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MEDIA_TYPE)
                 val durCol = try { c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DURATION) } catch (_: Exception) { -1 }
@@ -554,11 +569,12 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                     seen.add(path)
                     val name = c.getString(nameCol) ?: ""
                     val modified = c.getLong(dateCol) * 1000L
+                    val added = (if (addedCol >= 0) c.getLong(addedCol) * 1000L else 0L).takeIf { it > 0 } ?: modified
                     val size = c.getLong(sizeCol)
                     val mediaType = c.getInt(typeCol)
                     val type = if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) 2 else 1
                     val duration = if (durCol >= 0) (c.getInt(durCol) / 1000) else 0
-                    allMedia.add(Medium(null, name, path, File(path).parent ?: "", modified, modified, size, type, duration, false, 0L, 0L, 0))
+                    allMedia.add(Medium(null, name, path, File(path).parent ?: "", modified, modified, size, type, duration, false, 0L, 0L, 0, dateAdded = added))
                 }
             }
         } catch (_: Exception) { }
@@ -643,6 +659,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         } catch (e: Exception) {
             android.util.Log.e("MediaRepository", "moveToRecycleBinBatch failed", e)
         }
+        RefreshBus.trigger()
     }
 
     fun restoreFromRecycleBin(path: String) {
@@ -651,6 +668,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         } catch (e: Exception) {
             android.util.Log.e("MediaRepository", "restoreFromRecycleBin failed for $path", e)
         }
+        RefreshBus.trigger()
     }
 
     fun restoreFromRecycleBinBatch(paths: Collection<String>) {
@@ -659,6 +677,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         } catch (e: Exception) {
             android.util.Log.e("MediaRepository", "restoreFromRecycleBinBatch failed", e)
         }
+        RefreshBus.trigger()
     }
 
     // ---- Small in-memory caches for screens whose whole composable tree is disposed and recreated

@@ -21,6 +21,14 @@ import java.util.Locale
         Index(value = ["deleted_ts", "date_sort_key"]),
         Index(value = ["deleted_ts", "size"]),
         Index(value = ["deleted_ts", "rating", "last_modified"]),
+        // Backs getMediaFromPath (WHERE deleted_ts = 0 AND parent_path = :path), the per-folder query
+        // the Explorer file list and the drilled-into-album view now use as their single source of
+        // truth (same media table as the Media tab) - without this it was a full table scan per folder
+        // navigation on a large library.
+        Index(value = ["deleted_ts", "parent_path"]),
+        // Backs the Favorites tab (getFavorites/getFavoritesCount: WHERE deleted_ts = 0 AND
+        // is_favorite = 1) - was a full table scan of the whole library every time the tab loaded.
+        Index(value = ["deleted_ts", "is_favorite"]),
     ],
 )
 data class Medium(
@@ -40,15 +48,26 @@ data class Medium(
 
     @Ignore var gridPosition: Int = 0,   // used at grid view decoration at Grouping enabled
 
-    // Denormalized `date_taken > 0 ? date_taken : last_modified` - the actual "effective date" this
-    // app sorts/groups by everywhere (mirrors MediaViewModel.groupByMonth's grouping key and
-    // MediumDao's old CASE-based ORDER BY). Kept as a real, plain, auto-maintained column (via two
-    // SQLite triggers - see GalleryDatabase's MIGRATION_18_19/onCreate callback) purely so it can be
-    // indexed: SQLite can only use an index to skip a sort when the ORDER BY key is a literal column
-    // it covers, never a computed expression - and Room's own schema validation can't represent a
-    // raw SQL expression index at all (confirmed live: it crashes with "Migration didn't properly
-    // handle" every time, since TableInfo introspection silently drops the expression term instead
-    // of matching it). This is what makes the date sort - the default one - actually indexable.
+    // MediaStore DATE_ADDED (millis) - "when this file entered the device's media library", read
+    // straight from MediaStore in the sync/scan paths. This is what feeds date_sort_key below now
+    // (preferred over date_taken), so a freshly downloaded photo whose EXIF capture date is months
+    // old still sorts to the very top of the date-sorted grid, matching what the Explorer tab (which
+    // sorts by the file's own mtime) already does. Crucially it's *also* stable in the two cases the
+    // old date_taken-based key was chosen to protect: it never changes on an in-app rating/tag/XMP
+    // edit (those touch the file's mtime, not MediaStore's date_added), and MediaStore preserves it
+    // across a RELATIVE_PATH "fast move", so a file moved into a target folder keeps its position
+    // instead of jumping to the top as if brand new. 0 for rows whose writer didn't read it (e.g. a
+    // pure-disk fallback scan) - date_sort_key falls back to date_taken/last_modified for those.
+    @ColumnInfo(name = "date_added") var dateAdded: Long = 0L,
+
+    // Denormalized effective sort date, auto-maintained (via two SQLite triggers - see
+    // GalleryDatabase's createDateSortKeyTriggers/onCreate callback) as
+    // `date_added > 0 ? date_added : (date_taken > 0 ? date_taken : last_modified)`. Kept as a real,
+    // plain, indexed column purely so the date sort - the default one - is indexable: SQLite can only
+    // use an index to skip a sort when the ORDER BY key is a literal column it covers, never a
+    // computed expression - and Room's own schema validation can't represent a raw SQL expression
+    // index at all (confirmed live: it crashes with "Migration didn't properly handle" every time,
+    // since TableInfo introspection silently drops the expression term instead of matching it).
     @ColumnInfo(name = "date_sort_key") var dateSortKey: Long = 0L,
 ) : Serializable, ThumbnailItem() {
 

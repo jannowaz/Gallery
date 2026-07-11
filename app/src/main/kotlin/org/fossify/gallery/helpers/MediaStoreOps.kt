@@ -144,7 +144,7 @@ object MediaStoreOps {
 
     fun fileName(path: String): String = File(path).name
 
-    data class MediaEntry(val path: String, val name: String, val modified: Long, val size: Long)
+    data class MediaEntry(val path: String, val name: String, val modified: Long, val size: Long, val dateAdded: Long = 0L)
 
     /**
      * Returns all image/video entries located anywhere under [rootPath] (recursive) via MediaStore.
@@ -158,6 +158,7 @@ object MediaStoreOps {
             MediaStore.MediaColumns.DATA,
             MediaStore.MediaColumns.DISPLAY_NAME,
             MediaStore.MediaColumns.DATE_MODIFIED,
+            MediaStore.MediaColumns.DATE_ADDED,
             MediaStore.MediaColumns.SIZE,
         )
         val typeSel = "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
@@ -174,6 +175,7 @@ object MediaStoreOps {
                 val dIdx = c.getColumnIndex(MediaStore.MediaColumns.DATA)
                 val nIdx = c.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
                 val mIdx = c.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
+                val aIdx = c.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
                 val sIdx = c.getColumnIndex(MediaStore.MediaColumns.SIZE)
                 if (dIdx < 0) return@use
                 while (c.moveToNext()) {
@@ -182,7 +184,8 @@ object MediaStoreOps {
                     val name = if (nIdx >= 0) c.getString(nIdx) ?: File(p).name else File(p).name
                     val modified = if (mIdx >= 0) c.getLong(mIdx) * 1000L else 0L
                     val size = if (sIdx >= 0) c.getLong(sIdx) else 0L
-                    out.add(MediaEntry(p, name, modified, size))
+                    val added = (if (aIdx >= 0) c.getLong(aIdx) * 1000L else 0L).takeIf { it > 0 } ?: modified
+                    out.add(MediaEntry(p, name, modified, size, added))
                 }
             }
         } catch (_: Exception) { }

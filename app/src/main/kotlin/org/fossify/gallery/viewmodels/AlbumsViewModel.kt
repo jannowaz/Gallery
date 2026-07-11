@@ -21,6 +21,7 @@ import org.fossify.gallery.extensions.*
 import org.fossify.commons.helpers.*
 import org.fossify.gallery.extensions.*
 import org.fossify.gallery.helpers.*
+import org.fossify.gallery.helpers.RefreshBus
 import org.fossify.gallery.models.Directory
 import org.fossify.gallery.models.Medium
 import java.io.File
@@ -56,22 +57,41 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
             }
             .launchIn(viewModelScope)
         load()
+        // Previously this ViewModel never listened for data changes at all - it only ever loaded
+        // once in init{}, so newly downloaded/moved/deleted media only showed up here after the
+        // whole ViewModel got recreated (e.g. a Viewer round-trip disposes/recomposes Home). Every
+        // other data-driven screen in the app (Collections/Favorites/TagBrowser/Explorer/filtered
+        // Media) already subscribes to RefreshBus for exactly this reason.
+        viewModelScope.launch {
+            RefreshBus.events.collect { silentReload() }
+        }
     }
 
     fun load() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            withContext(Dispatchers.IO) {
-                val ctx = getApplication<Application>().applicationContext
-                ctx.getCachedDirectories(false, false) { dirs ->
-                    val processed = ctx.addTempFolderIfNeeded(ArrayList(dirs))
-                    val sorted = ctx.getSortedDirectories(processed)
-                    synchronized(dirListLock) { fullDirList = ArrayList(sorted) }
-                    updateDirectories(sorted)
-                    recheckDirectories(ArrayList(sorted))
-                }
-            }
+            fetchAndApplyDirectories()
             _state.update { it.copy(isLoading = false) }
+        }
+    }
+
+    // Same fetch as load(), but without toggling isLoading - a RefreshBus-triggered background
+    // refresh should update the grid in place, not flash the skeleton loader over content the user
+    // is already looking at (same pattern as MediaScreen's silentRefresh()/TagBrowserScreen's fix).
+    private fun silentReload() {
+        viewModelScope.launch { fetchAndApplyDirectories() }
+    }
+
+    private suspend fun fetchAndApplyDirectories() {
+        withContext(Dispatchers.IO) {
+            val ctx = getApplication<Application>().applicationContext
+            ctx.getCachedDirectories(false, false) { dirs ->
+                val processed = ctx.addTempFolderIfNeeded(ArrayList(dirs))
+                val sorted = ctx.getSortedDirectories(processed)
+                synchronized(dirListLock) { fullDirList = ArrayList(sorted) }
+                updateDirectories(sorted)
+                recheckDirectories(ArrayList(sorted))
+            }
         }
     }
 

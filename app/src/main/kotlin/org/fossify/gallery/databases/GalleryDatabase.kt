@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import org.fossify.gallery.interfaces.*
 import org.fossify.gallery.models.*
 
-@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class], version = 19)
+@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class], version = 22)
 abstract class GalleryDatabase : RoomDatabase() {
 
     abstract fun DirectoryDao(): DirectoryDao
@@ -33,24 +33,29 @@ abstract class GalleryDatabase : RoomDatabase() {
     companion object {
         private var db: GalleryDatabase? = null
 
-        // Keeps media.date_sort_key (`date_taken > 0 ? date_taken : last_modified`) auto-maintained
-        // in the database itself, regardless of whether a row was written via Room's own generated
-        // INSERT/UPDATE (which just carries over whatever the Kotlin Medium.dateSortKey field
-        // happened to be, likely its 0L default) or raw SQL. "UPDATE OF date_taken, last_modified"
-        // only fires when those specific columns appear in the triggering UPDATE's SET list, and
-        // this trigger's own body only ever touches date_sort_key, so it can't re-trigger itself.
+        // Keeps media.date_sort_key (`date_added > 0 ? date_added : (date_taken > 0 ? date_taken :
+        // last_modified)`) auto-maintained in the database itself, regardless of whether a row was
+        // written via Room's own generated INSERT/UPDATE (which just carries over whatever the Kotlin
+        // Medium.dateSortKey field happened to be, likely its 0L default) or raw SQL. date_added is
+        // preferred so newly downloaded media sorts to the top even when its EXIF date_taken is old
+        // (see Medium.dateAdded's doc). "UPDATE OF date_added, date_taken, last_modified" only fires
+        // when one of those columns appears in the triggering UPDATE's SET list, and this trigger's
+        // own body only ever touches date_sort_key, so it can't re-trigger itself.
+        private const val DATE_SORT_KEY_EXPR =
+            "CASE WHEN NEW.date_added > 0 THEN NEW.date_added WHEN NEW.date_taken > 0 THEN NEW.date_taken ELSE NEW.last_modified END"
+
         private fun createDateSortKeyTriggers(db: SupportSQLiteDatabase) {
             db.execSQL(
                 """
                 CREATE TRIGGER IF NOT EXISTS trg_media_date_sort_key_ins AFTER INSERT ON media BEGIN
-                    UPDATE media SET date_sort_key = CASE WHEN NEW.date_taken > 0 THEN NEW.date_taken ELSE NEW.last_modified END WHERE id = NEW.id;
+                    UPDATE media SET date_sort_key = $DATE_SORT_KEY_EXPR WHERE id = NEW.id;
                 END
                 """
             )
             db.execSQL(
                 """
-                CREATE TRIGGER IF NOT EXISTS trg_media_date_sort_key_upd AFTER UPDATE OF date_taken, last_modified ON media BEGIN
-                    UPDATE media SET date_sort_key = CASE WHEN NEW.date_taken > 0 THEN NEW.date_taken ELSE NEW.last_modified END WHERE id = NEW.id;
+                CREATE TRIGGER IF NOT EXISTS trg_media_date_sort_key_upd AFTER UPDATE OF date_added, date_taken, last_modified ON media BEGIN
+                    UPDATE media SET date_sort_key = $DATE_SORT_KEY_EXPR WHERE id = NEW.id;
                 END
                 """
             )
@@ -76,6 +81,9 @@ abstract class GalleryDatabase : RoomDatabase() {
                             .addMigrations(MIGRATION_16_17)
                             .addMigrations(MIGRATION_17_18)
                             .addMigrations(MIGRATION_18_19)
+                            .addMigrations(MIGRATION_19_20)
+                            .addMigrations(MIGRATION_20_21)
+                            .addMigrations(MIGRATION_21_22)
                             .fallbackToDestructiveMigrationFrom(1, 2, 3)
                             // Room only runs migrations when upgrading an *existing* database - a
                             // fresh install gets its schema (including date_sort_key and its index)
@@ -264,6 +272,42 @@ abstract class GalleryDatabase : RoomDatabase() {
                 database.execSQL("DROP INDEX IF EXISTS `index_media_deleted_ts_date_taken_last_modified`")
                 database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_date_sort_key` ON `media` (`deleted_ts`, `date_sort_key`)")
                 createDateSortKeyTriggers(database)
+            }
+        }
+
+        // Adds media.date_added and makes date_sort_key prefer it (see Medium.dateAdded's doc). The
+        // date_sort_key triggers change too (new expression + they now also fire on UPDATE OF
+        // date_added), so the old ones must be dropped and recreated - CREATE TRIGGER IF NOT EXISTS
+        // alone would leave the stale definitions in place. Existing rows have no real date_added, so
+        // they're backfilled from the current date_sort_key: their effective sort date is unchanged,
+        // and only media synced *after* this upgrade (which reads the real MediaStore DATE_ADDED)
+        // starts benefiting from the "newly added sorts to the top" behavior.
+        private val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE media ADD COLUMN date_added INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("UPDATE media SET date_added = date_sort_key")
+                database.execSQL("DROP TRIGGER IF EXISTS trg_media_date_sort_key_ins")
+                database.execSQL("DROP TRIGGER IF EXISTS trg_media_date_sort_key_upd")
+                createDateSortKeyTriggers(database)
+            }
+        }
+
+        // Adds the (deleted_ts, parent_path) index backing getMediaFromPath - the per-folder query the
+        // Explorer file list and drilled-into-album view now use so all tabs read the same media table
+        // in the same order. Index name must match Room's auto-generated form exactly (see @Entity's
+        // Index) or schema validation fails on next open.
+        private val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_parent_path` ON `media` (`deleted_ts`, `parent_path`)")
+            }
+        }
+
+        // Adds the (deleted_ts, is_favorite) index backing the Favorites tab query (previously a full
+        // table scan of the whole library on every load). Index name must match Room's auto-generated
+        // form exactly (see the matching @Entity Index) or schema validation fails on next open.
+        private val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_is_favorite` ON `media` (`deleted_ts`, `is_favorite`)")
             }
         }
     }

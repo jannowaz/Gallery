@@ -417,7 +417,9 @@ class MediaFetcher(val context: Context) {
                 }
 
                 val isFavorite = favoritePaths.contains(path)
-                val medium = Medium(null, filename, path, file.parent, lastModified, dateTaken, size, type, videoDuration, isFavorite, 0L, 0L)
+                // No MediaStore date_added on this file-based path; use the best available proxy so a
+                // REPLACE-insert of this row doesn't zero date_added and downgrade its sort key.
+                val medium = Medium(null, filename, path, file.parent, lastModified, dateTaken, size, type, videoDuration, isFavorite, 0L, 0L, dateAdded = maxOf(lastModified, dateTaken))
                 media.add(medium)
             }
         }
@@ -447,6 +449,7 @@ class MediaFetcher(val context: Context) {
             Images.Media.DATA,
             Images.Media.DATE_MODIFIED,
             Images.Media.DATE_TAKEN,
+            Images.Media.DATE_ADDED,
             Images.Media.SIZE,
             MediaStore.MediaColumns.DURATION
         )
@@ -522,8 +525,13 @@ class MediaFetcher(val context: Context) {
 
                 val videoDuration = Math.round(cursor.getIntValue(MediaStore.MediaColumns.DURATION) / 1000.toDouble()).toInt()
                 val isFavorite = favoritePaths.contains(path)
+                // date_added (seconds -> millis) feeds date_sort_key so newly added media sorts to the
+                // top; must be carried here too since this fetcher's results get written back via
+                // mediaDB.insertAll (REPLACE), which would otherwise reset an already-synced row's
+                // date_added to 0 and downgrade its sort key back to date_taken.
+                val dateAdded = (cursor.getLongValue(Images.Media.DATE_ADDED) * 1000).takeIf { it > 0 } ?: maxOf(lastModified, dateTaken)
                 val medium =
-                    Medium(null, filename, path, path.getParentPath(), lastModified, dateTaken, size, type, videoDuration, isFavorite, 0L, mediaStoreId)
+                    Medium(null, filename, path, path.getParentPath(), lastModified, dateTaken, size, type, videoDuration, isFavorite, 0L, mediaStoreId, dateAdded = dateAdded)
                 val parent = medium.parentPath.lowercase(Locale.getDefault())
                 val currentFolderMedia = media[parent]
                 if (currentFolderMedia == null) {
@@ -601,7 +609,9 @@ class MediaFetcher(val context: Context) {
             )
             val videoDuration = if (getVideoDurations) context.getDuration(path) ?: 0 else 0
             val isFavorite = favoritePaths.contains(path)
-            val medium = Medium(null, filename, path, folder, dateModified, dateTaken, size, type, videoDuration, isFavorite, 0L, 0L)
+            // OTG path has no MediaStore date_added; best-available proxy so a REPLACE-insert of this
+            // row doesn't zero date_added and downgrade its sort key.
+            val medium = Medium(null, filename, path, folder, dateModified, dateTaken, size, type, videoDuration, isFavorite, 0L, 0L, dateAdded = maxOf(dateModified, dateTaken))
             media.add(medium)
         }
 
