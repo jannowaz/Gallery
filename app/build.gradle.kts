@@ -88,6 +88,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // x86/x86_64 native libs (JXL/AVIF/Brotli/WebP decoders) added up to ~15.6MB (38% of
+            // the release APK) for ABIs no real phone/tablet ships - only relevant for x86
+            // emulators, which use debug builds anyway. Debug keeps every ABI so emulator testing
+            // is unaffected; only what actually gets distributed shrinks.
+            ndk {
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            }
             if (keystorePropertiesFile.exists() || hasSigningVars()) {
                 signingConfig = signingConfigs.getByName("release")
             }
