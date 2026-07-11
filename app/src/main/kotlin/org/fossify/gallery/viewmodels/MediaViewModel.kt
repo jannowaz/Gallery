@@ -17,9 +17,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -132,6 +136,18 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             }.flow
         }
         .cachedIn(viewModelScope)
+
+    /** True total for the active filter, shown in [FilterBreadcrumbs]'s result-count label - was
+     * previously bound directly to `LazyPagingItems.itemCount`, which only reflects how many rows
+     * Paging3 has actually loaded into memory (starting at the library-default initial-load size,
+     * growing as the user scrolls), so a Collection with thousands of matches showed a frozen,
+     * far-too-small number on open. `null` while no filter is active or the count hasn't resolved
+     * yet - callers fall back to `itemCount` for that brief window. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val filteredResultCount: StateFlow<Int?> = filterFlow
+        .flatMapLatest { f -> if (f.isActive) flow { emit(repository.getFilteredMediaCount(f)) } else flowOf<Int?>(null) }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private fun applySort(list: List<Medium>): List<Medium> {
         if (sortField == SortField.RATING) {

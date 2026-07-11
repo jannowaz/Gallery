@@ -1,7 +1,9 @@
 package org.fossify.gallery.helpers
 
 import android.content.Context
+import android.net.Uri
 import android.os.Environment
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import androidx.paging.PagingSource
 import androidx.sqlite.db.SimpleSQLiteQuery
@@ -43,6 +45,23 @@ private const val SQLITE_BATCH_CHUNK_SIZE = 900
 // the cursor positionally.
 private const val MEDIA_COLUMNS =
     "filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added"
+
+/** Resolves a SAF tree-picker `content://` URI (as stored by a folder-picking dialog) to the plain
+ * filesystem path it points at, or passes an already-plain path through unchanged. Shared by
+ * MediaRepository's collection-count query and ComposeExplorerActivity's applyCollection() - both
+ * need to resolve the same MediaCollection.includedPaths/excludedPaths the same way, and having two
+ * separate copies is exactly how the "collection shows 0 media but has content" bug happened: the
+ * count path never resolved the URI at all and queried an exact non-recursive match against it. */
+fun resolveContentUriToPath(uriString: String): String? {
+    if (uriString.startsWith("/")) return uriString
+    val uri = Uri.parse(uriString)
+    val docId = try { DocumentsContract.getTreeDocumentId(uri) } catch (_: Exception) { return null }
+    val parts = docId.split(":")
+    if (parts.size == 2 && parts[0] == "primary") {
+        return "${Environment.getExternalStorageDirectory().absolutePath}/${parts[1]}"
+    }
+    return null
+}
 
 class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     private val repositoryScope = CoroutineScope(Dispatchers.IO)
@@ -254,7 +273,12 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         else -> 0L
     }
 
-    private fun buildFilteredMediaQuery(filter: MediaFilter, sortField: SortField, desc: Boolean, pathsOnly: Boolean): SupportSQLiteQuery {
+    /** Builds the WHERE clause + bound args shared by every filtered media query - the true row
+     * count for a MediaFilter must always come from this same predicate (via [getFilteredMediaCount])
+     * rather than a second, separately-maintained implementation. That exact kind of divergence (a
+     * count computed one way, content loaded another) is what silently showed "0 Medien" for
+     * Collections using included folders while the collection's actual content loaded fine. */
+    private fun buildFilterWhereClause(filter: MediaFilter): Pair<String, List<Any?>> {
         val where = StringBuilder("deleted_ts = 0")
         val args = mutableListOf<Any?>()
 
@@ -280,6 +304,11 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             where.append(" AND (CASE WHEN date_taken > 0 THEN date_taken ELSE last_modified END) >= ?")
             args.add(dateRangeCutoff(filter.dateRange))
         }
+        return where.toString() to args
+    }
+
+    private fun buildFilteredMediaQuery(filter: MediaFilter, sortField: SortField, desc: Boolean, pathsOnly: Boolean): SupportSQLiteQuery {
+        val (where, args) = buildFilterWhereClause(filter)
 
         val mult = if (desc) -1 else 1
         val orderBy = when (sortField) {
@@ -296,6 +325,19 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
 
         val columns = if (pathsOnly) "full_path" else MEDIA_COLUMNS
         return SimpleSQLiteQuery("SELECT $columns FROM media WHERE $where $orderBy", args.toTypedArray())
+    }
+
+    /** True total row count for a MediaFilter - unlike `LazyPagingItems.itemCount`, which only
+     * reflects how many rows Paging3 has loaded into memory so far and climbs as the user scrolls,
+     * this is a cheap indexed `COUNT(*)` matching exactly what [getMediaPagedFiltered] loads. */
+    suspend fun getFilteredMediaCount(filter: MediaFilter): Int = try {
+        val (where, args) = buildFilterWhereClause(filter)
+        val query = SimpleSQLiteQuery("SELECT COUNT(*) FROM media WHERE $where", args.toTypedArray())
+        GalleryDatabase.getInstance(context.applicationContext).query(query).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getInt(0) else 0
+        }
+    } catch (_: Exception) {
+        0
     }
 
     suspend fun getTaggedPaths(): Set<String> =
@@ -715,17 +757,42 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     }
 
     @Volatile private var collectionsCache: List<MediaCollection>? = null
-    @Volatile private var collectionMediaCache: Map<Long, List<Medium>> = emptyMap()
+    @Volatile private var collectionMediaCache: Map<Long, List<String>> = emptyMap()
 
     fun getCollectionsCached(): List<MediaCollection>? = collectionsCache
 
-    fun getCollectionMediaCached(collectionId: Long): List<Medium> = collectionMediaCache[collectionId] ?: emptyList()
+    fun getCollectionMediaCached(collectionId: Long): List<String> = collectionMediaCache[collectionId] ?: emptyList()
 
-    fun refreshCollectionsCache(): List<MediaCollection> {
+    suspend fun refreshCollectionsCache(): List<MediaCollection> {
         val colls = getCollections()
-        collectionMediaCache = colls.associate { c -> c.id to c.getIncludedPaths().flatMap { getMediaFromPath(it) } }
+        collectionMediaCache = colls.associate { c -> c.id to getCollectionPaths(c) }
         collectionsCache = colls
         return colls
+    }
+
+    /** Resolves a collection's matching paths via the exact same MediaFilter this collection's
+     * content view builds in ComposeExplorerActivity.applyCollection() - previously this queried
+     * unresolved content:// URIs through a non-recursive exact-match DAO call that could never
+     * match anything, and ignored tagFilter/ratingFilter/excludedPaths entirely, so any collection
+     * using included folders (or tag/rating filters) showed "0 Medien" here despite having real
+     * content when opened. */
+    private suspend fun getCollectionPaths(coll: MediaCollection): List<String> {
+        val tagNames = if (coll.tagFilter.isNotBlank()) {
+            val names = coll.tagFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }
+            expandTagsWithDescendants(names, context.config.tagHierarchy).ifEmpty { null }
+        } else {
+            null
+        }
+        val incPaths = coll.getIncludedPaths().mapNotNull { resolveContentUriToPath(it) }.filter { it.isNotEmpty() }.toSet()
+        val excPaths = coll.getExcludedPaths().mapNotNull { resolveContentUriToPath(it) }.filter { it.isNotEmpty() }.toSet()
+        val filter = MediaFilter(
+            rating = coll.ratingFilter,
+            tagNames = tagNames,
+            pathFilter = incPaths.ifEmpty { null },
+            excludePaths = excPaths.ifEmpty { null },
+        )
+        if (!filter.isActive) return emptyList()
+        return getActivePathsSortedFiltered(filter, SortField.DATE, true)
     }
 
     @Volatile private var tagsWithPathsCache: Map<String, List<String>>? = null

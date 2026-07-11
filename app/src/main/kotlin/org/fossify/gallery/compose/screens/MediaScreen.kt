@@ -188,6 +188,10 @@ private fun PagedContent(
     val cornerShape = if (viewSettings.roundedCorners) RoundedCornerShape(Radius.sm) else RoundedCornerShape(0.dp)
     val itemSpacing = viewSettings.spacing.dp
     val mediaCardColor = when (viewSettings.displayMode) { DisplayMode.COMPACT,DisplayMode.NORMAL->MaterialTheme.colorScheme.surface; DisplayMode.DARK->MaterialTheme.colorScheme.surfaceVariant }
+    // True filtered total (see MediaViewModel.filteredResultCount) - falls back to itemCount (Paging3's
+    // loaded-so-far count) for the brief window before the real COUNT(*) resolves, so the breadcrumb
+    // never flashes 0.
+    val filteredResultCount by viewModel.filteredResultCount.collectAsState()
 
     // Viewer swipe-through needs the FULL sorted path list, not just what the grid has paged in so
     // far - fetched fresh on demand (cheap: paths only, no thumbnails) so opening any item can swipe
@@ -222,7 +226,7 @@ private fun PagedContent(
                 if (hasFilter) FilterBreadcrumbs(
                     ratingFilter, activeTagName, activePathName, activeCollectionName,
                     minSizeFilter, dateRangeFilter,
-                    lazyPagingItems.itemCount, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
+                    filteredResultCount ?: lazyPagingItems.itemCount, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
                     onClearSizeFilter, onClearDateFilter, onClearFilter
                 )
                 val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
@@ -321,7 +325,7 @@ private fun PagedContent(
                 if (hasFilter) FilterBreadcrumbs(
                     ratingFilter, activeTagName, activePathName, activeCollectionName,
                     minSizeFilter, dateRangeFilter,
-                    lazyPagingItems.itemCount, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
+                    filteredResultCount ?: lazyPagingItems.itemCount, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
                     onClearSizeFilter, onClearDateFilter, onClearFilter
                 )
                 val quickTagsM = remember { ctx.config.quickTags.filter { it.isNotBlank() } }

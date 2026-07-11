@@ -199,6 +199,7 @@ import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.helpers.RefreshBus
 import org.fossify.gallery.helpers.XmpWriter
+import org.fossify.gallery.helpers.resolveContentUriToPath
 import org.fossify.gallery.viewmodels.AlbumsViewModel
 import org.fossify.gallery.viewmodels.ExplorerViewModel
 import org.fossify.gallery.viewmodels.ExplorerUiState
@@ -1425,14 +1426,3 @@ private fun OmniSearchPanel(
 private fun hasAllFilesAccess(ctx: android.content.Context): Boolean =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Environment.isExternalStorageManager()
     else ContextCompat.checkSelfPermission(ctx, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-
-private fun resolveContentUriToPath(uriString: String): String? {
-    if (uriString.startsWith("/")) return uriString
-    val uri = android.net.Uri.parse(uriString)
-    val docId = try { android.provider.DocumentsContract.getTreeDocumentId(uri) } catch (_: Exception) { return null }
-    val parts = docId.split(":")
-    if (parts.size == 2 && parts[0] == "primary") {
-        return "${android.os.Environment.getExternalStorageDirectory().absolutePath}/${parts[1]}"
-    }
-    return null
-}

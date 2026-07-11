@@ -105,8 +105,8 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
     // back, and without this the collections list plus the per-collection getMediaFromPath cascade
     // reran from scratch on every single round trip.
     fun toAlbumItems(colls: List<MediaCollection>) = colls.map { coll ->
-        val media = repo.getCollectionMediaCached(coll.id)
-        AlbumGridItem(key = coll.id.toString(), name = coll.name, thumbnailPath = media.firstOrNull()?.path ?: "", count = media.size, previewPaths = media.take(3).map { it.path })
+        val paths = repo.getCollectionMediaCached(coll.id)
+        AlbumGridItem(key = coll.id.toString(), name = coll.name, thumbnailPath = paths.firstOrNull() ?: "", count = paths.size, previewPaths = paths.take(3))
     }
     var collections by remember { mutableStateOf(repo.getCollectionsCached() ?: emptyList()) }
     var albumItems by remember { mutableStateOf(toAlbumItems(collections)) }
