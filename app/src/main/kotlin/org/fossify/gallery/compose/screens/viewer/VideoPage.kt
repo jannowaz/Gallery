@@ -249,6 +249,11 @@ fun VideoPage(
     }
     LaunchedEffect(player) { spv.player = player; positionMs = player.currentPosition }
     LaunchedEffect(scalingMode) { spv.resizeMode = scalingMode }
+    // Keep the screen awake only while a video is actually playing on the current page - a per-view
+    // flag (auto-cleared when the view detaches) instead of a window-wide FLAG_KEEP_SCREEN_ON, and
+    // independent of the config.keepScreenOn setting (now default-off, see Config.keepScreenOn). So a
+    // paused or backgrounded video lets the screen time out normally, but active playback isn't cut off.
+    LaunchedEffect(isPlaying, isCurrentPage) { spv.keepScreenOn = isPlaying && isCurrentPage }
     // Only polls while actually playing - currentPosition only advances on its own during playback,
     // so ticking this every 500ms while paused (the previous condition was just `isCurrentPage`, true
     // for as long as the user simply leaves a paused video open in the Viewer) was a perpetual,

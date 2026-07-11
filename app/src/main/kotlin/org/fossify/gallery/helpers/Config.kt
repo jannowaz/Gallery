@@ -441,8 +441,15 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(DELETE_EMPTY_FOLDERS, false)
         set(deleteEmptyFolders) = prefs.edit().putBoolean(DELETE_EMPTY_FOLDERS, deleteEmptyFolders).apply()
 
+    // Default false (upstream shipped true): true made the Viewer hold FLAG_KEEP_SCREEN_ON for the
+    // whole time ANY photo or video was open, so the screen never followed the system timeout - the
+    // single biggest battery drain in normal use (leaving a photo open = screen stays fully lit). A
+    // gallery should behave like every other app and let the screen time out; videos still keep the
+    // screen awake *while actually playing* via VideoPage's per-view keepScreenOn (independent of this
+    // setting), so playback isn't interrupted. Users who want the old always-on behaviour can re-enable
+    // it in Settings.
     var keepScreenOn: Boolean
-        get() = prefs.getBoolean(KEEP_SCREEN_ON, true)
+        get() = prefs.getBoolean(KEEP_SCREEN_ON, false)
         set(keepScreenOn) = prefs.edit().putBoolean(KEEP_SCREEN_ON, keepScreenOn).apply()
 
     var allowPhotoGestures: Boolean
