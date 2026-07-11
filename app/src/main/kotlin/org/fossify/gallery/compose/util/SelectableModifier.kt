@@ -188,16 +188,23 @@ fun Modifier.dragSelectionGesture(
  * to at most once per [throttleMs] - grid/list layout passes reposition items far more often than
  * drag-select needs fresh bounds for. Shared by MediaTile (grid) and MediaListRow (list) so the two
  * view modes can't drift out of sync on this value.
+ *
+ * [enabled] gates the whole thing: the reported bounds are only ever consumed while a drag-selection
+ * is active, so with no selection in progress this returns the modifier untouched - no
+ * onGloballyPositioned callback is attached at all, sparing every visible tile a bounds computation on
+ * every layout pass during normal scrolling (the common case, and the hot path on a large grid).
  */
-fun Modifier.throttledBoundsReporting(throttleMs: Long = 300L, onBoundsChanged: (Rect) -> Unit): Modifier = composed {
-    var lastUpdate by remember { mutableLongStateOf(0L) }
-    this.onGloballyPositioned { coords ->
-        val now = System.currentTimeMillis()
-        if (now - lastUpdate > throttleMs) {
-            lastUpdate = now
-            val p = coords.positionInWindow()
-            val s = coords.size
-            onBoundsChanged(Rect(p, Size(s.width.toFloat(), s.height.toFloat())))
+fun Modifier.throttledBoundsReporting(enabled: Boolean, throttleMs: Long = 300L, onBoundsChanged: (Rect) -> Unit): Modifier =
+    if (!enabled) this
+    else composed {
+        var lastUpdate by remember { mutableLongStateOf(0L) }
+        this.onGloballyPositioned { coords ->
+            val now = System.currentTimeMillis()
+            if (now - lastUpdate > throttleMs) {
+                lastUpdate = now
+                val p = coords.positionInWindow()
+                val s = coords.size
+                onBoundsChanged(Rect(p, Size(s.width.toFloat(), s.height.toFloat())))
+            }
         }
     }
-}

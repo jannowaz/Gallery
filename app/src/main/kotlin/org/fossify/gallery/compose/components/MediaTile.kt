@@ -107,7 +107,9 @@ fun MediaTile(
                 scaleY = scale
             }
             .background(cardColor, cornerShape)
-            .throttledBoundsReporting(onBoundsChanged = onBoundsChanged)
+            // Only report bounds while a selection is active - drag-select hit-testing is the sole
+            // consumer, so this stays off during normal scrolling (see throttledBoundsReporting).
+            .throttledBoundsReporting(enabled = isSelectionMode, onBoundsChanged = onBoundsChanged)
     ) {
         Box(
             Modifier.aspectRatio(aspectRatio)

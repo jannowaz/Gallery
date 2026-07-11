@@ -290,6 +290,9 @@ fun MediaScreen(
 
     @Composable
     fun PagedContent() {
+        // Computed once here (incrementally) and shared by all three view-type branches, instead of each
+        // branch rebuilding the whole Header/Item list from scratch on every Paging append.
+        val rows = rememberPagedRows(lazyPagingItems, state.filter, viewSettings.sortBy, viewSettings.sortDesc)
         when {
             isGrid -> {
                 Column(Modifier.padding(top = contentTopInset)) {
@@ -301,12 +304,6 @@ fun MediaScreen(
                     )
                     val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
                     QuickTagRow(quickTags = quickTags, visible = quickTags.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
-                    // Keyed on the filter/sort intent too, not just itemCount - observed live that a filter
-                    // switch landing on a coincidentally-similar item count could otherwise leave `rows` (and
-                    // its PagedRow.Header labels/counts) built from the previous PagingSource's snapshot for
-                    // one extra frame, showing a stale month header while the row content underneath it had
-                    // already updated to the new filtered set.
-                    val rows = remember(lazyPagingItems.itemCount, state.filter, viewSettings.sortBy, viewSettings.sortDesc) { buildPagedRows(lazyPagingItems.itemSnapshotList) }
                     val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
                     LaunchedEffect(gridState) {
                         snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
@@ -406,7 +403,6 @@ fun MediaScreen(
                     )
                     val quickTagsM = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
                     QuickTagRow(quickTags = quickTagsM, visible = quickTagsM.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
-                    val rows = remember(lazyPagingItems.itemCount, state.filter, viewSettings.sortBy, viewSettings.sortDesc) { buildPagedRows(lazyPagingItems.itemSnapshotList) }
                     val mosaicState = rememberLazyStaggeredGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
                     LaunchedEffect(mosaicState) {
                         snapshotFlow { mosaicState.firstVisibleItemIndex to mosaicState.firstVisibleItemScrollOffset }
@@ -493,7 +489,6 @@ fun MediaScreen(
                 }
             }
             else -> {
-                val rows = remember(lazyPagingItems.itemCount, state.filter, viewSettings.sortBy, viewSettings.sortDesc) { buildPagedRows(lazyPagingItems.itemSnapshotList) }
                 val listState = rememberLazyListState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
                 LaunchedEffect(listState) {
                     snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
@@ -1010,23 +1005,59 @@ private fun safePeek(items: androidx.paging.compose.LazyPagingItems<Medium>, ind
 private fun safeGet(items: androidx.paging.compose.LazyPagingItems<Medium>, index: Int): Medium? =
     if (index in 0 until items.itemCount) items[index] else null
 
-private fun buildPagedRows(snapshot: List<Medium?>): List<PagedRow> {
-    val rows = ArrayList<PagedRow>(snapshot.size + 8)
-    var lastLabel: String? = null
-    var lastHeaderPos = -1
-    for (idx in snapshot.indices) {
-        val label = snapshot[idx]?.let { MediaViewModel.monthLabelFor(it) }
-        if (label != null) {
-            if (label != lastLabel) {
-                lastHeaderPos = rows.size
-                rows.add(PagedRow.Header(label, 1))
-                lastLabel = label
-            } else if (lastHeaderPos >= 0) {
-                val h = rows[lastHeaderPos] as PagedRow.Header
-                rows[lastHeaderPos] = h.copy(count = h.count + 1)
+// Builds the Header/Item row model incrementally: Paging3 only ever *appends* to this list (the grid
+// is date-sorted, placeholders disabled, no prepend), so each newly loaded page only needs its own new
+// items scanned - not the whole (potentially very large) loaded window re-scanned from scratch on every
+// append the way a plain rebuild does. Scoped per filter+sort via [rememberPagedRows]; a shrink in item
+// count (a PagingSource invalidation/reload) resets and rebuilds. monthLabelFor is the expensive bit
+// (date formatting per item), so only running it on the delta is the actual win.
+private class PagedRowsAccumulator {
+    private val rows = ArrayList<PagedRow>()
+    private var lastLabel: String? = null
+    private var lastHeaderPos = -1
+    private var processed = 0
+
+    fun extendTo(snapshot: List<Medium?>): List<PagedRow> {
+        val size = snapshot.size
+        if (size < processed) reset()
+        var idx = processed
+        while (idx < size) {
+            val label = snapshot[idx]?.let { MediaViewModel.monthLabelFor(it) }
+            if (label != null) {
+                if (label != lastLabel) {
+                    lastHeaderPos = rows.size
+                    rows.add(PagedRow.Header(label, 1))
+                    lastLabel = label
+                } else if (lastHeaderPos >= 0) {
+                    val h = rows[lastHeaderPos] as PagedRow.Header
+                    rows[lastHeaderPos] = h.copy(count = h.count + 1)
+                }
             }
+            rows.add(PagedRow.Item(idx))
+            idx++
         }
-        rows.add(PagedRow.Item(idx))
+        processed = size
+        // Shallow copy so each emission is a distinct, stable list instance for Compose - O(n) in
+        // references only (no per-item label recompute or PagedRow allocation), and only on append.
+        return ArrayList(rows)
     }
-    return rows
+
+    private fun reset() {
+        rows.clear(); lastLabel = null; lastHeaderPos = -1; processed = 0
+    }
+}
+
+@Composable
+private fun rememberPagedRows(
+    lazyPagingItems: androidx.paging.compose.LazyPagingItems<Medium>,
+    filter: org.fossify.gallery.viewmodels.MediaFilter,
+    sortBy: SortField,
+    sortDesc: Boolean,
+): List<PagedRow> {
+    // Accumulator resets whenever the filter/sort intent changes (a new PagingSource generation) - see
+    // the note at the old call sites about a stale month header surviving one frame past a filter switch.
+    val acc = remember(filter, sortBy, sortDesc) { PagedRowsAccumulator() }
+    return remember(lazyPagingItems.itemCount, filter, sortBy, sortDesc) {
+        acc.extendTo(lazyPagingItems.itemSnapshotList)
+    }
 }

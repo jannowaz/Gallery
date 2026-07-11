@@ -63,7 +63,7 @@ fun MediaListRow(
     Surface(
         modifier = modifier.fillMaxWidth()
             .background(cardColor, RoundedCornerShape(Radius.sm))
-            .throttledBoundsReporting(onBoundsChanged = onBoundsChanged)
+            .throttledBoundsReporting(enabled = hasSelection, onBoundsChanged = onBoundsChanged)
             .selectableItem(isSelectionMode = hasSelection, onClick = onClick, onLongClick = onLongClick, onSwipeToSelect = onSwipeToSelect),
         color = Color.Transparent,
     ) {
