@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -124,6 +125,7 @@ import org.fossify.gallery.compose.util.rememberGalleryHaptics
 import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.FavoriteColor
 import org.fossify.gallery.compose.theme.RatingStarColor
+import org.fossify.gallery.compose.components.RenameDialog
 import org.fossify.gallery.compose.components.TagInputDialog
 import org.fossify.gallery.compose.components.UndoBar
 import org.fossify.gallery.compose.screens.FolderPickerSheet
@@ -183,6 +185,7 @@ fun ViewerScreen(
     var showTagsDialog by remember { mutableStateOf(false) }
     var showFolderPicker by remember { mutableStateOf(false) }
     var pendingFolderPickerIsMove by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
     var showRatingOverlay by remember { mutableStateOf(ctx.config.viewerShowRatingBar) }
     var showQuickTags by remember { mutableStateOf(false) }
     var showPersistentTags by remember { mutableStateOf(true) }
@@ -275,8 +278,9 @@ fun ViewerScreen(
         if (ctx.config.skipDeleteConfirmation) performDelete() else showDeleteConfirm = true
     }
 
-    BackHandler(enabled = showActionSheet || showVideoSettings || showTagsDialog || showFolderPicker) {
+    BackHandler(enabled = showActionSheet || showVideoSettings || showTagsDialog || showFolderPicker || showRenameDialog) {
         when {
+            showRenameDialog -> showRenameDialog = false
             showFolderPicker -> showFolderPicker = false
             showTagsDialog -> showTagsDialog = false
             showVideoSettings -> showVideoSettings = false
@@ -588,7 +592,7 @@ fun ViewerScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { for (i in 1..5) { IconButton(onClick = { haptic(HapticFeedbackType.Confirm); val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) { Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f), modifier = Modifier.size(28.dp)) } } }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 SheetSectionLabel(stringResource(R.string.video_actions))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Share, stringResource(R.string.action_share)) { val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath)); ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, ctx.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); showActionSheet = false }; ActionChip(Icons.Default.Edit, stringResource(R.string.edit)) { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }; ActionChip(Icons.Default.ContentCopy, stringResource(R.string.action_copy)) { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }; ActionChip(Icons.AutoMirrored.Filled.DriveFileMove, stringResource(R.string.action_move)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false } }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Share, stringResource(R.string.action_share)) { val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath)); ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, ctx.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); showActionSheet = false }; ActionChip(Icons.Default.Edit, stringResource(R.string.edit)) { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }; ActionChip(Icons.Default.DriveFileRenameOutline, stringResource(R.string.action_rename)) { showRenameDialog = true; showActionSheet = false }; ActionChip(Icons.Default.ContentCopy, stringResource(R.string.action_copy)) { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }; ActionChip(Icons.AutoMirrored.Filled.DriveFileMove, stringResource(R.string.action_move)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false } }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Info, stringResource(R.string.action_info)) { try { (ctx as? android.app.Activity)?.let { org.fossify.commons.dialogs.PropertiesDialog(it, currentPath, false) } } catch (e: Exception) { ctx.toast(ctx.getString(R.string.info_error, e.message), android.widget.Toast.LENGTH_SHORT) }; showActionSheet = false }; ActionChip(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), MaterialTheme.colorScheme.error) { showActionSheet = false; deleteCurrent() }; ActionChip(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), if (isFavorite) FavoriteColor else MaterialTheme.colorScheme.onSurfaceVariant) { val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { repo.toggleFavorite(currentPath, f) }; showActionSheet = false }; ActionChip(Icons.Default.Star, stringResource(R.string.action_rate), if (showRatingOverlay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) { showRatingOverlay = !showRatingOverlay; ctx.config.viewerShowRatingBar = showRatingOverlay; showActionSheet = false } }
                 if (currentIsVideo) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.AspectRatio, stringResource(R.string.video_display)) { showVideoSettings = true; showActionSheet = false }; ActionChip(Icons.Default.PhotoCamera, stringResource(R.string.action_save_frame)) { scope.launch(Dispatchers.IO) { try { val r = android.media.MediaMetadataRetriever(); r.setDataSource(currentPath); val bmp = r.frameAtTime ?: return@launch; r.release(); val parentDir = File(currentPath).parentFile ?: ctx.cacheDir; val outFile = File(parentDir, "frame_${System.currentTimeMillis()}.jpg"); outFile.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }; bmp.recycle(); withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.frame_saved, outFile.name), android.widget.Toast.LENGTH_SHORT) } } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.error_generic, e.message), android.widget.Toast.LENGTH_SHORT) } } }; showActionSheet = false } } }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
@@ -625,6 +629,20 @@ fun ViewerScreen(
             isMoveOperation = pendingFolderPickerIsMove,
             sourcePaths = listOf(currentPath),
             onDismiss = { showFolderPicker = false },
+        )
+    }
+
+    if (showRenameDialog) {
+        val renamePath = currentPath
+        RenameDialog(
+            paths = listOf(renamePath),
+            onDismiss = { showRenameDialog = false },
+            onRenamed = { mapping ->
+                val newPath = mapping[renamePath] ?: return@RenameDialog
+                val idx = items.indexOf(renamePath)
+                if (idx >= 0) items[idx] = newPath
+                ctx.config.lastViewedPath = newPath
+            },
         )
     }
 

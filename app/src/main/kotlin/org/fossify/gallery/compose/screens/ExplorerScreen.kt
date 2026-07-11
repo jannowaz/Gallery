@@ -86,12 +86,19 @@ import org.fossify.gallery.compose.components.FolderTile
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.SelectionAppBar
 import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.compose.components.ConfirmDestructive
+import org.fossify.gallery.compose.components.RenameDialog
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.R
 import androidx.compose.ui.res.stringResource
 import org.fossify.commons.extensions.toast
-import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
+import org.fossify.gallery.helpers.UndoAction
+import org.fossify.gallery.helpers.UndoManager
+import org.fossify.gallery.helpers.UndoType
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
+import androidx.compose.material.icons.filled.Delete
 import java.io.File
 
 private data class ExplorerItem(
@@ -100,6 +107,9 @@ private data class ExplorerItem(
     val thumbnailPath: String = "",
     val mediaCount: Int = 0,
     val previewPaths: List<String> = emptyList(),
+    // date_sort_key (date_added-preferring) for file items, so the Explorer's DATE sort matches the
+    // Media tab's exactly. 0 for folders (they sort by their newest child's mtime instead).
+    val sortKey: Long = 0L,
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -133,7 +143,17 @@ fun ExplorerScreen(
     var isLoading by remember { mutableStateOf(true) }
     var selectedFolderPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     val hasFolderSelection = selectedFolderPaths.isNotEmpty()
-    LaunchedEffect(hasFolderSelection) { onSelectionActiveChanged(hasFolderSelection) }
+    // Mirrors selectedFolderPaths, but for the file grid below - previously that grid had no
+    // long-press/selection support at all (plain .clickable straight to the Viewer), unlike every
+    // other media grid in the app (MediaScreen/AlbumsScreen/FavoritesScreen). Kept mutually exclusive
+    // with folder selection (only one selection mode active at a time) to avoid an ambiguous top bar.
+    var selectedFilePaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val hasFileSelection = selectedFilePaths.isNotEmpty()
+    LaunchedEffect(hasFolderSelection, hasFileSelection) { onSelectionActiveChanged(hasFolderSelection || hasFileSelection) }
+    var showFileFolderPicker by remember { mutableStateOf(false) }
+    var fileFolderPickerIsMove by remember { mutableStateOf(false) }
+    var showFileDeleteConfirm by remember { mutableStateOf(false) }
+    var showFileRenameDialog by remember { mutableStateOf(false) }
     // Set once "Use as mover source" is tapped (can be several folders at once) - the destination
     // picker (search + Explorer browse, see FolderPathPickerSheet) then decides the pair(s)' shared
     // other half, and one FolderPair per source gets created against it.
@@ -155,6 +175,7 @@ fun ExplorerScreen(
         currentPath = navStack.lastOrNull() ?: internalStoragePath
     }
     BackHandler(enabled = hasFolderSelection) { selectedFolderPaths = emptySet() }
+    BackHandler(enabled = hasFileSelection) { selectedFilePaths = emptySet() }
 
     LaunchedEffect(internalStoragePath) {
         if (internalStoragePath != currentPath) {
@@ -205,29 +226,36 @@ fun ExplorerScreen(
             val entries = if (cache != null && root.startsWith(storageRoot))
                 cache.filter { it.path.startsWith("$root/") }
             else org.fossify.gallery.helpers.MediaStoreOps.mediaEntriesUnder(context, root)
-            val files = mutableListOf<ExplorerItem>()
-            class Agg { var thumb: String = ""; var lastModified: Long = 0L; var count: Int = 0; val previews: MutableList<String> = mutableListOf() }
+            // Subfolder tiles (structure + counts + thumbnails) are still derived from the MediaStore
+            // entry list - a recursive prefix walk that's fast there and cached; a DB-backed variant of
+            // this whole-subtree scan measured slower on a large library (see MediaStoreOps doc).
+            class Agg { var thumb: String = ""; var newestAdded: Long = -1L; var lastModified: Long = 0L; var count: Int = 0; val previews: MutableList<String> = mutableListOf() }
             val folderMap = LinkedHashMap<String, Agg>()
             for (e in entries) {
                 if (e.path in deletedPaths) continue
                 val rel = e.path.removePrefix("$root/")
                 val slash = rel.indexOf('/')
-                if (slash < 0) {
-                    val ext = e.name.substringAfterLast('.', "").lowercase()
-                    if (ext in MEDIA_EXTENSIONS) files.add(ExplorerItem(name = e.name, path = e.path, isDirectory = false, lastModified = e.modified, size = e.size))
-                } else {
-                    val seg = rel.substring(0, slash)
-                    val folderPath = "$root/$seg"
-                    if (folderPath in hidden) continue
-                    val agg = folderMap.getOrPut(folderPath) { Agg() }
-                    if (agg.thumb.isEmpty()) agg.thumb = e.path
-                    if (agg.previews.size < 4) agg.previews.add(e.path)
-                    agg.count++
-                    if (e.modified > agg.lastModified) agg.lastModified = e.modified
-                }
+                if (slash < 0) continue // direct files come from the DB below, not from here
+                val seg = rel.substring(0, slash)
+                val folderPath = "$root/$seg"
+                if (folderPath in hidden) continue
+                val agg = folderMap.getOrPut(folderPath) { Agg() }
+                // Folder thumbnail = the newest media in it (by date_added, the same "newest" the media
+                // lists sort by), not just the first one MediaStore happened to return.
+                if (e.dateAdded > agg.newestAdded) { agg.newestAdded = e.dateAdded; agg.thumb = e.path }
+                if (agg.previews.size < 4) agg.previews.add(e.path)
+                agg.count++
+                if (e.modified > agg.lastModified) agg.lastModified = e.modified
             }
             val folders = folderMap.map { (fp, agg) ->
                 ExplorerItem(name = fp.substringAfterLast('/'), path = fp, isDirectory = true, lastModified = agg.lastModified, thumbnailPath = if (folderSettings.showFolderThumbnails) agg.thumb else "", mediaCount = agg.count, previewPaths = agg.previews.toList())
+            }
+            // Direct media files of this folder come from the SAME `media` DB table the Media tab pages
+            // over (getMediaFromPath = WHERE deleted_ts = 0 AND parent_path = root, parent_path-indexed),
+            // carrying date_sort_key so the DATE sort below is identical to the Media tab's. This is what
+            // makes "same media, same order across tabs" hold for the actual media items.
+            val files = repo.getMediaFromPath(root).map {
+                ExplorerItem(name = it.name, path = it.path, isDirectory = false, lastModified = it.modified, size = it.size, sortKey = if (it.dateSortKey > 0) it.dateSortKey else if (it.taken > 0) it.taken else it.modified)
             }
             val sf = when (folderSettings.sortBy) {
                 SortField.NAME -> folders.sortedBy { it.name.lowercase() }
@@ -240,7 +268,7 @@ fun ExplorerScreen(
             // (see ViewSettingsSheet) - falls back to name here purely so this `when` stays exhaustive.
             val sfi = when (mediaSettings.sortBy) {
                 SortField.NAME -> files.sortedBy { it.name.lowercase() }
-                SortField.DATE -> files.sortedBy { it.lastModified }
+                SortField.DATE -> files.sortedBy { it.sortKey }
                 SortField.SIZE -> files.sortedBy { it.size }
                 SortField.RATING -> files.sortedBy { it.name.lowercase() }
                 SortField.COUNT -> files.sortedBy { it.name.lowercase() }
@@ -263,7 +291,7 @@ fun ExplorerScreen(
         isLoading = false
     }
 
-    LaunchedEffect(currentPath) { onPathChange(currentPath); selectedFolderPaths = emptySet() }
+    LaunchedEffect(currentPath) { onPathChange(currentPath); selectedFolderPaths = emptySet(); selectedFilePaths = emptySet() }
 
     Column(modifier = modifier.fillMaxSize()) {
         if (hasFolderSelection) {
@@ -294,6 +322,34 @@ fun ExplorerScreen(
                             // user needs to actually see before tapping (already-configured vs. new).
                             tint = if (allAlreadyMoverSources) MaterialTheme.colorScheme.error else LocalContentColor.current,
                         )
+                    }
+                },
+            )
+        } else if (hasFileSelection) {
+            SelectionAppBar(
+                count = selectedFilePaths.size,
+                onClose = { selectedFilePaths = emptySet() },
+                actions = {
+                    IconButton(onClick = { showFileRenameDialog = true }) {
+                        Icon(Icons.Default.DriveFileRenameOutline, stringResource(R.string.action_rename))
+                    }
+                    IconButton(onClick = { fileFolderPickerIsMove = false; showFileFolderPicker = true }) {
+                        Icon(Icons.Default.ContentCopy, stringResource(R.string.action_copy))
+                    }
+                    IconButton(onClick = { fileFolderPickerIsMove = true; showFileFolderPicker = true }) {
+                        Icon(Icons.AutoMirrored.Filled.DriveFileMove, stringResource(R.string.action_move))
+                    }
+                    IconButton(onClick = {
+                        if (context.config.skipDeleteConfirmation) {
+                            val d = selectedFilePaths
+                            scope.launch(Dispatchers.IO) { repo.moveToRecycleBinBatch(d) }
+                            UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE))
+                            selectedFilePaths = emptySet()
+                        } else {
+                            showFileDeleteConfirm = true
+                        }
+                    }) {
+                        Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete))
                     }
                 },
             )
@@ -355,8 +411,8 @@ fun ExplorerScreen(
                                 Row(Modifier.fillMaxWidth().padding(folderSettings.spacing.dp / 2)) {
                                     chunk.forEach { item ->
                                         Box(Modifier.weight(1f).padding(folderSettings.spacing.dp / 2).combinedClickable(
-                                            onClick = { if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); currentPath = item.path } },
-                                            onLongClick = { selectedFolderPaths = selectedFolderPaths + item.path }
+                                            onClick = { if (hasFileSelection) Unit else if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); currentPath = item.path } },
+                                            onLongClick = { if (!hasFileSelection) { selectedFilePaths = emptySet(); selectedFolderPaths = selectedFolderPaths + item.path } }
                                         )) {
                                             FolderTile(
                                                 name = item.name,
@@ -390,8 +446,8 @@ fun ExplorerScreen(
                         items(folderItems, key = { it.path }) { item ->
                             Card(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).combinedClickable(
-                                    onClick = { if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); currentPath = item.path } },
-                                    onLongClick = { selectedFolderPaths = selectedFolderPaths + item.path }
+                                    onClick = { if (hasFileSelection) Unit else if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); currentPath = item.path } },
+                                    onLongClick = { if (!hasFileSelection) { selectedFilePaths = emptySet(); selectedFolderPaths = selectedFolderPaths + item.path } }
                                 ),
                                 shape = RoundedCornerShape(Radius.md),
                                 colors = CardDefaults.cardColors(containerColor = if (item.path in selectedFolderPaths) MaterialTheme.colorScheme.primaryContainer else folderCardColor)
@@ -436,9 +492,14 @@ fun ExplorerScreen(
                                         val file = File(item.path)
                                         val isVideo = item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
                                         val mediaBg = when (mediaSettings.displayMode) { DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant else -> MaterialTheme.colorScheme.surface }
-                                        Box(Modifier.weight(1f).padding(mediaSettings.spacing.dp / 2).background(mediaBg, cornerShape).clickable {
-                                            onNavigateToViewer(fileItems.map { it.path }, fileItems.indexOfFirst { it.path == item.path }.coerceAtLeast(0))
-                                        }) {
+                                        Box(Modifier.weight(1f).padding(mediaSettings.spacing.dp / 2).background(mediaBg, cornerShape).combinedClickable(
+                                            onClick = {
+                                                if (hasFolderSelection) Unit
+                                                else if (hasFileSelection) selectedFilePaths = if (item.path in selectedFilePaths) selectedFilePaths - item.path else selectedFilePaths + item.path
+                                                else onNavigateToViewer(fileItems.map { it.path }, fileItems.indexOfFirst { it.path == item.path }.coerceAtLeast(0))
+                                            },
+                                            onLongClick = { if (!hasFolderSelection) { selectedFolderPaths = emptySet(); selectedFilePaths = selectedFilePaths + item.path } }
+                                        )) {
                                             Column {
                                                 Box(Modifier.aspectRatio(1f).clip(cornerShape)) {
                                                     if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop)
@@ -446,6 +507,20 @@ fun ExplorerScreen(
                                                 }
                                                 if (mediaSettings.showFileNames) {
                                                     Text(item.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                                                }
+                                            }
+                                            if (hasFileSelection) {
+                                                if (item.path in selectedFilePaths) {
+                                                    Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)))
+                                                }
+                                                Box(Modifier.align(Alignment.TopStart).padding(4.dp).size(24.dp), contentAlignment = Alignment.Center) {
+                                                    if (item.path in selectedFilePaths) {
+                                                        Box(Modifier.size(18.dp).background(Color.White, CircleShape))
+                                                        Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                                                    } else {
+                                                        Box(Modifier.matchParentSize().background(Scrim.a20, CircleShape))
+                                                        Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(22.dp))
+                                                    }
                                                 }
                                             }
                                         }
@@ -479,11 +554,30 @@ fun ExplorerScreen(
                                                 if (aspectCache[item.path] == null) aspectCache[item.path] = withContext(Dispatchers.IO) { decodeImageAspect(item.path) }
                                             }
                                             val ar = (if (isVideo) 1f else (aspectCache[item.path] ?: 1f)).coerceIn(0.3f, 3f)
-                                            Box(Modifier.padding(mediaSettings.spacing.dp / 2).aspectRatio(ar).clip(cornerShape).background(MaterialTheme.colorScheme.surfaceVariant, cornerShape).clickable {
-                                                onNavigateToViewer(fileItems.map { it.path }, fileItems.indexOfFirst { it.path == item.path }.coerceAtLeast(0))
-                                            }) {
+                                            Box(Modifier.padding(mediaSettings.spacing.dp / 2).aspectRatio(ar).clip(cornerShape).background(MaterialTheme.colorScheme.surfaceVariant, cornerShape).combinedClickable(
+                                                onClick = {
+                                                    if (hasFolderSelection) Unit
+                                                    else if (hasFileSelection) selectedFilePaths = if (item.path in selectedFilePaths) selectedFilePaths - item.path else selectedFilePaths + item.path
+                                                    else onNavigateToViewer(fileItems.map { it.path }, fileItems.indexOfFirst { it.path == item.path }.coerceAtLeast(0))
+                                                },
+                                                onLongClick = { if (!hasFolderSelection) { selectedFolderPaths = emptySet(); selectedFilePaths = selectedFilePaths + item.path } }
+                                            )) {
                                                 if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop)
                                                 else GalleryImage(path = item.path, contentDescription = item.name, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop, placeholderIconSize = 20.dp)
+                                                if (hasFileSelection) {
+                                                    if (item.path in selectedFilePaths) {
+                                                        Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)))
+                                                    }
+                                                    Box(Modifier.align(Alignment.TopStart).padding(4.dp).size(24.dp), contentAlignment = Alignment.Center) {
+                                                        if (item.path in selectedFilePaths) {
+                                                            Box(Modifier.size(18.dp).background(Color.White, CircleShape))
+                                                            Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                                                        } else {
+                                                            Box(Modifier.matchParentSize().background(Scrim.a20, CircleShape))
+                                                            Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(22.dp))
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -495,13 +589,32 @@ fun ExplorerScreen(
                         items(fileItems, key = { it.path }) { item ->
                             val file = File(item.path)
                                 val isVideo = item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
-                            Surface(Modifier.fillMaxWidth().clickable {
-                                onNavigateToViewer(fileItems.map { it.path }, fileItems.indexOfFirst { it.path == item.path }.coerceAtLeast(0))
-                            }, color = Color.Transparent) {
+                            Surface(
+                                Modifier.fillMaxWidth().combinedClickable(
+                                    onClick = {
+                                        if (hasFolderSelection) Unit
+                                        else if (hasFileSelection) selectedFilePaths = if (item.path in selectedFilePaths) selectedFilePaths - item.path else selectedFilePaths + item.path
+                                        else onNavigateToViewer(fileItems.map { it.path }, fileItems.indexOfFirst { it.path == item.path }.coerceAtLeast(0))
+                                    },
+                                    onLongClick = { if (!hasFolderSelection) { selectedFolderPaths = emptySet(); selectedFilePaths = selectedFilePaths + item.path } }
+                                ),
+                                color = if (item.path in selectedFilePaths) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                            ) {
                                 Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(40.dp).clip(RoundedCornerShape(Radius.sm))) {
                                         if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop)
                                         else GalleryImage(path = item.path, contentDescription = item.name, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop, placeholderIconSize = 16.dp)
+                                        if (hasFileSelection) {
+                                            Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                                                if (item.path in selectedFilePaths) {
+                                                    Box(Modifier.size(16.dp).background(Color.White, CircleShape))
+                                                    Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                                } else {
+                                                    Box(Modifier.matchParentSize().background(Scrim.a20))
+                                                    Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(18.dp))
+                                                }
+                                            }
+                                        }
                                     }
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
@@ -519,6 +632,40 @@ fun ExplorerScreen(
         }
         }
 
+    }
+
+    if (showFileFolderPicker) {
+        val batch = selectedFilePaths.toList()
+        FolderPickerSheet(
+            isMoveOperation = fileFolderPickerIsMove,
+            sourcePaths = batch,
+            onDismiss = { showFileFolderPicker = false; selectedFilePaths = emptySet() },
+        )
+    }
+    if (showFileRenameDialog) {
+        val batch = selectedFilePaths.toList()
+        RenameDialog(
+            paths = batch,
+            onDismiss = { showFileRenameDialog = false; selectedFilePaths = emptySet() },
+        )
+    }
+    if (showFileDeleteConfirm) {
+        val itemsCnt = selectedFilePaths.size
+        val itemsText = context.resources.getQuantityString(org.fossify.commons.R.plurals.delete_items, itemsCnt, itemsCnt)
+        val question = context.getString(if (context.config.useRecycleBin) org.fossify.commons.R.string.move_to_recycle_bin_confirmation else org.fossify.commons.R.string.deletion_confirmation, itemsText)
+        ConfirmDestructive(
+            title = stringResource(org.fossify.commons.R.string.delete),
+            text = question,
+            confirmLabel = stringResource(org.fossify.commons.R.string.delete),
+            onConfirm = {
+                showFileDeleteConfirm = false
+                val d = selectedFilePaths
+                scope.launch(Dispatchers.IO) { repo.moveToRecycleBinBatch(d) }
+                UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE))
+                selectedFilePaths = emptySet()
+            },
+            onDismiss = { showFileDeleteConfirm = false },
+        )
     }
 
     pendingMoverSources?.let { sources ->
