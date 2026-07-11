@@ -82,10 +82,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.compose.theme.Scrim
+import org.fossify.gallery.compose.util.BlurState
 import org.fossify.gallery.compose.util.ScrollToTopEffect
 import org.fossify.gallery.compose.util.decodeImageAspect
+import org.fossify.gallery.compose.util.privacyBlur
 import org.fossify.gallery.compose.util.sharedElementKey
 import org.fossify.gallery.compose.components.FolderTile
 import org.fossify.gallery.compose.components.EmptyState
@@ -556,7 +559,7 @@ fun ExplorerScreen(
                                                     else GalleryImage(path = item.path, contentDescription = item.name, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop, placeholderIconSize = 20.dp)
                                                 }
                                                 if (mediaSettings.showFileNames) {
-                                                    Text(item.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                                                    Text(item.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp).privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
                                                 }
                                             }
                                             if (hasFileSelection) {
@@ -668,7 +671,7 @@ fun ExplorerScreen(
                                     }
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
                                         Text(formatFileSize(item.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }

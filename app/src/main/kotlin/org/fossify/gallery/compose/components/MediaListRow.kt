@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,7 +35,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.screens.VideoThumbnail
+import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.theme.Radius
+import org.fossify.gallery.compose.util.BlurState
+import org.fossify.gallery.compose.util.privacyBlur
 import org.fossify.gallery.compose.util.selectableItem
 import org.fossify.gallery.compose.util.throttledBoundsReporting
 import org.fossify.gallery.models.Medium
@@ -74,12 +77,14 @@ fun MediaListRow(
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(medium.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // See MediaTile's identical fix - privacy blur previously only covered the thumbnail
+                // pixels, leaving the filename right next to it fully legible.
+                Text(medium.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
                 Text(fileSizeLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (hasSelection) {
                 IconButton(onClick = onPreview, modifier = Modifier.size(44.dp)) {
-                    Icon(Icons.Default.Visibility, stringResource(R.string.cd_preview), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                 }
             }
             if (isSelected) Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary)

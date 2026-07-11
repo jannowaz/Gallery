@@ -20,7 +20,7 @@ import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -48,9 +48,12 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.graphics.graphicsLayer
 import org.fossify.gallery.compose.screens.VideoThumbnail
 import org.fossify.gallery.compose.theme.AppMotion
+import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.theme.FavoriteColor
 import org.fossify.gallery.compose.theme.RatingStarColor
 import org.fossify.gallery.compose.theme.Scrim
+import org.fossify.gallery.compose.util.BlurState
+import org.fossify.gallery.compose.util.privacyBlur
 import org.fossify.gallery.compose.util.selectableItem
 import org.fossify.gallery.compose.util.sharedElementKey
 import org.fossify.gallery.compose.util.throttledBoundsReporting
@@ -213,12 +216,16 @@ fun MediaTile(
                         .clickable(onClick = onPreviewClick),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Default.Visibility, stringResource(R.string.cd_preview), tint = Color.White, modifier = Modifier.size(15.dp))
+                    Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = Color.White, modifier = Modifier.size(15.dp))
                 }
             }
         }
         if (showFileName) {
-            Text(medium.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            // Privacy blur only ever covered the thumbnail pixels (a real RenderEffect baked into
+            // the frame - see PrivacyBlur.kt) - the filename sitting right next to it stayed fully
+            // legible, defeating a fair amount of the point when "blur all media" is on to hide what
+            // a file actually shows.
+            Text(medium.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp).privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
         }
     }
 }
