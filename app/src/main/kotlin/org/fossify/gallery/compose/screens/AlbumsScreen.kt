@@ -71,8 +71,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.dialogs.PropertiesDialog
+import org.fossify.gallery.compose.components.ConfirmDestructive
+import org.fossify.gallery.compose.components.FolderRenameDialog
 import org.fossify.gallery.compose.components.FolderTile
 import org.fossify.gallery.compose.components.LibraryAlbumGrid
 import org.fossify.gallery.compose.components.AlbumGridItem
@@ -83,7 +86,16 @@ import org.fossify.gallery.extensions.config
 import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.R
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.helpers.UndoAction
+import org.fossify.gallery.helpers.UndoManager
+import org.fossify.gallery.helpers.UndoType
 import org.fossify.gallery.models.Directory
 import org.fossify.gallery.viewmodels.AlbumsViewModel
 import org.fossify.gallery.workers.MetadataSyncWorker
@@ -113,6 +125,9 @@ fun AlbumsScreen(
     // picker (search + Explorer browse, see FolderPathPickerSheet) then decides the pair(s)' shared
     // other half, and one FolderPair per source gets created against it.
     var pendingMoverSources by remember { mutableStateOf<List<String>?>(null) }
+    var renameFolderPath by remember { mutableStateOf<String?>(null) }
+    var showDeleteFoldersConfirm by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     // Re-read every time a selection session starts/ends (not just once for the whole tab visit,
     // and not left stale from the previous session) - mirrors FolderPathPickerSheet's own "already a
     // mover source" marker (same tertiary-tinted DriveFileMove icon), just applied to the selection
@@ -237,9 +252,60 @@ fun AlbumsScreen(
                         )
                         selectedPaths = emptySet()
                     }) { Icon(Icons.AutoMirrored.Filled.Label, stringResource(R.string.action_scan_metadata)) }
+                    // Rename/Delete tucked behind an overflow menu rather than appended as raw icons -
+                    // this row is already tight on a real phone with 5 icons (confirmed on-device
+                    // elsewhere in this app, see SelectionTopAppBar's own overflow precedent); a single
+                    // new MoreVert icon adds these two without risking the existing icons clipping off.
+                    var folderMenuOpen by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { folderMenuOpen = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions)) }
+                        DropdownMenu(expanded = folderMenuOpen, onDismissRequest = { folderMenuOpen = false }) {
+                            if (isSingle) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.action_rename)) },
+                                    leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, null) },
+                                    onClick = { folderMenuOpen = false; renameFolderPath = selectedPaths.first() },
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text(stringResource(org.fossify.commons.R.string.delete)) },
+                                leadingIcon = { Icon(Icons.Default.Delete, null) },
+                                onClick = { folderMenuOpen = false; showDeleteFoldersConfirm = true },
+                            )
+                        }
+                    }
                 },
             )
         }
+    }
+
+    renameFolderPath?.let { path ->
+        FolderRenameDialog(
+            folderPath = path,
+            onDismiss = { renameFolderPath = null },
+            onRenamed = { _, _ -> selectedPaths = emptySet() },
+        )
+    }
+
+    if (showDeleteFoldersConfirm) {
+        ConfirmDestructive(
+            title = stringResource(org.fossify.commons.R.string.delete),
+            text = stringResource(R.string.delete_folders_confirmation),
+            confirmLabel = stringResource(org.fossify.commons.R.string.delete),
+            onConfirm = {
+                showDeleteFoldersConfirm = false
+                val folders = selectedPaths
+                selectedPaths = emptySet()
+                scope.launch {
+                    val paths = withContext(Dispatchers.IO) { repo.mediaPathsUnderFolders(folders) }
+                    if (paths.isNotEmpty()) {
+                        repo.moveToRecycleBinBatch(paths)
+                        UndoManager.push(UndoAction(paths = paths.toSet(), type = UndoType.DELETE))
+                    }
+                }
+            },
+            onDismiss = { showDeleteFoldersConfirm = false },
+        )
     }
 
     pendingMoverSources?.let { sources ->

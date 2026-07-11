@@ -6,6 +6,7 @@ import android.provider.MediaStore
 import androidx.paging.PagingSource
 import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteQuery
+import org.fossify.commons.extensions.isAStorageRootFolder
 import org.fossify.gallery.compose.screens.SortField
 import org.fossify.gallery.databases.GalleryDatabase
 import org.fossify.gallery.extensions.collectionDB
@@ -651,6 +652,19 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             android.util.Log.e("MediaRepository", "moveToRecycleBin failed for $path", e)
         }
     }
+
+    /** Every active (non-deleted) media path found anywhere under any of [folderPaths] (recursive) -
+     * there's no dedicated "folder" entity to soft-delete, so deleting a folder means recursively
+     * soft-deleting every file inside it, same as picking every one of those files individually.
+     * Storage roots (internal storage / an SD card's or OTG's top level) are silently excluded - one
+     * can show up as a folder tile when it directly holds media, but "deleting" it would recursively
+     * soft-delete the user's entire library, not just a folder's contents. Matches the legacy Views
+     * folder screen's own `!isAStorageRootFolder(it)` filter on its batch delete (DirectoryAdapter.
+     * deleteFolders) - silent there too, since it's a multi-select batch op, not a single explicit
+     * target (unlike rename, which explicitly refuses+toasts for exactly this reason). */
+    fun mediaPathsUnderFolders(folderPaths: Collection<String>): List<String> =
+        folderPaths.filterNot { context.isAStorageRootFolder(it) }
+            .flatMap { MediaStoreOps.mediaEntriesUnder(context, it) }.map { it.path }.distinct()
 
     fun moveToRecycleBinBatch(paths: Collection<String>) {
         try {

@@ -410,6 +410,9 @@
     <string name="create_folder_title">Neuen Ordner erstellen</string>
     <string name="folder_name">Ordnername</string>
     <string name="create_folder_error">Fehler beim Erstellen</string>
+    <string name="rename_folder_invalid_name">Name darf kein "/" enthalten</string>
+    <string name="rename_folder_exists">Ein Ordner mit diesem Namen existiert bereits</string>
+    <string name="delete_folders_confirmation">Alle Medien in den ausgewählten Ordnern in den Papierkorb verschieben?</string>
     <string name="action_create">Erstellen</string>
     <string name="search_folders_hint">Ordner suchen… (z. B. „DCIM Kamera“)</string>
     <string name="files_count">%d Dateien</string>
