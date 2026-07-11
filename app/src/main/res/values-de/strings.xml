@@ -675,7 +675,7 @@
     <string name="mover_new_pair">Neues Paar</string>
     <string name="sort_folders_by">Ordner sortieren nach</string>
     <string name="sort_by_date_modified">Aktualisierungsdatum</string>
-    <string name="sort_by_item_count">Anzahl der Elemente</string>
+    <string name="sort_by_item_count">Anzahl</string>
     <string name="mover_source_marker">Bereits Mover-Quelle</string>
     <string name="mover_tap_to_pick">Zum Auswählen tippen</string>
     <string name="mover_create_dest_from_source">\'%1$s\' hier als Ziel anlegen</string>

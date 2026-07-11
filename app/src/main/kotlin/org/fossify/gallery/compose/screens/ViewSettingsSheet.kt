@@ -142,7 +142,7 @@ fun ViewSettingsSheet(
                         selected = local.sortBy == sf,
                         onClick = { local = local.copy(sortBy = sf); onSettingsChange(local) },
                         shape = SegmentedButtonDefaults.itemShape(i, sortFields.size)
-                    ) { Text(when(sf) { SortField.NAME -> stringResource(R.string.sort_name); SortField.DATE -> stringResource(R.string.sort_date); SortField.SIZE -> stringResource(R.string.sort_size); SortField.RATING -> stringResource(R.string.sort_rating); SortField.COUNT -> stringResource(R.string.sort_by_item_count) }) }
+                    ) { Text(when(sf) { SortField.NAME -> stringResource(R.string.sort_name); SortField.DATE -> stringResource(R.string.sort_date); SortField.SIZE -> stringResource(R.string.sort_size); SortField.RATING -> stringResource(R.string.sort_rating); SortField.COUNT -> stringResource(R.string.sort_by_item_count) }, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
                 }
             }
 
