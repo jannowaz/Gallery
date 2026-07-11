@@ -18,3 +18,4 @@ dependencyResolutionManagement {
 rootProject.name = "Gallery"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 include(":app")
+include(":baselineprofile")

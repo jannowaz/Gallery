@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.android)
     alias(libs.plugins.ksp)
     alias(libs.plugins.detekt)
+    alias(libs.plugins.baselineprofile)
     id("org.jetbrains.kotlin.plugin.compose") version "2.3.10"
     id("org.jetbrains.kotlin.plugin.serialization") version "2.3.10"
 }
@@ -213,4 +214,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
     implementation(libs.work.runtime.ktx)
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+    baselineProfile(project(":baselineprofile"))
 }
