@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -53,6 +54,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -91,6 +93,7 @@ import org.fossify.gallery.compose.components.SelectionAppBar
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.ConfirmDestructive
 import org.fossify.gallery.compose.components.FolderRenameDialog
+import org.fossify.gallery.compose.components.RateAndTagSheet
 import org.fossify.gallery.compose.components.RenameDialog
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.R
@@ -159,6 +162,18 @@ fun ExplorerScreen(
     var showFileDeleteConfirm by remember { mutableStateOf(false) }
     var showFileRenameDialog by remember { mutableStateOf(false) }
     var renameFolderPath by remember { mutableStateOf<String?>(null) }
+    // Rate/Tag state for the file selection toolbar - mirrors MediaViewModel's equivalent state
+    // (loadCommonTags/loadAllTags/setRatingFor/addTagFor/removeTagFor) but calls MediaRepository
+    // directly since Explorer has no MediaViewModel of its own.
+    var showFileRateTagSheet by remember { mutableStateOf(false) }
+    var fileCurrentRating by remember { mutableIntStateOf(0) }
+    var fileSelectedCommonTags by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var fileAllTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var fileTagCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    LaunchedEffect(selectedFilePaths) {
+        fileSelectedCommonTags = if (selectedFilePaths.isEmpty()) emptySet()
+        else withContext(Dispatchers.IO) { selectedFilePaths.map { repo.getTags(it) }.reduceOrNull { a, b -> a intersect b } ?: emptySet() }
+    }
     var showDeleteFoldersConfirm by remember { mutableStateOf(false) }
     // Set once "Use as mover source" is tapped (can be several folders at once) - the destination
     // picker (search + Explorer browse, see FolderPathPickerSheet) then decides the pair(s)' shared
@@ -359,6 +374,14 @@ fun ExplorerScreen(
                 actions = {
                     IconButton(onClick = { showFileRenameDialog = true }) {
                         Icon(Icons.Default.DriveFileRenameOutline, stringResource(R.string.action_rename))
+                    }
+                    // Single icon for both rating and tagging - opens the same combined sheet
+                    // MediaScreen's separate Rate/Tags buttons both lead to (RateAndTagSheet), so
+                    // collapsing them into one entry here loses nothing while keeping this toolbar
+                    // from growing past the 5-icon width that's already tight on a real device (see
+                    // the folder selection bars' own overflow-menu comment for the same concern).
+                    IconButton(onClick = { fileCurrentRating = 0; showFileRateTagSheet = true }) {
+                        Icon(Icons.Default.Star, stringResource(R.string.action_rate))
                     }
                     IconButton(onClick = { fileFolderPickerIsMove = false; showFileFolderPicker = true }) {
                         Icon(Icons.Default.ContentCopy, stringResource(R.string.action_copy))
@@ -674,6 +697,33 @@ fun ExplorerScreen(
         RenameDialog(
             paths = batch,
             onDismiss = { showFileRenameDialog = false; selectedFilePaths = emptySet() },
+        )
+    }
+    if (showFileRateTagSheet) {
+        val batch = selectedFilePaths.toList()
+        LaunchedEffect(Unit) {
+            withContext(Dispatchers.IO) {
+                val counts = repo.getTagCounts()
+                fileAllTags = counts.entries.sortedByDescending { it.value }.map { it.key }
+                fileTagCounts = counts
+            }
+        }
+        RateAndTagSheet(
+            batchCount = batch.size,
+            currentRating = fileCurrentRating,
+            onRate = { i ->
+                fileCurrentRating = i
+                scope.launch(Dispatchers.IO) {
+                    repo.setDbRatingBatch(batch, i)
+                    batch.forEach { repo.writeRatingXmp(it, i) }
+                }
+            },
+            initialTags = fileSelectedCommonTags,
+            onAddTag = { tag -> scope.launch(Dispatchers.IO) { batch.forEach { repo.addTag(it, tag) } } },
+            onRemoveTag = { tag -> scope.launch(Dispatchers.IO) { batch.forEach { repo.removeTag(it, tag) } } },
+            suggestedTags = fileAllTags,
+            suggestedTagCounts = fileTagCounts,
+            onDismiss = { showFileRateTagSheet = false },
         )
     }
     if (showFileDeleteConfirm) {
