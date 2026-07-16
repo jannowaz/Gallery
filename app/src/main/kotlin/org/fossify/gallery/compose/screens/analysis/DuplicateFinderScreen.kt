@@ -207,6 +207,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                             selected = state.selectedForDeletion,
                             onToggle = { vm.toggleSelection(it) },
                             onView = { path -> onNavigateToViewer(path) },
+                            onSelectFolder = { path -> vm.selectAllInFolder(path) },
                         )
                     }
                     item { Spacer(Modifier.height(80.dp)) }
@@ -244,6 +245,7 @@ private fun DuplicateGroupCard(
     selected: Set<String>,
     onToggle: (String) -> Unit,
     onView: (String) -> Unit,
+    onSelectFolder: (String) -> Unit,
 ) {
     // Hoisted once per card instead of allocating a new SimpleDateFormat (locale data lookup,
     // not free) per file, per recomposition, inside the forEachIndexed below.
@@ -311,6 +313,19 @@ private fun DuplicateGroupCard(
                             }
                         }
                     }
+                    // Extends the selection to every other found duplicate that shares this file's
+                    // folder - a folder holding one file the user wants gone usually holds the whole
+                    // batch of junk copies, not just this one. Additive (never deselects), so it can
+                    // be combined freely with manual per-file checkboxes across several folders.
+                    // EXACT mode only, same reasoning as "Mark older" above: in SIMILAR mode the
+                    // other files in that folder are merely perceptually similar, not verified
+                    // identical, so mass-selecting them by folder carries the same risk this app
+                    // already deliberately avoids for the other bulk-select action.
+                    if (!similar) {
+                        IconButton(onClick = { onSelectFolder(file.path) }, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.Default.FolderOpen, stringResource(R.string.select_folder_duplicates), tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
+                        }
+                    }
                     IconButton(onClick = { onView(file.path) }, modifier = Modifier.size(40.dp)) {
                         Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     }
@@ -321,12 +336,13 @@ private fun DuplicateGroupCard(
     }
 }
 
+@Composable
 private fun thresholdLabel(t: Int): String = when {
-    t <= 2 -> "fast identisch"
-    t <= 6 -> "streng"
-    t <= 10 -> "mittel"
-    t <= 14 -> "locker"
-    else -> "sehr locker"
+    t <= 2 -> stringResource(R.string.dup_threshold_almost_identical)
+    t <= 6 -> stringResource(R.string.dup_threshold_strict)
+    t <= 10 -> stringResource(R.string.dup_threshold_medium)
+    t <= 14 -> stringResource(R.string.dup_threshold_loose)
+    else -> stringResource(R.string.dup_threshold_very_loose)
 }
 
 private fun dupFormatBytes(bytes: Long): String = when {

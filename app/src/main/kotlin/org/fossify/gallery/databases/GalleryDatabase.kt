@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import org.fossify.gallery.interfaces.*
 import org.fossify.gallery.models.*
 
-@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class], version = 22)
+@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class, CompressionReviewItem::class], version = 23)
 abstract class GalleryDatabase : RoomDatabase() {
 
     abstract fun DirectoryDao(): DirectoryDao
@@ -29,6 +29,8 @@ abstract class GalleryDatabase : RoomDatabase() {
     abstract fun BatchJobItemDao(): BatchJobItemDao
 
     abstract fun MediaTagDao(): MediaTagDao
+
+    abstract fun CompressionReviewDao(): CompressionReviewDao
 
     companion object {
         private var db: GalleryDatabase? = null
@@ -84,6 +86,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                             .addMigrations(MIGRATION_19_20)
                             .addMigrations(MIGRATION_20_21)
                             .addMigrations(MIGRATION_21_22)
+                            .addMigrations(MIGRATION_22_23)
                             .fallbackToDestructiveMigrationFrom(1, 2, 3)
                             // Room only runs migrations when upgrading an *existing* database - a
                             // fresh install gets its schema (including date_sort_key and its index)
@@ -308,6 +311,15 @@ abstract class GalleryDatabase : RoomDatabase() {
         private val MIGRATION_21_22 = object : Migration(21, 22) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_is_favorite` ON `media` (`deleted_ts`, `is_favorite`)")
+            }
+        }
+
+        private val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `compression_review_items` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `job_id` TEXT NOT NULL, `original_path` TEXT NOT NULL, `temp_result_path` TEXT NOT NULL, `original_size` INTEGER NOT NULL, `result_size` INTEGER NOT NULL, `media_type` INTEGER NOT NULL, `status` TEXT NOT NULL, `error_message` TEXT, `created_at` INTEGER NOT NULL)"
+                )
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_compression_review_items_job_id` ON `compression_review_items` (`job_id`)")
             }
         }
     }

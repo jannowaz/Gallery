@@ -28,6 +28,8 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.compose.screens.SortField
+import org.fossify.gallery.helpers.GroupBy
+import org.fossify.gallery.helpers.GroupOrder
 import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.helpers.RefreshBus
 import org.fossify.gallery.models.Medium
@@ -52,8 +54,9 @@ data class MediaFilter(
     val excludePaths: Set<String>? = null,
     val minSize: Long = 0L,
     val dateRange: Int = 0, // 0: All, 1: Today, 2: 7d, 3: 30d, 4: 1y
+    val typeFilter: Int = 0, // 0: All, 1: Image, 2: Video - matches Medium.type
 ) {
-    val isActive: Boolean get() = rating > 0 || tagNames != null || pathFilter != null || excludePaths != null || minSize > 0 || dateRange > 0
+    val isActive: Boolean get() = rating > 0 || tagNames != null || pathFilter != null || excludePaths != null || minSize > 0 || dateRange > 0 || typeFilter > 0
 }
 
 data class MediaUiState(
@@ -61,6 +64,9 @@ data class MediaUiState(
     /** Filtered + sorted media ready to render. The screen reads this; it never filters/sorts itself. */
     val displayMedia: List<Medium> = emptyList(),
     val monthGroups: List<MonthGroup> = emptyList(),
+    /** Path -> tags, populated only while [MediaViewModel.groupBy] is [GroupBy.TAG] (an override-only
+     * batch fetch - the unbounded paged tab never groups by tag, see MediaGrouping.kt). */
+    val tagsByPath: Map<String, List<String>> = emptyMap(),
     val filter: MediaFilter = MediaFilter(),
     val taggedPaths: Set<String> = emptySet(),
     val aspectRatios: Map<String, Float> = emptyMap(),
@@ -82,6 +88,8 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private var loaded = false
     private var sortField = SortField.DATE
     private var sortDesc = true
+    private var groupBy = GroupBy.NONE
+    private var groupOrder = GroupOrder.ALPHABETICAL
 
     // Cache for activePathsSorted() below - the underlying query (MediumDao.getActivePathsByDate,
     // the default sort) has no way to avoid a full-table sort on a real library (its ORDER BY key is
@@ -178,6 +186,16 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         prefetchFilteredPathsAsync()
     }
 
+    /** Only meaningful for the override path (Favorites, a drilled-into folder) - the unbounded
+     * paged tab keeps its own fixed month grouping (see MediaScreen's PagedRow), so this is never
+     * gated behind `mediaOverride == null` the way [setSort] is. */
+    fun setGroupSettings(groupBy: GroupBy, groupOrder: GroupOrder) {
+        if (groupBy == this.groupBy && groupOrder == this.groupOrder) return
+        this.groupBy = groupBy
+        this.groupOrder = groupOrder
+        recompute()
+    }
+
     // The DB query itself (`getActivePathsSorted`) is fast (index-backed, no full sort) but reading
     // and marshaling ~200k full_path Strings out of the cursor still costs real time on-device
     // (measured 1-3.7s on a 202k-item real library, all cursor/JNI overhead - not the query plan).
@@ -207,8 +225,8 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     /** Updates the active DB-pushed filter. `pagedMedia` observes [filterFlow] and reissues a fresh
      * Pager against [MediaRepository.getMediaPagedFiltered] - Paging3 + Room's InvalidationTracker
      * handle incremental loading and staleness from there, same as the unfiltered path. */
-    fun setFilter(rating: Int, tagNames: Set<String>?, pathFilter: Set<String>?, excludePaths: Set<String>? = null, minSize: Long = 0, dateRange: Int = 0) {
-        val next = MediaFilter(rating, tagNames, pathFilter, excludePaths, minSize, dateRange)
+    fun setFilter(rating: Int, tagNames: Set<String>?, pathFilter: Set<String>?, excludePaths: Set<String>? = null, minSize: Long = 0, dateRange: Int = 0, typeFilter: Int = 0) {
+        val next = MediaFilter(rating, tagNames, pathFilter, excludePaths, minSize, dateRange, typeFilter)
         if (next == filterFlow.value) return
         filterFlow.value = next
         _state.update { it.copy(filter = next) }
@@ -220,7 +238,8 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val display = withContext(Dispatchers.Default) { applySort(ov) }
             val groups = withContext(Dispatchers.Default) { groupByMonth(display) }
-            _state.update { it.copy(displayMedia = display, monthGroups = groups) }
+            val tags = if (groupBy == GroupBy.TAG) repository.getTagsForPaths(display.map { it.path }) else emptyMap()
+            _state.update { it.copy(displayMedia = display, monthGroups = groups, tagsByPath = tags) }
         }
     }
 
@@ -433,8 +452,12 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     fun deletePaths(paths: Set<String>) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                paths.forEach { p -> repository.deleteMedium(p) }
-                _state.update { s -> s.copy(allMedia = s.allMedia.filter { it.path !in paths }) }
+                // Only paths that actually got deleted are dropped from local state - deleteMedium
+                // now leaves a path's row alone (and returns false) when the underlying file removal
+                // itself failed, so treating every requested path as gone here would silently make a
+                // still-present file disappear from the grid.
+                val deleted = paths.filterTo(mutableSetOf()) { p -> repository.deleteMedium(p) }
+                _state.update { s -> s.copy(allMedia = s.allMedia.filter { it.path !in deleted }) }
                 recompute()
                 // activePathsSorted()/activePathsSortedFiltered() cache the full swipe-through path list
                 // keyed only on sort/filter, not on data version - without this, a delete leaves that

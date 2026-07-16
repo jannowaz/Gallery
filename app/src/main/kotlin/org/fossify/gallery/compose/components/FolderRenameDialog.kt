@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -31,6 +32,7 @@ import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.isAStorageRootFolder
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
+import org.fossify.gallery.extensions.batchJobItemDB
 import org.fossify.gallery.helpers.MediaStoreOps
 import org.fossify.gallery.models.BatchJobItem
 import org.fossify.gallery.workers.BatchOperation
@@ -67,6 +69,7 @@ fun FolderRenameDialog(folderPath: String, onDismiss: () -> Unit, onRenamed: (ol
 
     var jobId by remember { mutableStateOf<String?>(null) }
     var plannedNewPath by remember { mutableStateOf("") }
+    var plannedTotal by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         if (ctx.isAStorageRootFolder(folderPath)) {
@@ -84,10 +87,17 @@ fun FolderRenameDialog(folderPath: String, onDismiss: () -> Unit, onRenamed: (ol
 
     LaunchedEffect(activeWorkInfo?.state, jobId) {
         val info = activeWorkInfo ?: return@LaunchedEffect
+        val id = jobId ?: return@LaunchedEffect
         if (info.state.isFinished) {
             // Fires even on partial failure (some files could be locked/gone) - matches
             // MediaBatchWorker's own tolerance for individual item failures elsewhere in the app;
-            // the folder is treated as renamed to wherever the bulk of its contents landed.
+            // the folder is treated as renamed to wherever the bulk of its contents landed. The
+            // failure count itself used to only ever reach the background system notification -
+            // easy to miss for an in-app action - so it's surfaced here too now.
+            val failedCount = withContext(Dispatchers.IO) { ctx.batchJobItemDB.getForJob(id).size }
+            if (failedCount > 0) {
+                ctx.toast(ctx.getString(R.string.notif_batch_done_with_failures, plannedTotal - failedCount, failedCount))
+            }
             onRenamed(folderPath, plannedNewPath)
             onDismiss()
         }
@@ -112,6 +122,7 @@ fun FolderRenameDialog(folderPath: String, onDismiss: () -> Unit, onRenamed: (ol
             } catch (_: Exception) { false }
             if (!granted) { ctx.toast(ctx.getString(R.string.cancelled)); onDismiss(); return@launch }
             plannedNewPath = newPath
+            plannedTotal = items.size
             jobId = MediaBatchWorker.enqueue(ctx, BatchOperation.MOVE_FAST, items)
         }
     }

@@ -39,4 +39,7 @@ interface MediaTagDao {
 
     @Query("SELECT tag, media_path FROM media_tags")
     suspend fun getAllTagPathPairs(): List<TagPathRow>
+
+    @Query("SELECT tag, media_path FROM media_tags WHERE media_path IN (:paths)")
+    suspend fun getTagsForPaths(paths: List<String>): List<TagPathRow>
 }

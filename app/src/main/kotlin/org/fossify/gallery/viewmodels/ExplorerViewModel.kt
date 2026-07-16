@@ -15,6 +15,7 @@ import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.RefreshBus
+import org.fossify.gallery.helpers.expandTagsWithDescendants
 import org.fossify.gallery.models.Directory
 import org.fossify.gallery.models.Medium
 import java.io.File
@@ -26,10 +27,21 @@ data class ExplorerUiState(
     /** Tag *names* (hierarchy-expanded), resolved to matching files in SQL - see [org.fossify.gallery.viewmodels.MediaFilter]. */
     val activeTagFilter: Set<String>? = null,
     val activeTagName: String? = null,
+    /** Raw (unexpanded) tag names backing the multi-select filter UI (search panel + FilterSheetContent) -
+     * kept separate from [activeTagFilter] (the hierarchy-expanded set actually used for SQL matching)
+     * so toggling one tag chip doesn't need to know which other tags' descendants are already included. */
+    val activeTagFilterRaw: Set<String> = emptySet(),
     val activePathFilter: Set<String>? = null,
     val activeExcludePathFilter: Set<String>? = null,
+    val activeMinSizeFilter: Long = 0L,
+    val activeDateRangeFilter: Int = 0,
+    val activeTypeFilter: Int = 0, // 0: All, 1: Image, 2: Video - matches Medium.type
     val activePathName: String? = null,
     val activeCollectionName: String? = null,
+    /** Separate from [activePathName] (which is search's query text) - the label for a folder-scoped
+     * pathFilter set via "In Medien öffnen" (Explorer's recursive open-folder-in-Media action), same
+     * "distinct label per filter source" pattern as [activeCollectionName]. */
+    val activeFolderFilterName: String? = null,
     val mediaRefreshTrigger: Int = 0,
     val preFilterTab: Int = -1,
     val dbInitialized: Boolean = false,
@@ -37,6 +49,30 @@ data class ExplorerUiState(
     val gridScrollIndex: Int = 0,
     val gridScrollOffset: Int = 0,
     val lastViewedPath: String = "",
+)
+
+val ExplorerUiState.hasActiveFilter: Boolean
+    get() = activeRatingFilter > 0 || activeTagFilter != null || activePathFilter != null ||
+        activeMinSizeFilter > 0 || activeDateRangeFilter > 0 || activeTypeFilter > 0
+
+/** Pure state transition backing [ExplorerViewModel.toggleTagFilter] - kept free of any Android/
+ * ViewModel dependency (besides the already-pure [expandTagsWithDescendants]) so it's directly
+ * unit-testable without instantiating the ViewModel. */
+fun ExplorerUiState.withTagToggled(tag: String, tagHierarchy: Map<String, String>): ExplorerUiState {
+    val next = if (tag in activeTagFilterRaw) activeTagFilterRaw - tag else activeTagFilterRaw + tag
+    return if (next.isEmpty()) {
+        copy(activeTagFilter = null, activeTagFilterRaw = emptySet(), activeTagName = null)
+    } else {
+        copy(activeTagFilter = expandTagsWithDescendants(next, tagHierarchy), activeTagFilterRaw = next, activeTagName = next.joinToString(", "))
+    }
+}
+
+/** Pure state transition backing [ExplorerViewModel.clearFilters] - see [withTagToggled] on why this
+ * is kept separate from the ViewModel. */
+fun ExplorerUiState.withFiltersCleared(): ExplorerUiState = copy(
+    activeRatingFilter = 0, activeTagFilter = null, activeTagName = null, activeTagFilterRaw = emptySet(),
+    activePathFilter = null, activeExcludePathFilter = null, activeMinSizeFilter = 0L, activeDateRangeFilter = 0,
+    activeTypeFilter = 0, activePathName = null, activeCollectionName = null, activeFolderFilterName = null, preFilterTab = -1,
 )
 
 class ExplorerViewModel(application: Application) : AndroidViewModel(application) {
@@ -64,11 +100,22 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
     fun setTagFilter(tagNames: Set<String>?, tagName: String?) { _state.update { it.copy(activeTagFilter = tagNames, activeTagName = tagName) } }
     fun setPathFilter(paths: Set<String>?, name: String? = null) { _state.update { it.copy(activePathFilter = paths, activePathName = name) } }
     fun setExcludePathFilter(paths: Set<String>?) { _state.update { it.copy(activeExcludePathFilter = paths) } }
+    fun setMinSizeFilter(bytes: Long) { _state.update { it.copy(activeMinSizeFilter = bytes) } }
+    fun setDateRangeFilter(range: Int) { _state.update { it.copy(activeDateRangeFilter = range) } }
+    fun setTypeFilter(type: Int) { _state.update { it.copy(activeTypeFilter = type) } }
     fun setCollectionName(name: String?) { _state.update { it.copy(activeCollectionName = name) } }
+    fun setFolderFilterName(name: String?) { _state.update { it.copy(activeFolderFilterName = name) } }
     fun setPreFilterTab(tab: Int) { _state.update { it.copy(preFilterTab = tab) } }
 
+    /** Toggles [tag] in the raw multi-select tag set shared by the persistent Filter sheet and the
+     * search panel's own tag chips, re-deriving the hierarchy-expanded [ExplorerUiState.activeTagFilter]
+     * (used for SQL matching) and the joined display label from the updated raw set. */
+    fun toggleTagFilter(tag: String) {
+        _state.update { it.withTagToggled(tag, getApplication<Application>().config.tagHierarchy) }
+    }
+
     fun clearFilters() {
-        _state.update { it.copy(activeRatingFilter = 0, activeTagFilter = null, activeTagName = null, activePathFilter = null, activeExcludePathFilter = null, activePathName = null, activeCollectionName = null, preFilterTab = -1) }
+        _state.update { it.withFiltersCleared() }
     }
 
     fun triggerMediaRefresh() {

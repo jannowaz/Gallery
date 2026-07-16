@@ -38,6 +38,7 @@ import org.fossify.gallery.compose.screens.about.AboutScreen
 import org.fossify.gallery.compose.screens.tagbrowser.TagBrowserScreen
 import org.fossify.gallery.compose.screens.analysis.StorageAnalysisScreen
 import org.fossify.gallery.compose.screens.analysis.DuplicateFinderScreen
+import org.fossify.gallery.compose.screens.analysis.CompressionReviewScreen
 import org.fossify.gallery.compose.screens.RecycleBinScreen
 import org.fossify.gallery.compose.screens.FoldersMoverScreen
 import org.fossify.gallery.compose.screens.viewer.ViewerScreen
@@ -76,6 +77,21 @@ fun GalleryNavHost(
         UndoManager.registerHandler(UndoType.TAG_ADD) { action -> action.paths.forEach { repo.removeTag(it, action.extra["tag"] ?: "") } }
         UndoManager.registerHandler(UndoType.TAG_REMOVE) { action -> action.paths.forEach { repo.addTag(it, action.extra["tag"] ?: "") } }
         UndoManager.registerHandler(UndoType.RATING_CHANGE) { action -> action.paths.forEach { repo.updateRating(it, action.extra["oldRating"]?.toIntOrNull() ?: 0) }; org.fossify.gallery.helpers.RefreshBus.trigger() }
+        // action.extra maps each moved file's CURRENT path (= action.paths, where it is now) back to
+        // where it came from - see MediaBatchWorker's movedPairs. Moving it back is a real file
+        // operation (unlike DELETE's undo, which is just flipping deleted_ts), so this re-enqueues the
+        // same worker/operation the original move used, in reverse, rather than duplicating its
+        // file-move logic here. No consent request first: this app requires MANAGE_EXTERNAL_STORAGE
+        // (see MoverWidgetProvider, which enqueues the same way), and a file this app just moved
+        // moments ago is already its own to move back.
+        UndoManager.registerHandler(UndoType.MOVE) { action ->
+            val items = action.extra.map { (currentPath, originalPath) ->
+                org.fossify.gallery.models.BatchJobItem(jobId = "", sourcePath = currentPath, targetPath = originalPath)
+            }
+            if (items.isNotEmpty()) {
+                org.fossify.gallery.workers.MediaBatchWorker.enqueue(ctx, org.fossify.gallery.workers.BatchOperation.MOVE_COPY_DELETE, items)
+            }
+        }
     }
 
     // The Quick Mover widget's "set up folder pairs" button (shown when no pairs are configured
@@ -208,6 +224,7 @@ fun GalleryNavHost(
                         StorageAnalysisScreen(
                             onBack = { navController.popBackStack() },
                             onNavigateToViewer = { path -> ViewerArgs.paths = listOf(path); navController.navigate(Viewer(0)) },
+                            onNavigateToCompressionReview = { navController.navigate(CompressionReview) },
                         )
                         }
                     }
@@ -220,6 +237,9 @@ fun GalleryNavHost(
                             onNavigateToViewer = { path -> ViewerArgs.paths = listOf(path); navController.navigate(Viewer(0)) },
                         )
                         }
+                    }
+                    composable<CompressionReview> {
+                        CompressionReviewScreen(onBack = { navController.popBackStack() })
                     }
                     composable<FoldersMover> {
                         FoldersMoverScreen(onBack = { navController.popBackStack() })

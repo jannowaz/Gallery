@@ -44,6 +44,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -210,6 +211,18 @@ fun ViewerScreen(
         }
     }
     LaunchedEffect(showGestureHint) { if (showGestureHint) { delay(3000); dismissGestureHint() } }
+    // The video-only left/right brightness/volume drag zones have no visual affordance either -
+    // shown once, the first time a video is opened with gestures enabled (independent of the
+    // generic up/down hint above, which may already have been dismissed on a photo).
+    var showVideoGestureHint by remember { mutableStateOf(!ctx.config.hasSeenVideoGestureZonesHint) }
+    fun dismissVideoGestureHint() {
+        if (showVideoGestureHint) {
+            showVideoGestureHint = false
+            ctx.config.hasSeenVideoGestureZonesHint = true
+        }
+    }
+    val showVideoGestureHintNow = showVideoGestureHint && currentIsVideo && ctx.config.allowVideoGestures
+    LaunchedEffect(showVideoGestureHintNow) { if (showVideoGestureHintNow) { delay(3000); dismissVideoGestureHint() } }
     LaunchedEffect(pagerState.currentPage) {
         isCurrentZoomed = false
         withContext(Dispatchers.IO) {
@@ -339,6 +352,7 @@ fun ViewerScreen(
                         detectVerticalDragGestures(
                             onDragStart = { offset ->
                                 dismissGestureHint()
+                                dismissVideoGestureHint()
                                 dragMode = if (currentIsVideo && ctx.config.allowVideoGestures) {
                                     when {
                                         offset.x < size.width / 3f -> 1
@@ -498,6 +512,35 @@ fun ViewerScreen(
             }
         }
 
+        // One-time hint for the invisible video-only left/right drag zones (brightness/volume) -
+        // otherwise a tap near either edge can silently dim the screen or change volume with no
+        // explanation. Independent of the swipe up/down hint above.
+        AnimatedVisibility(
+            visible = showVideoGestureHintNow,
+            enter = fadeIn(AppMotion.medium),
+            exit = fadeOut(AppMotion.medium),
+            // Offset below center so it doesn't overlap the swipe up/down hint above on the rare
+            // first-ever-video-open case where both are shown at once.
+            modifier = Modifier.align(Alignment.Center).offset(y = 100.dp).padding(horizontal = 24.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(shape = RoundedCornerShape(Radius.lg), color = Scrim.a60) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Icon(Icons.Default.BrightnessMedium, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.height(4.dp))
+                        Text(stringResource(R.string.viewer_gesture_hint_brightness), color = Color.White, style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
+                }
+                Surface(shape = RoundedCornerShape(Radius.lg), color = Scrim.a60) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Icon(Icons.Default.VolumeUp, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.height(4.dp))
+                        Text(stringResource(R.string.viewer_gesture_hint_volume), color = Color.White, style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
+                }
+            }
+        }
+
         // Soft bottom scrim for control legibility, anchored to the screen bottom so it never floats
         // with a hard edge even when the controls are lifted above the video seek bar.
         AnimatedVisibility(
@@ -522,7 +565,7 @@ fun ViewerScreen(
                     Surface(shape = RoundedCornerShape(Radius.xl), color = Scrim.a32) {
                         Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 6.dp)) {
                             for (i in 1..5) {
-                                IconButton(onClick = { haptic(HapticFeedbackType.Confirm); uiInteractionTick++; val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) {
+                                IconButton(onClick = { haptic(HapticFeedbackType.Confirm); uiInteractionTick++; val path = currentPath; val prev = currentRating; val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { val ok = repo.updateRating(path, r); if (!ok) withContext(Dispatchers.Main) { if (currentPath == path) currentRating = prev } } }, modifier = Modifier.size(40.dp)) {
                                     Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))
                                 }
                             }
@@ -545,7 +588,8 @@ fun ViewerScreen(
                         }) { Icon(Icons.Default.Share, stringResource(R.string.action_share), tint = Color.White) }
                         IconButton(onClick = {
                             uiInteractionTick++
-                            val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { repo.toggleFavorite(currentPath, f) }
+                            val path = currentPath; val f = !isFavorite; isFavorite = f
+                            scope.launch(Dispatchers.IO) { val ok = repo.toggleFavorite(path, f); if (!ok) withContext(Dispatchers.Main) { if (currentPath == path) isFavorite = !f } }
                         }) { Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), tint = if (isFavorite) FavoriteColor else Color.White) }
                         if (!currentIsVideo) {
                             IconButton(onClick = { uiInteractionTick++; (ctx as? android.app.Activity)?.openEditor(currentPath) }) { Icon(Icons.Default.Edit, stringResource(R.string.edit), tint = Color.White) }
@@ -599,11 +643,11 @@ fun ViewerScreen(
                 if (exifLines.isNotEmpty()) { Spacer(Modifier.height(2.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) { exifLines.take(8).forEach { (label, value) -> Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface); Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } } }
                 Spacer(Modifier.height(12.dp))
                 SheetSectionLabel(stringResource(R.string.rating_title))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { for (i in 1..5) { IconButton(onClick = { haptic(HapticFeedbackType.Confirm); val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { repo.updateRating(currentPath, r) } }, modifier = Modifier.size(40.dp)) { Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f), modifier = Modifier.size(28.dp)) } } }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { for (i in 1..5) { IconButton(onClick = { haptic(HapticFeedbackType.Confirm); val path = currentPath; val prev = currentRating; val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { val ok = repo.updateRating(path, r); if (!ok) withContext(Dispatchers.Main) { if (currentPath == path) currentRating = prev } } }, modifier = Modifier.size(40.dp)) { Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f), modifier = Modifier.size(28.dp)) } } }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 SheetSectionLabel(stringResource(R.string.video_actions))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Share, stringResource(R.string.action_share)) { val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath)); ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, ctx.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); showActionSheet = false }; ActionChip(Icons.Default.Edit, stringResource(R.string.edit)) { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }; ActionChip(Icons.Default.DriveFileRenameOutline, stringResource(R.string.action_rename)) { showRenameDialog = true; showActionSheet = false }; ActionChip(Icons.Default.ContentCopy, stringResource(R.string.action_copy)) { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }; ActionChip(Icons.AutoMirrored.Filled.DriveFileMove, stringResource(R.string.action_move)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false } }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Info, stringResource(R.string.action_info)) { try { (ctx as? android.app.Activity)?.let { org.fossify.commons.dialogs.PropertiesDialog(it, currentPath, false) } } catch (e: Exception) { ctx.toast(ctx.getString(R.string.info_error, e.message), android.widget.Toast.LENGTH_SHORT) }; showActionSheet = false }; ActionChip(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), MaterialTheme.colorScheme.error) { showActionSheet = false; deleteCurrent() }; ActionChip(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), if (isFavorite) FavoriteColor else MaterialTheme.colorScheme.onSurfaceVariant) { val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { repo.toggleFavorite(currentPath, f) }; showActionSheet = false }; ActionChip(Icons.Default.Star, stringResource(R.string.action_rate), if (showRatingOverlay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) { showRatingOverlay = !showRatingOverlay; ctx.config.viewerShowRatingBar = showRatingOverlay; showActionSheet = false } }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Info, stringResource(R.string.action_info)) { try { (ctx as? android.app.Activity)?.let { org.fossify.commons.dialogs.PropertiesDialog(it, currentPath, false) } } catch (e: Exception) { ctx.toast(ctx.getString(R.string.info_error, e.message), android.widget.Toast.LENGTH_SHORT) }; showActionSheet = false }; ActionChip(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), MaterialTheme.colorScheme.error) { showActionSheet = false; deleteCurrent() }; ActionChip(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), if (isFavorite) FavoriteColor else MaterialTheme.colorScheme.onSurfaceVariant) { val path = currentPath; val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { val ok = repo.toggleFavorite(path, f); if (!ok) withContext(Dispatchers.Main) { if (currentPath == path) isFavorite = !f } }; showActionSheet = false }; ActionChip(Icons.Default.Star, stringResource(R.string.action_rate), if (showRatingOverlay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) { showRatingOverlay = !showRatingOverlay; ctx.config.viewerShowRatingBar = showRatingOverlay; showActionSheet = false } }
                 if (currentIsVideo) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.AspectRatio, stringResource(R.string.video_display)) { showVideoSettings = true; showActionSheet = false }; ActionChip(Icons.Default.PhotoCamera, stringResource(R.string.action_save_frame)) { scope.launch(Dispatchers.IO) { try { val r = android.media.MediaMetadataRetriever(); r.setDataSource(currentPath); val bmp = r.frameAtTime ?: return@launch; r.release(); val parentDir = File(currentPath).parentFile ?: ctx.cacheDir; val outFile = File(parentDir, "frame_${System.currentTimeMillis()}.jpg"); outFile.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }; bmp.recycle(); withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.frame_saved, outFile.name), android.widget.Toast.LENGTH_SHORT) } } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.error_generic, e.message), android.widget.Toast.LENGTH_SHORT) } } }; showActionSheet = false } } }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 SheetSectionLabel(stringResource(R.string.action_tags))

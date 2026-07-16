@@ -101,6 +101,25 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Adds every other duplicate-group file that lives in the same folder as [path] to the
+     * selection (on top of whatever's already selected, and marking [path] itself too if it
+     * wasn't already) - a folder holding one file the user wants gone usually holds the whole
+     * batch of "junk" copies they're trying to clear out, not just that single one. Scoped to
+     * files the scan actually flagged as duplicates (any group), not the folder's contents at
+     * large - "other found entries", not "everything in this folder". */
+    fun selectAllInFolder(path: String) {
+        val folder = File(path).parent ?: return
+        _state.update { s ->
+            // Same EXACT-only guard as selectAllButNewest, enforced here too (not just in the
+            // Screen's icon visibility) so this can never mass-select SIMILAR-mode files - those
+            // are only perceptually similar, not verified identical, regardless of which UI ends
+            // up calling this.
+            if (s.mode != DuplicateMode.EXACT) return@update s
+            val sameFolderPaths = s.groups.asSequence().flatMap { it.files }.filter { File(it.path).parent == folder }.map { it.path }
+            s.copy(selectedForDeletion = s.selectedForDeletion + sameFolderPaths)
+        }
+    }
+
     fun clearSelection() { _state.update { it.copy(selectedForDeletion = emptySet()) } }
 
     fun deleteSelected() {

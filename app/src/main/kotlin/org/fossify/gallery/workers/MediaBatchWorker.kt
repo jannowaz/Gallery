@@ -95,6 +95,13 @@ class MediaBatchWorker(
             var failed = 0
             var lastNotify = 0L
             val succeededPaths = mutableListOf<String>()
+            // sourcePath -> targetPath for every item that actually succeeded - the only thing that
+            // makes Move undoable (RENAME/DELETE/etc don't need this, so it's built only when
+            // relevant below). A flat Set<String> alone can't drive an undo: by the time Undo is
+            // tapped, the file no longer lives at its old path, so the SET of old paths on its own
+            // is useless for moving anything back - each one needs to be paired with where it
+            // actually ended up.
+            val movedPairs = mutableMapOf<String, String>()
             setProgress(androidx.work.workDataOf("done" to 0, "total" to total))
 
             for (item in items) {
@@ -103,6 +110,9 @@ class MediaBatchWorker(
                 if (success) {
                     withContext(Dispatchers.IO) { applicationContext.batchJobItemDB.deleteItem(item.id ?: 0L) }
                     succeededPaths.add(item.sourcePath)
+                    if (operation == BatchOperation.MOVE_FAST || operation == BatchOperation.MOVE_COPY_DELETE) {
+                        movedPairs[item.targetPath] = item.sourcePath
+                    }
                     done++
                 } else {
                     failed++
@@ -116,8 +126,11 @@ class MediaBatchWorker(
             }
             setProgress(androidx.work.workDataOf("done" to (done + failed), "total" to total))
 
-            if (succeededPaths.isNotEmpty() && (operation == BatchOperation.MOVE_FAST || operation == BatchOperation.MOVE_COPY_DELETE)) {
-                UndoManager.push(UndoAction(paths = succeededPaths.toSet(), type = UndoType.MOVE))
+            if (movedPairs.isNotEmpty()) {
+                // paths = the files' CURRENT (post-move) locations - what the undo bar's count/label
+                // actually refers to. extra maps each of those back to where it came from, which is
+                // what the UndoType.MOVE handler (see GalleryNavHost) needs to move them back.
+                UndoManager.push(UndoAction(paths = movedPairs.keys, type = UndoType.MOVE, extra = movedPairs))
             }
             RefreshBus.trigger()
             // A move/rename here can change what either home-screen widget should be showing (a
@@ -167,9 +180,20 @@ class MediaBatchWorker(
             BatchOperation.MOVE_COPY_DELETE -> {
                 val uri = MediaStoreOps.uriForPath(applicationContext, item.sourcePath) ?: return false
                 val targetRel = MediaStoreOps.relativePathFor(File(item.targetPath).parent ?: "")
-                val newUri = MediaStoreOps.copy(applicationContext, uri, File(item.targetPath).name, targetRel, MediaStoreOps.isVideoPath(item.sourcePath))
-                    ?: return false
-                applicationContext.contentResolver.delete(uri, null, null)
+                // Same-volume moves (the common case - the Mover feature/widget used to always
+                // byte-copy here even within internal storage, which was the actual cause of "why
+                // is moving so slow") are just a RELATIVE_PATH update, exactly like MOVE_FAST above -
+                // MediaProvider performs a real, near-instant filesystem rename for these instead of
+                // the full read+write copy below. Only a genuine cross-volume move (e.g. internal
+                // storage -> SD card) still needs the manual copy, since there's no single rename
+                // syscall that can relocate bytes across two different filesystems.
+                if (MediaStoreOps.sameVolume(item.sourcePath, item.targetPath)) {
+                    if (!MediaStoreOps.move(applicationContext, uri, targetRel)) return false
+                } else {
+                    val newUri = MediaStoreOps.copy(applicationContext, uri, File(item.targetPath).name, targetRel, MediaStoreOps.isVideoPath(item.sourcePath))
+                        ?: return false
+                    applicationContext.contentResolver.delete(uri, null, null)
+                }
                 // Same reasoning as MOVE_FAST above - this op additionally goes through a fresh
                 // MediaStore insert() (see MediaStoreOps.copy()), whose own date_taken/date_modified
                 // are best-effort at most (also confirmed live: MediaProvider's scanner can null out

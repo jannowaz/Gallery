@@ -23,6 +23,7 @@ import org.fossify.gallery.models.Medium
 import java.io.File
 
 enum class FilterMode { ALL, IMAGES, VIDEOS }
+enum class AnalysisSortMode { WASTED, SIZE, NAME }
 
 data class AnalysisState(
     val isScanning: Boolean = false,
@@ -32,6 +33,7 @@ data class AnalysisState(
     val folderPath: String = "",
     val results: List<AnalysisResult> = emptyList(),
     val filterMode: FilterMode = FilterMode.ALL,
+    val sortMode: AnalysisSortMode = AnalysisSortMode.WASTED,
     val selectedPaths: Set<String> = emptySet(),
     val transformResults: List<TransformResult> = emptyList(),
     val isTransforming: Boolean = false,
@@ -64,6 +66,7 @@ class StorageAnalysisViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setFilterMode(mode: FilterMode) { _state.update { it.copy(filterMode = mode) } }
+    fun setSortMode(mode: AnalysisSortMode) { _state.update { it.copy(sortMode = mode) } }
     fun toggleSelection(path: String) {
         _state.update { s -> s.copy(selectedPaths = if (path in s.selectedPaths) s.selectedPaths - path else s.selectedPaths + path) }
     }
@@ -86,6 +89,19 @@ class StorageAnalysisViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearTransformResults() { _state.update { it.copy(transformResults = emptyList()) } }
+
+    /** Enqueues [org.fossify.gallery.workers.CompressionWorker] for the current selection - unlike
+     * [executeTransforms] this never decides anything itself, it only produces temp files for the
+     * user to compare/accept in [CompressionReviewScreen]. */
+    fun startCompression() {
+        val selected = _state.value.selectedPaths
+        if (selected.isEmpty()) return
+        val toCompress = _state.value.results.filter { it.path in selected }.map { it.path to it.mediaType }
+        viewModelScope.launch {
+            org.fossify.gallery.workers.CompressionWorker.enqueue(getApplication(), toCompress)
+            _state.update { it.copy(selectedPaths = emptySet()) }
+        }
+    }
 }
 
 data class TransformSuggestion(
@@ -200,7 +216,7 @@ class TransformationEngine(private val context: android.content.Context) {
         } catch (e: Exception) { TransformResult(false, s.originalPath, "", 0, e.message) }
     }
 
-    private fun softDeleteOriginal(original: File) {
+    fun softDeleteOriginal(original: File) {
         try {
             val path = original.absolutePath
             val medium = Medium(

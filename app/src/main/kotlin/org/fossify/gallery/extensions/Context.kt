@@ -160,6 +160,9 @@ val Context.collectionDB: CollectionDao
 val Context.batchJobItemDB: BatchJobItemDao
     get() = GalleryDatabase.getInstance(applicationContext).BatchJobItemDao()
 
+val Context.compressionReviewDB: org.fossify.gallery.interfaces.CompressionReviewDao
+    get() = GalleryDatabase.getInstance(applicationContext).CompressionReviewDao()
+
 val Context.recycleBin: File get() = filesDir
 
 fun Context.movePinnedDirectoriesToFront(dirs: ArrayList<Directory>): ArrayList<Directory> {
@@ -1122,6 +1125,16 @@ fun Context.updateRating(path: String, rating: Int) {
     } catch (_: Exception) { }
 }
 
+/** Resolves a `media` table path for a soft-deleted row to the real on-disk file. The legacy
+ * (Views-based, widget/camera-review-intent-only) recycle-bin path stores a "recycle_bin/..."
+ * placeholder in the DB instead of a real path (see extensions/Activity.kt's
+ * movePathsInRecycleBin) - a plain File() on that string never points at anything real, which
+ * used to make both "restore" and "permanently delete" silently no-op on the actual bytes while
+ * still reporting success. The modern (Compose) soft-delete never rewrites the path at all, so
+ * this is a no-op for those rows. */
+fun Context.resolveRecycleBinFile(dbPath: String): File =
+    if (dbPath.startsWith(RECYCLE_BIN)) File(recycleBinPath, dbPath.removePrefix(RECYCLE_BIN)) else File(dbPath)
+
 // remove the "recycle_bin" from the file path prefix, replace it with real bin path /data/user...
 fun Context.getUpdatedDeletedMedia(): ArrayList<Medium> {
     val media = try {
@@ -1131,7 +1144,12 @@ fun Context.getUpdatedDeletedMedia(): ArrayList<Medium> {
     }
 
     media.forEach {
-        it.path = File(recycleBinPath, it.path.removePrefix(RECYCLE_BIN)).toString()
+        // Only legacy rows actually carry the "recycle_bin/" placeholder - rewriting every row
+        // unconditionally (the old behavior here) corrupted modern (Compose) soft-deleted rows'
+        // perfectly real paths into a bogus internal-folder path that never existed on disk.
+        if (it.path.startsWith(RECYCLE_BIN)) {
+            it.path = resolveRecycleBinFile(it.path).toString()
+        }
     }
     return media
 }

@@ -120,6 +120,10 @@ import org.fossify.gallery.compose.components.SelectionTopAppBar
 import org.fossify.gallery.compose.components.RenameDialog
 import org.fossify.gallery.compose.components.UndoBar
 import org.fossify.gallery.compose.components.RateAndTagSheet
+import org.fossify.gallery.compose.components.SectionHeader
+import org.fossify.gallery.compose.components.FloatingSectionLabel
+import org.fossify.gallery.compose.components.tagAccentColor
+import org.fossify.gallery.helpers.currentBreadcrumb
 import org.fossify.gallery.compose.util.PeekState
 import org.fossify.gallery.compose.util.ScrollToTopEffect
 import org.fossify.gallery.compose.util.SelectionDragState
@@ -130,6 +134,15 @@ import org.fossify.gallery.helpers.UndoManager
 import org.fossify.gallery.helpers.UndoType
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
+import org.fossify.gallery.helpers.GroupBy
+import org.fossify.gallery.helpers.GroupRow
+import org.fossify.gallery.helpers.buildRatingGroupRows
+import org.fossify.gallery.helpers.buildSizeGroupRows
+import org.fossify.gallery.helpers.buildAlphabetGroupRows
+import org.fossify.gallery.helpers.buildTagGroupRows
+import org.fossify.gallery.helpers.sizeLabelFor
+import org.fossify.gallery.helpers.alphabetLabelFor
+import org.fossify.gallery.helpers.ratingLabelFor
 import org.fossify.gallery.models.Medium
 import org.fossify.gallery.viewmodels.MediaUiState
 import org.fossify.gallery.viewmodels.MediaViewModel
@@ -158,15 +171,19 @@ private fun PagedContent(
     activeTagName: String?,
     activePathName: String?,
     activeCollectionName: String?,
+    activeFolderFilterName: String?,
     minSizeFilter: Long,
     dateRangeFilter: Int,
+    typeFilter: Int,
     onClearRatingFilter: () -> Unit,
     onClearTagFilter: () -> Unit,
     onClearPathFilter: () -> Unit,
     onClearSizeFilter: () -> Unit,
     onClearDateFilter: () -> Unit,
+    onClearTypeFilter: () -> Unit,
     onClearFilter: () -> Unit,
     onNavigateToViewer: ((paths: List<String>, startIndex: Int) -> Unit)?,
+    unratedLabel: String,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -219,15 +236,15 @@ private fun PagedContent(
 
     // Computed once here (incrementally) and shared by all three view-type branches, instead of each
     // branch rebuilding the whole Header/Item list from scratch on every Paging append.
-    val rows = rememberPagedRows(lazyPagingItems, state.filter, viewSettings.sortBy, viewSettings.sortDesc)
+    val rows = rememberPagedRows(lazyPagingItems, state.filter, viewSettings.sortBy, viewSettings.sortDesc, viewSettings.groupBy, unratedLabel)
     when {
         isGrid -> {
             Column(Modifier.padding(top = contentTopInset)) {
                 if (hasFilter) FilterBreadcrumbs(
-                    ratingFilter, activeTagName, activePathName, activeCollectionName,
-                    minSizeFilter, dateRangeFilter,
+                    ratingFilter, activeTagName, activePathName, activeCollectionName, activeFolderFilterName,
+                    minSizeFilter, dateRangeFilter, typeFilter,
                     filteredResultCount ?: lazyPagingItems.itemCount, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
-                    onClearSizeFilter, onClearDateFilter, onClearFilter
+                    onClearSizeFilter, onClearDateFilter, onClearTypeFilter, onClearFilter
                 )
                 val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
                 QuickTagRow(quickTags = quickTags, visible = quickTags.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
@@ -323,10 +340,10 @@ private fun PagedContent(
         isMosaic -> {
             Column(Modifier.padding(top = contentTopInset)) {
                 if (hasFilter) FilterBreadcrumbs(
-                    ratingFilter, activeTagName, activePathName, activeCollectionName,
-                    minSizeFilter, dateRangeFilter,
+                    ratingFilter, activeTagName, activePathName, activeCollectionName, activeFolderFilterName,
+                    minSizeFilter, dateRangeFilter, typeFilter,
                     filteredResultCount ?: lazyPagingItems.itemCount, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
-                    onClearSizeFilter, onClearDateFilter, onClearFilter
+                    onClearSizeFilter, onClearDateFilter, onClearTypeFilter, onClearFilter
                 )
                 val quickTagsM = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
                 QuickTagRow(quickTags = quickTagsM, visible = quickTagsM.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
@@ -422,7 +439,14 @@ private fun PagedContent(
                     .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
             }
             ScrollToTopEffect(tabIndex) { listState.animateScrollToItem(0) }
-            Box(Modifier.padding(top = contentTopInset).dragSelectionGesture(dragSelection, enabled = hasSelection) { path -> selectedPaths = selectedPaths + path }) {
+            Column(Modifier.padding(top = contentTopInset)) {
+            if (hasFilter) FilterBreadcrumbs(
+                ratingFilter, activeTagName, activePathName, activeCollectionName, activeFolderFilterName,
+                minSizeFilter, dateRangeFilter, typeFilter,
+                filteredResultCount ?: lazyPagingItems.itemCount, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
+                onClearSizeFilter, onClearDateFilter, onClearTypeFilter, onClearFilter
+            )
+            Box(Modifier.dragSelectionGesture(dragSelection, enabled = hasSelection) { path -> selectedPaths = selectedPaths + path }) {
             LazyColumn(state = listState, reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
                 var headerSeq = 0
                 rows.forEach { row ->
@@ -467,6 +491,7 @@ private fun PagedContent(
                 }
             }
             }
+            }
         }
     }
 }
@@ -483,14 +508,17 @@ fun MediaScreen(
     activeTagName: String? = null,
     activePathName: String? = null,
     activeCollectionName: String? = null,
+    activeFolderFilterName: String? = null,
     minSizeFilter: Long = 0L,
     dateRangeFilter: Int = 0,
+    typeFilter: Int = 0,
     onClearFilter: () -> Unit = {},
     onClearRatingFilter: () -> Unit = {},
     onClearTagFilter: () -> Unit = {},
     onClearPathFilter: () -> Unit = {},
     onClearSizeFilter: () -> Unit = {},
     onClearDateFilter: () -> Unit = {},
+    onClearTypeFilter: () -> Unit = {},
     mediaOverride: List<Medium>? = null,
     refreshTrigger: Int = 0,
     onNavigateToViewer: ((paths: List<String>, startIndex: Int) -> Unit)? = null,
@@ -503,16 +531,24 @@ fun MediaScreen(
     val viewModel: MediaViewModel = viewModel()
     val state by viewModel.state.collectAsState()
     val lazyPagingItems = viewModel.pagedMedia.collectAsLazyPagingItems()
+    // Shared between the paged accumulator below (headers built as pages stream in) and the
+    // override-path groupRows further down - declared once here so both can use it.
+    val unratedLabel = stringResource(R.string.group_unrated)
     val selectionSaver = remember { listSaver<Set<String>, String>(save = { it.toList() }, restore = { it.toSet() }) }
     LaunchedEffect(refreshTrigger) { if (refreshTrigger > 0) { if (state.allMedia.isNotEmpty()) viewModel.silentRefresh() else viewModel.refresh() } }
     LaunchedEffect(viewSettings.sortBy, viewSettings.sortDesc) { if (mediaOverride == null) viewModel.setSort(viewSettings.sortBy, viewSettings.sortDesc) }
     LaunchedEffect(mediaOverride) { viewModel.setOverride(mediaOverride) }
-    LaunchedEffect(ratingFilter, tagFilterNames, pathFilter, excludePathFilter, minSizeFilter, dateRangeFilter) { viewModel.setFilter(ratingFilter, tagFilterNames, pathFilter, excludePathFilter, minSizeFilter, dateRangeFilter) }
+    // Grouping (month/tag/rating) only applies to the override path (Favorites, a drilled-into
+    // folder) - the unbounded paged tab keeps its own fixed month grouping, see PagedRow below.
+    LaunchedEffect(viewSettings.groupBy, viewSettings.groupOrder, mediaOverride) {
+        if (mediaOverride != null) viewModel.setGroupSettings(viewSettings.groupBy, viewSettings.groupOrder)
+    }
+    LaunchedEffect(ratingFilter, tagFilterNames, pathFilter, excludePathFilter, minSizeFilter, dateRangeFilter, typeFilter) { viewModel.setFilter(ratingFilter, tagFilterNames, pathFilter, excludePathFilter, minSizeFilter, dateRangeFilter, typeFilter) }
     // When filters are active (e.g. viewing a Collection) and NOT using override (Favorites), subscribe to RefreshBus
     // to auto-reload the filtered list when media is deleted/moved elsewhere. Without this, the filtered list stays stale
     // until the user manually pulls-to-refresh, the same issue FolderMediaScreen solved with direct RefreshBus subscription.
-    LaunchedEffect(ratingFilter, tagFilterNames, pathFilter, excludePathFilter, minSizeFilter, dateRangeFilter, mediaOverride) {
-        val hasFilter = ratingFilter > 0 || tagFilterNames != null || pathFilter != null || excludePathFilter != null || minSizeFilter > 0 || dateRangeFilter > 0
+    LaunchedEffect(ratingFilter, tagFilterNames, pathFilter, excludePathFilter, minSizeFilter, dateRangeFilter, typeFilter, mediaOverride) {
+        val hasFilter = ratingFilter > 0 || tagFilterNames != null || pathFilter != null || excludePathFilter != null || minSizeFilter > 0 || dateRangeFilter > 0 || typeFilter > 0
         if (hasFilter && mediaOverride == null) {
             org.fossify.gallery.helpers.RefreshBus.events.collect {
                 viewModel.silentRefresh()
@@ -544,13 +580,31 @@ fun MediaScreen(
     val columnCount = viewSettings.columnCount
     val isGrid = viewSettings.viewType == ViewType.GRID
     val isMosaic = viewSettings.viewType == ViewType.MOSAIC
-    val hasFilter = ratingFilter > 0 || tagFilterNames != null || pathFilter != null || excludePathFilter != null || minSizeFilter > 0 || dateRangeFilter > 0
+    val hasFilter = ratingFilter > 0 || tagFilterNames != null || pathFilter != null || excludePathFilter != null || minSizeFilter > 0 || dateRangeFilter > 0 || typeFilter > 0
     // Filtered and unfiltered browsing both render from the Paging3 flow now (MediaViewModel picks
     // the filtered or unfiltered PagingSource based on whether a filter is active) - only Favorites'
     // externally-supplied mediaOverride still uses the legacy in-memory state.displayMedia path.
     val showPaged = mediaOverride == null
     val displayMedia = state.displayMedia
     val pathIndexMap = remember(displayMedia) { displayMedia.withIndex().associate { it.value.path to it.index } }
+    // Section collapse/expand is purely visual, session-only state (like the scroll position saver
+    // above is the only ViewModel-tracked UI state elsewhere in this screen) - kept local so
+    // toggling a header never re-triggers the tag DB fetch or sort in MediaViewModel.recompute().
+    var collapsedGroupKeys by rememberSaveable { mutableStateOf(setOf<String>()) }
+    val untaggedLabel = stringResource(R.string.group_untagged)
+    val groupRows = remember(displayMedia, state.tagsByPath, state.monthGroups, viewSettings.groupBy, viewSettings.groupOrder, viewSettings.sortDesc, viewSettings.onlyTopLevelTags, collapsedGroupKeys, untaggedLabel, unratedLabel) {
+        when (viewSettings.groupBy) {
+            GroupBy.TAG -> buildTagGroupRows(displayMedia, state.tagsByPath, ctx.config.tagHierarchy, viewSettings.groupOrder, viewSettings.onlyTopLevelTags, collapsedGroupKeys, untaggedLabel)
+            GroupBy.RATING -> buildRatingGroupRows(displayMedia, viewSettings.groupOrder, unratedLabel)
+            GroupBy.SIZE -> buildSizeGroupRows(displayMedia, viewSettings.sortDesc)
+            GroupBy.ALPHABET -> buildAlphabetGroupRows(displayMedia, viewSettings.sortDesc)
+            GroupBy.MONTH -> state.monthGroups.flatMap { g ->
+                val key = "month:${g.label}"
+                listOf(GroupRow.SectionHeader(key, g.label, 0, g.items.size, g.items.size, false, true), GroupRow.Items(key, g.items))
+            }
+            GroupBy.NONE -> if (displayMedia.isEmpty()) emptyList() else listOf(GroupRow.Items("all", displayMedia))
+        }
+    }
     val cornerShape = if (viewSettings.roundedCorners) RoundedCornerShape(Radius.sm) else RoundedCornerShape(0.dp)
     val itemSpacing = viewSettings.spacing.dp
     val mediaCardColor = when (viewSettings.displayMode) { DisplayMode.COMPACT,DisplayMode.NORMAL->MaterialTheme.colorScheme.surface; DisplayMode.DARK->MaterialTheme.colorScheme.surfaceVariant }
@@ -570,6 +624,10 @@ fun MediaScreen(
 
     val hasSelection = selectedPaths.isNotEmpty()
     LaunchedEffect(hasSelection) { onSelectionActiveChanged(hasSelection) }
+    var showMultiSelectHint by remember { mutableStateOf(!ctx.config.hasSeenMultiSelectHint) }
+    if (hasSelection) {
+        LaunchedEffect(Unit) { showMultiSelectHint = false; ctx.config.hasSeenMultiSelectHint = true }
+    }
     var selectionBarHeightPx by remember { mutableIntStateOf(0) }
     val density = androidx.compose.ui.platform.LocalDensity.current
     // The bouncy spring can transiently overshoot past 0 while animating the inset closed, and
@@ -657,15 +715,19 @@ fun MediaScreen(
                         activeTagName = activeTagName,
                         activePathName = activePathName,
                         activeCollectionName = activeCollectionName,
+                        activeFolderFilterName = activeFolderFilterName,
                         minSizeFilter = minSizeFilter,
                         dateRangeFilter = dateRangeFilter,
+                        typeFilter = typeFilter,
                         onClearRatingFilter = onClearRatingFilter,
                         onClearTagFilter = onClearTagFilter,
                         onClearPathFilter = onClearPathFilter,
                         onClearSizeFilter = onClearSizeFilter,
                         onClearDateFilter = onClearDateFilter,
+                        onClearTypeFilter = onClearTypeFilter,
                         onClearFilter = onClearFilter,
                         onNavigateToViewer = onNavigateToViewer,
+                        unratedLabel = unratedLabel,
                     )
                 }
             }
@@ -691,14 +753,13 @@ fun MediaScreen(
             isGrid -> {
                 Column(Modifier.padding(top = contentTopInset)) {
                     if (hasFilter) FilterBreadcrumbs(
-                        ratingFilter, activeTagName, activePathName, activeCollectionName,
-                        minSizeFilter, dateRangeFilter,
+                        ratingFilter, activeTagName, activePathName, activeCollectionName, activeFolderFilterName,
+                        minSizeFilter, dateRangeFilter, typeFilter,
                         displayMedia.size, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
-                        onClearSizeFilter, onClearDateFilter, onClearFilter
+                        onClearSizeFilter, onClearDateFilter, onClearTypeFilter, onClearFilter
                     )
                     val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
                     QuickTagRow(quickTags = quickTags, visible = quickTags.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
-                    val grouped = state.monthGroups
                     val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
                     LaunchedEffect(gridState) {
                         snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
@@ -727,9 +788,14 @@ fun MediaScreen(
                     CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
                     Box(Modifier.dragSelectionGesture(dragSelection, enabled = hasSelection, gridState = gridState) { path -> selectedPaths = selectedPaths + path }) {
                     LazyVerticalGrid(state = gridState, columns = GridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
-                    grouped.forEach { (label, groupItems) ->
-                        item(span = { GridItemSpan(maxLineSpan) }) { MonthHeader(label = label, count = groupItems.size) }
-                        items(groupItems.size, key = { groupItems[it].path }, contentType = { groupItems[it].type }) { idx ->
+                    groupRows.forEach { row ->
+                        when (row) {
+                            is GroupRow.SectionHeader -> item(span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
+                                SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = if (row.key in collapsedGroupKeys) collapsedGroupKeys - row.key else collapsedGroupKeys + row.key }, ratingValue = row.ratingValue)
+                            }
+                            is GroupRow.Items -> {
+                        val groupItems = row.media
+                        items(groupItems.size, key = { "${row.sectionKey}/${groupItems[it].path}" }, contentType = { groupItems[it].type }) { idx ->
                             val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
                             val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
                             MediaTile(
@@ -766,7 +832,11 @@ fun MediaScreen(
                             )
                         }
                     }
+                        }
                     }
+                    }
+                    val currentBreadcrumbLabel by remember(groupRows) { derivedStateOf { currentBreadcrumb(groupRows, gridState.firstVisibleItemIndex) } }
+                    FloatingSectionLabel(currentBreadcrumbLabel, isScrolling, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
                     }
                     }
                 }
@@ -774,14 +844,13 @@ fun MediaScreen(
             isMosaic -> {
                 Column(Modifier.padding(top = contentTopInset)) {
                     if (hasFilter) FilterBreadcrumbs(
-                        ratingFilter, activeTagName, activePathName, activeCollectionName,
-                        minSizeFilter, dateRangeFilter,
+                        ratingFilter, activeTagName, activePathName, activeCollectionName, activeFolderFilterName,
+                        minSizeFilter, dateRangeFilter, typeFilter,
                         displayMedia.size, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
-                        onClearSizeFilter, onClearDateFilter, onClearFilter
+                        onClearSizeFilter, onClearDateFilter, onClearTypeFilter, onClearFilter
                     )
                     val quickTagsM = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
                     QuickTagRow(quickTags = quickTagsM, visible = quickTagsM.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
-                    val grouped = state.monthGroups
                     val mosaicState = rememberLazyStaggeredGridState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
                     LaunchedEffect(mosaicState) {
                         snapshotFlow { mosaicState.firstVisibleItemIndex to mosaicState.firstVisibleItemScrollOffset }
@@ -810,9 +879,14 @@ fun MediaScreen(
                     CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
                     Box(Modifier.dragSelectionGesture(dragSelection, enabled = hasSelection, staggeredGridState = mosaicState) { path -> selectedPaths = selectedPaths + path }) {
                     LazyVerticalStaggeredGrid(state = mosaicState, columns = StaggeredGridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
-                    grouped.forEach { (label, groupItems) ->
-                        item(span = StaggeredGridItemSpan.FullLine) { MonthHeader(label = label, count = groupItems.size) }
-                        items(groupItems.size, key = { groupItems[it].path }, contentType = { groupItems[it].type }) { idx ->
+                    groupRows.forEach { row ->
+                        when (row) {
+                            is GroupRow.SectionHeader -> item(span = StaggeredGridItemSpan.FullLine, contentType = "header") {
+                                SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = if (row.key in collapsedGroupKeys) collapsedGroupKeys - row.key else collapsedGroupKeys + row.key }, ratingValue = row.ratingValue)
+                            }
+                            is GroupRow.Items -> {
+                        val groupItems = row.media
+                        items(groupItems.size, key = { "${row.sectionKey}/${groupItems[it].path}" }, contentType = { groupItems[it].type }) { idx ->
                             val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
                             if (!isVideo) LaunchedEffect(m.path) { viewModel.requestAspect(m.path) }
                             val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
@@ -850,24 +924,39 @@ fun MediaScreen(
                             )
                         }
                     }
+                        }
                     }
+                    }
+                    val currentBreadcrumbLabelStag by remember(groupRows) { derivedStateOf { currentBreadcrumb(groupRows, mosaicState.firstVisibleItemIndex) } }
+                    FloatingSectionLabel(currentBreadcrumbLabelStag, isScrollingStag, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
                     }
                     }
                 }
             }
             else -> {
-                val grouped = state.monthGroups
                 val listState = rememberLazyListState(initialFirstVisibleItemIndex = state.scrollIndex, initialFirstVisibleItemScrollOffset = state.scrollOffset)
                 LaunchedEffect(listState) {
                     snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
                         .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
                 }
                 ScrollToTopEffect(tabIndex) { listState.animateScrollToItem(0) }
-                Box(Modifier.padding(top = contentTopInset).dragSelectionGesture(dragSelection, enabled = hasSelection) { path -> selectedPaths = selectedPaths + path }) {
+                Column(Modifier.padding(top = contentTopInset)) {
+                if (hasFilter) FilterBreadcrumbs(
+                    ratingFilter, activeTagName, activePathName, activeCollectionName, activeFolderFilterName,
+                    minSizeFilter, dateRangeFilter, typeFilter,
+                    displayMedia.size, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
+                    onClearSizeFilter, onClearDateFilter, onClearTypeFilter, onClearFilter
+                )
+                Box(Modifier.dragSelectionGesture(dragSelection, enabled = hasSelection) { path -> selectedPaths = selectedPaths + path }) {
                 LazyColumn(state = listState, reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
-                    grouped.forEach { (label, groupItems) ->
-                        stickyHeader { MonthHeader(label = label, count = groupItems.size) }
-                        items(groupItems.size, key = { groupItems[it].path }, contentType = { groupItems[it].type }) { idx ->
+                    groupRows.forEach { row ->
+                        when (row) {
+                            is GroupRow.SectionHeader -> stickyHeader(contentType = "header") {
+                                SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = if (row.key in collapsedGroupKeys) collapsedGroupKeys - row.key else collapsedGroupKeys + row.key }, ratingValue = row.ratingValue, accentColor = row.rootKey?.let { tagAccentColor(it) }, showGuideLine = true)
+                            }
+                            is GroupRow.Items -> {
+                        val groupItems = row.media
+                        items(groupItems.size, key = { "${row.sectionKey}/${groupItems[it].path}" }, contentType = { groupItems[it].type }) { idx ->
                             val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
                             val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
                             MediaListRow(
@@ -894,11 +983,18 @@ fun MediaScreen(
                             )
                         }
                     }
+                        }
+                    }
+                }
                 }
                 }
             }
         }
         }
+        org.fossify.gallery.compose.components.LongPressSelectHint(
+            visible = showMultiSelectHint && !hasSelection && displayMedia.isNotEmpty(),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = contentTopInset + 8.dp),
+        )
         AnimatedVisibility(visible=hasSelection,enter=slideInVertically(initialOffsetY={-it})+fadeIn(AppMotion.medium),exit=slideOutVertically(targetOffsetY={-it})+fadeOut(AppMotion.medium),modifier=Modifier.align(Alignment.TopCenter)) {
             SelectionTopAppBar(
                 modifier = Modifier.onGloballyPositioned { selectionBarHeightPx = it.size.height },
@@ -909,7 +1005,12 @@ fun MediaScreen(
                     val allVideo = selectedPaths.all { it.substringAfterLast('.').lowercase() in VIDEO_EXTENSIONS }
                     val si = if (uris.size == 1) Intent(Intent.ACTION_SEND).apply { type = if (allVideo) "video/*" else "image/*"; putExtra(Intent.EXTRA_STREAM, uris.first()); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                     else Intent(Intent.ACTION_SEND_MULTIPLE).apply { type = "*/*"; putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                    ctx.startActivity(Intent.createChooser(si, ctx.getString(R.string.action_share)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); selectedPaths = emptySet()
+                    // Deliberately NOT clearing selectedPaths here (unlike delete/move) - startActivity
+                    // is fire-and-forget, so this used to clear the selection the instant the share
+                    // sheet opened, before the user had even picked a target app. Sharing doesn't
+                    // change or remove the files, so there's no reason to lose the selection - the
+                    // user may come straight back to delete/move/tag the same items afterward.
+                    ctx.startActivity(Intent.createChooser(si, ctx.getString(R.string.action_share)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 },
                 onDelete = { if (ctx.config.skipDeleteConfirmation) { val d = selectedPaths.toSet(); viewModel.softDeletePaths(d); UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE)); selectedPaths = emptySet() } else showDeleteConfirm = true },
                 onSelectAll = { scope.launch { selectedPaths = if (hasFilter) viewModel.activePathsSortedFiltered().toSet() else viewModel.activePaths() } },
@@ -998,14 +1099,15 @@ fun MediaScreen(
 
 @Composable
 private fun FilterBreadcrumbs(
-    ratingFilter: Int, activeTagName: String?, activePathName: String?, activeCollectionName: String?,
-    minSizeFilter: Long, dateRangeFilter: Int,
+    ratingFilter: Int, activeTagName: String?, activePathName: String?, activeCollectionName: String?, activeFolderFilterName: String?,
+    minSizeFilter: Long, dateRangeFilter: Int, typeFilter: Int,
     resultCount: Int, onClearRating: () -> Unit, onClearTag: () -> Unit, onClearPath: () -> Unit,
-    onClearSize: () -> Unit, onClearDate: () -> Unit,
+    onClearSize: () -> Unit, onClearDate: () -> Unit, onClearType: () -> Unit,
     onClearAll: () -> Unit
 ) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         if (activeCollectionName != null) ActiveFilterChip(stringResource(R.string.filter_collection, activeCollectionName)) { onClearPath() }
+        if (activeFolderFilterName != null) ActiveFilterChip(stringResource(R.string.filter_path, activeFolderFilterName)) { onClearPath() }
         if (activePathName != null) ActiveFilterChip(stringResource(R.string.filter_search_query, activePathName)) { onClearPath() }
         if (activeTagName != null) ActiveFilterChip(activeTagName.take(24).let { if (activeTagName.length > 24) "$it…" else it }) { onClearTag() }
         if (ratingFilter > 0) ActiveFilterChip(stringResource(R.string.filter_rating, ratingFilter)) { onClearRating() }
@@ -1015,6 +1117,9 @@ private fun FilterBreadcrumbs(
                 1 -> stringResource(R.string.today); 2 -> stringResource(R.string.date_range_last_7_days); 3 -> stringResource(R.string.date_range_last_30_days); 4 -> stringResource(R.string.date_range_last_year); else -> ""
             }
         ) { onClearDate() }
+        if (typeFilter > 0) ActiveFilterChip(
+            if (typeFilter == 1) stringResource(R.string.images) else stringResource(R.string.videos)
+        ) { onClearType() }
         Text(stringResource(R.string.result_count, resultCount), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         androidx.compose.material3.AssistChip(onClick = onClearAll, label = { Text(stringResource(R.string.clear_all_filters)) }, leadingIcon = { Icon(Icons.Default.Close, null, Modifier.size(18.dp)) })
     }
@@ -1054,26 +1159,6 @@ private fun currentSectionLabel(rows: List<PagedRow>, firstVisibleIndex: Int): S
     return null
 }
 
-@Composable
-private fun FloatingSectionLabel(label: String?, isScrolling: Boolean, modifier: Modifier = Modifier) {
-    // Only while actively scrolling, not permanently - it used to float for as long as any content
-    // was loaded (including with a modal sheet open over the grid), duplicating the inline month
-    // header directly below it for no reason once the user had stopped moving.
-    AnimatedVisibility(visible = label != null && isScrolling, modifier = modifier, enter = fadeIn(AppMotion.short), exit = fadeOut(AppMotion.short)) {
-        Surface(shape = RoundedCornerShape(Radius.xl), color = MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 2.dp, tonalElevation = 2.dp) {
-            Text(
-                label.orEmpty(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                // liveRegion so TalkBack announces the current month as it changes - this pill is
-                // the only place that information exists (grid/mosaic have no sticky header, unlike
-                // the list branch), so without it a screen-reader user scrolling the grid has no way
-                // to tell which month they're currently looking at.
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp).semantics { liveRegion = LiveRegionMode.Polite },
-            )
-        }
-    }
-}
-
 /** Row model for the paged (unfiltered, non-override) grid: a flat, contiguous-run-based month
  * grouping over whatever [androidx.paging.compose.LazyPagingItems] has loaded so far. Unlike the
  * legacy [MonthGroup] (a LinkedHashMap keyed by label, which merges non-contiguous same-month runs
@@ -1096,24 +1181,40 @@ private fun safePeek(items: androidx.paging.compose.LazyPagingItems<Medium>, ind
 private fun safeGet(items: androidx.paging.compose.LazyPagingItems<Medium>, index: Int): Medium? =
     if (index in 0 until items.itemCount) items[index] else null
 
+// The grouping key for one item of the paged (streaming) grid. Grouping always follows sorting
+// (see SortField.autoGroupBy) - a groupBy that doesn't match how the underlying Paging3 query is
+// actually sorted would produce a group key that isn't contiguous (the same label could recur
+// after other labels), so every branch here relies on the stream already being sorted the
+// matching way. TAG can't be represented at all in this one-index-per-item model (a medium can
+// carry several tags at once) - excluded from this tab entirely via supportsTagGrouping in the
+// settings sheet, so it's never actually reached here; falls back to ungrouped defensively.
+private fun pagedGroupLabel(m: Medium, groupBy: GroupBy, unratedLabel: String): String? = when (groupBy) {
+    GroupBy.MONTH -> MediaViewModel.monthLabelFor(m)
+    GroupBy.SIZE -> sizeLabelFor(m.size)
+    GroupBy.ALPHABET -> alphabetLabelFor(m.name)
+    GroupBy.RATING -> ratingLabelFor(m.rating, unratedLabel)
+    GroupBy.NONE, GroupBy.TAG -> null
+}
+
 // Builds the Header/Item row model incrementally: Paging3 only ever *appends* to this list (the grid
-// is date-sorted, placeholders disabled, no prepend), so each newly loaded page only needs its own new
-// items scanned - not the whole (potentially very large) loaded window re-scanned from scratch on every
-// append the way a plain rebuild does. Scoped per filter+sort via [rememberPagedRows]; a shrink in item
-// count (a PagingSource invalidation/reload) resets and rebuilds. monthLabelFor is the expensive bit
-// (date formatting per item), so only running it on the delta is the actual win.
+// is sorted server-side to match the active groupBy, placeholders disabled, no prepend), so each newly
+// loaded page only needs its own new items scanned - not the whole (potentially very large) loaded
+// window re-scanned from scratch on every append the way a plain rebuild does. Scoped per
+// filter/sort/groupBy via [rememberPagedRows]; a shrink in item count (a PagingSource
+// invalidation/reload) resets and rebuilds. pagedGroupLabel is the expensive bit (date formatting per
+// item for MONTH), so only running it on the delta is the actual win.
 private class PagedRowsAccumulator {
     private val rows = ArrayList<PagedRow>()
     private var lastLabel: String? = null
     private var lastHeaderPos = -1
     private var processed = 0
 
-    fun extendTo(snapshot: List<Medium?>): List<PagedRow> {
+    fun extendTo(snapshot: List<Medium?>, groupBy: GroupBy, unratedLabel: String): List<PagedRow> {
         val size = snapshot.size
         if (size < processed) reset()
         var idx = processed
         while (idx < size) {
-            val label = snapshot[idx]?.let { MediaViewModel.monthLabelFor(it) }
+            val label = snapshot[idx]?.let { pagedGroupLabel(it, groupBy, unratedLabel) }
             if (label != null) {
                 if (label != lastLabel) {
                     lastHeaderPos = rows.size
@@ -1144,11 +1245,14 @@ private fun rememberPagedRows(
     filter: org.fossify.gallery.viewmodels.MediaFilter,
     sortBy: SortField,
     sortDesc: Boolean,
+    groupBy: GroupBy,
+    unratedLabel: String,
 ): List<PagedRow> {
-    // Accumulator resets whenever the filter/sort intent changes (a new PagingSource generation) - see
-    // the note at the old call sites about a stale month header surviving one frame past a filter switch.
-    val acc = remember(filter, sortBy, sortDesc) { PagedRowsAccumulator() }
-    return remember(lazyPagingItems.itemCount, filter, sortBy, sortDesc) {
-        acc.extendTo(lazyPagingItems.itemSnapshotList)
+    // Accumulator resets whenever the filter/sort/group intent changes (a new PagingSource
+    // generation, or just the grouping toggle) - see the note at the old call sites about a stale
+    // header surviving one frame past a filter switch.
+    val acc = remember(filter, sortBy, sortDesc, groupBy) { PagedRowsAccumulator() }
+    return remember(lazyPagingItems.itemCount, filter, sortBy, sortDesc, groupBy, unratedLabel) {
+        acc.extendTo(lazyPagingItems.itemSnapshotList, groupBy, unratedLabel)
     }
 }

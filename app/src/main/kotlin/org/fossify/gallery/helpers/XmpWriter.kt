@@ -98,9 +98,12 @@ object XmpWriter {
      * hierarchicalSubject block already present in the file (written by another app) is left alone
      * instead of being stripped.
      */
-    fun write(path: String, tags: List<String>, rating: Int, hierarchy: Map<String, String> = emptyMap()) {
+    /** Returns whether the write actually reached disk - callers must not update the DB/cache as
+     * if a tag/rating change took effect when this is false, or the two silently disagree forever
+     * (see MediaRepository.updateRating/addTag/removeTag/writeRatingXmp). */
+    fun write(path: String, tags: List<String>, rating: Int, hierarchy: Map<String, String> = emptyMap()): Boolean {
         val file = File(path)
-        if (!file.exists()) return
+        if (!file.exists()) return false
         val isJpeg = file.extension.lowercase() in setOf("jpg", "jpeg")
         // Read-modify-write instead of regenerating from scratch: an existing XMP packet can carry
         // fields this app knows nothing about (GPS, captions, copyright, another app's own
@@ -108,7 +111,7 @@ object XmpWriter {
         // everything else round-trips untouched instead of being silently dropped.
         val existingRaw = if (isJpeg) readXmpFromJpeg(file) else readXmpFromSidecar(file)
         val xmpBytes = buildXmpPacket(existingRaw, tags, rating, hierarchy)
-        if (isJpeg) writeXmpToJpeg(file, xmpBytes) else writeXmpSidecar(file, xmpBytes)
+        return if (isJpeg) writeXmpToJpeg(file, xmpBytes) else writeXmpSidecar(file, xmpBytes)
     }
 
     private fun parseXmp(raw: String): XmpData {
@@ -309,8 +312,8 @@ $ownedDescription
         return try { target.readText() } catch (_: Exception) { "" }
     }
 
-    private fun writeXmpSidecar(file: File, xmpData: ByteArray) {
-        try { sidecarPath(file).writeBytes(xmpData) } catch (_: Exception) { }
+    private fun writeXmpSidecar(file: File, xmpData: ByteArray): Boolean {
+        return try { sidecarPath(file).writeBytes(xmpData); true } catch (_: Exception) { false }
     }
 
     /**
@@ -318,8 +321,8 @@ $ownedDescription
      * If found, replaces it. Otherwise inserts after all APP marker segments.
      * Uses a temp file to avoid loading the entire image into memory.
      */
-    private fun writeXmpToJpeg(file: File, xmpData: ByteArray) {
-        try {
+    private fun writeXmpToJpeg(file: File, xmpData: ByteArray): Boolean {
+        return try {
             val newApp1 = buildApp1Segment(xmpData)
             val scanLen = minOf(file.length(), MAX_SCAN_BYTES).toInt()
             val scanBuf = ByteArray(scanLen)
@@ -387,24 +390,26 @@ $ownedDescription
                 }
             }
 
-            // Safe replace: keep the original as a backup until the new file is in place
             if (tempFile.exists() && tempFile.length() > 0) {
-                val backup = File("${file.absolutePath}.bak")
-                if (file.renameTo(backup)) {
-                    if (tempFile.renameTo(file)) {
-                        backup.delete()
-                    } else {
-                        backup.renameTo(file)
-                        tempFile.delete()
-                    }
-                } else if (!tempFile.renameTo(file)) {
-                    tempFile.inputStream().use { ins -> file.outputStream().use { outs -> ins.copyTo(outs) } }
+                // POSIX rename() atomically replaces an existing destination in a single filesystem
+                // op - no window where neither the old nor new file exists. The previous version
+                // did this as two sequential renameTo() calls via a ".bak" file, which left exactly
+                // that window open if the process died between them.
+                if (tempFile.renameTo(file)) {
+                    true
+                } else {
+                    val copied = try {
+                        tempFile.inputStream().use { ins -> file.outputStream().use { outs -> ins.copyTo(outs) } }
+                        true
+                    } catch (_: Exception) { false }
                     tempFile.delete()
+                    copied
                 }
             } else {
                 tempFile.delete()
+                false
             }
-        } catch (_: Exception) { }
+        } catch (_: Exception) { false }
     }
 
     private fun buildApp1Segment(xmpData: ByteArray): ByteArray {

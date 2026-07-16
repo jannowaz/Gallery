@@ -99,15 +99,19 @@ object AnalysisCriteria {
             wastedBytes = estimateImageWaste(size, ext, width, height, bpp)
         }
 
+        // <5MB estimated savings = not worth it - gates score along with wastedBytes/reasons so a
+        // file whose only fired reason nets negligible savings doesn't still slip into the results
+        // list (via score>0) as a ghost entry with no visible reason or savings estimate.
+        val passesSavingsThreshold = wastedBytes > 5_000_000
         return AnalysisResult(
             path = path, name = name, fileSize = size,
             mediaType = if (isVideo) 2 else 1,
             width = width, height = height, durationMs = durationMs,
             bitrateKbps = bitrateKbps, codec = codec,
             imageFormat = if (isImage) ext else null,
-            bpp = bpp, score = reasons.size.coerceAtMost(3),
-            wastedBytes = if (wastedBytes > 5_000_000) wastedBytes else 0,  // <5MB savings = not worth it
-            reasons = if (wastedBytes > 5_000_000) reasons else emptyList(),
+            bpp = bpp, score = if (passesSavingsThreshold) reasons.size.coerceAtMost(3) else 0,
+            wastedBytes = if (passesSavingsThreshold) wastedBytes else 0,
+            reasons = if (passesSavingsThreshold) reasons else emptyList(),
         )
     }
 
@@ -176,6 +180,42 @@ object AnalysisCriteria {
         if (bitrateKbps <= targetKbps) return 0
         val optimalBytes = (targetKbps * durationMs) / 8
         return (size - optimalBytes).coerceAtLeast(0)
+    }
+
+    /** Target (width, height, bitrateKbps) for re-encoding [result] - same ladder used by
+     * [estimateVideoWaste] to estimate savings, kept in one place so the estimate shown to the
+     * user and the actual compression always agree. Null if the source is already at/under target. */
+    fun suggestedVideoTarget(result: AnalysisResult): Triple<Int, Int, Long>? {
+        if (result.mediaType != 2 || result.width <= 0 || result.height <= 0) return null
+        val pixels = result.width.toLong() * result.height
+        val (targetW, targetH, targetKbps) = when {
+            pixels >= 3840L * 2160 -> Triple(1920, 1080, 12_000L)
+            pixels >= 1920L * 1080 -> Triple(result.width, result.height, 12_000L)
+            pixels >= 1280L * 720 -> Triple(result.width, result.height, 6_000L)
+            else -> Triple(result.width, result.height, 3_000L)
+        }
+        if (result.bitrateKbps <= targetKbps && targetW >= result.width) return null
+        // Preserve aspect ratio when downscaling from >4K - width/height above are for a
+        // landscape source; swap for portrait.
+        return if (result.width >= result.height) Triple(targetW, (targetW.toLong() * result.height / result.width).toInt(), targetKbps)
+        else Triple((targetW.toLong() * result.width / result.height).toInt(), targetW, targetKbps)
+    }
+
+    /** Target (longest edge in px, JPEG quality) for re-encoding [result] - mirrors
+     * [estimateImageWaste]'s targets. Null if already at/under target. */
+    fun suggestedImageTarget(result: AnalysisResult): Pair<Int, Int>? {
+        if (result.mediaType != 1 || result.width <= 0 || result.height <= 0) return null
+        val mp = (result.width.toLong() * result.height) / 1_000_000
+        val longestEdge = maxOf(result.width, result.height)
+        val needsDownscale = mp > thresholds.maxMegapixels
+        val needsRequant = result.bpp > 0.3f
+        if (!needsDownscale && !needsRequant) return null
+        val targetEdge = if (needsDownscale) {
+            // Scale the longest edge down until megapixels fit the threshold.
+            val scale = kotlin.math.sqrt(thresholds.maxMegapixels.toDouble() / mp.coerceAtLeast(1))
+            (longestEdge * scale).toInt().coerceAtLeast(1)
+        } else longestEdge
+        return targetEdge to 85
     }
 
     private fun estimateImageWaste(size: Long, format: String, width: Int, height: Int, bpp: Float): Long {

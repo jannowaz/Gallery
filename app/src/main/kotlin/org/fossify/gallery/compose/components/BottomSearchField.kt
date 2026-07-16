@@ -18,10 +18,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,6 +32,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,6 +72,8 @@ fun BottomSearchField(
     searching: Boolean = false,
     blurEnabled: Boolean = false,
     onToggleBlur: () -> Unit = {},
+    onOpenFilterAndView: () -> Unit = {},
+    hasActiveFilter: Boolean = false,
 ) {
     val s = LocalSpacing.current
     val haptic = rememberGalleryHaptics()
@@ -115,6 +121,22 @@ fun BottomSearchField(
                     isSearching -> Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) }
                     hasValue -> IconButton(onClick = onClear, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Close, stringResource(R.string.action_empty), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                     else -> Spacer(Modifier.size(40.dp))
+                }
+            }
+            // Compact entry point for the persistent grid filter + view/grouping settings (see
+            // ComposeExplorerActivity's MainSheets) - previously only reachable via the drawer or
+            // an undocumented swipe-up gesture on the whole bottom chrome. A small dot badge (no
+            // count - just presence) instead of a wider label keeps this a 40dp icon like its
+            // navigational siblings above, not a full extra row.
+            Box {
+                IconButton(onClick = onOpenFilterAndView, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.filter_label), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (hasActiveFilter) {
+                    Box(
+                        Modifier.align(Alignment.TopEnd).offset(x = (-6).dp, y = 6.dp).size(8.dp)
+                            .background(MaterialTheme.colorScheme.primary, CircleShape),
+                    )
                 }
             }
             // Quick, unlabeled privacy-blur toggle - lives in this always-visible row instead of its

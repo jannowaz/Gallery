@@ -460,6 +460,12 @@ fun BaseSimpleActivity.restoreRecycleBinPaths(paths: ArrayList<String>, callback
 
                 if (File(source).length() == copiedSize) {
                     mediaDB.updateDeleted(destination.removePrefix(recycleBinPath), 0, "$RECYCLE_BIN${source.removePrefix(recycleBinPath)}")
+                    // The internal recycle-bin copy (`source`) is now fully duplicated at
+                    // `destination` and the DB row points at the restored location - without this,
+                    // every successful restore permanently orphaned this copy (nothing in the app
+                    // ever referenced it again, so it sat taking up storage forever). Only deleted
+                    // once the restored copy is verified byte-for-byte above.
+                    try { File(source).delete() } catch (e: Exception) { android.util.Log.e("RecycleBin", "Failed to delete recycle-bin copy after restore: $source", e) }
                 }
                 newPaths.add(destination)
 

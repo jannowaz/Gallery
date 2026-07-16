@@ -78,6 +78,18 @@ object MediaStoreOps {
         context.contentResolver.update(uri, values, null, null) > 0
     } catch (_: Exception) { false }
 
+    /** The top-level storage volume segment of an absolute shared-storage path, e.g.
+     * "emulated/0" for internal storage or the hex volume id for an SD card - "" if unrecognized. */
+    private fun volumeOf(path: String): String = Regex("^/storage/([^/]+(?:/[^/]+)?)/").find(path)?.groupValues?.get(1) ?: ""
+
+    /** True when [pathA] and [pathB] live on the same physical storage volume - a plain
+     * RELATIVE_PATH update ([move]) is a near-instant filesystem rename in that case, vs. the
+     * full byte copy [copy] needs for a genuine cross-volume move. */
+    fun sameVolume(pathA: String, pathB: String): Boolean {
+        val a = volumeOf(pathA)
+        return a.isNotEmpty() && a == volumeOf(pathB)
+    }
+
     /**
      * Copies the content of [sourceUri] into a new MediaStore entry under [targetRelativePath].
      * No consent needed (the new item is app-owned). Returns the new URI or null on failure.
@@ -94,15 +106,18 @@ object MediaStoreOps {
             // MediumDao's sort actually keys on (falling back to last_modified only when it's <= 0,
             // see getMediaPagedByDate) - date_modified is set best-effort too, but MediaProvider may
             // still override it with the real write timestamp regardless of what's requested here.
-            val dateProjection = arrayOf(MediaStore.MediaColumns.DATE_TAKEN, MediaStore.MediaColumns.DATE_MODIFIED)
+            val dateProjection = arrayOf(MediaStore.MediaColumns.DATE_TAKEN, MediaStore.MediaColumns.DATE_MODIFIED, MediaStore.MediaColumns.SIZE)
             var origDateTaken = 0L
             var origDateModified = 0L
+            var sourceSize = -1L
             context.contentResolver.query(sourceUri, dateProjection, null, null, null)?.use { c ->
                 if (c.moveToFirst()) {
                     val tIdx = c.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN)
                     val mIdx = c.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
+                    val sIdx = c.getColumnIndex(MediaStore.MediaColumns.SIZE)
                     if (tIdx >= 0) origDateTaken = c.getLong(tIdx)
                     if (mIdx >= 0) origDateModified = c.getLong(mIdx)
+                    if (sIdx >= 0) sourceSize = c.getLong(sIdx)
                 }
             }
             val values = ContentValues().apply {
@@ -113,10 +128,18 @@ object MediaStoreOps {
                 if (origDateModified > 0) put(MediaStore.MediaColumns.DATE_MODIFIED, origDateModified)
             }
             val newUri = context.contentResolver.insert(collection, values) ?: return null
-            context.contentResolver.openInputStream(sourceUri)?.use { input ->
+            val copiedBytes = context.contentResolver.openInputStream(sourceUri)?.use { input ->
                 context.contentResolver.openOutputStream(newUri)?.use { output -> input.copyTo(output) }
                     ?: return null.also { context.contentResolver.delete(newUri, null, null) }
             } ?: return null.also { context.contentResolver.delete(newUri, null, null) }
+            // Verified BEFORE the caller ever gets a URI back to delete the source against - a
+            // truncated copy (source modified/removed mid-read by another app, IO error that
+            // didn't throw) must never look like a successful move. Every caller of copy() only
+            // deletes the original after receiving a non-null result here.
+            if (sourceSize > 0 && copiedBytes != sourceSize) {
+                context.contentResolver.delete(newUri, null, null)
+                return null
+            }
             val done = ContentValues().apply {
                 put(MediaStore.MediaColumns.IS_PENDING, 0)
                 // Re-applied: clearing IS_PENDING is itself a write, which can bump DATE_MODIFIED

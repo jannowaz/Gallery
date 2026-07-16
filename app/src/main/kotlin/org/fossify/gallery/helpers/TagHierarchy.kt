@@ -8,7 +8,7 @@ package org.fossify.gallery.helpers
  */
 fun expandTagsWithDescendants(tags: Collection<String>, hierarchy: Map<String, String>): Set<String> {
     if (hierarchy.isEmpty() || tags.isEmpty()) return tags.toSet()
-    val childrenByParent = hierarchy.entries.groupBy({ it.value }, { it.key })
+    val childrenByParent = childrenByParentMap(hierarchy)
     val result = tags.toMutableSet()
     val queue = ArrayDeque(tags)
     while (queue.isNotEmpty()) {
@@ -16,4 +16,22 @@ fun expandTagsWithDescendants(tags: Collection<String>, hierarchy: Map<String, S
         childrenByParent[cur]?.forEach { child -> if (result.add(child)) queue.add(child) }
     }
     return result
+}
+
+/** Parent tag -> its direct children, precomputed once so callers building a tree over many tags
+ * don't repeat this grouping per node (would otherwise be O(tags) per lookup). */
+fun childrenByParentMap(hierarchy: Map<String, String>): Map<String, List<String>> =
+    hierarchy.entries.groupBy({ it.value }, { it.key })
+
+/** Walks [tag]'s parent chain up to its topmost ancestor. Guards against a corrupted/cyclic
+ * [hierarchy] (e.g. from manually edited prefs) the same way the parent-assignment dialog's
+ * cycle check does, by bailing out the moment a tag is revisited. */
+fun rootOf(tag: String, hierarchy: Map<String, String>): String {
+    var cur = tag
+    val seen = HashSet<String>()
+    while (seen.add(cur)) {
+        val parent = hierarchy[cur] ?: return cur
+        cur = parent
+    }
+    return cur
 }

@@ -54,6 +54,7 @@ import androidx.work.WorkManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -204,7 +205,11 @@ fun FolderPickerSheet(
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(480.dp)) {
+        // Capped to a fraction of screen height instead of a flat 480dp - on short/landscape
+        // screens a fixed 480dp could push the confirm button below the visible area.
+        val screenHeightDp = LocalConfiguration.current.screenHeightDp
+        val sheetHeight = minOf(480, (screenHeightDp * 0.85f).toInt()).dp
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(sheetHeight)) {
             // Header with title and action type
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -409,7 +414,15 @@ fun FolderPickerSheet(
         val info = workInfo.firstOrNull()
         LaunchedEffect(info?.state) {
             if (info?.state?.isFinished == true) {
-                ctx.toast(ctx.getString(if (isMoveOperation) R.string.files_moved else R.string.files_copied), Toast.LENGTH_SHORT)
+                // outputData (not progress, which WorkManager clears on completion) carries the real
+                // per-item counts - reading only "done" here used to always show a flat "Moved"/
+                // "Copied" toast regardless of how many items actually failed (permission denial,
+                // IO error, ...), which silently misrepresented a partial failure as full success.
+                val failed = info.outputData.getInt("failed", 0)
+                val done = info.outputData.getInt("done", 0)
+                val msg = if (failed > 0) ctx.getString(R.string.notif_batch_done_with_failures, done, failed)
+                else ctx.getString(if (isMoveOperation) R.string.files_moved else R.string.files_copied)
+                ctx.toast(msg, Toast.LENGTH_SHORT)
                 onDismiss()
             }
         }

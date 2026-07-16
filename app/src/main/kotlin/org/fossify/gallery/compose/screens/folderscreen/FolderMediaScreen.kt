@@ -59,6 +59,16 @@ fun FolderMediaScreen(
     // this the directory-stream scan reran from disk every time the user opened a photo and came back.
     var mediaItems by remember { mutableStateOf(folderMediaCache[folderPath]) }
     var showViewSettings by remember { mutableStateOf(false) }
+    // Resolves to this folder's own pinned settings if the user saved one via the "Einstellung
+    // global übernehmen" toggle, else falls back to the tab-wide default - re-resolved fresh
+    // whenever a *different* folder is opened (composable<Folder> gives each folder its own
+    // instance, so folderPath is stable for the screen's lifetime).
+    var viewSettings by remember(folderPath) { mutableStateOf(viewSettingsVM.getFolderMediaSettingsForPath(folderPath)) }
+    // Keeps tracking the global default live if this folder has no custom override - matches the
+    // legacy Views-based getFolderGrouping/getFolderSorting fallback-to-global behavior.
+    LaunchedEffect(tabSettings.folderMedia, folderPath) {
+        if (!viewSettingsVM.hasCustomFolderMediaSettings(folderPath)) viewSettings = tabSettings.folderMedia
+    }
 
     // Single source of truth: the same `media` DB table the Media tab pages over (getMediaFromPath =
     // WHERE deleted_ts = 0 AND parent_path = folderPath, parent_path-indexed). MediaScreen's override
@@ -98,10 +108,10 @@ fun FolderMediaScreen(
             // different, less-polished screen.
             androidx.compose.animation.Crossfade(targetState = items == null, label = "folderMediaLoading") { loading ->
                 if (loading) {
-                    MediaSkeleton(columns = tabSettings.folderMedia.columnCount)
+                    MediaSkeleton(columns = viewSettings.columnCount)
                 } else {
                     MediaScreen(
-                        viewSettings = tabSettings.folderMedia,
+                        viewSettings = viewSettings,
                         mediaOverride = items ?: emptyList(),
                         onNavigateToViewer = onNavigateToViewer,
                     )
@@ -112,9 +122,11 @@ fun FolderMediaScreen(
 
     if (showViewSettings) {
         ViewSettingsSheet(
-            settings = tabSettings.folderMedia,
+            settings = viewSettings,
             showDisplayMode = false,
-            onSettingsChange = { s -> viewSettingsVM.updateFolderMedia(s) },
+            showApplyGloballyToggle = true,
+            initialApplyGlobally = !viewSettingsVM.hasCustomFolderMediaSettings(folderPath),
+            onSettingsChange = { s, applyGlobally -> viewSettingsVM.updateFolderMediaForPath(folderPath, s, applyGlobally); viewSettings = s },
             onDismiss = { showViewSettings = false }
         )
     }

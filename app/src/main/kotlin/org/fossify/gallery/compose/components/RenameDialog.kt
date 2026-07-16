@@ -66,6 +66,7 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<Str
     // dismissing early just means onRenamed's selection-remap won't fire (the batch still completes).
     var jobId by remember { mutableStateOf<String?>(null) }
     var plannedMapping by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var collisionError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
@@ -81,6 +82,13 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<Str
             val remaining = withContext(Dispatchers.IO) { ctx.batchJobItemDB.getForJob(id) }
             val failedPaths = remaining.map { it.sourcePath }.toSet()
             val succeededMapping = plannedMapping.filterKeys { it !in failedPaths }
+            // failedPaths was already being computed here, just never shown - the caller relied
+            // entirely on the background system notification (which does report the real count)
+            // to learn anything went wrong, easy to miss since renaming is a quick, in-app action
+            // the user isn't expecting to check the notification shade for.
+            if (failedPaths.isNotEmpty()) {
+                ctx.toast(ctx.getString(R.string.notif_batch_done_with_failures, succeededMapping.size, failedPaths.size), Toast.LENGTH_SHORT)
+            }
             onRenamed(succeededMapping)
             onDismiss()
         }
@@ -116,10 +124,12 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<Str
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = text,
-                    onValueChange = { text = it },
-                    placeholder = { Text(when (mode) { 0 -> "z.B. Urlaub_"; 1 -> "_edited"; 2 -> "z.B. Foto"; else -> "" }, style = MaterialTheme.typography.bodySmall) },
+                    onValueChange = { text = it; collisionError = null },
+                    placeholder = { Text(when (mode) { 0 -> stringResource(R.string.rename_placeholder_prefix); 1 -> "_edited"; 2 -> stringResource(R.string.rename_placeholder_numbered); else -> "" }, style = MaterialTheme.typography.bodySmall) },
                     label = { Text(modes[mode].second) },
                     singleLine = true,
+                    isError = collisionError != null,
+                    supportingText = collisionError?.let { { Text(it) } },
                     modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
                     shape = RoundedCornerShape(Radius.md),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant),
@@ -136,7 +146,7 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<Str
                         Column(Modifier.padding(8.dp)) {
                             Text("${File(paths.firstOrNull() ?: "").name} → $preview1", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("${File(paths.lastOrNull() ?: "").name} → $preview2", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("$counter–${counter + paths.size - 1} von ${paths.size}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.rename_preview_range, counter, counter + paths.size - 1, paths.size), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -165,6 +175,23 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<Str
                         }
                         if (jobs.isEmpty()) {
                             ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); onDismiss(); return@launch
+                        }
+                        // Checked BEFORE requesting consent/enqueueing anything - FolderRenameDialog
+                        // already guards this for folder rename (File(newPath).exists()), file
+                        // rename never did, so a colliding target name here would previously reach
+                        // MediaStoreOps.rename() unchecked, whose ContentResolver.update() either
+                        // silently overwrites the pre-existing file at that name or fails with no
+                        // indication of which specific file collided.
+                        val collision = withContext(Dispatchers.IO) {
+                            jobs.firstOrNull { job ->
+                                val parent = File(job.path).parent ?: ""
+                                val newPath = File(parent, job.newName).absolutePath
+                                newPath != job.path && File(newPath).exists()
+                            }
+                        }
+                        if (collision != null) {
+                            collisionError = ctx.getString(R.string.rename_file_exists, collision.newName)
+                            return@launch
                         }
                         val granted = try {
                             consent.request(MediaStoreOps.writeRequest(ctx, jobs.map { it.uri }))

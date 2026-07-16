@@ -229,6 +229,19 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(HAS_SEEN_VIEWER_GESTURE_HINT, false)
         set(hasSeenViewerGestureHint) = prefs.edit().putBoolean(HAS_SEEN_VIEWER_GESTURE_HINT, hasSeenViewerGestureHint).apply()
 
+    // The video-only left/right vertical drag zones (brightness/volume) are otherwise invisible and
+    // can be triggered by accident near the screen edges - a one-time hint explains them the first
+    // time a video is opened with gestures enabled.
+    var hasSeenVideoGestureZonesHint: Boolean
+        get() = prefs.getBoolean(HAS_SEEN_VIDEO_GESTURE_ZONES_HINT, false)
+        set(hasSeenVideoGestureZonesHint) = prefs.edit().putBoolean(HAS_SEEN_VIDEO_GESTURE_ZONES_HINT, hasSeenVideoGestureZonesHint).apply()
+
+    // Long-press-to-select has no visual affordance on grid tiles - a one-time hint explains it the
+    // first time a file/folder grid with items is shown.
+    var hasSeenMultiSelectHint: Boolean
+        get() = prefs.getBoolean(HAS_SEEN_MULTI_SELECT_HINT, false)
+        set(hasSeenMultiSelectHint) = prefs.edit().putBoolean(HAS_SEEN_MULTI_SELECT_HINT, hasSeenMultiSelectHint).apply()
+
     fun addExcludedFolder(path: String) {
         addExcludedFolders(HashSet<String>(Arrays.asList(path)))
     }
@@ -765,6 +778,30 @@ class Config(context: Context) : BaseConfig(context) {
     var folderMediaShowFileNames: Boolean
         get() = prefs.getBoolean(FOLDER_MEDIA_SHOW_FILE_NAMES, mediaShowFileNames)
         set(value) = prefs.edit().putBoolean(FOLDER_MEDIA_SHOW_FILE_NAMES, value).apply()
+
+    // Default MONTH.value (not NONE) - a drilled-into folder already always showed month headers
+    // before this setting existed, so a fresh/never-saved value must resolve to the same look.
+    var folderMediaGroupBy: Int
+        get() = prefs.getInt(FOLDER_MEDIA_GROUP_BY, GroupBy.MONTH.value)
+        set(value) = prefs.edit().putInt(FOLDER_MEDIA_GROUP_BY, value).apply()
+
+    var folderMediaGroupOrder: Int
+        get() = prefs.getInt(FOLDER_MEDIA_GROUP_ORDER, GroupOrder.ALPHABETICAL.value)
+        set(value) = prefs.edit().putInt(FOLDER_MEDIA_GROUP_ORDER, value).apply()
+
+    var folderMediaOnlyTopLevelTags: Boolean
+        get() = prefs.getBoolean(FOLDER_MEDIA_ONLY_TOP_LEVEL_TAGS, false)
+        set(value) = prefs.edit().putBoolean(FOLDER_MEDIA_ONLY_TOP_LEVEL_TAGS, value).apply()
+
+    // Default MONTH.value, same reasoning as folderMediaGroupBy above - the Media/Favorites tabs
+    // already showed month headers before grouping was a real, persisted per-tab setting.
+    var mediaGroupBy: Int
+        get() = prefs.getInt(MEDIA_GROUP_BY, GroupBy.MONTH.value)
+        set(value) = prefs.edit().putInt(MEDIA_GROUP_BY, value).apply()
+
+    var favoritesGroupBy: Int
+        get() = prefs.getInt(FAVORITES_GROUP_BY, GroupBy.MONTH.value)
+        set(value) = prefs.edit().putInt(FAVORITES_GROUP_BY, value).apply()
 
     var customFoldersOrder: String
         get() = prefs.getString(CUSTOM_FOLDERS_ORDER, "") ?: ""

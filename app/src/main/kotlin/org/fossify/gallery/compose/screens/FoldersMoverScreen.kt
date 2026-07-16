@@ -73,6 +73,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
+import org.fossify.gallery.compose.components.ConfirmDestructive
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.theme.LocalSpacing
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
@@ -104,6 +105,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     // composable's own coroutine scope surviving.
     var activeJobId by remember { mutableStateOf<String?>(null) }
     var editingIndex by remember { mutableIntStateOf(-1) }
+    var pendingRemove by remember { mutableStateOf<FolderPair?>(null) }
     val storageRoot = Environment.getExternalStorageDirectory().absolutePath
     val moverConsent = rememberMediaStoreConsent()
     val allMovedFormat = stringResource(R.string.folder_mover_all_moved)
@@ -120,9 +122,20 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     val moveProgressData = if (activeWorkInfo?.state?.isFinished == true) activeWorkInfo.outputData else activeWorkInfo?.progress
     val moveProgress = moveProgressData?.getInt("done", 0) ?: 0
     val moveTotal = moveProgressData?.getInt("total", 1) ?: 1
+    val moveFailed = moveProgressData?.getInt("failed", 0) ?: 0
+    val moveFailedFormat = stringResource(R.string.notif_batch_done_with_failures)
     LaunchedEffect(activeWorkInfo?.state) {
         if (activeWorkInfo?.state?.isFinished == true) {
-            ctx.toast(if (activeWorkInfo.state == androidx.work.WorkInfo.State.SUCCEEDED) allMovedFormat.format(moveProgress) else moveStoppedFormat.format(moveProgress), Toast.LENGTH_SHORT)
+            // WorkInfo.State.SUCCEEDED only means doWork() didn't throw - MediaBatchWorker returns
+            // that even when some individual items failed (see its own per-item try/catch), so
+            // "SUCCEEDED" alone used to make this say "All N moved" while quietly omitting however
+            // many actually failed. Check the real per-item failed count instead.
+            val msg = when {
+                activeWorkInfo.state != androidx.work.WorkInfo.State.SUCCEEDED -> moveStoppedFormat.format(moveProgress)
+                moveFailed > 0 -> moveFailedFormat.format(moveProgress, moveFailed)
+                else -> allMovedFormat.format(moveProgress)
+            }
+            ctx.toast(msg, Toast.LENGTH_SHORT)
             activeJobId = null
         }
     }
@@ -214,7 +227,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                                     }
                                     Text("${pair.source} → ${pair.destination}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                                 }
-                                IconButton(onClick = { pairs.remove(pair); savePairs() }, modifier = Modifier.size(40.dp), enabled = !isMoving) {
+                                IconButton(onClick = { pendingRemove = pair }, modifier = Modifier.size(40.dp), enabled = !isMoving) {
                                     Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                                 }
                             }
@@ -255,6 +268,20 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
             onConfirm = { srcs, dest -> addOrUpdatePair(srcs, dest) },
             onDismiss = { showAddDialog = false; editingIndex = -1 },
             defPrefs = defPrefs,
+        )
+    }
+
+    pendingRemove?.let { pair ->
+        ConfirmDestructive(
+            title = stringResource(R.string.action_remove),
+            text = stringResource(R.string.mover_remove_pair_confirm),
+            confirmLabel = stringResource(R.string.action_remove),
+            onConfirm = {
+                pendingRemove = null
+                pairs.remove(pair)
+                savePairs()
+            },
+            onDismiss = { pendingRemove = null },
         )
     }
 }

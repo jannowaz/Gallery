@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.helpers.GroupBy
+import org.fossify.gallery.helpers.GroupOrder
 
 data class TabViewSettings(
     val media: ViewSettings = ViewSettings(),
@@ -86,6 +88,59 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
         persistFolderMedia(s)
     }
 
+    // Path-scoped overrides for FolderMediaScreen (a specific opened folder) and Explorer's media
+    // listing (the currently browsed directory) - the "Einstellung global übernehmen" toggle in
+    // ViewSettingsSheet. Deliberately separate from TabViewSettings/StateFlow: unlike the tab-level
+    // settings, these are looked up per path on demand by the one screen instance that's currently
+    // showing that path, not broadcast to every observer - a plain SharedPreferences key keyed by
+    // scope+path (mirroring the legacy Views-based Config.saveFolderGrouping/getFolderViewType
+    // pattern, which the Compose UI never wired up to) is simpler than adding a path->settings map
+    // to the reactive state for something only one screen ever reads at a time.
+    private fun pathSettingsKey(scope: String, path: String) = "${scope}_path_settings_${path.lowercase(java.util.Locale.getDefault())}"
+
+    private fun getCustomForPath(scope: String, path: String, fallback: ViewSettings): ViewSettings {
+        val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(getApplication<Application>().applicationContext)
+        val raw = prefs.getString(pathSettingsKey(scope, path), null) ?: return fallback
+        return deserializeViewSettings(raw, fallback)
+    }
+
+    private fun hasCustomForPath(scope: String, path: String): Boolean {
+        val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(getApplication<Application>().applicationContext)
+        return prefs.contains(pathSettingsKey(scope, path))
+    }
+
+    private fun saveCustomForPath(scope: String, path: String, s: ViewSettings) {
+        val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(getApplication<Application>().applicationContext)
+        prefs.edit().putString(pathSettingsKey(scope, path), serializeViewSettings(s)).apply()
+    }
+
+    private fun removeCustomForPath(scope: String, path: String) {
+        val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(getApplication<Application>().applicationContext)
+        prefs.edit().remove(pathSettingsKey(scope, path)).apply()
+    }
+
+    fun getFolderMediaSettingsForPath(path: String): ViewSettings = getCustomForPath("folder_media", path, _settings.value.folderMedia)
+    fun hasCustomFolderMediaSettings(path: String): Boolean = hasCustomForPath("folder_media", path)
+    fun updateFolderMediaForPath(path: String, s: ViewSettings, applyGlobally: Boolean) {
+        if (applyGlobally) {
+            removeCustomForPath("folder_media", path)
+            updateFolderMedia(s)
+        } else {
+            saveCustomForPath("folder_media", path, s)
+        }
+    }
+
+    fun getExplorerMediaSettingsForPath(path: String): ViewSettings = getCustomForPath("explorer_media", path, _settings.value.explorerMedia)
+    fun hasCustomExplorerMediaSettings(path: String): Boolean = hasCustomForPath("explorer_media", path)
+    fun updateExplorerMediaForPath(path: String, s: ViewSettings, applyGlobally: Boolean) {
+        if (applyGlobally) {
+            removeCustomForPath("explorer_media", path)
+            updateExplorerMedia(s)
+        } else {
+            saveCustomForPath("explorer_media", path, s)
+        }
+    }
+
     private fun loadFromConfig() {
         val ctx = getApplication<Application>().applicationContext
         val c = ctx.config
@@ -122,6 +177,10 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
             sortBy = SortField.from(c.mediaSortBy),
             sortDesc = c.mediaSortDesc,
             spacing = c.thumbnailSpacing,
+            // Explorer's file list had no section headers at all before grouping existed - default
+            // to NONE (unlike ViewSettings()'s own MONTH default) so upgrading users don't suddenly
+            // see new headers appear unprompted.
+            groupBy = GroupBy.NONE,
         )
         val explorerAlbumsSettings = deserializeViewSettings(prefs.getString("explorer_albums_settings", null), explorerAlbumsDefault)
         val explorerMediaSettings = deserializeViewSettings(prefs.getString("explorer_media_settings", null), explorerMediaDefault)
@@ -134,7 +193,8 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
                 sortBy = SortField.from(c.mediaSortBy),
                 sortDesc = c.mediaSortDesc,
                 spacing = c.thumbnailSpacing,
-            ),
+                groupBy = GroupBy.from(c.mediaGroupBy),
+            ).sanitizeGrouping(),
             albums = ViewSettings(
                 viewType = ViewType.from(c.viewTypeFolders),
                 columnCount = c.dirColumnCnt.coerceIn(2, 6),
@@ -156,7 +216,10 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
                 sortBy = SortField.from(c.folderMediaSortBy),
                 sortDesc = c.folderMediaSortDesc,
                 spacing = c.thumbnailSpacing,
-            ),
+                groupBy = GroupBy.from(c.folderMediaGroupBy),
+                groupOrder = GroupOrder.from(c.folderMediaGroupOrder),
+                onlyTopLevelTags = c.folderMediaOnlyTopLevelTags,
+            ).sanitizeGrouping(),
             favorites = ViewSettings(
                 viewType = ViewType.from(c.viewTypeFolders),
                 columnCount = c.dirColumnCnt.coerceIn(2, 6),
@@ -167,7 +230,8 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
                 sortDesc = favDesc,
                 spacing = c.thumbnailSpacing,
                 showFolderThumbnails = c.showFolderThumbnails,
-            ),
+                groupBy = GroupBy.from(c.favoritesGroupBy),
+            ).sanitizeGrouping(),
             collections = ViewSettings(
                 viewType = ViewType.from(c.collectionsViewType),
                 columnCount = c.collectionsColumnCnt.coerceIn(2, 6),
@@ -194,6 +258,7 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
         ctx.config.mediaSortBy = s.sortBy.value
         ctx.config.mediaSortDesc = s.sortDesc
         ctx.config.thumbnailSpacing = s.spacing
+        ctx.config.mediaGroupBy = s.groupBy.value
     }
 
     private fun persistAlbums(s: ViewSettings) {
@@ -234,6 +299,7 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
         ctx.config.fileRoundedCorners = s.roundedCorners
         ctx.config.thumbnailSpacing = s.spacing
         ctx.config.showFolderThumbnails = s.showFolderThumbnails
+        ctx.config.favoritesGroupBy = s.groupBy.value
         // Save Favorites' sort independently so it never interferes with the Albums tab (both used
         // to share config.folderSortBy/folderSortDesc).
         val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(ctx)
@@ -243,11 +309,15 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
     private fun serializeViewSettings(s: ViewSettings): String = listOf(
         s.viewType.value, s.columnCount, s.displayMode.value, s.showFileNames,
         s.roundedCorners, s.sortBy.value, s.sortDesc, s.spacing, s.showFolderThumbnails, s.anchorBottom,
+        s.groupBy.value, s.groupOrder.value, s.onlyTopLevelTags,
     ).joinToString(",")
 
     private fun deserializeViewSettings(raw: String?, fallback: ViewSettings): ViewSettings {
         if (raw == null) return fallback
         val p = raw.split(",")
+        // Only the original 10 fields are required - the 3 grouping fields were added later, so a
+        // string saved before they existed (exactly 10 elements) must still parse instead of being
+        // discarded wholesale; missing indices 10-12 just fall back to the caller's default.
         if (p.size < 10) return fallback
         return try {
             ViewSettings(
@@ -261,7 +331,10 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
                 spacing = p[7].toInt(),
                 showFolderThumbnails = p[8].toBoolean(),
                 anchorBottom = p[9].toBoolean(),
-            )
+                groupBy = p.getOrNull(10)?.toIntOrNull()?.let { GroupBy.from(it) } ?: fallback.groupBy,
+                groupOrder = p.getOrNull(11)?.toIntOrNull()?.let { GroupOrder.from(it) } ?: fallback.groupOrder,
+                onlyTopLevelTags = p.getOrNull(12)?.toBooleanStrictOrNull() ?: fallback.onlyTopLevelTags,
+            ).sanitizeGrouping()
         } catch (_: Exception) {
             fallback
         }
@@ -276,5 +349,8 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
         ctx.config.folderMediaSortBy = s.sortBy.value
         ctx.config.folderMediaSortDesc = s.sortDesc
         ctx.config.thumbnailSpacing = s.spacing
+        ctx.config.folderMediaGroupBy = s.groupBy.value
+        ctx.config.folderMediaGroupOrder = s.groupOrder.value
+        ctx.config.folderMediaOnlyTopLevelTags = s.onlyTopLevelTags
     }
 }

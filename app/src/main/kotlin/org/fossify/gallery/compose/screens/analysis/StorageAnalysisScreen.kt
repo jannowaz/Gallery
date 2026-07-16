@@ -30,6 +30,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
@@ -42,6 +44,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -71,7 +75,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StorageAnalysisScreen(onBack: () -> Unit, onNavigateToViewer: (String) -> Unit = {}) {
+fun StorageAnalysisScreen(onBack: () -> Unit, onNavigateToViewer: (String) -> Unit = {}, onNavigateToCompressionReview: () -> Unit = {}) {
     val vm: StorageAnalysisViewModel = viewModel()
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
@@ -147,17 +151,47 @@ fun StorageAnalysisScreen(onBack: () -> Unit, onNavigateToViewer: (String) -> Un
                         FilterMode.VIDEOS -> state.results.filter { it.mediaType == 2 }
                     }
                 }
-                // Sort folded into its own remember(filtered) - previously re-sorted on every
-                // recomposition of this screen (e.g. every selection toggle), not just when the
-                // filtered set actually changed.
-                val sortedFiltered = remember(filtered) { filtered.sortedByDescending { it.wastedBytes } }
+                // Sort folded into its own remember(filtered, sortMode) - previously re-sorted on
+                // every recomposition of this screen (e.g. every selection toggle), not just when
+                // the filtered set or sort choice actually changed.
+                val sortedFiltered = remember(filtered, state.sortMode) {
+                    when (state.sortMode) {
+                        AnalysisSortMode.WASTED -> filtered.sortedByDescending { it.wastedBytes }
+                        AnalysisSortMode.SIZE -> filtered.sortedByDescending { it.fileSize }
+                        AnalysisSortMode.NAME -> filtered.sortedBy { it.name.lowercase() }
+                    }
+                }
+                var showSortMenu by remember { mutableStateOf(false) }
                 Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))) {
                     Column(Modifier.padding(12.dp)) {
                         Text(stringResource(R.string.storage_files_wasted, filtered.size, formatBytes(totalWasted)), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             FilterChip(selected = state.filterMode == FilterMode.ALL, onClick = { vm.setFilterMode(FilterMode.ALL) }, label = { Text(stringResource(R.string.filter_all)) })
                             FilterChip(selected = state.filterMode == FilterMode.IMAGES, onClick = { vm.setFilterMode(FilterMode.IMAGES) }, label = { Text(stringResource(R.string.images)) })
                             FilterChip(selected = state.filterMode == FilterMode.VIDEOS, onClick = { vm.setFilterMode(FilterMode.VIDEOS) }, label = { Text(stringResource(R.string.videos)) })
+                            Spacer(Modifier.weight(1f))
+                            Box {
+                                IconButton(onClick = { showSortMenu = true }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.AutoMirrored.Filled.Sort, stringResource(R.string.sort_analysis_by), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                                }
+                                DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.sort_savings)) },
+                                        trailingIcon = { if (state.sortMode == AnalysisSortMode.WASTED) Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp)) },
+                                        onClick = { vm.setSortMode(AnalysisSortMode.WASTED); showSortMenu = false },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.sort_size)) },
+                                        trailingIcon = { if (state.sortMode == AnalysisSortMode.SIZE) Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp)) },
+                                        onClick = { vm.setSortMode(AnalysisSortMode.SIZE); showSortMenu = false },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.sort_name)) },
+                                        trailingIcon = { if (state.sortMode == AnalysisSortMode.NAME) Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp)) },
+                                        onClick = { vm.setSortMode(AnalysisSortMode.NAME); showSortMenu = false },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -169,6 +203,7 @@ fun StorageAnalysisScreen(onBack: () -> Unit, onNavigateToViewer: (String) -> Un
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(stringResource(R.string.selected_count_saving, state.selectedPaths.size, formatBytes(selSize)), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
                             TextButton(onClick = { showConfirmDialog = true }) { Text(stringResource(R.string.optimize)) }
+                            TextButton(onClick = { vm.startCompression(); onNavigateToCompressionReview() }) { Text(stringResource(R.string.action_compress)) }
                             TextButton(onClick = { vm.clearSelection() }) { Text(stringResource(R.string.action_empty)) }
                         }
                     }
@@ -275,7 +310,14 @@ private fun AnalysisCard(item: AnalysisResult, isSelected: Boolean, onClick: () 
                 }
             }
             if (item.wastedBytes > 0) {
-                Text(stringResource(R.string.wasted_space_approx, formatBytes(item.wastedBytes)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(top = 2.dp))
+                val expectedSize = (item.fileSize - item.wastedBytes).coerceAtLeast(0)
+                val expectedPercent = (item.wastedBytes * 100 / item.fileSize).toInt()
+                Text(
+                    stringResource(R.string.estimated_size_after_compression, formatBytes(expectedSize), expectedPercent),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
             }
         }
     }

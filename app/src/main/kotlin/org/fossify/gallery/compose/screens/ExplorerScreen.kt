@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -79,7 +80,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.compose.theme.BlurRadius
@@ -98,6 +101,8 @@ import org.fossify.gallery.compose.components.ConfirmDestructive
 import org.fossify.gallery.compose.components.FolderRenameDialog
 import org.fossify.gallery.compose.components.RateAndTagSheet
 import org.fossify.gallery.compose.components.RenameDialog
+import org.fossify.gallery.compose.components.SectionHeader
+import org.fossify.gallery.compose.components.UndoBar
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.R
 import androidx.compose.ui.res.stringResource
@@ -120,9 +125,11 @@ private data class ExplorerItem(
     // date_sort_key (date_added-preferring) for file items, so the Explorer's DATE sort matches the
     // Media tab's exactly. 0 for folders (they sort by their newest child's mtime instead).
     val sortKey: Long = 0L,
+    // 0 for folders (folders have no rating) - used for rating sort/grouping of files only.
+    val rating: Int = 0,
 )
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, FlowPreview::class)
 @Composable
 fun ExplorerScreen(
     internalStoragePath: String,
@@ -133,6 +140,9 @@ fun ExplorerScreen(
     onSelectionActiveChanged: (Boolean) -> Unit = {},
     onCanGoUpChanged: (Boolean) -> Unit = {},
     onNavigateToViewer: (List<String>, Int) -> Unit = { _, _ -> },
+    // "In Medien öffnen" - opens the Media tab filtered (recursively, via MediaRepository's
+    // directory-prefix LIKE match) to everything under the given folder(s).
+    onOpenInMedia: (Set<String>) -> Unit = {},
     tabIndex: Int? = null,
 ) {
     val context = LocalContext.current
@@ -150,6 +160,8 @@ fun ExplorerScreen(
     var currentPath by remember { mutableStateOf(internalStoragePath) }
     var folderItems by remember { mutableStateOf<List<ExplorerItem>>(emptyList()) }
     var fileItems by remember { mutableStateOf<List<ExplorerItem>>(emptyList()) }
+    var fileTagsByPath by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
+    var collapsedGroupKeys by rememberSaveable { mutableStateOf(setOf<String>()) }
     var isLoading by remember { mutableStateOf(true) }
     var selectedFolderPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     val hasFolderSelection = selectedFolderPaths.isNotEmpty()
@@ -160,6 +172,10 @@ fun ExplorerScreen(
     var selectedFilePaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     val hasFileSelection = selectedFilePaths.isNotEmpty()
     LaunchedEffect(hasFolderSelection, hasFileSelection) { onSelectionActiveChanged(hasFolderSelection || hasFileSelection) }
+    var showMultiSelectHint by remember { mutableStateOf(!context.config.hasSeenMultiSelectHint) }
+    if (hasFolderSelection || hasFileSelection) {
+        LaunchedEffect(Unit) { showMultiSelectHint = false; context.config.hasSeenMultiSelectHint = true }
+    }
     var showFileFolderPicker by remember { mutableStateOf(false) }
     var fileFolderPickerIsMove by remember { mutableStateOf(false) }
     var showFileDeleteConfirm by remember { mutableStateOf(false) }
@@ -233,14 +249,25 @@ fun ExplorerScreen(
     // Re-fetch after rename/move/mover/delete etc. so the tree doesn't keep showing files/folders
     // that no longer exist at their old path. isLoading is intentionally left untouched below (see
     // the loadedPath guard) so this refresh happens quietly instead of flashing the skeleton loader.
+    //
+    // RefreshBus's own debounce (300ms, shared by every other collector on the bus) is tuned for
+    // cheap listeners - this one isn't cheap: refreshEntriesUnder() is a full-device MediaStore scan
+    // (measured ~6s on a real ~200k-item library, see MediaStoreOps.refreshEntriesUnder's doc
+    // comment). Folder *structure* changes (a file added/removed/moved) are inherently rare compared
+    // to how often RefreshBus actually fires - every favorite/delete/restore explicitly triggers it
+    // (MediaRepository), and so does every debounced MediaStore write from ANY app on the device via
+    // the ContentObserver in ComposeExplorerActivity. Without an additional, much longer debounce
+    // here, a short burst of individual actions (e.g. favoriting several photos one at a time) queued
+    // one full 6s device-wide rescan per action while this tab was mounted - a self-inflicted,
+    // sustained MediaProvider CPU cost with no benefit, since the tree rarely actually changed shape.
     LaunchedEffect(Unit) {
-        org.fossify.gallery.helpers.RefreshBus.events.collect {
+        org.fossify.gallery.helpers.RefreshBus.events.debounce(10_000).collect {
             allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.refreshEntriesUnder(context, storageRoot) }
         }
     }
 
     suspend fun loadFolderContents(path: String) {
-        val (sortedFolders, sortedFiles) = withContext(Dispatchers.IO) {
+        val (sortedFolders, sortedFiles, sortedTags) = withContext(Dispatchers.IO) {
             val root = path.trimEnd('/')
             val deletedPaths = repo.getDeletedPaths()
             val hidden = context.config.explorer2HiddenFolders
@@ -279,7 +306,7 @@ fun ExplorerScreen(
             // carrying date_sort_key so the DATE sort below is identical to the Media tab's. This is what
             // makes "same media, same order across tabs" hold for the actual media items.
             val files = repo.getMediaFromPath(root).map {
-                ExplorerItem(name = it.name, path = it.path, isDirectory = false, lastModified = it.modified, size = it.size, sortKey = if (it.dateSortKey > 0) it.dateSortKey else if (it.taken > 0) it.taken else it.modified)
+                ExplorerItem(name = it.name, path = it.path, isDirectory = false, lastModified = it.modified, size = it.size, sortKey = if (it.dateSortKey > 0) it.dateSortKey else if (it.taken > 0) it.taken else it.modified, rating = it.rating)
             }
             val sf = when (folderSettings.sortBy) {
                 SortField.NAME -> folders.sortedBy { it.name.lowercase() }
@@ -294,12 +321,14 @@ fun ExplorerScreen(
                 SortField.NAME -> files.sortedBy { it.name.lowercase() }
                 SortField.DATE -> files.sortedBy { it.sortKey }
                 SortField.SIZE -> files.sortedBy { it.size }
-                SortField.RATING -> files.sortedBy { it.name.lowercase() }
+                SortField.RATING -> files.sortedBy { it.rating }
                 SortField.COUNT -> files.sortedBy { it.name.lowercase() }
             }.let { if (mediaSettings.sortDesc) it.reversed() else it }
-            Pair(sf, sfi)
+            val tags = if (mediaSettings.groupBy == org.fossify.gallery.helpers.GroupBy.TAG) repo.getTagsForPaths(sfi.map { it.path }) else emptyMap()
+            Triple(sf, sfi, tags)
         }
         folderItems = sortedFolders
+        fileTagsByPath = sortedTags
         fileItems = sortedFiles
     }
 
@@ -317,7 +346,14 @@ fun ExplorerScreen(
 
     LaunchedEffect(currentPath) { onPathChange(currentPath); selectedFolderPaths = emptySet(); selectedFilePaths = emptySet() }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    // Wrapped in a Box (not just the bare Column below) purely so UndoBar can overlay on top of it -
+    // Explorer's own move/delete actions already push to the same global UndoManager as
+    // Media/Viewer (see onMove/showFileDeleteConfirm/showDeleteFoldersConfirm below), but until now
+    // there was nowhere on this screen to actually show the resulting undo bar, so a move or delete
+    // made from Explorer had no visible Undo affordance at all even though the underlying mechanism
+    // worked - only MediaScreen/ViewerScreen rendered UndoBar.
+    Box(modifier = modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
         if (hasFolderSelection) {
             SelectionAppBar(
                 count = selectedFolderPaths.size,
@@ -354,6 +390,11 @@ fun ExplorerScreen(
                     Box {
                         IconButton(onClick = { folderMenuOpen = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions)) }
                         DropdownMenu(expanded = folderMenuOpen, onDismissRequest = { folderMenuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_open_in_media)) },
+                                leadingIcon = { Icon(Icons.Default.PhotoLibrary, null) },
+                                onClick = { folderMenuOpen = false; onOpenInMedia(selectedFolderPaths); selectedFolderPaths = emptySet() },
+                            )
                             if (isSingleFolder) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.action_rename)) },
@@ -431,7 +472,7 @@ fun ExplorerScreen(
                 // shimmer to look at - easy to mistake for a hang. Delayed so it doesn't flash on
                 // the common fast path (cached allEntries, near-instant folder navigation).
                 var showHint by remember { mutableStateOf(false) }
-                LaunchedEffect(Unit) { delay(1200); showHint = true }
+                LaunchedEffect(Unit) { delay(600); showHint = true }
                 androidx.compose.animation.AnimatedVisibility(visible = showHint, modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp), enter = fadeIn(), exit = fadeOut()) {
                     Surface(shape = RoundedCornerShape(Radius.xl), color = MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 2.dp) {
                         Text(
@@ -449,7 +490,31 @@ fun ExplorerScreen(
         } else {
             val listState = rememberLazyListState()
             ScrollToTopEffect(tabIndex) { listState.animateScrollToItem(0) }
-            LazyColumn(state = listState, modifier = Modifier.weight(1f), contentPadding = PaddingValues(4.dp)) {
+            val fileMedia = remember(fileItems) { fileItems.map { org.fossify.gallery.models.Medium(id = null, name = it.name, path = it.path, parentPath = "", modified = it.lastModified, taken = 0L, size = it.size, type = 0, videoDuration = 0, isFavorite = false, deletedTS = 0L, mediaStoreId = 0L, rating = it.rating) } }
+            val untaggedLabel = stringResource(R.string.group_untagged)
+            val unratedLabel = stringResource(R.string.group_unrated)
+            val fileGroupRows = remember(fileMedia, fileTagsByPath, mediaSettings.groupBy, mediaSettings.groupOrder, mediaSettings.sortDesc, mediaSettings.onlyTopLevelTags, collapsedGroupKeys, untaggedLabel, unratedLabel) {
+                when (mediaSettings.groupBy) {
+                    org.fossify.gallery.helpers.GroupBy.TAG -> org.fossify.gallery.helpers.buildTagGroupRows(fileMedia, fileTagsByPath, context.config.tagHierarchy, mediaSettings.groupOrder, mediaSettings.onlyTopLevelTags, collapsedGroupKeys, untaggedLabel)
+                    org.fossify.gallery.helpers.GroupBy.RATING -> org.fossify.gallery.helpers.buildRatingGroupRows(fileMedia, mediaSettings.groupOrder, unratedLabel)
+                    org.fossify.gallery.helpers.GroupBy.SIZE -> org.fossify.gallery.helpers.buildSizeGroupRows(fileMedia, mediaSettings.sortDesc)
+                    org.fossify.gallery.helpers.GroupBy.ALPHABET -> org.fossify.gallery.helpers.buildAlphabetGroupRows(fileMedia, mediaSettings.sortDesc)
+                    org.fossify.gallery.helpers.GroupBy.MONTH -> {
+                        val g = LinkedHashMap<String, MutableList<org.fossify.gallery.models.Medium>>()
+                        fileMedia.forEach { m -> g.getOrPut(org.fossify.gallery.viewmodels.MediaViewModel.monthLabelFor(m)) { mutableListOf() }.add(m) }
+                        g.flatMap { (label, items) ->
+                            val key = "month:$label"
+                            listOf(org.fossify.gallery.helpers.GroupRow.SectionHeader(key, label, 0, items.size, items.size, false, true), org.fossify.gallery.helpers.GroupRow.Items(key, items))
+                        }
+                    }
+                    org.fossify.gallery.helpers.GroupBy.NONE -> if (fileMedia.isEmpty()) emptyList() else listOf(org.fossify.gallery.helpers.GroupRow.Items("all", fileMedia))
+                }
+            }
+            // path -> ExplorerItem, so the grouped render below can look tile data back up from the
+            // Medium rows the grouping functions operate on (which only carry the fields they need).
+            val fileItemByPath = remember(fileItems) { fileItems.associateBy { it.path } }
+            Box(Modifier.weight(1f)) {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(4.dp)) {
                 if (folderItems.isNotEmpty()) {
                     item {
                         Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -538,8 +603,15 @@ fun ExplorerScreen(
                     val cornerShape = if (mediaSettings.roundedCorners) RoundedCornerShape(Radius.sm) else RoundedCornerShape(0.dp)
                     when (mediaSettings.viewType) {
                     ViewType.GRID -> {
-                        fileItems.chunked(mediaSettings.columnCount).forEach { chunk ->
-                            item(key = chunk.joinToString { it.path }) {
+                        fileGroupRows.forEach { row ->
+                        when (row) {
+                            is org.fossify.gallery.helpers.GroupRow.SectionHeader -> item(key = "filehdr_${row.key}", contentType = "header") {
+                                SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = if (row.key in collapsedGroupKeys) collapsedGroupKeys - row.key else collapsedGroupKeys + row.key }, ratingValue = row.ratingValue)
+                            }
+                            is org.fossify.gallery.helpers.GroupRow.Items -> {
+                        val groupFileItems = row.media.mapNotNull { fileItemByPath[it.path] }
+                        groupFileItems.chunked(mediaSettings.columnCount).forEach { chunk ->
+                            item(key = "${row.sectionKey}/" + chunk.joinToString { it.path }) {
                                 Row(Modifier.fillMaxWidth().padding(mediaSettings.spacing.dp / 2)) {
                                     chunk.forEach { item ->
                                         val file = File(item.path)
@@ -582,15 +654,25 @@ fun ExplorerScreen(
                                 }
                             }
                         }
+                            }
+                        }
+                        }
                     }
                     ViewType.MOSAIC -> {
-                        item(key = "explorer_media_mosaic") {
+                        fileGroupRows.forEach { row ->
+                        when (row) {
+                            is org.fossify.gallery.helpers.GroupRow.SectionHeader -> item(key = "filehdr_${row.key}", contentType = "header") {
+                                SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = if (row.key in collapsedGroupKeys) collapsedGroupKeys - row.key else collapsedGroupKeys + row.key }, ratingValue = row.ratingValue)
+                            }
+                            is org.fossify.gallery.helpers.GroupRow.Items -> {
+                        val groupFileItems = row.media.mapNotNull { fileItemByPath[it.path] }
+                        item(key = "explorer_media_mosaic_${row.sectionKey}") {
                             val aspectCache = remember { mutableStateMapOf<String, Float>() }
                             val n = mediaSettings.columnCount.coerceAtLeast(1)
-                            val columns = remember(fileItems, n, aspectCache.size) {
+                            val columns = remember(groupFileItems, n, aspectCache.size) {
                                 val heights = FloatArray(n)
                                 val buckets = Array(n) { mutableListOf<ExplorerItem>() }
-                                fileItems.forEach { fi ->
+                                groupFileItems.forEach { fi ->
                                     val isVid = fi.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
                                     val ar = if (isVid) 1f else (aspectCache[fi.path] ?: 1f)
                                     val ci = (0 until n).minByOrNull { heights[it] } ?: 0
@@ -637,9 +719,19 @@ fun ExplorerScreen(
                                 }
                             }
                         }
+                            }
+                        }
+                        }
                     }
                     else -> {
-                        items(fileItems, key = { it.path }) { item ->
+                        fileGroupRows.forEach { row ->
+                        when (row) {
+                            is org.fossify.gallery.helpers.GroupRow.SectionHeader -> item(key = "filehdr_${row.key}", contentType = "header") {
+                                SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = if (row.key in collapsedGroupKeys) collapsedGroupKeys - row.key else collapsedGroupKeys + row.key }, ratingValue = row.ratingValue, accentColor = row.rootKey?.let { org.fossify.gallery.compose.components.tagAccentColor(it) }, showGuideLine = true)
+                            }
+                            is org.fossify.gallery.helpers.GroupRow.Items -> {
+                        val groupFileItems = row.media.mapNotNull { fileItemByPath[it.path] }
+                        items(groupFileItems, key = { "${row.sectionKey}/${it.path}" }) { item ->
                             val file = File(item.path)
                                 val isVideo = item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
                             Surface(
@@ -678,13 +770,23 @@ fun ExplorerScreen(
                             }
                             HorizontalDivider(Modifier.padding(start = 68.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         }
+                            }
+                        }
+                        }
                     }
                     }
                 }
             }
+            org.fossify.gallery.compose.components.LongPressSelectHint(
+                visible = showMultiSelectHint && !hasFolderSelection && !hasFileSelection,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+            )
+            }
         }
         }
 
+    }
+    UndoBar(modifier = Modifier.align(Alignment.BottomCenter))
     }
 
     if (showFileFolderPicker) {

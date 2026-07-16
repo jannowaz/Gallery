@@ -73,6 +73,7 @@ fun RecycleBinScreen(onBack: () -> Unit) {
     var items by remember { mutableStateOf<List<Medium>>(emptyList()) }
     var refresh by remember { mutableIntStateOf(0) }
     var showEmptyConfirm by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<Medium?>(null) }
 
     LaunchedEffect(refresh) {
         items = withContext(Dispatchers.IO) { repo.getDeletedMedia() }
@@ -89,13 +90,14 @@ fun RecycleBinScreen(onBack: () -> Unit) {
                 val granted = try { consent.request(MediaStoreOps.deleteRequest(ctx, uris)) } catch (_: Exception) { false }
                 if (!granted) { ctx.toast(ctx.getString(R.string.cancelled)); return@launch }
             }
-            withContext(Dispatchers.IO) { paths.forEach { repo.deleteMedium(it) } }
+            val failed = withContext(Dispatchers.IO) { paths.count { !repo.deleteMedium(it) } }
             RefreshBus.trigger()
             refresh++
+            if (failed > 0) ctx.toast(ctx.resources.getQuantityString(R.plurals.delete_failed_count, failed, failed))
         }
     }
 
-    BackHandler(enabled = showEmptyConfirm) { showEmptyConfirm = false }
+    BackHandler(enabled = showEmptyConfirm || pendingDelete != null) { showEmptyConfirm = false; pendingDelete = null }
 
     Scaffold(
         topBar = {
@@ -127,7 +129,7 @@ fun RecycleBinScreen(onBack: () -> Unit) {
                             scope.launch { withContext(Dispatchers.IO) { repo.restoreFromRecycleBin(m.path) }; RefreshBus.trigger(); refresh++ }
                         }) { Icon(Icons.Default.Restore, stringResource(R.string.action_restore), tint = MaterialTheme.colorScheme.primary) }
                         IconButton(onClick = {
-                            permanentlyDelete(listOf(m.path))
+                            pendingDelete = m
                         }) { Icon(Icons.Default.DeleteForever, stringResource(R.string.action_delete_forever), tint = MaterialTheme.colorScheme.error) }
                     }
                     HorizontalDivider(Modifier.padding(start = 76.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
@@ -147,6 +149,19 @@ fun RecycleBinScreen(onBack: () -> Unit) {
                 permanentlyDelete(items.map { it.path })
             },
             onDismiss = { showEmptyConfirm = false },
+        )
+    }
+
+    pendingDelete?.let { m ->
+        ConfirmDestructive(
+            title = stringResource(R.string.action_delete_forever),
+            text = stringResource(R.string.delete_forever_single_confirm, m.name),
+            confirmLabel = stringResource(R.string.action_delete_forever),
+            onConfirm = {
+                pendingDelete = null
+                permanentlyDelete(listOf(m.path))
+            },
+            onDismiss = { pendingDelete = null },
         )
     }
 }

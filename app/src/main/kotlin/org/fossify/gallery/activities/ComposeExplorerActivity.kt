@@ -99,6 +99,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import org.fossify.gallery.compose.components.FilterSheetContent
+import org.fossify.gallery.compose.screens.ViewSettingsContent
 import androidx.compose.material3.ShortNavigationBar
 import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.ShortNavigationBarItemDefaults
@@ -203,12 +208,17 @@ import org.fossify.gallery.helpers.resolveContentUriToPath
 import org.fossify.gallery.viewmodels.AlbumsViewModel
 import org.fossify.gallery.viewmodels.ExplorerViewModel
 import org.fossify.gallery.viewmodels.ExplorerUiState
+import org.fossify.gallery.viewmodels.hasActiveFilter
 import org.fossify.gallery.workers.RecycleBinCleanupWorker
 import org.fossify.gallery.workers.MediaSyncWorker
 import org.fossify.gallery.workers.MetadataSyncWorker
 import java.io.File
 
 private enum class ActiveSheet { VIEW_SETTINGS }
+
+/** Which section the combined Filter/Ansicht sheet opens on - only meaningful on tabs where
+ * filtering applies (Media/Favorites, see MainSheets); other tabs always render VIEW regardless. */
+private enum class SheetSection { FILTER, VIEW }
 
 class ComposeExplorerActivity : ComponentActivity() {
 
@@ -578,6 +588,7 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
         pinnedFavDirs = result.first; pinnedColls = result.second; pinnedCollThumbs = result.third
     }
     var activeSheet by remember { mutableStateOf<ActiveSheet?>(null) }
+    var activeSheetSection by remember { mutableStateOf(SheetSection.VIEW) }
     var omniQuery by remember { mutableStateOf("") }
     var searchFocused by remember { mutableStateOf(false) }
     val searchFocusRequester = remember { FocusRequester() }
@@ -629,7 +640,7 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                 onNavigate = { route -> scope.launch { drawerState.close() }; navController.navigate(route) },
                 onOpenPinnedFavorite = { path -> scope.launch { drawerState.close() }; navController.navigate(Folder(path)) },
                 onOpenPinnedCollection = { id -> scope.launch { drawerState.close() }; pinnedColls.find { it.id.toString() == id }?.let { applyCollection(it, mainVM, ctx) } },
-                onOpenViewSettings = { scope.launch { drawerState.close() }; activeSheet = ActiveSheet.VIEW_SETTINGS },
+                onOpenViewSettings = { scope.launch { drawerState.close() }; activeSheetSection = SheetSection.VIEW; activeSheet = ActiveSheet.VIEW_SETTINGS },
                 onFilterByRating = { scope.launch { drawerState.close() }; showRatingBrowser = true },
                 onRescanMetadata = { scope.launch { drawerState.close() }; MetadataSyncWorker.scheduleFullScan(ctx) },
             )
@@ -659,7 +670,9 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                     ctx.config.blurAllMedia = next
                     MyWidgetProvider.requestImmediateUpdate(ctx)
                 },
-                onSwipeUp = { activeSheet = ActiveSheet.VIEW_SETTINGS },
+                onSwipeUp = { activeSheetSection = SheetSection.VIEW; activeSheet = ActiveSheet.VIEW_SETTINGS },
+                onOpenFilterAndView = { activeSheetSection = SheetSection.FILTER; activeSheet = ActiveSheet.VIEW_SETTINGS },
+                hasActiveFilter = uiState.hasActiveFilter,
                 selectedTab = uiState.selectedTab,
                 onTabSelected = { mainVM.setSelectedTab(it) },
             )
@@ -679,6 +692,7 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                 state = uiState,
                 tabSettings = tabSettings,
                 settingsMode = settingsMode,
+                viewSettingsVM = viewSettingsVM,
                 albumsViewModel = albumsViewModel,
                 mainVM = mainVM,
                 ctx = ctx,
@@ -697,12 +711,33 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
                     onDismiss = closeSearch,
                     storagePath = android.os.Environment.getExternalStorageDirectory().absolutePath,
                     onNavigate = { path -> mainVM.setExplorerPath(path); closeSearch(); mainVM.setSelectedTab(2) },
-                    onFilterChanged = { textPaths, rating, tagNames, tagName, _, _, textQuery ->
-                        mainVM.setRatingFilter(rating)
-                        mainVM.setPathFilter(textPaths, textQuery)
+                    ratingFilter = uiState.activeRatingFilter,
+                    onRatingFilterChange = { mainVM.setRatingFilter(it) },
+                    selectedTagNames = uiState.activeTagFilterRaw,
+                    onToggleTag = { tag -> mainVM.toggleTagFilter(tag) },
+                    typeFilter = uiState.activeTypeFilter,
+                    onTypeFilterChange = { mainVM.setTypeFilter(it) },
+                    dateFilter = uiState.activeDateRangeFilter,
+                    onDateFilterChange = { mainVM.setDateRangeFilter(it) },
+                    onResetFilters = {
+                        mainVM.setRatingFilter(0)
+                        mainVM.setTypeFilter(0)
+                        mainVM.setDateRangeFilter(0)
+                        mainVM.setTagFilter(null, null)
+                    },
+                    onApplyTagOnly = { tag ->
+                        mainVM.setRatingFilter(0)
+                        mainVM.setTypeFilter(0)
+                        mainVM.setDateRangeFilter(0)
+                        mainVM.setPathFilter(null)
                         mainVM.setCollectionName(null)
-                        mainVM.setTagFilter(tagNames, tagName)
-                        if (rating > 0 || tagNames != null || textPaths != null) mainVM.setSelectedTab(0)
+                        mainVM.setTagFilter(expandTagsWithDescendants(setOf(tag), ctx.config.tagHierarchy), tag)
+                        mainVM.setSelectedTab(0)
+                    },
+                    onApplyResults = { paths, textQuery ->
+                        mainVM.setPathFilter(paths, textQuery)
+                        mainVM.setCollectionName(null)
+                        mainVM.setSelectedTab(0)
                     },
                     onOpenCollection = { coll -> applyCollection(coll, mainVM, ctx); closeSearch() },
                     onOpenFavorite = { path -> ViewerArgs.paths = listOf(path); closeSearch(); navController.navigate(Viewer(0)) },
@@ -716,6 +751,8 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
 
     MainSheets(
         activeSheet = activeSheet,
+        activeSheetSection = activeSheetSection,
+        onSheetSectionChange = { activeSheetSection = it },
         selectedTab = uiState.selectedTab,
         tabSettings = tabSettings,
         settingsMode = settingsMode,
@@ -723,6 +760,16 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
         navController = navController,
         currentScanFolder = if (uiState.selectedTab == 2) uiState.explorerPath else "",
         onDismissSheet = { activeSheet = null },
+        ratingFilter = uiState.activeRatingFilter,
+        onRatingFilterChange = { mainVM.setRatingFilter(it) },
+        tagFilterNamesRaw = uiState.activeTagFilterRaw,
+        onToggleTag = { tag -> mainVM.toggleTagFilter(tag) },
+        minSizeFilter = uiState.activeMinSizeFilter,
+        onMinSizeFilterChange = { mainVM.setMinSizeFilter(it) },
+        dateRangeFilter = uiState.activeDateRangeFilter,
+        onDateRangeFilterChange = { mainVM.setDateRangeFilter(it) },
+        typeFilter = uiState.activeTypeFilter,
+        onTypeFilterChange = { mainVM.setTypeFilter(it) },
     )
 
     if (showAllFilesPrompt) {
@@ -793,6 +840,8 @@ private fun BottomChrome(
     blurEnabled: Boolean,
     onToggleBlur: () -> Unit,
     onSwipeUp: () -> Unit,
+    onOpenFilterAndView: () -> Unit,
+    hasActiveFilter: Boolean,
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
 ) {
@@ -837,6 +886,8 @@ private fun BottomChrome(
                     onSearch = onSearch,
                     blurEnabled = blurEnabled,
                     onToggleBlur = onToggleBlur,
+                    onOpenFilterAndView = onOpenFilterAndView,
+                    hasActiveFilter = hasActiveFilter,
                 )
                 if (showNavBar) {
                     MainBottomBar(
@@ -901,6 +952,7 @@ private fun MainTabContent(
     state: ExplorerUiState,
     tabSettings: TabViewSettings,
     settingsMode: SettingsMode,
+    viewSettingsVM: ViewSettingsViewModel,
     albumsViewModel: AlbumsViewModel,
     mainVM: ExplorerViewModel,
     ctx: android.content.Context,
@@ -949,14 +1001,21 @@ private fun MainTabContent(
             tagFilterNames = state.activeTagFilter,
             pathFilter = state.activePathFilter,
             excludePathFilter = state.activeExcludePathFilter,
+            minSizeFilter = state.activeMinSizeFilter,
+            dateRangeFilter = state.activeDateRangeFilter,
+            typeFilter = state.activeTypeFilter,
             activeTagName = state.activeTagName,
             activePathName = state.activePathName,
             activeCollectionName = state.activeCollectionName,
+            activeFolderFilterName = state.activeFolderFilterName,
             refreshTrigger = state.mediaRefreshTrigger,
             onClearFilter = { mainVM.clearFilters() },
             onClearRatingFilter = { mainVM.setRatingFilter(0) },
             onClearTagFilter = { mainVM.setTagFilter(null, null) },
-            onClearPathFilter = { mainVM.setPathFilter(null); mainVM.setExcludePathFilter(null); mainVM.setCollectionName(null) },
+            onClearPathFilter = { mainVM.setPathFilter(null); mainVM.setExcludePathFilter(null); mainVM.setCollectionName(null); mainVM.setFolderFilterName(null) },
+            onClearSizeFilter = { mainVM.setMinSizeFilter(0L) },
+            onClearDateFilter = { mainVM.setDateRangeFilter(0) },
+            onClearTypeFilter = { mainVM.setTypeFilter(0) },
             onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) },
             scrollToPath = state.lastViewedPath,
             onClearScrollToPath = { mainVM.clearLastViewedPath() },
@@ -973,11 +1032,25 @@ private fun MainTabContent(
         2 -> ExplorerScreen(
             internalStoragePath = state.explorerPath,
             folderSettings = tabSettings.explorerAlbums,
-            mediaSettings = tabSettings.explorerMedia,
+            // Resolves to a per-path pin (the "Einstellung global übernehmen" toggle in the
+            // Ansicht sheet) if the user saved one for state.explorerPath, else the tab default.
+            mediaSettings = viewSettingsVM.getExplorerMediaSettingsForPath(state.explorerPath),
             onPathChange = { mainVM.setExplorerPath(it) },
             onSelectionActiveChanged = onMediaSelectionChanged,
             onCanGoUpChanged = onExplorerCanGoUpChanged,
             onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) },
+            // "In Medien öffnen" on one or more selected folders - pathFilter's directory branch
+            // already matches recursively (full_path LIKE 'folder/%' in MediaRepository), so passing
+            // the selected folder paths straight through already covers every subfolder for free.
+            onOpenInMedia = { paths ->
+                val name = if (paths.size == 1) java.io.File(paths.first()).name else ctx.getString(R.string.selected_folders_count, paths.size)
+                mainVM.setPreFilterTab(2)
+                mainVM.setPathFilter(paths)
+                mainVM.setExcludePathFilter(null)
+                mainVM.setCollectionName(null)
+                mainVM.setFolderFilterName(name)
+                mainVM.setSelectedTab(0)
+            },
             tabIndex = 2,
         )
             }
@@ -1010,6 +1083,8 @@ private fun MainTabContent(
 @Composable
 private fun MainSheets(
     activeSheet: ActiveSheet?,
+    activeSheetSection: SheetSection,
+    onSheetSectionChange: (SheetSection) -> Unit,
     selectedTab: Int,
     tabSettings: TabViewSettings,
     settingsMode: SettingsMode,
@@ -1017,46 +1092,115 @@ private fun MainSheets(
     navController: NavHostController,
     currentScanFolder: String = "",
     onDismissSheet: () -> Unit,
+    ratingFilter: Int,
+    onRatingFilterChange: (Int) -> Unit,
+    tagFilterNamesRaw: Set<String>,
+    onToggleTag: (String) -> Unit,
+    minSizeFilter: Long,
+    onMinSizeFilterChange: (Long) -> Unit,
+    dateRangeFilter: Int,
+    onDateRangeFilterChange: (Int) -> Unit,
+    typeFilter: Int,
+    onTypeFilterChange: (Int) -> Unit,
 ) {
     if (activeSheet == ActiveSheet.VIEW_SETTINGS) {
         val isAlbumsTab = selectedTab == 1
         val isExplorerTab = selectedTab == 2
+        // Filtering (rating/tag/size/date) only exists for the two tabs that actually render a
+        // media grid with these params wired (Media/Favorites) - see MediaScreen's filter params.
+        // Folder/Explorer/Collections/Tags tabs have nothing to filter here, so they never show
+        // the Filter/Ansicht toggle and always land straight on view settings.
+        val supportsFilter = selectedTab == 0 || selectedTab == 4
+        // currentScanFolder doubles as "Explorer's currently browsed path" here (only ever
+        // non-empty when selectedTab == 2 - see the call site) - the path the "Einstellung global
+        // übernehmen" toggle below pins Explorer-media settings to when unchecked.
+        val explorerPath = currentScanFolder
         val s = when (selectedTab) {
             0 -> tabSettings.media
             1 -> if (settingsMode == SettingsMode.ALBUMS) tabSettings.albums else tabSettings.folderMedia
-            2 -> if (settingsMode == SettingsMode.ALBUMS) tabSettings.explorerAlbums else tabSettings.explorerMedia
+            2 -> if (settingsMode == SettingsMode.ALBUMS) tabSettings.explorerAlbums else viewSettingsVM.getExplorerMediaSettingsForPath(explorerPath)
             3 -> tabSettings.collections
             4 -> tabSettings.favorites
             5 -> tabSettings.tags
             else -> ViewSettings()
         }
-        ViewSettingsSheet(
-            settings = s,
-            showDisplayMode = ((selectedTab == 1 || selectedTab == 4) && settingsMode == SettingsMode.ALBUMS) || (selectedTab == 2 && settingsMode == SettingsMode.ALBUMS),
-            isAlbumMode = (selectedTab == 1 || selectedTab == 2) && settingsMode == SettingsMode.ALBUMS,
-            onSettingsChange = { v ->
-                when (selectedTab) {
-                    0 -> viewSettingsVM.updateMedia(v)
-                    1 -> if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateAlbums(v) else viewSettingsVM.updateFolderMedia(v)
-                    2 -> if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateExplorerAlbums(v) else viewSettingsVM.updateExplorerMedia(v)
-                    3 -> viewSettingsVM.updateCollections(v)
-                    4 -> viewSettingsVM.updateFavorites(v)
-                    5 -> viewSettingsVM.updateTags(v)
+        ModalBottomSheet(
+            onDismissRequest = onDismissSheet,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
+            containerColor = MaterialTheme.colorScheme.surface,
+        ) {
+            if (supportsFilter) {
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    listOf(SheetSection.FILTER to stringResource(R.string.filter_label), SheetSection.VIEW to stringResource(R.string.view_settings_title)).forEachIndexed { i, (section, label) ->
+                        SegmentedButton(
+                            selected = activeSheetSection == section,
+                            onClick = { onSheetSectionChange(section) },
+                            shape = SegmentedButtonDefaults.itemShape(i, 2),
+                        ) { Text(label) }
+                    }
                 }
-            },
-            onDismiss = onDismissSheet,
-            modeTitle = when {
-                selectedTab == 1 -> if (settingsMode == SettingsMode.ALBUMS) stringResource(R.string.albums) else stringResource(R.string.settings_mode_folder_content)
-                selectedTab == 2 -> if (settingsMode == SettingsMode.ALBUMS) stringResource(R.string.albums) else stringResource(R.string.media)
-                else -> null
-            },
-            modeOptions = when (selectedTab) {
-                1 -> listOf(stringResource(R.string.albums), stringResource(R.string.settings_mode_folder_content))
-                2 -> listOf(stringResource(R.string.albums), stringResource(R.string.media))
-                else -> null
-            },
-            onToggleMode = if (isAlbumsTab || isExplorerTab) {{ viewSettingsVM.setSettingsMode(if (settingsMode == SettingsMode.ALBUMS) SettingsMode.MEDIA else SettingsMode.ALBUMS) }} else null,
-        )
+                Spacer(Modifier.height(8.dp))
+            }
+            if (supportsFilter && activeSheetSection == SheetSection.FILTER) {
+                FilterSheetContent(
+                    ratingFilter = ratingFilter,
+                    onRatingChange = onRatingFilterChange,
+                    selectedTagNames = tagFilterNamesRaw,
+                    onToggleTag = onToggleTag,
+                    minSizeFilter = minSizeFilter,
+                    onMinSizeChange = onMinSizeFilterChange,
+                    dateRangeFilter = dateRangeFilter,
+                    onDateRangeChange = onDateRangeFilterChange,
+                    typeFilter = typeFilter,
+                    onTypeFilterChange = onTypeFilterChange,
+                )
+            } else {
+                ViewSettingsContent(
+                    settings = s,
+                    showDisplayMode = ((selectedTab == 1 || selectedTab == 4) && settingsMode == SettingsMode.ALBUMS) || (selectedTab == 2 && settingsMode == SettingsMode.ALBUMS),
+                    isAlbumMode = (selectedTab == 1 || selectedTab == 2) && settingsMode == SettingsMode.ALBUMS,
+                    // Tab 0 (Media) is the unbounded paged grid - its section headers are built
+                    // incrementally as pages stream in (see MediaScreen's PagedRowsAccumulator),
+                    // which requires each item to belong to exactly one contiguous group. Tag
+                    // grouping lets one medium appear under several tags at once, which that
+                    // streaming model can't represent - every other tab builds its grouped rows
+                    // from a fully-loaded list instead, so Tag grouping stays available there.
+                    supportsTagGrouping = selectedTab != 0,
+                    // Collections and Tags don't consume ViewSettings.sortBy/groupBy at all -
+                    // CollectionsScreen has no user-facing ordering, TagBrowserScreen has its own
+                    // fixed ordering (count desc, then hierarchy/alphabetical) unrelated to this
+                    // sort/group model. Showing Sort/Gruppierung there would just be dead controls.
+                    supportsSorting = selectedTab != 3 && selectedTab != 5,
+                    // Only Explorer's media listing is a "currently browsing one specific path"
+                    // screen from this shared sheet's perspective (a drilled-into folder has its
+                    // own separate sheet in FolderMediaScreen, with the same toggle).
+                    showApplyGloballyToggle = selectedTab == 2 && settingsMode == SettingsMode.MEDIA,
+                    initialApplyGlobally = !viewSettingsVM.hasCustomExplorerMediaSettings(explorerPath),
+                    onSettingsChange = { v, applyGlobally ->
+                        when (selectedTab) {
+                            0 -> viewSettingsVM.updateMedia(v)
+                            1 -> if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateAlbums(v) else viewSettingsVM.updateFolderMedia(v)
+                            2 -> if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateExplorerAlbums(v) else viewSettingsVM.updateExplorerMediaForPath(explorerPath, v, applyGlobally)
+                            3 -> viewSettingsVM.updateCollections(v)
+                            4 -> viewSettingsVM.updateFavorites(v)
+                            5 -> viewSettingsVM.updateTags(v)
+                        }
+                    },
+                    onDismiss = onDismissSheet,
+                    modeTitle = when {
+                        selectedTab == 1 -> if (settingsMode == SettingsMode.ALBUMS) stringResource(R.string.albums) else stringResource(R.string.settings_mode_folder_content)
+                        selectedTab == 2 -> if (settingsMode == SettingsMode.ALBUMS) stringResource(R.string.albums) else stringResource(R.string.media)
+                        else -> null
+                    },
+                    modeOptions = when (selectedTab) {
+                        1 -> listOf(stringResource(R.string.albums), stringResource(R.string.settings_mode_folder_content))
+                        2 -> listOf(stringResource(R.string.albums), stringResource(R.string.media))
+                        else -> null
+                    },
+                    onToggleMode = if (isAlbumsTab || isExplorerTab) {{ viewSettingsVM.setSettingsMode(if (settingsMode == SettingsMode.ALBUMS) SettingsMode.MEDIA else SettingsMode.ALBUMS) }} else null,
+                )
+            }
+        }
     }
 }
 
@@ -1068,7 +1212,17 @@ private fun OmniSearchPanel(
     onDismiss: () -> Unit,
     storagePath: String,
     onNavigate: (String) -> Unit,
-    onFilterChanged: (filterPaths: Set<String>?, rating: Int, tagNames: Set<String>?, tagName: String?, fileType: Int, dateRange: Int, textQuery: String?) -> Unit,
+    ratingFilter: Int,
+    onRatingFilterChange: (Int) -> Unit,
+    selectedTagNames: Set<String>,
+    onToggleTag: (String) -> Unit,
+    typeFilter: Int,
+    onTypeFilterChange: (Int) -> Unit,
+    dateFilter: Int,
+    onDateFilterChange: (Int) -> Unit,
+    onResetFilters: () -> Unit,
+    onApplyTagOnly: (tag: String) -> Unit,
+    onApplyResults: (paths: Set<String>?, textQuery: String?) -> Unit,
     onOpenCollection: (MediaCollection) -> Unit,
     onOpenFavorite: (String) -> Unit,
     onOpenMedia: (String) -> Unit,
@@ -1076,8 +1230,6 @@ private fun OmniSearchPanel(
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var ratingFilter by remember { mutableIntStateOf(0) }
-    var selectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
     // Seed from the repo-level cache instead of an empty map - this panel is a fresh composable every
     // time the search field gets focus, and without this the full media_tags scan reran from scratch
     // on every single tap into search.
@@ -1089,8 +1241,6 @@ private fun OmniSearchPanel(
     var tagResults by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
     var collectionResults by remember { mutableStateOf<List<MediaCollection>>(emptyList()) }
     var favoriteResults by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
-    var fileTypeFilter by remember { mutableIntStateOf(0) }
-    var dateFilter by remember { mutableIntStateOf(0) }
     var showFilters by remember { mutableStateOf(false) }
     val searchCache = remember { mutableMapOf<String, Set<String>>() }
     // Bumped on every new search so slower jobs from a stale query can't clobber a newer query's
@@ -1188,7 +1338,7 @@ private fun OmniSearchPanel(
             // matches only after the filter is applied.
             val activePaths = try { repo.getActivePaths().toSet() } catch (_: Exception) { null }
             fun List<String>.toActiveSet() = (if (activePaths != null) filter { it in activePaths } else this).toSet()
-            val cacheKey = "${query}_${fileTypeFilter}_${dateFilter}"
+            val cacheKey = "${query}_${typeFilter}_${dateFilter}"
             searchCache[cacheKey]?.let { c ->
                 val filtered = c.filter { java.io.File(it).exists() }.toActiveSet()
                 if (myGen == searchGeneration) textMatchPaths = filtered
@@ -1200,8 +1350,20 @@ private fun OmniSearchPanel(
                 val uri = android.provider.MediaStore.Files.getContentUri("external")
                 val proj = arrayOf(android.provider.MediaStore.MediaColumns.DATA, android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
                 val selParts = mutableListOf<String>(); val argsList = mutableListOf<String>()
-                when (fileTypeFilter) { 1 -> { selParts.add("${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"); argsList.add(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString()) } 2 -> { selParts.add("${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"); argsList.add(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()) } else -> { selParts.add("(${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?)"); argsList.addAll(arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())) } }
+                when (typeFilter) { 1 -> { selParts.add("${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"); argsList.add(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString()) } 2 -> { selParts.add("${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"); argsList.add(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()) } else -> { selParts.add("(${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?)"); argsList.addAll(arrayOf(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())) } }
                 when (dateFilter) { 1 -> { val t = (System.currentTimeMillis() - 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } 2 -> { val t = (System.currentTimeMillis() - 7 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } 3 -> { val t = (System.currentTimeMillis() - 30 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } 4 -> { val t = (System.currentTimeMillis() - 365 * 86400000L) / 1000; selParts.add("${android.provider.MediaStore.MediaColumns.DATE_MODIFIED} >= ?"); argsList.add(t.toString()) } }
+                // Push the text match into SQL instead of fetching every image/video row on the
+                // device (previously up to ~200k rows per keystroke pause on a large library,
+                // filtered client-side afterward) - MediaProvider now only has to hand back rows
+                // whose DISPLAY_NAME actually contains every typed term, a tiny fraction of the
+                // library for a typical query. The client-side qParts.all{...} check below stays as
+                // a cheap final safety net (SQLite's LIKE case-folding isn't guaranteed identical to
+                // Kotlin's lowercase() for all locales/scripts), just over a far smaller result set now.
+                qParts.forEach { part ->
+                    val escaped = part.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                    selParts.add("${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? ESCAPE '\\'")
+                    argsList.add("%$escaped%")
+                }
                 ctx.contentResolver.query(uri, proj, selParts.joinToString(" AND "), argsList.toTypedArray(), null)?.use { c ->
                     val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA); val nameCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
                     while (c.moveToNext()) { val path = c.getString(dataCol) ?: continue; val name = c.getString(nameCol) ?: ""; if (qParts.all { it in name.lowercase() } && java.io.File(path).exists()) matched.add(path) }
@@ -1216,9 +1378,9 @@ private fun OmniSearchPanel(
     }
 
     LaunchedEffect(query) { kotlinx.coroutines.delay(300); performSearch() }
-    LaunchedEffect(fileTypeFilter, dateFilter) { if (query.length >= 2) performSearch() }
+    LaunchedEffect(typeFilter, dateFilter) { if (query.length >= 2) performSearch() }
 
-    val hasAnyFilter = ratingFilter > 0 || selectedTags.isNotEmpty() || fileTypeFilter > 0 || dateFilter > 0
+    val hasAnyFilter = ratingFilter > 0 || selectedTagNames.isNotEmpty() || typeFilter > 0 || dateFilter > 0
     val hasResults = textMatchPaths != null && textMatchPaths!!.isNotEmpty()
     val mc = textMatchPaths?.size ?: 0
 
@@ -1237,14 +1399,14 @@ private fun OmniSearchPanel(
                         if (hasAnyFilter) {
                             val parts = mutableListOf<String>()
                             if (ratingFilter > 0) parts.add("★$ratingFilter")
-                            if (selectedTags.isNotEmpty()) parts.add(selectedTags.joinToString(","))
+                            if (selectedTagNames.isNotEmpty()) parts.add(selectedTagNames.joinToString(","))
                             Text(parts.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1)
                         } else Text(stringResource(R.string.filter_label), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 if (hasAnyFilter) {
                     Spacer(Modifier.width(4.dp))
-                    Surface(onClick = { ratingFilter = 0; selectedTags = emptySet(); fileTypeFilter = 0; dateFilter = 0 }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.errorContainer) {
+                    Surface(onClick = onResetFilters, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.errorContainer) {
                         Text(stringResource(R.string.reset), Modifier.padding(horizontal = 8.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onErrorContainer)
                     }
                 }
@@ -1256,19 +1418,19 @@ private fun OmniSearchPanel(
                 // Rating
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("★", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    for (i in 1..5) IconButton(onClick = { ratingFilter = if (ratingFilter == i) 0 else i }, modifier = Modifier.size(40.dp)) { Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, "$i", tint = if (i <= ratingFilter) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
+                    for (i in 1..5) IconButton(onClick = { onRatingFilterChange(if (ratingFilter == i) 0 else i) }, modifier = Modifier.size(40.dp)) { Icon(if (i <= ratingFilter) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= ratingFilter) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
                     Spacer(Modifier.width(4.dp))
-                    listOf(stringResource(R.string.everything) to 0, stringResource(R.string.images) to 1, stringResource(R.string.videos) to 2).forEach { (l, v) -> Surface(onClick = { fileTypeFilter = v }, shape = RoundedCornerShape(Radius.md), color = if (fileTypeFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(l, Modifier.padding(horizontal = 7.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = if (fileTypeFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface) } }
+                    listOf(stringResource(R.string.everything) to 0, stringResource(R.string.images) to 1, stringResource(R.string.videos) to 2).forEach { (l, v) -> Surface(onClick = { onTypeFilterChange(v) }, shape = RoundedCornerShape(Radius.md), color = if (typeFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(l, Modifier.padding(horizontal = 7.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = if (typeFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface) } }
                     Spacer(Modifier.width(4.dp))
-                    listOf(stringResource(R.string.all_dates) to 0, stringResource(R.string.today) to 1, "7d" to 2, "30d" to 3).forEach { (l, v) -> Surface(onClick = { dateFilter = v }, shape = RoundedCornerShape(Radius.md), color = if (dateFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(l, Modifier.padding(horizontal = 7.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = if (dateFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface) } }
+                    listOf(stringResource(R.string.all_dates) to 0, stringResource(R.string.today) to 1, "7d" to 2, "30d" to 3).forEach { (l, v) -> Surface(onClick = { onDateFilterChange(v) }, shape = RoundedCornerShape(Radius.md), color = if (dateFilter == v) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(l, Modifier.padding(horizontal = 7.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = if (dateFilter == v) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface) } }
                 }
                 // Tags
                 if (allTags.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         allTags.entries.sortedByDescending { it.value.size }.take(15).forEach { (tag, _) ->
-                            val sel = tag in selectedTags
-                            Surface(onClick = { selectedTags = if (sel) selectedTags - tag else selectedTags + tag }, shape = RoundedCornerShape(Radius.md), color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
+                            val sel = tag in selectedTagNames
+                            Surface(onClick = { onToggleTag(tag) }, shape = RoundedCornerShape(Radius.md), color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) {
                                 Text(tag, Modifier.padding(horizontal = 8.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
                             }
                         }
@@ -1318,11 +1480,9 @@ private fun OmniSearchPanel(
                         item { Text(stringResource(R.string.nav_tags), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(vertical = 4.dp)) }
                         items(tagResults.take(8), key = { it.first }) { (tag, cnt) ->
                             Surface(modifier = Modifier.fillMaxWidth().clickable {
-                                // Include descendant tag names too, so tapping a parent like "Places"
-                                // also surfaces files only tagged with a nested child like "Berlin" -
-                                // resolved to files in SQL by MediaViewModel, not here.
-                                val tagNames = expandTagsWithDescendants(setOf(tag), ctx.config.tagHierarchy)
-                                onFilterChanged(null, 0, tagNames, tag, 0, 0, null); onDismiss()
+                                // Resets rating/type/date/path and applies just this tag (descendants
+                                // included - resolved to files in SQL by MediaViewModel, not here).
+                                onApplyTagOnly(tag); onDismiss()
                             }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
                                 Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
@@ -1398,16 +1558,13 @@ private fun OmniSearchPanel(
                 }
                 Spacer(Modifier.height(4.dp))
                 // Gated on hasResults (media matches only), not hasAnyResults - the button only
-                // ever applies textMatchPaths (see onFilterChanged below), so showing it while only
+                // ever applies textMatchPaths (see onApplyResults below), so showing it while only
                 // folders/tags/collections/favorites matched rendered a confusing "0 Ergebnisse
                 // anzeigen" button that would apply an empty media filter if tapped.
                 if (hasResults) {
                     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.Center) {
                         Surface(onClick = {
-                            onFilterChanged(textMatchPaths, ratingFilter,
-                                selectedTags.takeIf { it.isNotEmpty() },
-                                selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", "), fileTypeFilter, dateFilter,
-                                query.trim().takeIf { it.isNotEmpty() })
+                            onApplyResults(textMatchPaths, query.trim().takeIf { it.isNotEmpty() })
                             onDismiss()
                         }, shape = RoundedCornerShape(Radius.xl), color = MaterialTheme.colorScheme.primary) {
                             Text(stringResource(R.string.show_results_count, mc), Modifier.padding(horizontal = 20.dp, vertical = 10.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)

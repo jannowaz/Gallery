@@ -19,6 +19,7 @@ import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.mediaTagDB
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.extensions.resolveRecycleBinFile
 import org.fossify.gallery.models.Directory
 import org.fossify.gallery.models.MediaCollection
 import org.fossify.gallery.models.Medium
@@ -84,8 +85,8 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         }
     }
 
-    override fun toggleFavorite(path: String, isFav: Boolean) {
-        try {
+    override fun toggleFavorite(path: String, isFav: Boolean): Boolean {
+        val success = try {
             if (isFav) {
                 val name = File(path).name
                 val parentPath = File(path).parent ?: ""
@@ -94,10 +95,13 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                 context.favoritesDB.deleteFavoritePath(path)
             }
             context.mediaDB.updateFavorite(path, isFav)
+            true
         } catch (e: Exception) {
             android.util.Log.e("MediaRepository", "toggleFavorite failed for $path", e)
+            false
         }
         RefreshBus.trigger()
+        return success
     }
 
     override fun getRating(path: String): Int {
@@ -113,9 +117,12 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         }
     }
 
-    override fun updateRating(path: String, rating: Int) {
+    override fun updateRating(path: String, rating: Int): Boolean {
         val current = XmpWriter.read(path)
-        XmpWriter.write(path, current.tags, rating)
+        // The XMP file is the source of truth for tags/rating - if the write to disk fails, the DB
+        // must not move ahead of it, or the two disagree forever with no way for the UI to notice
+        // (a rating shown as applied that a re-read of the file would silently undo).
+        if (!XmpWriter.write(path, current.tags, rating)) return false
         try {
             context.mediaDB.updateRating(path, rating)
         } catch (e: Exception) {
@@ -125,30 +132,33 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         repositoryScope.launch {
             syncCache(path, current.tags, rating)
         }
+        return true
     }
 
     override fun getTags(path: String): Set<String> {
         return XmpWriter.read(path).tags.toSet()
     }
 
-    override fun addTag(path: String, tag: String) {
+    override fun addTag(path: String, tag: String): Boolean {
         val current = XmpWriter.read(path)
         val tags = if (tag in current.tags) current.tags else current.tags + tag
-        XmpWriter.write(path, tags, current.rating, context.config.tagHierarchy)
+        if (!XmpWriter.write(path, tags, current.rating, context.config.tagHierarchy)) return false
         // Background sync
         repositoryScope.launch {
             syncCache(path, tags, current.rating)
         }
+        return true
     }
 
-    override fun removeTag(path: String, tag: String) {
+    override fun removeTag(path: String, tag: String): Boolean {
         val current = XmpWriter.read(path)
         val tags = current.tags.filter { it != tag }
-        XmpWriter.write(path, tags, current.rating, context.config.tagHierarchy)
+        if (!XmpWriter.write(path, tags, current.rating, context.config.tagHierarchy)) return false
         // Background sync
         repositoryScope.launch {
             syncCache(path, tags, current.rating)
         }
+        return true
     }
 
     /** Mirrors a file's current XMP tags/rating into the queryable cache: `media_cache` for rating
@@ -168,14 +178,34 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         }
     }
 
-    override fun deleteMedium(path: String) {
+    override fun deleteMedium(path: String): Boolean {
+        // File removal is verified FIRST and gates everything else - the old order deleted the DB/
+        // favorites/cache/tag rows unconditionally and only then attempted File(path).delete(),
+        // discarding its boolean result. Under scoped storage that call can return false (app
+        // doesn't own the file, no MANAGE_EXTERNAL_STORAGE) without throwing, which used to make the
+        // item silently vanish from the Recycle Bin UI - "permanently deleted" - while its bytes
+        // stayed on disk, still taking up storage, untracked by this app. Now a failed file removal
+        // leaves every row alone, so the item stays visible in the bin and the caller can tell the
+        // user it didn't work instead of lying about it.
+        // resolveRecycleBinFile: a legacy (widget/camera-review-only) recycle-bin row's stored path
+        // is a "recycle_bin/..." placeholder, not a real one - File(path) on that string is never
+        // found, which used to make this whole check silently pass ("already gone") without ever
+        // touching the actual bytes still sitting in the app's internal recycle-bin folder. DB/
+        // favorites/cache/tag rows below still key on the original `path` (the DB's real column
+        // value) - only the on-disk file location is resolved differently.
+        val realFile = context.resolveRecycleBinFile(path)
+        val fileGone = try { !realFile.exists() || realFile.delete() } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "deleteMedium File delete failed", e)
+            false
+        }
+        if (!fileGone) return false
+        try { File("${realFile.path}.xmp").delete() } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium XMP delete failed", e) }
         try { context.mediaDB.deleteMediumPath(path) } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium DB failed", e) }
         try { context.favoritesDB.deleteFavoritePath(path) } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium Fav failed", e) }
         try { context.mediaCacheDB.deleteByPathSync(path) } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium Cache failed", e) }
         try { repositoryScope.launch { context.mediaTagDB.deleteAllForPath(path) } } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium Tags failed", e) }
-        try { File("$path.xmp").delete() } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium XMP delete failed", e) }
-        try { File(path).delete() } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium File delete failed", e) }
         RefreshBus.trigger()
+        return true
     }
 
     fun getByMinRating(minRating: Int): List<Medium> =
@@ -304,6 +334,10 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             where.append(" AND (CASE WHEN date_taken > 0 THEN date_taken ELSE last_modified END) >= ?")
             args.add(dateRangeCutoff(filter.dateRange))
         }
+        if (filter.typeFilter > 0) {
+            where.append(" AND type = ?")
+            args.add(filter.typeFilter)
+        }
         return where.toString() to args
     }
 
@@ -370,6 +404,11 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     suspend fun getPathsForTag(tag: String): Set<String> =
         try { context.mediaTagDB.getPathsForTag(tag).toSet() } catch (_: Exception) { emptySet() }
 
+    /** Path -> all tags carried by that one file, batched for a bounded set of [paths] (a single
+     * folder's contents, never the full library) - used by tag-hierarchy grouping. */
+    suspend fun getTagsForPaths(paths: List<String>): Map<String, List<String>> =
+        try { context.mediaTagDB.getTagsForPaths(paths).groupBy({ it.path }, { it.tag }) } catch (_: Exception) { emptyMap() }
+
     fun getDeletedPaths(): Set<String> =
         try { context.mediaDB.getDeletedMedia().map { it.path }.toSet() } catch (_: Exception) { emptySet() }
 
@@ -418,10 +457,11 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
      * update the DB in one statement via [setDbRatingBatch]; writing the DB again per-path here would
      * fire Room's InvalidationTracker (and reload any active PagingSource) once per file instead of once
      * per batch. */
-    fun writeRatingXmp(path: String, rating: Int) {
+    fun writeRatingXmp(path: String, rating: Int): Boolean {
         val current = XmpWriter.read(path)
-        XmpWriter.write(path, current.tags, rating)
+        val success = XmpWriter.write(path, current.tags, rating)
         repositoryScope.launch { syncCache(path, current.tags, rating) }
+        return success
     }
 
     /** Decodes only the bounds of an image to derive its aspect ratio. Lives here so no Composable

@@ -10,6 +10,7 @@ import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.favoritesDB
 import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.extensions.resolveRecycleBinFile
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -26,13 +27,22 @@ class RecycleBinCleanupWorker(
 
             for (medium in expired) {
                 try {
-                    val file = File(medium.path)
+                    // resolveRecycleBinFile: a legacy (widget/camera-review-only) recycle-bin
+                    // row's stored path is a "recycle_bin/..." placeholder, not a real one -
+                    // File(medium.path) on that string was never found, so this auto-purge used
+                    // to silently treat every such item as "already gone" and clear its DB rows
+                    // without ever freeing the actual bytes still sitting in the app's internal
+                    // recycle-bin folder - a guaranteed, fully automatic storage leak with zero
+                    // user interaction. DB/favorites/cache rows still key on medium.path (the
+                    // DB's real column value); only the on-disk file location is resolved
+                    // differently.
+                    val file = applicationContext.resolveRecycleBinFile(medium.path)
                     val gone = !file.exists() || file.delete()
                     if (gone) {
                         applicationContext.mediaDB.deleteMediumPath(medium.path)
                         try { applicationContext.favoritesDB.deleteFavoritePath(medium.path) } catch (e: Exception) { android.util.Log.e("RecycleBinCleanup", "Failed to delete favorite path", e) }
                         try { applicationContext.mediaCacheDB.deleteByPathSync(medium.path) } catch (e: Exception) { android.util.Log.e("RecycleBinCleanup", "Failed to delete cache path", e) }
-                        try { File("${medium.path}.xmp").delete() } catch (e: Exception) { android.util.Log.e("RecycleBinCleanup", "Failed to delete XMP sidecar", e) }
+                        try { File("${file.path}.xmp").delete() } catch (e: Exception) { android.util.Log.e("RecycleBinCleanup", "Failed to delete XMP sidecar", e) }
                         deletedCount++
                     }
                 } catch (e: Exception) {

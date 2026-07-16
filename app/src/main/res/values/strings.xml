@@ -42,6 +42,10 @@
         <item quantity="one">Are you sure you want to restore %d file?</item>
         <item quantity="other">Are you sure you want to restore %d files?</item>
     </plurals>
+    <plurals name="delete_failed_count">
+        <item quantity="one">%d file could not be deleted</item>
+        <item quantity="other">%d files could not be deleted</item>
+    </plurals>
     <string name="full_storage_permission_required">Fossify Gallery needs full access to display all your photos and videos. Go to Settings > Permissions > Photos and videos > Allow all.</string>
 
     <!-- Filter -->
@@ -369,7 +373,7 @@
     <string name="clear_filter">Clear filter</string>
     <string name="clear_all_filters">Clear all</string>
     <string name="filter_collection">Collection: %s</string>
-    <string name="filter_path">Path: %s</string>
+    <string name="filter_path">Folder: %s</string>
     <string name="filter_search_query">Search: %s</string>
     <string name="filter_rating">★ %d+</string>
     <string name="result_count">%d results</string>
@@ -406,7 +410,25 @@
     <string name="notif_batch_renaming">Renaming files</string>
     <string name="notif_batch_copying">Copying files</string>
     <string name="notif_batch_moving">Moving files</string>
+    <string name="notif_channel_compression">Compressing files</string>
+    <string name="notif_compressing_title">Compressing files</string>
+    <string name="notif_compression_done">%1$d compressed, %2$d failed – ready to review</string>
+    <string name="notif_compression_cancelled">Compression cancelled (%1$d ready to review)</string>
+    <string name="nav_compression_review">Compression review</string>
+    <string name="compression_pending">Compressing…</string>
+    <string name="compression_failed">Failed</string>
+    <string name="action_keep_original">Keep original</string>
+    <string name="action_keep_new">Keep new version</string>
+    <string name="action_keep_all_new">Keep all new</string>
+    <string name="action_keep_all_original">Keep all originals</string>
+    <string name="compare_before">Before</string>
+    <string name="compare_after">After</string>
+    <string name="compression_review_empty">No compression jobs</string>
+    <string name="compression_saved_percent">%1$s → %2$s (-%3$d%%)</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_compress">Compress</string>
     <string name="action_open">Open</string>
+    <string name="action_open_in_media">Open in Media</string>
     <string name="action_hide">Hide</string>
     <string name="error_loading_media">Couldn\'t load media</string>
     <string name="retry">Retry</string>
@@ -418,6 +440,7 @@
     <string name="recycle_bin_empty">Recycle bin is empty</string>
     <string name="empty_recycle_bin_title">Empty recycle bin</string>
     <string name="empty_recycle_bin_confirm">Permanently delete %d files? This can\'t be undone.</string>
+    <string name="delete_forever_single_confirm">Permanently delete \"%s\"? This can\'t be undone.</string>
     <string name="no_albums">No albums</string>
     <string name="action_scan_metadata">Scan tags &amp; ratings</string>
     <string name="action_favorite">Add to favorites</string>
@@ -427,6 +450,7 @@
     <string name="create_collection">Create collection</string>
     <string name="action_select">Select</string>
     <string name="action_remove">Remove</string>
+    <string name="mover_remove_pair_confirm">Remove this folder pair? This won\'t delete any files.</string>
     <string name="enter_path_hint">Enter a path (e.g. /storage/emulated/0/DCIM)</string>
     <string name="enter_path_short">or enter a path</string>
     <string name="tags_comma_label">Tags (comma-separated):</string>
@@ -440,6 +464,9 @@
     <string name="rename_suffix_desc">Before the extension</string>
     <string name="rename_numbered">New name</string>
     <string name="rename_numbered_desc">With numbering</string>
+    <string name="rename_placeholder_prefix">e.g. Vacation_</string>
+    <string name="rename_placeholder_numbered">e.g. Photo</string>
+    <string name="rename_preview_range">%1$d–%2$d of %3$d</string>
     <string name="no_files_found">No files found</string>
     <string name="rating_title">Rating</string>
     <string name="rate_tag_sheet_title_single">Rate &amp; tag</string>
@@ -457,11 +484,13 @@
     <string name="create_folder_error">Couldn\'t create folder</string>
     <string name="rename_folder_invalid_name">Name can\'t contain "/"</string>
     <string name="rename_folder_exists">A folder with this name already exists</string>
+    <string name="rename_file_exists">A file named "%s" already exists there</string>
     <string name="delete_folders_confirmation">Move all media inside the selected folder(s) to the recycle bin?</string>
     <string name="action_create">Create</string>
     <string name="search_folders_hint">Search folders… (e.g. \"DCIM Camera\")</string>
     <string name="files_count">%d files</string>
     <string name="folders_found">%d folders found</string>
+    <string name="selected_folders_count">%d folders</string>
     <string name="media_count">%d media</string>
     <string name="move_files_to">Move %d files to:</string>
     <string name="copy_files_to">Copy %d files to:</string>
@@ -486,10 +515,24 @@
     <string name="sort_size">Size</string>
     <string name="sort_rating">Rating</string>
     <string name="sort_descending">Descending</string>
+    <string name="grouping">Grouping</string>
+    <string name="group_by_tag">Group by tag</string>
+    <string name="group_order_alphabetical">A-Z</string>
+    <string name="group_order_count">Count</string>
+    <string name="only_top_level_tags">Only top-level tags</string>
+    <string name="only_top_level_tags_hint">Hides sub-tags - all their media is pooled under the parent tag instead.</string>
+    <string name="filter_rating_label">Rating</string>
+    <string name="filter_type_label">Type</string>
+    <string name="filter_size_label">Size</string>
+    <string name="filter_date_label">Date</string>
+    <string name="group_untagged">No tag</string>
+    <string name="group_unrated">Unrated</string>
     <string name="show_filenames">Show file names</string>
     <string name="folder_preview">Folder preview</string>
     <string name="spacing">Spacing</string>
     <string name="anchor_bottom">Anchor at bottom</string>
+    <string name="apply_settings_globally">Apply setting globally</string>
+    <string name="apply_settings_globally_hint">Off saves these settings for this folder/path only, instead of changing the default everywhere.</string>
     <string name="thumbnail_overlays">Thumbnail overlays</string>
     <string name="show_rating">Show rating</string>
     <string name="show_video_duration">Show video duration</string>
@@ -497,6 +540,7 @@
     <string name="blur_all_media_legacy_hint">On this Android version, media is fully covered instead of blurred (a soft blur effect isn\'t available before Android 12).</string>
     <string name="cd_toggle_blur">Toggle privacy blur</string>
     <string name="select_old">Mark older</string>
+    <string name="select_folder_duplicates">Mark all found duplicates from this folder</string>
     <string name="internal_storage">Internal storage</string>
     <string name="scanning_short">Scanning…</string>
     <string name="dup_mode_exact">Exact</string>
@@ -504,6 +548,11 @@
     <string name="dup_desc_exact">Finds byte-identical files (images &amp; videos)</string>
     <string name="dup_desc_similar">Finds visually similar images (format-independent, slightly altered)</string>
     <string name="tolerance">Tolerance</string>
+    <string name="dup_threshold_almost_identical">almost identical</string>
+    <string name="dup_threshold_strict">strict</string>
+    <string name="dup_threshold_medium">medium</string>
+    <string name="dup_threshold_loose">loose</string>
+    <string name="dup_threshold_very_loose">very loose</string>
     <string name="no_duplicates_found">No duplicates found</string>
     <string name="confirm_delete_title">Confirm deletion</string>
     <string name="newest">newest</string>
@@ -534,7 +583,9 @@
     <string name="version_label">Version %s</string>
     <string name="thumbnail_overlays_scope">Applies to all views</string>
     <string name="rename_tag_prompt">Rename \"%1$s\" (%2$d files) to:</string>
-    <string name="wasted_space_approx">≈ %s wasted</string>
+    <string name="estimated_size_after_compression">≈ %1$s after compression (-%2$d%%)</string>
+    <string name="sort_analysis_by">Sort by</string>
+    <string name="sort_savings">Potential savings</string>
     <string name="error_generic">Error: %s</string>
     <string name="suggestions">Suggestions</string>
     <string name="add_new_tag">Add \"%s\" as a new tag</string>
@@ -602,6 +653,9 @@
     <string name="set_amoled_background">True black (AMOLED) background</string>
     <string name="viewer_gesture_hint_up">Swipe up for options</string>
     <string name="viewer_gesture_hint_down">Swipe down to close</string>
+    <string name="viewer_gesture_hint_brightness">Drag left side for brightness</string>
+    <string name="viewer_gesture_hint_volume">Drag right side for volume</string>
+    <string name="hint_long_press_select">Long-press an item to select multiple</string>
     <string name="set_show_hidden">Show hidden files</string>
     <string name="set_animate_gifs">Play animated GIFs</string>
     <string name="set_max_brightness">Max brightness</string>
