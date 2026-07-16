@@ -225,6 +225,10 @@ fun GalleryNavHost(
                             onBack = { navController.popBackStack() },
                             onNavigateToViewer = { path -> ViewerArgs.paths = listOf(path); navController.navigate(Viewer(0)) },
                             onNavigateToCompressionReview = { navController.navigate(CompressionReview) },
+                            onNavigateToSwipe = { results ->
+                                org.fossify.gallery.compose.screens.analysis.CompressionSwipeArgs.results = results
+                                navController.navigate(CompressionSwipe)
+                            },
                         )
                         }
                     }
@@ -240,6 +244,9 @@ fun GalleryNavHost(
                     }
                     composable<CompressionReview> {
                         CompressionReviewScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable<CompressionSwipe> {
+                        org.fossify.gallery.compose.screens.analysis.CompressionSwipeScreen(onBack = { navController.popBackStack() })
                     }
                     composable<FoldersMover> {
                         FoldersMoverScreen(onBack = { navController.popBackStack() })

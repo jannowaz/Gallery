@@ -75,7 +75,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StorageAnalysisScreen(onBack: () -> Unit, onNavigateToViewer: (String) -> Unit = {}, onNavigateToCompressionReview: () -> Unit = {}) {
+fun StorageAnalysisScreen(
+    onBack: () -> Unit,
+    onNavigateToViewer: (String) -> Unit = {},
+    onNavigateToCompressionReview: () -> Unit = {},
+    onNavigateToSwipe: (List<AnalysisResult>) -> Unit = {},
+) {
     val vm: StorageAnalysisViewModel = viewModel()
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
@@ -193,6 +198,10 @@ fun StorageAnalysisScreen(onBack: () -> Unit, onNavigateToViewer: (String) -> Un
                                 }
                             }
                         }
+                        Button(
+                            onClick = { onNavigateToSwipe(sortedFiltered) },
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        ) { Text(stringResource(R.string.swipe_review_start)) }
                     }
                 }
 

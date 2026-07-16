@@ -10,13 +10,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.extensions.compressionReviewDB
-import org.fossify.gallery.helpers.RefreshBus
-import org.fossify.gallery.helpers.XmpWriter
 import org.fossify.gallery.models.CompressionReviewItem
 import java.io.File
 
 class CompressionReviewViewModel(app: Application) : AndroidViewModel(app) {
-    private val engine = TransformationEngine(app)
 
     val items: StateFlow<List<CompressionReviewItem>> = getApplication<Application>().compressionReviewDB
         .getAllLive()
@@ -31,27 +28,12 @@ class CompressionReviewViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Moves the compressed temp file into the original's folder under a "_compressed" name, soft-
-     * deletes the original into the recycle bin (same mechanism [TransformationEngine] already uses
-     * for its own optimize flow), and carries tags/rating over if the original had any. */
+    /** Accepts the compressed version via [CompressionKeeper] (move next to original, soft-delete
+     * original into the recycle bin, carry tags/rating over). */
     fun keepNew(item: CompressionReviewItem) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val original = File(item.originalPath)
-                val temp = File(item.tempResultPath)
-                if (!temp.exists()) return@launch
-                val target = uniqueTargetFor(original, temp.extension)
-                val srcXmp = runCatching { XmpWriter.read(item.originalPath) }.getOrNull()
-
-                val moved = temp.renameTo(target) || runCatching { temp.copyTo(target, overwrite = false); temp.delete() }.isSuccess
-                if (!moved || !target.exists()) return@launch
-
-                engine.softDeleteOriginal(original)
-                if (srcXmp != null && (srcXmp.tags.isNotEmpty() || srcXmp.rating > 0)) {
-                    runCatching { XmpWriter.write(target.absolutePath, srcXmp.tags, srcXmp.rating) }
-                }
-                runCatching { android.media.MediaScannerConnection.scanFile(getApplication(), arrayOf(item.originalPath, target.absolutePath), null, null) }
-                RefreshBus.trigger()
+                CompressionKeeper.keepNew(getApplication(), item.originalPath, item.tempResultPath)
             } finally {
                 item.id?.let { getApplication<Application>().compressionReviewDB.deleteItem(it) }
             }
@@ -72,15 +54,4 @@ class CompressionReviewViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) { item.id?.let { getApplication<Application>().compressionReviewDB.deleteItem(it) } }
     }
 
-    private fun uniqueTargetFor(original: File, newExt: String): File {
-        val dir = original.parentFile
-        val base = original.nameWithoutExtension
-        var candidate = File(dir, "${base}_compressed.$newExt")
-        var i = 2
-        while (candidate.exists()) {
-            candidate = File(dir, "${base}_compressed_$i.$newExt")
-            i++
-        }
-        return candidate
-    }
 }

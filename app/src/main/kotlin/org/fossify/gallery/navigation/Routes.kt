@@ -30,6 +30,9 @@ data class DuplicateFinder(val folderPath: String = "")
 data object CompressionReview
 
 @Serializable
+data object CompressionSwipe
+
+@Serializable
 data object FoldersMover
 
 @Serializable

@@ -191,7 +191,7 @@ private fun CompareDialog(item: CompressionReviewItem, onKeepOriginal: () -> Uni
                 } else {
                     GalleryImage(
                         path = if (showAfter) item.tempResultPath else item.originalPath,
-                        contentDescription = null,
+                        contentDescription = stringResource(if (showAfter) R.string.compare_after else R.string.compare_before),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
                         thumbnailSize = 1536,
@@ -220,7 +220,7 @@ private fun CompareDialog(item: CompressionReviewItem, onKeepOriginal: () -> Uni
  * not constructed via PlayerView(ctx) directly - see VideoPage.kt's identical comment for why a
  * plain construction silently shows no video. */
 @Composable
-private fun ComparePlayer(pathA: String, pathB: String, showB: Boolean, modifier: Modifier = Modifier) {
+internal fun ComparePlayer(pathA: String, pathB: String, showB: Boolean, modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
     val player = remember {
         ExoPlayer.Builder(ctx).build().apply {
