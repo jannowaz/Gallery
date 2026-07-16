@@ -6,6 +6,8 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import org.fossify.gallery.compose.screens.analysis.CompressionEngine
+import org.fossify.gallery.extensions.compressionReviewDB
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.favoritesDB
 import org.fossify.gallery.extensions.mediaCacheDB
@@ -58,6 +60,12 @@ class RecycleBinCleanupWorker(
                 android.util.Log.e("RecycleBinCleanup", "Failed to prune orphaned video positions", e)
             }
 
+            try {
+                cleanupCompressionReviewCache()
+            } catch (e: Exception) {
+                android.util.Log.e("RecycleBinCleanup", "Failed to clean compression review cache", e)
+            }
+
             Result.success()
         } catch (e: Exception) {
             android.util.Log.e("RecycleBinCleanup", "Cleanup failed", e)
@@ -65,9 +73,34 @@ class RecycleBinCleanupWorker(
         }
     }
 
+    /** Review items the user never acted on keep a (potentially huge) transcoded temp file in the
+     * cache dir forever, and a transform that crashed mid-export leaves a file no DB row points to.
+     * Expire abandoned review rows (deleting their temp files), then sweep unreferenced cache files
+     * - but only ones old enough that they cannot belong to a transform running right now. */
+    private suspend fun cleanupCompressionReviewCache() {
+        val dao = applicationContext.compressionReviewDB
+        val cutoff = System.currentTimeMillis() - REVIEW_RETENTION_MS
+        for (item in dao.getStale(cutoff)) {
+            if (item.tempResultPath.isNotBlank()) {
+                try { File(item.tempResultPath).delete() } catch (e: Exception) { android.util.Log.e("RecycleBinCleanup", "Failed to delete stale review file", e) }
+            }
+        }
+        dao.deleteStale(cutoff)
+
+        val referenced = dao.getAllTempPaths().toSet()
+        val orphanCutoff = System.currentTimeMillis() - ORPHAN_FILE_AGE_MS
+        CompressionEngine.cacheDir(applicationContext).listFiles()?.forEach { file ->
+            if (file.absolutePath !in referenced && file.lastModified() < orphanCutoff) {
+                file.delete()
+            }
+        }
+    }
+
     companion object {
         private const val WORK_NAME = "recycle_bin_cleanup"
         private const val RETENTION_MS = 30L * 24 * 60 * 60 * 1000
+        private const val REVIEW_RETENTION_MS = 7L * 24 * 60 * 60 * 1000
+        private const val ORPHAN_FILE_AGE_MS = 24L * 60 * 60 * 1000
 
         fun schedule(context: Context) {
             val work = PeriodicWorkRequestBuilder<RecycleBinCleanupWorker>(24, TimeUnit.HOURS)

@@ -24,6 +24,12 @@ interface CompressionReviewDao {
     @Query("DELETE FROM compression_review_items WHERE id = :id")
     suspend fun deleteItem(id: Long)
 
+    @Query("SELECT * FROM compression_review_items WHERE created_at < :olderThan")
+    suspend fun getStale(olderThan: Long): List<CompressionReviewItem>
+
+    @Query("SELECT temp_result_path FROM compression_review_items")
+    suspend fun getAllTempPaths(): List<String>
+
     @Query("DELETE FROM compression_review_items WHERE created_at < :olderThan")
     suspend fun deleteStale(olderThan: Long)
 }

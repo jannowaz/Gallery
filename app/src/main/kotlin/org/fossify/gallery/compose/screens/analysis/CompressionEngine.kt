@@ -30,8 +30,14 @@ import java.io.File
  */
 class CompressionEngine(private val context: Context) {
 
+    companion object {
+        /** Single source of truth for the temp-file location, shared with the stale-file sweep in
+         * RecycleBinCleanupWorker. */
+        fun cacheDir(context: Context) = File(context.cacheDir, "compression_review")
+    }
+
     private val outputDir: File by lazy {
-        File(context.cacheDir, "compression_review").apply { mkdirs() }
+        cacheDir(context).apply { mkdirs() }
     }
 
     /** Downscales to [maxDimension] on the longest edge (no-op if already smaller) and re-encodes
