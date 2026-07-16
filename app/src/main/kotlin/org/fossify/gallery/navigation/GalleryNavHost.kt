@@ -77,6 +77,14 @@ fun GalleryNavHost(
         UndoManager.registerHandler(UndoType.TAG_ADD) { action -> action.paths.forEach { repo.removeTag(it, action.extra["tag"] ?: "") } }
         UndoManager.registerHandler(UndoType.TAG_REMOVE) { action -> action.paths.forEach { repo.addTag(it, action.extra["tag"] ?: "") } }
         UndoManager.registerHandler(UndoType.RATING_CHANGE) { action -> action.paths.forEach { repo.updateRating(it, action.extra["oldRating"]?.toIntOrNull() ?: 0) }; org.fossify.gallery.helpers.RefreshBus.trigger() }
+        UndoManager.registerHandler(UndoType.COMPRESS_REPLACE) { action ->
+            action.paths.forEach { repo.restoreFromRecycleBin(it) }
+            action.extra["newPath"]?.let { newPath ->
+                runCatching { java.io.File(newPath).delete() }
+                runCatching { android.media.MediaScannerConnection.scanFile(ctx, arrayOf(newPath), null, null) }
+            }
+            org.fossify.gallery.helpers.RefreshBus.trigger()
+        }
         // action.extra maps each moved file's CURRENT path (= action.paths, where it is now) back to
         // where it came from - see MediaBatchWorker's movedPairs. Moving it back is a real file
         // operation (unlike DELETE's undo, which is just flipping deleted_ts), so this re-enqueues the

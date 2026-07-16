@@ -33,7 +33,16 @@ class CompressionReviewViewModel(app: Application) : AndroidViewModel(app) {
     fun keepNew(item: CompressionReviewItem) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                CompressionKeeper.keepNew(getApplication(), item.originalPath, item.tempResultPath)
+                val newPath = CompressionKeeper.keepNew(getApplication(), item.originalPath, item.tempResultPath)
+                if (newPath != null) {
+                    org.fossify.gallery.helpers.UndoManager.push(
+                        org.fossify.gallery.helpers.UndoAction(
+                            paths = setOf(item.originalPath),
+                            type = org.fossify.gallery.helpers.UndoType.COMPRESS_REPLACE,
+                            extra = mapOf("newPath" to newPath),
+                        )
+                    )
+                }
             } finally {
                 item.id?.let { getApplication<Application>().compressionReviewDB.deleteItem(it) }
             }

@@ -90,7 +90,6 @@ fun VideoPage(
     path: String,
     scalingMode: Int,
     onScalingModeChange: (Int) -> Unit,
-    onBackgroundAudioChange: (Boolean) -> Unit = {},
     onToggleUi: () -> Unit = {},
     onZoomChange: (Boolean) -> Unit = {},
     showUi: Boolean = true,
@@ -108,7 +107,6 @@ fun VideoPage(
     var isPlaying by remember(path) { mutableStateOf(ctx.config.autoplayVideos) }
     var playbackSpeed by remember(path) { mutableFloatStateOf(1f) }
     val speeds = listOf(0.5f, 1f, 1.5f, 2f, 3f)
-    var backgroundAudio by remember(path) { mutableStateOf(false) }
     var isMuted by remember(path) { mutableStateOf(ctx.config.muteVideos) }
     var trimMode by remember(path) { mutableStateOf(false) }
     var trimStartMs by remember(path) { mutableFloatStateOf(0f) }
@@ -133,7 +131,10 @@ fun VideoPage(
                     retriever.setDataSource(path); retrieverReady = true
                     val w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toFloatOrNull() ?: 0f
                     val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toFloatOrNull() ?: 0f
-                    if (w > 0f && h > 0f) zoom.updateContentAspect(w / h)
+                    // Portrait phone videos store landscape dimensions plus a 90°/270° rotation
+                    // flag - without the swap the zoom pan-clamping treats them as landscape.
+                    val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                    if (w > 0f && h > 0f) zoom.updateContentAspect(if (rotation == 90 || rotation == 270) h / w else w / h)
                 } catch (_: Exception) { }
             }
         }

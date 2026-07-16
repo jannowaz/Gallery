@@ -67,6 +67,7 @@ fun UndoBar(modifier: Modifier = Modifier, onActionLabel: ((UndoAction) -> Strin
                     UndoType.TAG_ADD -> stringResource(R.string.undo_tag_added)
                     UndoType.TAG_REMOVE -> stringResource(R.string.undo_tag_removed)
                     UndoType.RATING_CHANGE -> stringResource(R.string.undo_rating_changed)
+                    UndoType.COMPRESS_REPLACE -> stringResource(R.string.undo_compress_replaced)
                     null -> ""
                 }
                 Text(label, color = MaterialTheme.colorScheme.inverseOnSurface, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))

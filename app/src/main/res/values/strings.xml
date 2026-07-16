@@ -426,6 +426,8 @@
     <string name="compression_review_empty">No compression jobs</string>
     <string name="swipe_review_title">Swipe review</string>
     <string name="back_again_to_exit">Press back again to leave</string>
+    <string name="undo_compress_replaced">Original replaced</string>
+    <string name="restored_scan_from">Last scan · %s</string>
     <string name="swipe_review_start">Start swipe review</string>
     <string name="swipe_skip">Skip</string>
     <string name="swipe_convert">Convert</string>

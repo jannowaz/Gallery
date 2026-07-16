@@ -85,12 +85,13 @@ fun CompressionReviewScreen(onBack: () -> Unit) {
             )
         }
     ) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding)) {
         if (items.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(stringResource(R.string.compression_review_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
-            Column(Modifier.fillMaxSize().padding(padding)) {
+            Column(Modifier.fillMaxSize()) {
                 if (done.size > 1) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = { vm.keepAllNew() }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_all_new)) }
@@ -104,6 +105,8 @@ fun CompressionReviewScreen(onBack: () -> Unit) {
                     item { Spacer(Modifier.height(80.dp)) }
                 }
             }
+        }
+        org.fossify.gallery.compose.components.UndoBar(Modifier.align(Alignment.BottomCenter))
         }
     }
 

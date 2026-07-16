@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.R
+import org.fossify.gallery.helpers.UndoAction
+import org.fossify.gallery.helpers.UndoManager
+import org.fossify.gallery.helpers.UndoType
 import java.io.File
 
 /**
@@ -108,8 +111,9 @@ class CompressionSwipeViewModel(app: Application) : AndroidViewModel(app) {
     fun keepNew() {
         val compare = _phase.value as? SwipePhase.Compare ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val ok = CompressionKeeper.keepNew(getApplication(), compare.item.path, compare.tempPath)
-            if (ok) {
+            val newPath = CompressionKeeper.keepNew(getApplication(), compare.item.path, compare.tempPath)
+            if (newPath != null) {
+                UndoManager.push(UndoAction(paths = setOf(compare.item.path), type = UndoType.COMPRESS_REPLACE, extra = mapOf("newPath" to newPath)))
                 _stats.update { it.copy(converted = it.converted + 1, savedBytes = it.savedBytes + (compare.item.fileSize - compare.newSize).coerceAtLeast(0)) }
                 advance()
             } else {

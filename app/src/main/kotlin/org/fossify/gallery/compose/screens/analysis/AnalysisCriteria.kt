@@ -4,6 +4,7 @@ import org.fossify.gallery.R
 import android.content.Context
 import android.net.Uri
 
+@kotlinx.serialization.Serializable
 data class AnalysisResult(
     val path: String,
     val name: String,
@@ -168,37 +169,40 @@ object AnalysisCriteria {
         return reasons
     }
 
+    /** The estimate shown next to the convert decision is derived from the exact target the
+     * compression will actually use - previously this had its own ladder (4K → 50 Mbps) while the
+     * real transform downscaled 4K to 1080p@12Mbps, so the UI promised ~10 MB where the result
+     * saved ~39 MB. */
     private fun estimateVideoWaste(size: Long, width: Int, height: Int, durationMs: Long, bitrateKbps: Long): Long {
         if (durationMs <= 0) return 0
-        val pixels = width * height
-        val targetKbps = when {
-            pixels >= 3840 * 2160 -> 50_000L
-            pixels >= 1920 * 1080 -> 12_000L
-            pixels >= 1280 * 720 -> 6_000L
-            else -> 3_000L
-        }
-        if (bitrateKbps <= targetKbps) return 0
+        val (_, _, targetKbps) = suggestedVideoTarget(width, height, bitrateKbps) ?: return 0
         val optimalBytes = (targetKbps * durationMs) / 8
         return (size - optimalBytes).coerceAtLeast(0)
     }
 
-    /** Target (width, height, bitrateKbps) for re-encoding [result] - same ladder used by
-     * [estimateVideoWaste] to estimate savings, kept in one place so the estimate shown to the
-     * user and the actual compression always agree. Null if the source is already at/under target. */
+    /** Target (width, height, bitrateKbps) for re-encoding [result] - the single ladder shared
+     * with [estimateVideoWaste], so the estimate shown to the user and the actual compression
+     * always agree. Null if the source is already at/under target. */
     fun suggestedVideoTarget(result: AnalysisResult): Triple<Int, Int, Long>? {
-        if (result.mediaType != 2 || result.width <= 0 || result.height <= 0) return null
-        val pixels = result.width.toLong() * result.height
-        val (targetW, targetH, targetKbps) = when {
-            pixels >= 3840L * 2160 -> Triple(1920, 1080, 12_000L)
-            pixels >= 1920L * 1080 -> Triple(result.width, result.height, 12_000L)
-            pixels >= 1280L * 720 -> Triple(result.width, result.height, 6_000L)
-            else -> Triple(result.width, result.height, 3_000L)
+        if (result.mediaType != 2) return null
+        return suggestedVideoTarget(result.width, result.height, result.bitrateKbps)
+    }
+
+    private fun suggestedVideoTarget(width: Int, height: Int, bitrateKbps: Long): Triple<Int, Int, Long>? {
+        if (width <= 0 || height <= 0) return null
+        val pixels = width.toLong() * height
+        val (targetW, targetKbps) = when {
+            pixels >= 3840L * 2160 -> 1920 to 12_000L
+            pixels >= 1920L * 1080 -> maxOf(width, height) to 12_000L
+            pixels >= 1280L * 720 -> maxOf(width, height) to 6_000L
+            else -> maxOf(width, height) to 3_000L
         }
-        if (result.bitrateKbps <= targetKbps && targetW >= result.width) return null
-        // Preserve aspect ratio when downscaling from >4K - width/height above are for a
-        // landscape source; swap for portrait.
-        return if (result.width >= result.height) Triple(targetW, (targetW.toLong() * result.height / result.width).toInt(), targetKbps)
-        else Triple((targetW.toLong() * result.width / result.height).toInt(), targetW, targetKbps)
+        if (bitrateKbps <= targetKbps && targetW >= maxOf(width, height)) return null
+        // Preserve aspect ratio when downscaling from >4K - targetW bounds the longest edge, so a
+        // portrait source gets the swap.
+        val longEdge = minOf(targetW, maxOf(width, height))
+        return if (width >= height) Triple(longEdge, (longEdge.toLong() * height / width).toInt(), targetKbps)
+        else Triple((longEdge.toLong() * width / height).toInt(), longEdge, targetKbps)
     }
 
     /** Target (longest edge in px, JPEG quality) for re-encoding [result] - mirrors
@@ -220,7 +224,11 @@ object AnalysisCriteria {
 
     private fun estimateImageWaste(size: Long, format: String, width: Int, height: Int, bpp: Float): Long {
         if (bpp <= 0f || width * height <= 0) return 0
-        val mp = width * height
+        val pixels = width.toLong() * height
+        // Same downscale target as suggestedImageTarget: >12MP sources get scaled to the megapixel
+        // threshold before re-encoding, so the estimate must price the target pixel count, not the
+        // source's - otherwise oversized images understate their real savings.
+        val targetPixels = minOf(pixels, thresholds.maxMegapixels * 1_000_000L)
         val targetBpp = when (format) {
             "bmp", "dib" -> 0.25f
             "png" -> if (bpp > 1.0f) 0.2f else (bpp * 0.7f)
@@ -228,8 +236,8 @@ object AnalysisCriteria {
             "jpeg", "jpg" -> if (bpp > 0.4f) 0.2f else bpp
             else -> bpp
         }
-        if (targetBpp >= bpp) return 0
-        return (size - (mp * targetBpp).toLong()).coerceAtLeast(0)
+        if (targetBpp >= bpp && targetPixels >= pixels) return 0
+        return (size - (targetPixels * targetBpp).toLong()).coerceAtLeast(0)
     }
 
     private fun readVideoMeta(path: String, context: Context? = null): VideoMeta {

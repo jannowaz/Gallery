@@ -9,6 +9,7 @@ import org.fossify.gallery.helpers.XmpWriter
 import java.io.File
 import java.security.MessageDigest
 
+@kotlinx.serialization.Serializable
 data class DuplicateFile(
     val path: String,
     val name: String,
@@ -22,6 +23,7 @@ data class DuplicateFile(
     val tags: List<String> = emptyList(),
 )
 
+@kotlinx.serialization.Serializable
 data class DuplicateGroup(
     val hash: String,
     val files: List<DuplicateFile>,

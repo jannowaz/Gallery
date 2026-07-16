@@ -10,6 +10,10 @@ enum class UndoType {
     TAG_ADD,
     TAG_REMOVE,
     RATING_CHANGE,
+
+    /** A compression review/swipe replaced the original (now in the recycle bin) with the
+     * compressed copy at extra["newPath"] - undo restores the original and deletes the copy. */
+    COMPRESS_REPLACE,
 }
 
 data class UndoAction(

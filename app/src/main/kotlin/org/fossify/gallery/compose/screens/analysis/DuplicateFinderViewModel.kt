@@ -33,6 +33,8 @@ data class DuplicateState(
     val scanDone: Boolean = false,
     val mode: DuplicateMode = DuplicateMode.EXACT,
     val similarThreshold: Int = 10,
+    /** Set when [groups] were restored from the last persisted scan instead of a fresh run. */
+    val restoredAt: Long? = null,
 )
 
 enum class DuplicateMode { EXACT, SIMILAR }
@@ -43,6 +45,23 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
     private val scanner = DuplicateScanner(app)
     private val repo = MediaRepository(app)
     private var scanJob: kotlinx.coroutines.Job? = null
+
+    init {
+        // Restore the last persisted scan - same rationale as StorageAnalysisViewModel.
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = ScanResultStore.loadDuplicateScan(getApplication()) ?: return@launch
+            _state.update {
+                if (it.isScanning || it.groups.isNotEmpty()) it
+                else it.copy(
+                    groups = saved.groups,
+                    folderPath = saved.folder,
+                    mode = runCatching { DuplicateMode.valueOf(saved.mode) }.getOrDefault(DuplicateMode.EXACT),
+                    scanDone = true,
+                    restoredAt = saved.timestamp,
+                )
+            }
+        }
+    }
 
     fun cancelScan() {
         scanJob?.cancel()
@@ -66,7 +85,7 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
                 it.copy(
                     isScanning = true, progress = 0, phase = getApplication<Application>().getString(R.string.dup_phase_collecting), folderPath = folderPath,
                     groups = emptyList(), selectedForDeletion = emptySet(),
-                    hashedCount = 0, totalCandidates = 0, totalScanned = 0, scanDone = false,
+                    hashedCount = 0, totalCandidates = 0, totalScanned = 0, scanDone = false, restoredAt = null,
                 )
             }
             val flow = if (mode == DuplicateMode.SIMILAR) scanner.scanFolderSimilar(folderPath, threshold) else scanner.scanFolder(folderPath)
@@ -76,8 +95,11 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
                     is DuplicateProgress.Hashing -> _state.update {
                         it.copy(phase = getApplication<Application>().getString(R.string.dup_phase_comparing), progress = progress.percent, hashedCount = progress.hashed, totalCandidates = progress.total)
                     }
-                    is DuplicateProgress.Done -> _state.update {
-                        it.copy(isScanning = false, progress = 100, groups = progress.groups, totalScanned = progress.totalScanned, scanDone = true)
+                    is DuplicateProgress.Done -> {
+                        _state.update {
+                            it.copy(isScanning = false, progress = 100, groups = progress.groups, totalScanned = progress.totalScanned, scanDone = true)
+                        }
+                        withContext(Dispatchers.IO) { ScanResultStore.saveDuplicateScan(getApplication(), folderPath, mode.name, progress.groups) }
                     }
                 }
             }

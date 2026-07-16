@@ -44,6 +44,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -199,7 +200,6 @@ fun ViewerScreen(
     val quickTags = remember { ctx.config.quickTags.toList() }
     var currentRating by remember { mutableIntStateOf(0) }
     var videoScalingMode by remember { mutableIntStateOf(0) }
-    var backgroundAudio by remember { mutableStateOf(false) }
     var showVideoSettings by remember { mutableStateOf(false) }
     var isCurrentZoomed by remember { mutableStateOf(false) }
     var uiInteractionTick by remember { mutableIntStateOf(0) }
@@ -424,7 +424,6 @@ fun ViewerScreen(
             if (isVideo(path)) VideoPage(
                 path = path, scalingMode = videoScalingMode,
                 onScalingModeChange = { videoScalingMode = it },
-                onBackgroundAudioChange = { backgroundAudio = it },
                 onToggleUi = { showUI = !showUI },
                 showUi = showUI,
                 onInteract = { uiInteractionTick++ },
@@ -437,6 +436,16 @@ fun ViewerScreen(
                 onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
                 isCurrentPage = page == pagerState.currentPage,
             )
+            // A path whose file vanished (deleted externally, unmounted SD card) used to render as
+            // a plain black page with no feedback - show the same broken-media state ImagePage
+            // shows for undecodable files.
+            else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.BrokenImage, file.name, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(48.dp))
+                    Text(stringResource(R.string.error_loading_media), color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(top = 12.dp))
+                    Text(file.name, color = Color.White.copy(alpha = 0.5f), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
         }
 
         // Volume has the system's own overlay (FLAG_SHOW_UI); brightness has no OS-level equivalent

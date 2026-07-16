@@ -37,6 +37,8 @@ data class AnalysisState(
     val selectedPaths: Set<String> = emptySet(),
     val transformResults: List<TransformResult> = emptyList(),
     val isTransforming: Boolean = false,
+    /** Set when [results] were restored from the last persisted scan instead of a fresh run. */
+    val restoredAt: Long? = null,
 )
 
 class StorageAnalysisViewModel(app: Application) : AndroidViewModel(app) {
@@ -46,15 +48,30 @@ class StorageAnalysisViewModel(app: Application) : AndroidViewModel(app) {
     val engine = TransformationEngine(app)
     private var scanJob: kotlinx.coroutines.Job? = null
 
+    init {
+        // Restore the last persisted scan so leaving the screen (or the app dying) doesn't cost
+        // the user the minutes the scan took - a fresh scan simply replaces it.
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = ScanResultStore.loadStorageScan(getApplication()) ?: return@launch
+            _state.update {
+                if (it.isScanning || it.results.isNotEmpty()) it
+                else it.copy(results = saved.results, folderPath = saved.folder, restoredAt = saved.timestamp)
+            }
+        }
+    }
+
     fun startAnalysis(folderPath: String) {
         scanJob?.cancel()
         scanJob = viewModelScope.launch {
-            _state.update { it.copy(isScanning = true, progress = 0, folderPath = folderPath, results = emptyList(), scannedCount = 0, totalFiles = 0) }
+            _state.update { it.copy(isScanning = true, progress = 0, folderPath = folderPath, results = emptyList(), scannedCount = 0, totalFiles = 0, restoredAt = null) }
             analyzer.analyzeFolder(folderPath).collect { progress ->
                 when (progress) {
                     is AnalysisProgress.Scanning -> _state.update { it.copy(progress = progress.percent, scannedCount = progress.scanned, totalFiles = progress.total) }
                     is AnalysisProgress.Found -> _state.update { it.copy(results = progress.allResults) }
-                    is AnalysisProgress.Done -> _state.update { it.copy(isScanning = false, progress = 100, results = progress.results, totalFiles = progress.totalScanned) }
+                    is AnalysisProgress.Done -> {
+                        _state.update { it.copy(isScanning = false, progress = 100, results = progress.results, totalFiles = progress.totalScanned) }
+                        withContext(Dispatchers.IO) { ScanResultStore.saveStorageScan(getApplication(), folderPath, progress.results) }
+                    }
                 }
             }
         }

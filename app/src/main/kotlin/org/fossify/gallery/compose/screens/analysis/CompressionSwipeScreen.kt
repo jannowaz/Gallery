@@ -137,6 +137,7 @@ fun CompressionSwipeScreen(onBack: () -> Unit) {
                 }
                 SwipePhase.Finished -> FinishedContent(stats, onBack)
             }
+            org.fossify.gallery.compose.components.UndoBar(Modifier.align(Alignment.BottomCenter))
         }
     }
 }

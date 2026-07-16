@@ -13,16 +13,17 @@ import java.io.File
  */
 object CompressionKeeper {
 
-    /** Returns false if nothing was changed on disk (missing/unmovable temp file). */
-    fun keepNew(context: Context, originalPath: String, tempPath: String): Boolean {
+    /** Returns the accepted copy's final path, or null if nothing was changed on disk
+     * (missing/unmovable temp file). */
+    fun keepNew(context: Context, originalPath: String, tempPath: String): String? {
         val original = File(originalPath)
         val temp = File(tempPath)
-        if (!temp.exists()) return false
+        if (!temp.exists()) return null
         val target = uniqueTargetFor(original, temp.extension)
         val srcXmp = runCatching { XmpWriter.read(originalPath) }.getOrNull()
 
         val moved = temp.renameTo(target) || runCatching { temp.copyTo(target, overwrite = false); temp.delete() }.isSuccess
-        if (!moved || !target.exists()) return false
+        if (!moved || !target.exists()) return null
 
         TransformationEngine(context).softDeleteOriginal(original)
         if (srcXmp != null && (srcXmp.tags.isNotEmpty() || srcXmp.rating > 0)) {
@@ -30,7 +31,7 @@ object CompressionKeeper {
         }
         runCatching { android.media.MediaScannerConnection.scanFile(context, arrayOf(originalPath, target.absolutePath), null, null) }
         RefreshBus.trigger()
-        return true
+        return target.absolutePath
     }
 
     private fun uniqueTargetFor(original: File, newExt: String): File {
