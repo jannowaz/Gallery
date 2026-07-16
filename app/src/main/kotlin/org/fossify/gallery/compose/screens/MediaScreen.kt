@@ -199,7 +199,7 @@ private fun PagedContent(
     val hasSelection = selectedPaths.isNotEmpty()
     val taggedPaths = state.taggedPaths
     val selectedCommonTags = state.selectedCommonTags
-    val columnCount = viewSettings.columnCount
+    val columnCount = org.fossify.gallery.compose.util.rememberEffectiveColumnCount(viewSettings.columnCount)
     val isGrid = viewSettings.viewType == ViewType.GRID
     val isMosaic = viewSettings.viewType == ViewType.MOSAIC
     val cornerShape = if (viewSettings.roundedCorners) RoundedCornerShape(Radius.sm) else RoundedCornerShape(0.dp)
@@ -577,7 +577,7 @@ fun MediaScreen(
     val taggedPaths = state.taggedPaths
     val selectedCommonTags = state.selectedCommonTags
     LaunchedEffect(selectedPaths) { viewModel.loadCommonTags(selectedPaths) }
-    val columnCount = viewSettings.columnCount
+    val columnCount = org.fossify.gallery.compose.util.rememberEffectiveColumnCount(viewSettings.columnCount)
     val isGrid = viewSettings.viewType == ViewType.GRID
     val isMosaic = viewSettings.viewType == ViewType.MOSAIC
     val hasFilter = ratingFilter > 0 || tagFilterNames != null || pathFilter != null || excludePathFilter != null || minSizeFilter > 0 || dateRangeFilter > 0 || typeFilter > 0
@@ -1048,7 +1048,7 @@ fun MediaScreen(
                 if (peekState.isVideo) {
                     VideoThumbnail(videoPath = peekPath, modifier = Modifier.fillMaxWidth(0.92f).fillMaxHeight(0.75f), contentScale = ContentScale.Fit, thumbnailSize = 1024)
                 } else {
-                    GalleryImage(path = peekPath, contentDescription = null, modifier = Modifier.fillMaxWidth(0.92f).fillMaxHeight(0.75f), contentScale = ContentScale.Fit, thumbnailSize = 1024)
+                    GalleryImage(path = peekPath, contentDescription = peekPath.substringAfterLast('/'), modifier = Modifier.fillMaxWidth(0.92f).fillMaxHeight(0.75f), contentScale = ContentScale.Fit, thumbnailSize = 1024)
                 }
             }
         }

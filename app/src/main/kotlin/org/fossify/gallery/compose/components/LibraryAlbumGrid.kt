@@ -124,7 +124,7 @@ fun LibraryAlbumGrid(
         ScrollToTopEffect(tabIndex) { gridState.animateScrollToItem(0) }
         LazyVerticalGrid(
             state = gridState,
-            columns = GridCells.Fixed(viewSettings.columnCount),
+            columns = GridCells.Fixed(org.fossify.gallery.compose.util.rememberEffectiveColumnCount(viewSettings.columnCount)),
             contentPadding = PaddingValues(itemSpacing / 2),
             modifier = modifier.fillMaxSize(),
         ) {

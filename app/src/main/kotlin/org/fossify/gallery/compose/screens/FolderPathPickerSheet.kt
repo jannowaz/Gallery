@@ -363,10 +363,10 @@ fun FolderPathPickerSheet(
                         ) {
                             Row(Modifier.padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (multiSelect) {
-                                    IconButton(onClick = { toggleSelected(folder.path) }, modifier = Modifier.size(28.dp)) {
+                                    IconButton(onClick = { toggleSelected(folder.path) }, modifier = Modifier.size(40.dp)) {
                                         Icon(
                                             if (folder.path in selectedPaths) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
-                                            null,
+                                            stringResource(if (folder.path in selectedPaths) R.string.cd_selected else R.string.cd_not_selected),
                                             tint = if (folder.path in selectedPaths) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(20.dp),
                                         )

@@ -364,8 +364,8 @@ private fun AddPairDialog(
                         sources.forEach { s ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(s, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                IconButton(onClick = { sources.remove(s) }, modifier = Modifier.size(24.dp)) {
-                                    Icon(Icons.Default.Close, stringResource(R.string.action_remove), modifier = Modifier.size(14.dp))
+                                IconButton(onClick = { sources.remove(s) }, modifier = Modifier.size(40.dp)) {
+                                    Icon(Icons.Default.Close, stringResource(R.string.action_remove), modifier = Modifier.size(16.dp))
                                 }
                             }
                         }

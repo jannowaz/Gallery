@@ -875,25 +875,41 @@ private fun BottomChrome(
                     Modifier
                 },
             ) {
-                BottomSearchField(
-                    value = omniQuery,
-                    onValueChange = onQueryChange,
-                    focusRequester = searchFocusRequester,
-                    onFocusChanged = onFocusChanged,
-                    onClear = onClear,
-                    onMenuClick = onMenuClick,
-                    isActive = searchActive,
-                    onSearch = onSearch,
-                    blurEnabled = blurEnabled,
-                    onToggleBlur = onToggleBlur,
-                    onOpenFilterAndView = onOpenFilterAndView,
-                    hasActiveFilter = hasActiveFilter,
-                )
-                if (showNavBar) {
-                    MainBottomBar(
-                        selectedTab = selectedTab,
-                        onTabSelected = onTabSelected,
+                val searchField = @Composable {
+                    BottomSearchField(
+                        value = omniQuery,
+                        onValueChange = onQueryChange,
+                        focusRequester = searchFocusRequester,
+                        onFocusChanged = onFocusChanged,
+                        onClear = onClear,
+                        onMenuClick = onMenuClick,
+                        isActive = searchActive,
+                        onSearch = onSearch,
+                        blurEnabled = blurEnabled,
+                        onToggleBlur = onToggleBlur,
+                        onOpenFilterAndView = onOpenFilterAndView,
+                        hasActiveFilter = hasActiveFilter,
                     )
+                }
+                // Landscape: search pill and nav bar side by side instead of stacked - the stacked
+                // chrome ate ~40% of the (short) landscape height, leaving about one visible grid
+                // row (UX finding 2026-07-10).
+                val isLandscape = androidx.compose.ui.platform.LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                if (isLandscape && showNavBar) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) { searchField() }
+                        Box(Modifier.weight(1f)) {
+                            MainBottomBar(selectedTab = selectedTab, onTabSelected = onTabSelected)
+                        }
+                    }
+                } else {
+                    searchField()
+                    if (showNavBar) {
+                        MainBottomBar(
+                            selectedTab = selectedTab,
+                            onTabSelected = onTabSelected,
+                        )
+                    }
                 }
             }
         }
