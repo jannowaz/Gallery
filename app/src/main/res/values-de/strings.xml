@@ -655,6 +655,8 @@
     <string name="set_export_settings">Einstellungen exportieren</string>
     <string name="set_import_settings">Einstellungen importieren</string>
     <string name="set_about">Über diese App</string>
+    <string name="set_crash_log">Crash-Protokoll</string>
+    <string name="crash_log_empty">Keine Abstürze aufgezeichnet</string>
     <string name="set_clear_cache">Cache leeren</string>
     <string name="set_export_favorites">Favoriten exportieren</string>
     <string name="set_import_favorites">Favoriten importieren</string>

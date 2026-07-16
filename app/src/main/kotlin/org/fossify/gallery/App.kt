@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import org.fossify.commons.FossifyApp
 import org.fossify.gallery.compose.util.BlurState
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.helpers.CrashLogger
 
 class App : FossifyApp(), ImageLoaderFactory {
 
@@ -55,6 +56,8 @@ class App : FossifyApp(), ImageLoaderFactory {
     }
 
     override fun onCreate() {
+        // First thing, before super.onCreate() - crashes during app init should be captured too.
+        CrashLogger.install(this)
         if (BuildConfig.DEBUG) {
             StrictMode.setThreadPolicy(
                 StrictMode.ThreadPolicy.Builder()

@@ -2,7 +2,9 @@ package org.fossify.gallery.compose.screens.settings
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.theme.Radius
+import org.fossify.gallery.helpers.CrashLogger
 import org.fossify.gallery.helpers.SettingsBackupHelper
+import androidx.compose.ui.text.font.FontFamily
 
 import android.app.Activity
 import android.content.Context
@@ -307,6 +309,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
 
             SectionLabel(stringResource(R.string.set_information))
             SettingsNav(stringResource(R.string.set_about), onClick = onNavigateToAbout)
+            CrashLogNav(ctx)
 
             Spacer(Modifier.height(32.dp))
         }
@@ -366,6 +369,51 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
                 }
             },
             confirmButton = { TextButton(onClick = { showThemeModeDialog = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+}
+
+@Composable
+internal fun CrashLogNav(ctx: Context) {
+    var logs by remember { mutableStateOf(emptyList<java.io.File>()) }
+    LaunchedEffect(Unit) { logs = withContext(Dispatchers.IO) { CrashLogger.logs(ctx) } }
+    var showDialog by remember { mutableStateOf(false) }
+
+    val latest = logs.firstOrNull()
+    SettingsNav(
+        stringResource(R.string.set_crash_log),
+        latest?.name?.removePrefix("crash_")?.removeSuffix(".txt")?.replace('_', ' ')
+            ?: stringResource(R.string.crash_log_empty),
+    ) {
+        if (latest != null) showDialog = true
+    }
+
+    if (showDialog && latest != null) {
+        val text = remember(latest) { runCatching { latest.readText() }.getOrDefault("") }
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text(stringResource(R.string.set_crash_log)) },
+            text = {
+                Box(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                    Text(text, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val intent = Intent(Intent.ACTION_SEND)
+                        .setType("text/plain")
+                        .putExtra(Intent.EXTRA_SUBJECT, latest.name)
+                        .putExtra(Intent.EXTRA_TEXT, text)
+                    ctx.startActivity(Intent.createChooser(intent, null))
+                }) { Text(stringResource(R.string.action_share)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    CrashLogger.clear(ctx)
+                    logs = emptyList()
+                    showDialog = false
+                }) { Text(stringResource(org.fossify.commons.R.string.delete)) }
+            },
         )
     }
 }
@@ -512,7 +560,10 @@ internal fun FavoritesExportNav(ctx: Context, conf: org.fossify.gallery.helpers.
                 val paths = repo.getValidFavoritePaths()
                 ctx.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { w -> paths.forEach { w.write("$it\n") } }
                 withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(R.string.favorites_exported, paths.size), Toast.LENGTH_SHORT).show() }
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                android.util.Log.e("Settings", "Favorites export failed", e)
+                withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(org.fossify.commons.R.string.unknown_error_occurred), Toast.LENGTH_SHORT).show() }
+            }
         }
     }
     SettingsNav(stringResource(R.string.set_export_favorites)) { exportLauncher.launch("gallery-favorites_${java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US).format(java.util.Date())}.txt") }
@@ -639,7 +690,10 @@ internal fun FavoritesImportNav(ctx: Context, conf: org.fossify.gallery.helpers.
                     if (java.io.File(line).exists()) { repo.addFavoriteByPath(line); imported++ }
                 }
                 withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(R.string.favorites_imported, imported), Toast.LENGTH_SHORT).show() }
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                android.util.Log.e("Settings", "Favorites import failed", e)
+                withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(org.fossify.commons.R.string.unknown_error_occurred), Toast.LENGTH_SHORT).show() }
+            }
         }
     }
     SettingsNav(stringResource(R.string.set_import_favorites)) { importLauncher.launch(arrayOf("text/plain")) }
