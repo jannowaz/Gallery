@@ -39,6 +39,9 @@ data class DuplicateState(
 
 enum class DuplicateMode { EXACT, SIMILAR }
 
+/** Which file of a duplicate group survives an auto-selection - everything else gets marked. */
+enum class KeepStrategy { NEWEST, OLDEST, LARGEST, SMALLEST, SHORTEST_NAME, SHORTEST_PATH }
+
 class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(DuplicateState())
     val state: StateFlow<DuplicateState> = _state.asStateFlow()
@@ -110,14 +113,23 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { s -> s.copy(selectedForDeletion = if (path in s.selectedForDeletion) s.selectedForDeletion - path else s.selectedForDeletion + path) }
     }
 
-    fun selectAllButNewest() {
+    /** Per group, selects every file except the single one [strategy] keeps - replaces the
+     * current selection. Unlike the folder bulk-select this is deliberately allowed in SIMILAR
+     * mode too (that's where the size-based strategies are actually meaningful, since EXACT
+     * duplicates are byte-identical): the screen shows a caution toast there, and deletion still
+     * goes through the confirm dialog into the recycle bin either way. */
+    fun applyKeepStrategy(strategy: KeepStrategy) {
         _state.update { s ->
-            // Auto-selecting is only safe for EXACT duplicates. In SIMILAR mode the files are
-            // merely perceptually similar (not identical), so bulk-selecting would risk deleting
-            // wanted photos - require manual selection there.
-            if (s.mode != DuplicateMode.EXACT) return@update s
             val toDelete = s.groups.flatMap { g ->
-                g.files.sortedWith(compareByDescending<DuplicateFile> { it.size }.thenByDescending { it.modified }).drop(1)
+                val keeper = when (strategy) {
+                    KeepStrategy.NEWEST -> g.files.maxWithOrNull(compareBy({ it.modified }, { it.size }))
+                    KeepStrategy.OLDEST -> g.files.minWithOrNull(compareBy({ it.modified }, { it.path }))
+                    KeepStrategy.LARGEST -> g.files.maxWithOrNull(compareBy({ it.size }, { it.modified }))
+                    KeepStrategy.SMALLEST -> g.files.minWithOrNull(compareBy({ it.size }, { it.modified }))
+                    KeepStrategy.SHORTEST_NAME -> g.files.minWithOrNull(compareBy({ it.name.length }, { it.name }))
+                    KeepStrategy.SHORTEST_PATH -> g.files.minWithOrNull(compareBy({ it.path.length }, { it.path }))
+                }
+                g.files.filter { it.path != keeper?.path }
             }.map { it.path }.toSet()
             s.copy(selectedForDeletion = toDelete)
         }

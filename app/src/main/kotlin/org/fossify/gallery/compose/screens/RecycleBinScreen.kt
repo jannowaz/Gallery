@@ -74,6 +74,10 @@ fun RecycleBinScreen(onBack: () -> Unit) {
     var refresh by remember { mutableIntStateOf(0) }
     var showEmptyConfirm by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<Medium?>(null) }
+    // Non-null while a permanent delete runs (done/total) - drives the progress bar and disables
+    // every delete entry point. Emptying a large bin takes real time; without this the screen
+    // looked completely frozen ("nothing happens") until everything was gone.
+    var deleteProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
     LaunchedEffect(refresh) {
         items = withContext(Dispatchers.IO) { repo.getDeletedMedia() }
@@ -83,17 +87,24 @@ fun RecycleBinScreen(onBack: () -> Unit) {
     // actually removed and storage freed (raw File.delete is blocked under scoped storage). The
     // list is refreshed only after the operation completes (avoids the stale-read race).
     fun permanentlyDelete(paths: List<String>) {
-        if (paths.isEmpty()) return
+        if (paths.isEmpty() || deleteProgress != null) return
         scope.launch {
             val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, paths).map { it.second } }
             if (uris.isNotEmpty()) {
                 val granted = try { consent.request(MediaStoreOps.deleteRequest(ctx, uris)) } catch (_: Exception) { false }
                 if (!granted) { ctx.toast(ctx.getString(R.string.cancelled)); return@launch }
             }
-            val failed = withContext(Dispatchers.IO) { paths.count { !repo.deleteMedium(it) } }
-            RefreshBus.trigger()
+            deleteProgress = 0 to paths.size
+            val failed = withContext(Dispatchers.IO) {
+                repo.deleteMediaBatch(paths) { done, total -> deleteProgress = done to total }
+            }
+            deleteProgress = null
             refresh++
-            if (failed > 0) ctx.toast(ctx.resources.getQuantityString(R.plurals.delete_failed_count, failed, failed))
+            if (failed > 0) {
+                ctx.toast(ctx.resources.getQuantityString(R.plurals.delete_failed_count, failed, failed))
+            } else {
+                ctx.toast(ctx.resources.getQuantityString(R.plurals.deleted_forever_count, paths.size, paths.size))
+            }
         }
     }
 
@@ -105,7 +116,7 @@ fun RecycleBinScreen(onBack: () -> Unit) {
                 title = { Text(stringResource(R.string.nav_recycle_bin), fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 actions = {
-                    if (items.isNotEmpty()) TextButton(onClick = { showEmptyConfirm = true }) { Text(stringResource(R.string.action_empty), color = MaterialTheme.colorScheme.error) }
+                    if (items.isNotEmpty()) TextButton(onClick = { showEmptyConfirm = true }, enabled = deleteProgress == null) { Text(stringResource(R.string.action_empty), color = MaterialTheme.colorScheme.error) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
             )
@@ -114,7 +125,20 @@ fun RecycleBinScreen(onBack: () -> Unit) {
         if (items.isEmpty()) {
             EmptyState(Icons.Default.DeleteForever, stringResource(R.string.recycle_bin_empty), modifier = Modifier.padding(padding))
         } else {
-            LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(8.dp)) {
+            Column(Modifier.fillMaxSize().padding(padding)) {
+            deleteProgress?.let { (done, total) ->
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { if (total > 0) done / total.toFloat() else 0f },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    stringResource(R.string.deleting_forever_progress, done, total),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(8.dp)) {
                 items(items, key = { it.path }) { m ->
                     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(56.dp).clip(RoundedCornerShape(Radius.sm))) {
@@ -127,13 +151,14 @@ fun RecycleBinScreen(onBack: () -> Unit) {
                         }
                         IconButton(onClick = {
                             scope.launch { withContext(Dispatchers.IO) { repo.restoreFromRecycleBin(m.path) }; RefreshBus.trigger(); refresh++ }
-                        }) { Icon(Icons.Default.Restore, stringResource(R.string.action_restore), tint = MaterialTheme.colorScheme.primary) }
+                        }, enabled = deleteProgress == null) { Icon(Icons.Default.Restore, stringResource(R.string.action_restore), tint = MaterialTheme.colorScheme.primary) }
                         IconButton(onClick = {
                             pendingDelete = m
-                        }) { Icon(Icons.Default.DeleteForever, stringResource(R.string.action_delete_forever), tint = MaterialTheme.colorScheme.error) }
+                        }, enabled = deleteProgress == null) { Icon(Icons.Default.DeleteForever, stringResource(R.string.action_delete_forever), tint = MaterialTheme.colorScheme.error) }
                     }
                     HorizontalDivider(Modifier.padding(start = 76.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 }
+            }
             }
         }
     }

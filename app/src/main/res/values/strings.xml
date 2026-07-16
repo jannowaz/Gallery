@@ -559,7 +559,20 @@
     <string name="blur_all_media">Blur all media (privacy)</string>
     <string name="blur_all_media_legacy_hint">On this Android version, media is fully covered instead of blurred (a soft blur effect isn\'t available before Android 12).</string>
     <string name="cd_toggle_blur">Toggle privacy blur</string>
-    <string name="select_old">Mark older</string>
+    <string name="auto_select">Auto-select</string>
+    <string name="keep_per_group_hint">Mark all per group, except:</string>
+    <string name="keep_newest">Newest</string>
+    <string name="keep_oldest">Oldest</string>
+    <string name="keep_largest">Largest</string>
+    <string name="keep_smallest">Smallest</string>
+    <string name="keep_shortest_name">Shortest name</string>
+    <string name="keep_shortest_path">Shortest path</string>
+    <string name="similar_select_caution">Similar files are not identical – review the selection</string>
+    <string name="deleting_forever_progress">Deleting permanently… %1$d/%2$d</string>
+    <plurals name="deleted_forever_count">
+        <item quantity="one">%d file permanently deleted</item>
+        <item quantity="other">%d files permanently deleted</item>
+    </plurals>
     <string name="select_folder_duplicates">Mark all found duplicates from this folder</string>
     <string name="select_folder_duplicates_short">Mark folder</string>
     <string name="internal_storage">Internal storage</string>

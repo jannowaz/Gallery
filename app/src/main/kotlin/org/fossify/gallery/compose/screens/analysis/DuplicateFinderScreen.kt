@@ -99,7 +99,35 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                 navigationIcon = { IconButton(onClick = guardedBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 actions = {
                     if (state.groups.isNotEmpty()) {
-                        TextButton(onClick = { vm.selectAllButNewest() }) { Text(stringResource(R.string.select_old)) }
+                        var showSelectMenu by remember { mutableStateOf(false) }
+                        // Applying a strategy in SIMILAR mode is allowed but deserves a nudge -
+                        // those files are perceptually similar, not verified identical.
+                        fun applied(strategy: KeepStrategy) {
+                            vm.applyKeepStrategy(strategy)
+                            showSelectMenu = false
+                            if (state.mode == DuplicateMode.SIMILAR) {
+                                android.widget.Toast.makeText(ctx, ctx.getString(R.string.similar_select_caution), android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        Box {
+                            TextButton(onClick = { showSelectMenu = true }) { Text(stringResource(R.string.auto_select)) }
+                            androidx.compose.material3.DropdownMenu(expanded = showSelectMenu, onDismissRequest = { showSelectMenu = false }) {
+                                Text(
+                                    stringResource(R.string.keep_per_group_hint),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                )
+                                androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.keep_newest)) }, onClick = { applied(KeepStrategy.NEWEST) })
+                                androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.keep_oldest)) }, onClick = { applied(KeepStrategy.OLDEST) })
+                                androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.keep_largest)) }, onClick = { applied(KeepStrategy.LARGEST) })
+                                androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.keep_smallest)) }, onClick = { applied(KeepStrategy.SMALLEST) })
+                                androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.keep_shortest_name)) }, onClick = { applied(KeepStrategy.SHORTEST_NAME) })
+                                androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.keep_shortest_path)) }, onClick = { applied(KeepStrategy.SHORTEST_PATH) })
+                                androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                                androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.selection_clear)) }, onClick = { vm.clearSelection(); showSelectMenu = false })
+                            }
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),

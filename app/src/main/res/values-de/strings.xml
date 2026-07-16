@@ -514,7 +514,20 @@
     <string name="blur_all_media">Alle Medien weichzeichnen (Privatsphäre)</string>
     <string name="blur_all_media_legacy_hint">Auf dieser Android-Version werden Medien komplett abgedeckt statt weichgezeichnet (ein weicher Blur-Effekt ist erst ab Android 12 verfügbar).</string>
     <string name="cd_toggle_blur">Weichzeichnen umschalten</string>
-    <string name="select_old">Alte markieren</string>
+    <string name="auto_select">Auto-Auswahl</string>
+    <string name="keep_per_group_hint">Pro Gruppe alle markieren, außer:</string>
+    <string name="keep_newest">Neueste</string>
+    <string name="keep_oldest">Älteste</string>
+    <string name="keep_largest">Größte</string>
+    <string name="keep_smallest">Kleinste</string>
+    <string name="keep_shortest_name">Kürzester Name</string>
+    <string name="keep_shortest_path">Kürzester Pfad</string>
+    <string name="similar_select_caution">Ähnliche Dateien sind nicht identisch – Auswahl prüfen</string>
+    <string name="deleting_forever_progress">Wird endgültig gelöscht… %1$d/%2$d</string>
+    <plurals name="deleted_forever_count">
+        <item quantity="one">%d Datei endgültig gelöscht</item>
+        <item quantity="other">%d Dateien endgültig gelöscht</item>
+    </plurals>
     <string name="select_folder_duplicates">Alle gefundenen Duplikate aus diesem Ordner markieren</string>
     <string name="select_folder_duplicates_short">Ordner markieren</string>
     <string name="internal_storage">Interner Speicher</string>

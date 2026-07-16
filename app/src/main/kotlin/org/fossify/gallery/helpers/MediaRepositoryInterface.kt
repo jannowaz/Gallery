@@ -16,4 +16,15 @@ interface MediaRepositoryInterface {
      * item stays visible to retry) if the underlying file itself couldn't actually be removed -
      * see MediaRepository.deleteMedium. */
     fun deleteMedium(path: String): Boolean
+
+    /** Batch variant of [deleteMedium]: fires a single RefreshBus tick at the end instead of one
+     * per file, reporting per-file progress. Returns the number of failed deletions. */
+    fun deleteMediaBatch(paths: List<String>, onProgress: (done: Int, total: Int) -> Unit = { _, _ -> }): Int {
+        var failed = 0
+        paths.forEachIndexed { i, p ->
+            if (!deleteMedium(p)) failed++
+            onProgress(i + 1, paths.size)
+        }
+        return failed
+    }
 }

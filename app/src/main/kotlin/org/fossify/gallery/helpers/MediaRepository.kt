@@ -178,7 +178,26 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         }
     }
 
+    override fun deleteMediaBatch(paths: List<String>, onProgress: (done: Int, total: Int) -> Unit): Int {
+        // One RefreshBus tick at the end instead of one per file - emptying a bin with hundreds of
+        // items used to fire hundreds of global refresh storms, which is what made "delete forever"
+        // appear frozen for minutes.
+        var failed = 0
+        paths.forEachIndexed { i, p ->
+            if (!deleteMediumInternal(p)) failed++
+            onProgress(i + 1, paths.size)
+        }
+        if (failed < paths.size) RefreshBus.trigger()
+        return failed
+    }
+
     override fun deleteMedium(path: String): Boolean {
+        val ok = deleteMediumInternal(path)
+        if (ok) RefreshBus.trigger()
+        return ok
+    }
+
+    private fun deleteMediumInternal(path: String): Boolean {
         // File removal is verified FIRST and gates everything else - the old order deleted the DB/
         // favorites/cache/tag rows unconditionally and only then attempted File(path).delete(),
         // discarding its boolean result. Under scoped storage that call can return false (app
@@ -204,7 +223,6 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         try { context.favoritesDB.deleteFavoritePath(path) } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium Fav failed", e) }
         try { context.mediaCacheDB.deleteByPathSync(path) } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium Cache failed", e) }
         try { repositoryScope.launch { context.mediaTagDB.deleteAllForPath(path) } } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMedium Tags failed", e) }
-        RefreshBus.trigger()
         return true
     }
 
