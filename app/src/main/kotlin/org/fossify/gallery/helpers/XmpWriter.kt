@@ -26,7 +26,15 @@ object XmpWriter {
         if (!file.exists()) return XmpData()
         val isJpeg = file.extension.lowercase() in setOf("jpg", "jpeg")
         val raw: String = if (isJpeg) readXmpFromJpeg(file) else readXmpFromSidecar(file)
-        var data = if (raw.isBlank()) tryMigrateOldFormat(file) else parseXmp(raw)
+        var data = when {
+            raw.isBlank() -> tryMigrateOldFormat(file)
+            // Old-format sidecar (bare rating number / comma-separated tag list, no XML): before
+            // this branch existed it fell through to parseXmp, which found no XML and silently
+            // returned an empty result - the legacy migration path below was unreachable for any
+            // non-blank sidecar, losing old ratings/tags.
+            !raw.contains("<") -> parseLegacySidecar(raw)
+            else -> parseXmp(raw)
+        }
         // Fall back to IPTC / Windows (XPKeywords) keywords written by other apps (image formats only)
         if (data.tags.isEmpty() && file.extension.lowercase() in IMAGE_META_EXTS) {
             val extra = readExternalKeywords(file)
@@ -119,7 +127,7 @@ object XmpWriter {
         val liRegex = Regex("<rdf:li[^>]*>([^<]+)</rdf:li>")
         // Standard keywords: dc:subject (rdf:Bag or rdf:Seq, with or without attributes)
         Regex("<dc:subject[^>]*>(.*?)</dc:subject>", RegexOption.DOT_MATCHES_ALL).findAll(raw).forEach { m ->
-            liRegex.findAll(m.groupValues[1]).forEach { tags.add(it.groupValues[1].trim()) }
+            liRegex.findAll(m.groupValues[1]).forEach { tags.add(xmlUnescape(it.groupValues[1].trim())) }
         }
         val hierarchy = mutableMapOf<String, String>()
         // Lightroom hierarchical keywords ("Places|Germany|Berlin") — keep the leaf as the file's tag
@@ -148,7 +156,7 @@ object XmpWriter {
     }
 
     private fun addHierarchicalChain(full: String, separator: String, tags: MutableSet<String>, hierarchy: MutableMap<String, String>) {
-        val parts = full.split(separator).map { it.trim() }.filter { it.isNotBlank() }
+        val parts = xmlUnescape(full).split(separator).map { it.trim() }.filter { it.isNotBlank() }
         if (parts.isEmpty()) return
         tags.add(parts.last())
         for (i in 1 until parts.size) hierarchy[parts[i]] = parts[i - 1]
@@ -157,11 +165,15 @@ object XmpWriter {
     private fun tryMigrateOldFormat(file: File): XmpData {
         val sidecar = File("${file.absolutePath}.xmp")
         if (!sidecar.exists()) return XmpData()
-        val text = sidecar.readText().trim()
-        if (text.isBlank()) return XmpData()
-        val rating = text.toIntOrNull()
+        return parseLegacySidecar(sidecar.readText())
+    }
+
+    private fun parseLegacySidecar(text: String): XmpData {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) return XmpData()
+        val rating = trimmed.toIntOrNull()
         if (rating != null) return XmpData(rating = rating)
-        val tags = text.split(",").map { it.trim() }.filter { it.isNotBlank() }
+        val tags = trimmed.split(",").map { it.trim() }.filter { it.isNotBlank() }
         if (tags.isNotEmpty()) return XmpData(tags = tags)
         return XmpData()
     }
@@ -264,6 +276,16 @@ $ownedDescription
         .replace(">", "&gt;")
         .replace("\"", "&quot;")
         .replace("'", "&apos;")
+
+    // Counterpart to xmlEscape - without this, a tag like "Tom & Jerry" was written escaped but
+    // read back raw, mutating to "Tom &amp; Jerry" on every write→read cycle. &amp; must be
+    // resolved last so a literal "&amp;lt;" doesn't collapse twice into "<".
+    private fun xmlUnescape(s: String): String = s
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
 
     // --- JPEG embedding with streaming (no full-file read) ---
 

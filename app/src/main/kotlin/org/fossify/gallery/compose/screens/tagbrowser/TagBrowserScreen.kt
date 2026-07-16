@@ -275,7 +275,7 @@ fun TagBrowserScreen(
                             val h = ctx.config.tagHierarchy
                             val cleaned = h.filterKeys { it !in tagsToDelete }.filterValues { it !in tagsToDelete }
                             if (cleaned.size != h.size) ctx.config.tagHierarchy = cleaned.toMutableMap()
-                        } catch (_: Exception) { }
+                        } catch (e: Exception) { android.util.Log.e("TagBrowser", "Orphaned hierarchy cleanup failed", e) }
                         withContext(Dispatchers.Main) {
                             ctx.toast(ctx.getString(R.string.tags_removed, tagsToDelete.size, totalFiles), Toast.LENGTH_SHORT)
                             deleteConfirmTags = emptySet(); refreshTrigger++; selectedTags = emptySet()

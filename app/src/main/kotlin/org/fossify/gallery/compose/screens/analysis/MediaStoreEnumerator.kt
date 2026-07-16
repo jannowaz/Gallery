@@ -41,7 +41,7 @@ object MediaStoreEnumerator {
                     if (p.startsWith("$root/") || p == root) paths.add(p)
                 }
             }
-        } catch (_: Exception) { }
+        } catch (e: Exception) { android.util.Log.e("MediaStoreEnumerator", "Enumeration failed, analysis will see no files", e) }
         return paths
     }
 }

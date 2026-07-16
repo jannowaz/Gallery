@@ -134,7 +134,7 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
                     val f = filesByPath[path] ?: return@mapNotNull null
                     Medium(null, f.name, path, File(path).parent ?: "", f.modified, f.modified, f.size, f.mediaType, 0, false, 0L, 0L, f.rating)
                 }
-                try { if (media.isNotEmpty()) getApplication<Application>().mediaDB.insertAllKeepingExisting(media) } catch (_: Exception) { }
+                try { if (media.isNotEmpty()) getApplication<Application>().mediaDB.insertAllKeepingExisting(media) } catch (e: Exception) { android.util.Log.e("DuplicateFinder", "Recycle-bin DB insert failed", e) }
                 selected.forEach { repo.moveToRecycleBin(it) }
             }
             UndoManager.push(UndoAction(paths = selected, type = UndoType.DELETE))

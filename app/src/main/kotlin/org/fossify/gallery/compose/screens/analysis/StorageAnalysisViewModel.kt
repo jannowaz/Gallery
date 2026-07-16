@@ -171,7 +171,7 @@ class TransformationEngine(private val context: android.content.Context) {
 
             // Preserve EXIF metadata for formats that support it (best-effort)
             if (s.targetFormat == "jpeg" || s.targetFormat == "webp") {
-                try { copyExif(s.originalPath, tmpFile.absolutePath) } catch (_: Exception) { }
+                try { copyExif(s.originalPath, tmpFile.absolutePath) } catch (e: Exception) { android.util.Log.e("StorageAnalysis", "EXIF copy failed for ${s.originalPath}", e) }
             }
 
             val original = File(s.originalPath)
@@ -203,10 +203,10 @@ class TransformationEngine(private val context: android.content.Context) {
 
             // Carry app tags/rating onto the new file and keep DB/MediaStore consistent
             if (srcData != null && (srcData.tags.isNotEmpty() || srcData.rating > 0)) {
-                try { XmpWriter.write(newPath, srcData.tags, srcData.rating) } catch (_: Exception) { }
+                try { XmpWriter.write(newPath, srcData.tags, srcData.rating) } catch (e: Exception) { android.util.Log.e("StorageAnalysis", "Tag/rating carry-over failed for $newPath", e) }
             }
             if (!sameFile) {
-                try { context.mediaCacheDB.deleteByPathSync(s.originalPath) } catch (_: Exception) { }
+                try { context.mediaCacheDB.deleteByPathSync(s.originalPath) } catch (e: Exception) { android.util.Log.e("StorageAnalysis", "Cache row cleanup failed for ${s.originalPath}", e) }
             }
             try { android.media.MediaScannerConnection.scanFile(context, arrayOf(s.originalPath, newPath), null, null) } catch (_: Exception) { }
             RefreshBus.trigger()
@@ -226,7 +226,7 @@ class TransformationEngine(private val context: android.content.Context) {
             )
             context.mediaDB.insertAllKeepingExisting(listOf(medium))
             context.mediaDB.softDelete(path, System.currentTimeMillis())
-        } catch (_: Exception) { }
+        } catch (e: Exception) { android.util.Log.e("StorageAnalysis", "Recycle-bin registration failed for ${original.absolutePath}", e) }
     }
 
     private fun copyExif(src: String, dst: String) {

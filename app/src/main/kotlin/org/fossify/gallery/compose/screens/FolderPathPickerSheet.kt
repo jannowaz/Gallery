@@ -463,7 +463,7 @@ fun FolderPathPickerSheet(
                 TextButton(onClick = {
                     if (newFolderName.isNotBlank()) {
                         val newDir = File(currentPath, newFolderName)
-                        try { newDir.mkdirs(); currentPath = newDir.path } catch (_: Exception) { }
+                        try { newDir.mkdirs(); currentPath = newDir.path } catch (e: Exception) { android.util.Log.e("FolderPicker", "Create folder failed: ${newDir.path}", e) }
                         pendingCreateFolder = false; newFolderName = ""
                     }
                 }) { Text(stringResource(R.string.action_create)) }

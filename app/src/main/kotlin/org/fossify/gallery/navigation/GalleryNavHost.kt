@@ -128,7 +128,7 @@ fun GalleryNavHost(
                         if (sanitised.isNotBlank()) ctx.mediaTagDB.insert(MediaTag(mediaPath = row.path, tag = sanitised))
                     }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { android.util.Log.e("GalleryNavHost", "Tag sanitize migration failed", e) }
         }
     }
 

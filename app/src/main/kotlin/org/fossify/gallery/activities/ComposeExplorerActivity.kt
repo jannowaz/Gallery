@@ -281,7 +281,7 @@ class ComposeExplorerActivity : ComponentActivity() {
                 MetadataSyncWorker.cancel(this@ComposeExplorerActivity)
                 // Sweep batch_job_items left behind by a MediaBatchWorker job that was interrupted
                 // and never retried (e.g. app force-stopped mid-batch).
-                try { batchJobItemDB.deleteStale(System.currentTimeMillis() - 24 * 60 * 60 * 1000L) } catch (_: Exception) { }
+                try { batchJobItemDB.deleteStale(System.currentTimeMillis() - 24 * 60 * 60 * 1000L) } catch (e: Exception) { android.util.Log.e("Explorer", "Stale batch-job cleanup failed", e) }
             }
         } else {
             requestPermissionLauncher.launch(getMediaPermissionStrings())
@@ -1306,7 +1306,7 @@ private fun OmniSearchPanel(
             val tags = mutableListOf<Pair<String, Int>>()
             try {
                 if (allTags.isNotEmpty()) qParts.forEach { qp -> allTags.entries.forEach { (tag, paths) -> if (tag.lowercase().contains(qp) && tags.none { it.first == tag }) tags.add(tag to paths.size) } }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { android.util.Log.e("Explorer", "Tag search job failed", e) }
             if (myGen == searchGeneration) tagResults = tags.sortedByDescending { it.second }.take(15)
             jobDone()
         }
@@ -1368,7 +1368,7 @@ private fun OmniSearchPanel(
                     val dataCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA); val nameCol = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
                     while (c.moveToNext()) { val path = c.getString(dataCol) ?: continue; val name = c.getString(nameCol) ?: ""; if (qParts.all { it in name.lowercase() } && java.io.File(path).exists()) matched.add(path) }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { android.util.Log.e("Explorer", "MediaStore search job failed", e) }
             // Cache the pre-intersection match set (independent of which library items happen to be
             // "active" right now) so a later cache hit re-derives against a possibly-updated active set.
             searchCache[cacheKey] = matched

@@ -1122,7 +1122,7 @@ fun Context.updateRating(path: String, rating: Int) {
     try {
         mediaDB.updateRating(path, rating)
         XmpWriter.write(path, XmpWriter.read(path).tags, rating)
-    } catch (_: Exception) { }
+    } catch (e: Exception) { android.util.Log.e("Context", "updateRating failed for $path", e) }
 }
 
 /** Resolves a `media` table path for a soft-deleted row to the real on-disk file. The legacy
