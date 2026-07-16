@@ -366,9 +366,12 @@ fun ViewerScreen(
                             onDragEnd = {
                                 when (dragMode) {
                                     0 -> {
+                                        // The action-sheet branch must spring the offset back too - it used to
+                                        // leave dragOffset at wherever the finger stopped, so after dismissing
+                                        // the sheet the image stayed shrunken/shifted until the next drag.
                                         if (dragOffset < -180f) showActionSheet = true
-                                        else if (dragOffset > 240f) { ctx.config.lastViewedPath = currentPath; onClose() }
-                                        else { scope.launch { animate(dragOffset, 0f, animationSpec = org.fossify.gallery.compose.theme.AppMotion.gestureSpring) { v, _ -> dragOffset = v } } }
+                                        else if (dragOffset > 240f) { ctx.config.lastViewedPath = currentPath; onClose(); return@detectVerticalDragGestures }
+                                        scope.launch { animate(dragOffset, 0f, animationSpec = org.fossify.gallery.compose.theme.AppMotion.gestureSpring) { v, _ -> dragOffset = v } }
                                     }
                                     1 -> brightnessPreview = null
                                 }

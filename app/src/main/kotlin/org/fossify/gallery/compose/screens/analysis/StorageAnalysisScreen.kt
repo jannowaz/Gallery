@@ -95,11 +95,18 @@ fun StorageAnalysisScreen(
         }
     }
 
+    // A finished scan is minutes of work that a single stray back press used to throw away - while
+    // scanning or holding results, leaving takes two back presses (or two taps on the arrow).
+    val guardedBack = org.fossify.gallery.compose.util.rememberDoubleBackGuard(
+        enabled = state.isScanning || state.results.isNotEmpty(),
+        onExit = onBack,
+    )
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.nav_storage_analysis), fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
+                navigationIcon = { IconButton(onClick = guardedBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 actions = {
                     if (state.results.isNotEmpty()) {
                         IconButton(onClick = { vm.selectAll() }) { Icon(Icons.Default.CheckCircle, stringResource(R.string.action_select_all)) }

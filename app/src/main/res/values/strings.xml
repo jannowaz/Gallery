@@ -425,6 +425,7 @@
     <string name="compare_after">After</string>
     <string name="compression_review_empty">No compression jobs</string>
     <string name="swipe_review_title">Swipe review</string>
+    <string name="back_again_to_exit">Press back again to leave</string>
     <string name="swipe_review_start">Start swipe review</string>
     <string name="swipe_skip">Skip</string>
     <string name="swipe_convert">Convert</string>
@@ -558,6 +559,7 @@
     <string name="cd_toggle_blur">Toggle privacy blur</string>
     <string name="select_old">Mark older</string>
     <string name="select_folder_duplicates">Mark all found duplicates from this folder</string>
+    <string name="select_folder_duplicates_short">Mark folder</string>
     <string name="internal_storage">Internal storage</string>
     <string name="scanning_short">Scanning…</string>
     <string name="dup_mode_exact">Exact</string>

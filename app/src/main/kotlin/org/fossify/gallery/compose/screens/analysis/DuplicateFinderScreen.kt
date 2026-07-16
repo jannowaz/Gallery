@@ -32,7 +32,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -86,11 +85,18 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
         if (uri != null) currentFolder = duplicateUriToPath(uri) ?: uri.toString()
     }
 
+    // Same protection as the storage analysis: a duplicate scan takes minutes, so leaving a
+    // running scan or its results needs a deliberate double back.
+    val guardedBack = org.fossify.gallery.compose.util.rememberDoubleBackGuard(
+        enabled = state.isScanning || state.groups.isNotEmpty(),
+        onExit = onBack,
+    )
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.nav_find_duplicates), fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
+                navigationIcon = { IconButton(onClick = guardedBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 actions = {
                     if (state.groups.isNotEmpty()) {
                         TextButton(onClick = { vm.selectAllButNewest() }) { Text(stringResource(R.string.select_old)) }
@@ -269,9 +275,12 @@ private fun DuplicateGroupCard(
                 color = MaterialTheme.colorScheme.tertiary,
             )
             group.files.forEachIndexed { index, file ->
+                // Only the checkbox sits on the right - the old per-row preview/folder icon pair
+                // ate ~90dp of width and squeezed the path into two truncated lines. Preview is now
+                // a tap on the thumbnail/info area, folder-select an inline chip below the metadata.
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(64.dp)) {
-                        GalleryImage(path = file.path, contentDescription = file.name, modifier = Modifier.size(64.dp).clip(RoundedCornerShape(Radius.sm)).sharedElementKey("media_${file.path}"))
+                    Box(Modifier.size(64.dp).clip(RoundedCornerShape(Radius.sm)).clickable { onView(file.path) }) {
+                        GalleryImage(path = file.path, contentDescription = file.name, modifier = Modifier.size(64.dp).sharedElementKey("media_${file.path}"))
                         if (file.mediaType == 2) {
                             Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
                                 Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(24.dp))
@@ -279,7 +288,7 @@ private fun DuplicateGroupCard(
                         }
                     }
                     Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f).clip(RoundedCornerShape(Radius.sm)).clickable { onView(file.path) }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(file.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                             if (index == 0) {
@@ -289,7 +298,7 @@ private fun DuplicateGroupCard(
                                 }
                             }
                         }
-                        Text(file.path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(file.path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         Text(
                             buildString {
                                 if (file.width > 0 && file.height > 0) append("${file.width}×${file.height} · ")
@@ -312,22 +321,28 @@ private fun DuplicateGroupCard(
                                 }
                             }
                         }
-                    }
-                    // Extends the selection to every other found duplicate that shares this file's
-                    // folder - a folder holding one file the user wants gone usually holds the whole
-                    // batch of junk copies, not just this one. Additive (never deselects), so it can
-                    // be combined freely with manual per-file checkboxes across several folders.
-                    // EXACT mode only, same reasoning as "Mark older" above: in SIMILAR mode the
-                    // other files in that folder are merely perceptually similar, not verified
-                    // identical, so mass-selecting them by folder carries the same risk this app
-                    // already deliberately avoids for the other bulk-select action.
-                    if (!similar) {
-                        IconButton(onClick = { onSelectFolder(file.path) }, modifier = Modifier.size(40.dp)) {
-                            Icon(Icons.Default.FolderOpen, stringResource(R.string.select_folder_duplicates), tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
+                        // Extends the selection to every other found duplicate that shares this file's
+                        // folder - a folder holding one file the user wants gone usually holds the whole
+                        // batch of junk copies, not just this one. Additive (never deselects), so it can
+                        // be combined freely with manual per-file checkboxes across several folders.
+                        // EXACT mode only, same reasoning as "Mark older" above: in SIMILAR mode the
+                        // other files in that folder are merely perceptually similar, not verified
+                        // identical, so mass-selecting them by folder carries the same risk this app
+                        // already deliberately avoids for the other bulk-select action.
+                        if (!similar) {
+                            Surface(
+                                onClick = { onSelectFolder(file.path) },
+                                shape = RoundedCornerShape(Radius.lg),
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                                modifier = Modifier.padding(top = 4.dp),
+                            ) {
+                                Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.FolderOpen, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(stringResource(R.string.select_folder_duplicates_short), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                                }
+                            }
                         }
-                    }
-                    IconButton(onClick = { onView(file.path) }, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     }
                     Checkbox(checked = file.path in selected, onCheckedChange = { onToggle(file.path) })
                 }

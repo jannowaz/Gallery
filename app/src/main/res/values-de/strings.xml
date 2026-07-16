@@ -380,6 +380,7 @@
     <string name="compare_after">Nachher</string>
     <string name="compression_review_empty">Keine Kompressions-Jobs</string>
     <string name="swipe_review_title">Swipe-Review</string>
+    <string name="back_again_to_exit">Erneut zurück drücken zum Verlassen</string>
     <string name="swipe_review_start">Swipe-Review starten</string>
     <string name="swipe_skip">Überspringen</string>
     <string name="swipe_convert">Konvertieren</string>
@@ -513,6 +514,7 @@
     <string name="cd_toggle_blur">Weichzeichnen umschalten</string>
     <string name="select_old">Alte markieren</string>
     <string name="select_folder_duplicates">Alle gefundenen Duplikate aus diesem Ordner markieren</string>
+    <string name="select_folder_duplicates_short">Ordner markieren</string>
     <string name="internal_storage">Interner Speicher</string>
     <string name="scanning_short">Scannt…</string>
     <string name="dup_mode_exact">Exakt</string>

@@ -93,6 +93,13 @@ fun CompressionSwipeScreen(onBack: () -> Unit) {
         error?.let { Toast.makeText(ctx, it, Toast.LENGTH_SHORT).show(); vm.clearError() }
     }
 
+    // Mid-session exits throw away the remaining queue position (and a pending compare) - require
+    // a deliberate double back while the session is still running.
+    val guardedBack = org.fossify.gallery.compose.util.rememberDoubleBackGuard(
+        enabled = phase !is SwipePhase.Finished && vm.total > 0,
+        onExit = onBack,
+    )
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -100,7 +107,7 @@ fun CompressionSwipeScreen(onBack: () -> Unit) {
                     val counter = if (phase is SwipePhase.Finished) "" else "  $position/${vm.total}"
                     Text(stringResource(R.string.swipe_review_title) + counter, fontWeight = FontWeight.Bold)
                 },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
+                navigationIcon = { IconButton(onClick = guardedBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
             )
         }
