@@ -29,8 +29,9 @@ sealed interface SwipePhase {
     /** Deciding whether to convert this candidate at all. */
     data class Triage(val item: AnalysisResult) : SwipePhase
 
-    /** Probe compression running - purely temp-file work, nothing touched yet. */
-    data class Converting(val item: AnalysisResult) : SwipePhase
+    /** Probe compression running - purely temp-file work, nothing touched yet. [progress] is the
+     * transcode percentage for videos (null for images, whose re-encode is near-instant). */
+    data class Converting(val item: AnalysisResult, val progress: Int? = null) : SwipePhase
 
     /** Probe result ready: original untouched on disk, compressed copy at [tempPath]. */
     data class Compare(val item: AnalysisResult, val tempPath: String, val newSize: Long) : SwipePhase
@@ -88,7 +89,10 @@ class CompressionSwipeViewModel(app: Application) : AndroidViewModel(app) {
                     if (item.mediaType == 2) {
                         val (w, h, kbps) = AnalysisCriteria.suggestedVideoTarget(item)
                             ?: error(getApplication<Application>().getString(R.string.swipe_already_optimal))
-                        engine.compressVideo(item.path, w, h, kbps)
+                        engine.compressVideo(item.path, w, h, kbps) { percent ->
+                            val current = _phase.value
+                            if (current is SwipePhase.Converting) _phase.value = current.copy(progress = percent)
+                        }
                     } else {
                         val (edge, quality) = AnalysisCriteria.suggestedImageTarget(item)
                             ?: error(getApplication<Application>().getString(R.string.swipe_already_optimal))

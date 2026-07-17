@@ -68,8 +68,6 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.launch
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.components.GalleryImage
-import org.fossify.gallery.compose.screens.viewer.rememberZoomState
-import org.fossify.gallery.compose.screens.viewer.zoomable
 import org.fossify.gallery.compose.theme.Radius
 import java.io.File
 
@@ -124,7 +122,7 @@ fun CompressionSwipeScreen(onBack: () -> Unit) {
                         TriageContent(p.item, onSkip = vm::skip, onConvert = vm::convert)
                     }
                 }
-                is SwipePhase.Converting -> key(p.item.path) { ConvertingContent(p.item) }
+                is SwipePhase.Converting -> key(p.item.path) { ConvertingContent(p.item, p.progress) }
                 is SwipePhase.Compare -> key(p.tempPath) {
                     SwipeDecisionBox(
                         leftLabel = stringResource(R.string.swipe_keep_original),
@@ -278,7 +276,7 @@ private fun InfoPanel(item: AnalysisResult) {
 }
 
 @Composable
-private fun ConvertingContent(item: AnalysisResult) {
+private fun ConvertingContent(item: AnalysisResult, progress: Int?) {
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             GalleryImage(
@@ -290,10 +288,21 @@ private fun ConvertingContent(item: AnalysisResult) {
                 backgroundColor = MaterialTheme.colorScheme.background,
             )
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator()
+                // Real transcode percentage once the Transformer reports one - a multi-minute
+                // video export behind a bare spinner reads as "hung".
+                if (progress != null) {
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { progress / 100f },
+                        modifier = Modifier.fillMaxWidth(0.6f),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text("$progress %", style = MaterialTheme.typography.titleSmall)
+                } else {
+                    CircularProgressIndicator()
+                }
                 Spacer(Modifier.height(12.dp))
                 Text(stringResource(R.string.swipe_converting), style = MaterialTheme.typography.titleSmall)
-                if (item.mediaType == 2) {
+                if (item.mediaType == 2 && progress == null) {
                     Text(stringResource(R.string.swipe_converting_video_hint), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -303,47 +312,27 @@ private fun ConvertingContent(item: AnalysisResult) {
 
 @Composable
 private fun CompareContent(compare: SwipePhase.Compare, onKeepOriginal: () -> Unit, onKeepNew: () -> Unit) {
-    // Start on "after": the question being answered is whether the compressed quality is
-    // acceptable. A single tap on the image toggles sides with zoom/pan preserved, so the exact
-    // same crop can be pixel-compared back and forth.
-    var showAfter by remember { mutableStateOf(true) }
-    val zoom = rememberZoomState()
     val isVideo = compare.item.mediaType == 2
+    // Videos keep the position-synced before/after toggle; images use the wipe slider instead
+    // (both versions visible at once in the same zoom - see WipeCompareImage).
+    var showAfter by remember { mutableStateOf(true) }
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            FilterChip(selected = !showAfter, onClick = { showAfter = false }, label = { Text(stringResource(R.string.compare_before) + "  " + formatBytes(compare.item.fileSize)) })
-            FilterChip(selected = showAfter, onClick = { showAfter = true }, label = { Text(stringResource(R.string.compare_after) + "  " + formatBytes(compare.newSize)) })
+        if (isVideo) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(selected = !showAfter, onClick = { showAfter = false }, label = { Text(stringResource(R.string.compare_before) + "  " + formatBytes(compare.item.fileSize)) })
+                FilterChip(selected = showAfter, onClick = { showAfter = true }, label = { Text(stringResource(R.string.compare_after) + "  " + formatBytes(compare.newSize)) })
+            }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (isVideo) {
                 ComparePlayer(pathA = compare.item.path, pathB = compare.tempPath, showB = showAfter, modifier = Modifier.fillMaxSize())
             } else {
-                Box(Modifier.fillMaxSize().zoomable(zoom, onSingleTap = { showAfter = !showAfter })) {
-                    GalleryImage(
-                        path = if (showAfter) compare.tempPath else compare.item.path,
-                        contentDescription = stringResource(if (showAfter) R.string.compare_after else R.string.compare_before),
-                        modifier = Modifier.fillMaxSize().graphicsLayer {
-                            scaleX = zoom.scale; scaleY = zoom.scale
-                            translationX = zoom.offset.x; translationY = zoom.offset.y
-                        },
-                        contentScale = ContentScale.Fit,
-                        thumbnailSize = 2560,
-                        backgroundColor = MaterialTheme.colorScheme.background,
-                    )
-                }
-                if (!zoom.isZoomed) {
-                    Text(
-                        stringResource(R.string.swipe_tap_to_compare),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(4.dp),
-                    )
-                }
+                WipeCompareImage(beforePath = compare.item.path, afterPath = compare.tempPath, modifier = Modifier.fillMaxSize())
             }
         }
         val percent = if (compare.item.fileSize > 0) (100 - (compare.newSize * 100 / compare.item.fileSize)).toInt() else 0

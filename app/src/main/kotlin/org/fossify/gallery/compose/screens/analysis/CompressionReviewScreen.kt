@@ -183,23 +183,18 @@ private fun CompareDialog(item: CompressionReviewItem, onKeepOriginal: () -> Uni
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, stringResource(R.string.cd_close)) }
                 Spacer(Modifier.width(4.dp))
-                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = !showAfter, onClick = { showAfter = false }, label = { Text(stringResource(R.string.compare_before)) })
-                    FilterChip(selected = showAfter, onClick = { showAfter = true }, label = { Text(stringResource(R.string.compare_after)) })
+                if (isVideo) {
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = !showAfter, onClick = { showAfter = false }, label = { Text(stringResource(R.string.compare_before)) })
+                        FilterChip(selected = showAfter, onClick = { showAfter = true }, label = { Text(stringResource(R.string.compare_after)) })
+                    }
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (isVideo) {
                     ComparePlayer(pathA = item.originalPath, pathB = item.tempResultPath, showB = showAfter, modifier = Modifier.fillMaxSize())
                 } else {
-                    GalleryImage(
-                        path = if (showAfter) item.tempResultPath else item.originalPath,
-                        contentDescription = stringResource(if (showAfter) R.string.compare_after else R.string.compare_before),
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                        thumbnailSize = 1536,
-                        backgroundColor = MaterialTheme.colorScheme.background,
-                    )
+                    WipeCompareImage(beforePath = item.originalPath, afterPath = item.tempResultPath, modifier = Modifier.fillMaxSize())
                 }
             }
             val percent = if (item.originalSize > 0) (100 - (item.resultSize * 100 / item.originalSize)).toInt() else 0

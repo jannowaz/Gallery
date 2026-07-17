@@ -74,8 +74,9 @@ class CompressionEngine(private val context: Context) {
     /** Re-encodes the video at [path] to fit within [targetWidth]x[targetHeight] (aspect-preserving,
      * no upscale) at roughly [targetBitrateKbps]. Runs the hardware-accelerated Media3 Transformer,
      * which must be driven from a Looper thread - the whole call hops to the main dispatcher for
-     * that, then back off it once the transform is done. */
-    suspend fun compressVideo(path: String, targetWidth: Int, targetHeight: Int, targetBitrateKbps: Long): File =
+     * that, then back off it once the transform is done. [onProgress] delivers 0-100 on the main
+     * thread (polled - Transformer has no progress callback) while the export runs. */
+    suspend fun compressVideo(path: String, targetWidth: Int, targetHeight: Int, targetBitrateKbps: Long, onProgress: ((Int) -> Unit)? = null): File =
         withContext(Dispatchers.Main) {
             val outFile = File(outputDir, "vid_${System.nanoTime()}.mp4")
             val presentation = Presentation.createForWidthAndHeight(targetWidth, targetHeight, Presentation.LAYOUT_SCALE_TO_FIT)
@@ -101,6 +102,19 @@ class CompressionEngine(private val context: Context) {
                 })
                 cont.invokeOnCancellation { Handler(Looper.getMainLooper()).post { transformer.cancel() } }
                 transformer.start(editedMediaItem, outFile.absolutePath)
+                if (onProgress != null) {
+                    val handler = Handler(Looper.getMainLooper())
+                    val progressHolder = androidx.media3.transformer.ProgressHolder()
+                    handler.postDelayed(object : Runnable {
+                        override fun run() {
+                            if (!cont.isActive) return
+                            if (transformer.getProgress(progressHolder) == Transformer.PROGRESS_STATE_AVAILABLE) {
+                                onProgress(progressHolder.progress)
+                            }
+                            handler.postDelayed(this, 500)
+                        }
+                    }, 500)
+                }
             }
         }
 }
