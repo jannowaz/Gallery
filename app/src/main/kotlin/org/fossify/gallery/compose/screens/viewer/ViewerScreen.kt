@@ -201,6 +201,10 @@ fun ViewerScreen(
     var currentRating by remember { mutableIntStateOf(0) }
     var videoScalingMode by remember { mutableIntStateOf(0) }
     var showVideoSettings by remember { mutableStateOf(false) }
+    // Inside the tiny PiP window every overlay is noise - chrome is forced hidden and the
+    // persistent overlays below gate on !inPip.
+    val inPip = org.fossify.gallery.compose.util.PipState.inPip
+    LaunchedEffect(inPip) { if (inPip) showUI = false }
     var isCurrentZoomed by remember { mutableStateOf(false) }
     var uiInteractionTick by remember { mutableIntStateOf(0) }
     var showGestureHint by remember { mutableStateOf(!ctx.config.hasSeenViewerGestureHint) }
@@ -484,7 +488,7 @@ fun ViewerScreen(
         // fullscreen (mirrors the legacy Views viewer's identical `!hideExtendedDetails ||
         // !isFullscreen` alpha logic in PhotoFragment/VideoFragment).
         AnimatedVisibility(
-            visible = extendedDetailsText.isNotEmpty() && (showUI || !ctx.config.hideExtendedDetails),
+            visible = extendedDetailsText.isNotEmpty() && !inPip && (showUI || !ctx.config.hideExtendedDetails),
             enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium),
             modifier = Modifier.align(Alignment.TopStart).padding(top = 72.dp, start = 16.dp, end = 16.dp),
         ) {
@@ -572,7 +576,7 @@ fun ViewerScreen(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = bottomGroupOffset),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            AnimatedVisibility(visible = showRatingOverlay, enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium)) {
+            AnimatedVisibility(visible = showRatingOverlay && !inPip, enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium)) {
                 Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
                     Surface(shape = RoundedCornerShape(Radius.xl), color = Scrim.a32) {
                         Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 6.dp)) {
@@ -613,7 +617,7 @@ fun ViewerScreen(
             }
         }
 
-        UndoBar(modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
+        if (!inPip) UndoBar(modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
     }
 
     if (showActionSheet) {

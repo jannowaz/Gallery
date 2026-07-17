@@ -412,6 +412,7 @@
     <string name="storage_empty_subtitle">Durchsucht einen Ordner nach übergroßen Fotos und Videos und schätzt, wie viel Kompression sparen würde</string>
     <string name="dup_empty_title">Duplikate aufspüren</string>
     <string name="dup_empty_subtitle">Durchsucht einen Ordner nach byte-identischen oder visuell ähnlichen Fotos und Videos</string>
+    <string name="cd_pip">Bild-in-Bild</string>
     <plurals name="reasons_count">
         <item quantity="one">%d Befund</item>
         <item quantity="other">%d Befunde</item>

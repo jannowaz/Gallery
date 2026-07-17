@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
@@ -117,6 +118,7 @@ fun VideoPage(
     var scrubFraction by remember { mutableFloatStateOf(-1f) }
     var frameCache by remember(path) { mutableStateOf<List<Bitmap>>(emptyList()) }
     var positionMs by remember(path) { mutableLongStateOf(0L) }
+    var pipAspect by remember(path) { mutableStateOf<android.util.Rational?>(null) }
 
     LaunchedEffect(isCurrentPage) { if (!isCurrentPage) zoom.reset() }
     LaunchedEffect(zoom.isZoomed, isCurrentPage) { if (isCurrentPage) onZoomChange(zoom.isZoomed) }
@@ -134,7 +136,12 @@ fun VideoPage(
                     // Portrait phone videos store landscape dimensions plus a 90°/270° rotation
                     // flag - without the swap the zoom pan-clamping treats them as landscape.
                     val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
-                    if (w > 0f && h > 0f) zoom.updateContentAspect(if (rotation == 90 || rotation == 270) h / w else w / h)
+                    if (w > 0f && h > 0f) {
+                        val aspect = if (rotation == 90 || rotation == 270) h / w else w / h
+                        zoom.updateContentAspect(aspect)
+                        // Clamped to the platform's allowed PiP window range (~0.42..2.39).
+                        pipAspect = android.util.Rational((aspect.coerceIn(0.42f, 2.39f) * 1000).toInt(), 1000)
+                    }
                 } catch (_: Exception) { }
             }
         }
@@ -255,6 +262,33 @@ fun VideoPage(
     // independent of the config.keepScreenOn setting (now default-off, see Config.keepScreenOn). So a
     // paused or backgrounded video lets the screen time out normally, but active playback isn't cut off.
     LaunchedEffect(isPlaying, isCurrentPage) { spv.keepScreenOn = isPlaying && isCurrentPage }
+    // Arm/disarm PiP: while this page's video actually plays, publish its aspect (the activity's
+    // onUserLeaveHint uses it pre-Android-12) and on 12+ register auto-enter params so pressing
+    // Home floats the video seamlessly instead of pausing it.
+    LaunchedEffect(isPlaying, isCurrentPage, pipAspect) {
+        val active = if (isPlaying && isCurrentPage) pipAspect else null
+        org.fossify.gallery.compose.util.PipState.activeVideoAspect = active
+        val activity = ctx as? android.app.Activity
+        if (activity != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            try {
+                activity.setPictureInPictureParams(
+                    android.app.PictureInPictureParams.Builder()
+                        .setAutoEnterEnabled(active != null)
+                        .apply { active?.let { setAspectRatio(it) } }
+                        .build()
+                )
+            } catch (e: Exception) { android.util.Log.e("VideoPage", "setPictureInPictureParams failed", e) }
+        }
+    }
+    DisposableEffect(path) {
+        onDispose {
+            org.fossify.gallery.compose.util.PipState.activeVideoAspect = null
+            val activity = ctx as? android.app.Activity
+            if (activity != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                try { activity.setPictureInPictureParams(android.app.PictureInPictureParams.Builder().setAutoEnterEnabled(false).build()) } catch (_: Exception) { }
+            }
+        }
+    }
     // Only polls while actually playing - currentPosition only advances on its own during playback,
     // so ticking this every 500ms while paused (the previous condition was just `isCurrentPage`, true
     // for as long as the user simply leaves a paused video open in the Viewer) was a perpetual,
@@ -310,7 +344,9 @@ fun VideoPage(
         AnimatedVisibility(visible = showUi && playerError == null, enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium)) {
             Box(Modifier.fillMaxSize()) {
                 IconButton(
-                    onClick = { if (isPlaying) player.pause() else player.play(); onInteract() },
+                    // ENDED needs an explicit rewind - play() alone is a no-op there, which made
+                    // the play button appear dead after a video ran to completion.
+                    onClick = { if (isPlaying) player.pause() else { if (player.playbackState == Player.STATE_ENDED) player.seekTo(0); player.play() }; onInteract() },
                     modifier = Modifier.align(Alignment.Center).size(56.dp).clip(CircleShape).background(Scrim.a50)
                 ) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(R.string.cd_play_pause), tint = Color.White, modifier = Modifier.size(28.dp)) }
 
@@ -320,6 +356,16 @@ fun VideoPage(
                     TextButton(onClick = { playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed); onInteract() }, modifier = Modifier.size(48.dp)) {
                         Text("${playbackSpeed}x", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                     }
+                    IconButton(onClick = {
+                        val activity = ctx as? android.app.Activity ?: return@IconButton
+                        try {
+                            activity.enterPictureInPictureMode(
+                                android.app.PictureInPictureParams.Builder().setAspectRatio(pipAspect ?: android.util.Rational(16, 9)).build()
+                            )
+                        } catch (e: Exception) { android.util.Log.e("VideoPage", "enterPictureInPictureMode failed", e) }
+                        if (!isPlaying) { if (player.playbackState == Player.STATE_ENDED) player.seekTo(0); player.play() }
+                        onInteract()
+                    }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.PictureInPictureAlt, stringResource(R.string.cd_pip), tint = Color.White, modifier = Modifier.size(22.dp)) }
                     IconButton(onClick = { isMuted = !isMuted; player.volume = if (isMuted) 0f else 1f; onInteract() }, modifier = Modifier.size(48.dp)) { Icon(if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, stringResource(R.string.set_mute_videos), tint = Color.White, modifier = Modifier.size(22.dp)) }
                     IconButton(onClick = { trimMode = !trimMode; if (trimMode && trimEndMs < 0f) trimEndMs = player.duration.toFloat(); onInteract() }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.ContentCut, stringResource(R.string.trim_save), tint = if (trimMode) MaterialTheme.colorScheme.primary else Color.White, modifier = Modifier.size(22.dp)) }
                 }

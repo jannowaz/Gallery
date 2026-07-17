@@ -222,6 +222,20 @@ private enum class SheetSection { FILTER, VIEW }
 
 class ComposeExplorerActivity : ComponentActivity() {
 
+    /** Pre-Android-12 fallback for auto-PiP: 12+ uses setAutoEnterEnabled (see VideoPage), older
+     * versions only get this hint when the user leaves via Home while a viewer video plays. */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        val aspect = org.fossify.gallery.compose.util.PipState.activeVideoAspect
+        if (aspect != null && android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
+            try {
+                enterPictureInPictureMode(android.app.PictureInPictureParams.Builder().setAspectRatio(aspect).build())
+            } catch (e: Exception) {
+                android.util.Log.e("Explorer", "enterPictureInPictureMode failed", e)
+            }
+        }
+    }
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { granted ->
@@ -259,6 +273,9 @@ class ComposeExplorerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        addOnPictureInPictureModeChangedListener { info ->
+            org.fossify.gallery.compose.util.PipState.inPip = info.isInPictureInPictureMode
+        }
 
         // SharedPreferences (config + the legacy default-named prefs) are now warmed from
         // App.onCreate() instead - it runs well before this Activity and gives that warm-up a

@@ -91,6 +91,18 @@ fun ImagePage(
                     setMaxTileSize(4096)
                     setMinimumTileDpi(160)
                     maxScale = ZOOM_MAX
+                    // This fork does NOT apply EXIF rotation on its own (the legacy PhotoFragment
+                    // sets `orientation` from EXIF explicitly for the same reason) - without this a
+                    // portrait phone photo rendered sideways the instant pinch-zoom handed off from
+                    // the EXIF-aware Coil image to this native view.
+                    orientation = try {
+                        when (android.media.ExifInterface(file.absolutePath).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)) {
+                            android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                            android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                            android.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                            else -> 0
+                        }
+                    } catch (_: Exception) { 0 }
                     setImage("file://${file.absolutePath}")
                 }
             }
