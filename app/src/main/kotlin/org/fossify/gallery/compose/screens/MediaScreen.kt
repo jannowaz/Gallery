@@ -1013,8 +1013,12 @@ fun MediaScreen(
                     ctx.startActivity(Intent.createChooser(si, ctx.getString(R.string.action_share)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 },
                 onDelete = { if (ctx.config.skipDeleteConfirmation) { val d = selectedPaths.toSet(); viewModel.softDeletePaths(d); UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE)); selectedPaths = emptySet() } else showDeleteConfirm = true },
-                onSelectAll = { scope.launch { selectedPaths = if (hasFilter) viewModel.activePathsSortedFiltered().toSet() else viewModel.activePaths() } },
-                onInvert = { scope.launch { val all = if (hasFilter) viewModel.activePathsSortedFiltered().toSet() else viewModel.activePaths(); selectedPaths = all - selectedPaths } },
+                // mediaOverride (a drilled-into album) must scope select-all/invert to that album's
+                // own media - viewModel.activePaths() is the app-wide set, so "Select all" inside a
+                // 300-item folder used to silently mark every medium on the device (560 in the repro)
+                // and put an accidental mass delete/move one tap away.
+                onSelectAll = { scope.launch { selectedPaths = mediaOverride?.map { it.path }?.toSet() ?: (if (hasFilter) viewModel.activePathsSortedFiltered().toSet() else viewModel.activePaths()) } },
+                onInvert = { scope.launch { val all = mediaOverride?.map { it.path }?.toSet() ?: (if (hasFilter) viewModel.activePathsSortedFiltered().toSet() else viewModel.activePaths()); selectedPaths = all - selectedPaths } },
                 onCopy = { folderPickerIsMove = false; showFolderPicker = true },
                 onMove = { folderPickerIsMove = true; showFolderPicker = true },
                 onRate = { showRateTagSheet = true },
