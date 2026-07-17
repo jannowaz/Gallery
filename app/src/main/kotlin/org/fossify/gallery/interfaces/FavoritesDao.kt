@@ -26,6 +26,10 @@ interface FavoritesDao {
     @Query("DELETE FROM favorites WHERE full_path = :path COLLATE NOCASE")
     fun deleteFavoritePath(path: String)
 
+    /** Batch variant for mass deletions - one transaction instead of one per path. */
+    @Query("DELETE FROM favorites WHERE full_path IN (:paths)")
+    fun deleteFavoritePathsBatch(paths: List<String>)
+
     @Query("DELETE FROM favorites")
     fun clearFavorites()
 }

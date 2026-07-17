@@ -66,6 +66,14 @@ class RecycleBinCleanupWorker(
                 android.util.Log.e("RecycleBinCleanup", "Failed to clean compression review cache", e)
             }
 
+            try {
+                // Daily ghost-row sweep: files deleted outside the app (PC/MTP, other apps) leave
+                // their DB rows behind because the store sync only ever adds.
+                org.fossify.gallery.helpers.MediaRepository(applicationContext).pruneMissingMedia()
+            } catch (e: Exception) {
+                android.util.Log.e("RecycleBinCleanup", "Missing-media sweep failed", e)
+            }
+
             Result.success()
         } catch (e: Exception) {
             android.util.Log.e("RecycleBinCleanup", "Cleanup failed", e)

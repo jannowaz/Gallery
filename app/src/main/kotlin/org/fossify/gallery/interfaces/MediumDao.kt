@@ -111,6 +111,17 @@ interface MediumDao {
     @Query("SELECT COUNT(filename) FROM media")
     fun getTotalCountIncludingDeleted(): Int
 
+    /** Stable rowid-keyed pagination for the missing-file sweep - OFFSET paging would skip rows
+     * once earlier ones get deleted. See MediaRepository.pruneMissingMedia. */
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 AND rowid > :afterRowId ORDER BY rowid LIMIT :limit")
+    fun getLivePathsAfter(afterRowId: Long, limit: Int): List<String>
+
+    @Query("SELECT rowid FROM media WHERE full_path = :path COLLATE NOCASE LIMIT 1")
+    fun getRowId(path: String): Long?
+
+    @Query("DELETE FROM media WHERE full_path IN (:paths)")
+    fun deleteByPathsBatch(paths: List<String>)
+
     /** Thumbnail subselect mirrors the newest-first key the grids use (date_sort_key, then
      * date_added, then last_modified), so a folder's cover is its newest visible medium. */
     @Query("SELECT parent_path, COUNT(filename) AS cnt, MAX(last_modified) AS max_modified, MAX(date_taken) AS max_taken, SUM(size) AS total_size, MAX(CASE WHEN type = 2 THEN 0 ELSE 1 END) AS has_images, MAX(CASE WHEN type = 2 THEN 1 ELSE 0 END) AS has_videos, (SELECT m2.full_path FROM media m2 WHERE m2.parent_path = media.parent_path AND m2.deleted_ts = 0 ORDER BY CASE WHEN m2.date_sort_key > 0 THEN m2.date_sort_key WHEN m2.date_added > 0 THEN m2.date_added ELSE m2.last_modified END DESC LIMIT 1) AS thumbnail FROM media WHERE deleted_ts = 0 GROUP BY parent_path")

@@ -16,6 +16,10 @@ interface MediaTagDao {
     @Query("DELETE FROM media_tags WHERE media_path = :path")
     suspend fun deleteAllForPath(path: String)
 
+    /** Batch variant for mass deletions - one transaction instead of one per path. */
+    @Query("DELETE FROM media_tags WHERE media_path IN (:paths)")
+    fun deleteAllForPathsBatch(paths: List<String>)
+
     @Query("DELETE FROM media_tags WHERE tag = :tag")
     suspend fun deleteTagEverywhere(tag: String)
 

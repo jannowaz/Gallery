@@ -39,6 +39,10 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getLong(LAST_BOOT_SCAN_TIMESTAMP, 0L)
         set(value) = prefs.edit().putLong(LAST_BOOT_SCAN_TIMESTAMP, value).apply()
 
+    var lastMissingMediaSweep: Long
+        get() = prefs.getLong("last_missing_media_sweep", 0L)
+        set(value) = prefs.edit().putLong("last_missing_media_sweep", value).apply()
+
     /** Lifetime bytes reclaimed by accepted compressions/optimizations - shown on the swipe
      * review's finish screen as a running total. */
     var totalCompressionSavedBytes: Long

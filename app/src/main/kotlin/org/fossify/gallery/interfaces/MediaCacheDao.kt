@@ -26,6 +26,10 @@ interface MediaCacheDao {
     @Query("DELETE FROM media_cache WHERE full_path = :path")
     fun deleteByPathSync(path: String)
 
+    /** Batch variant for mass deletions - one transaction instead of one per path. */
+    @Query("DELETE FROM media_cache WHERE full_path IN (:paths)")
+    fun deleteByPathsBatch(paths: List<String>)
+
     @Upsert
     suspend fun upsertAll(cache: List<MediaCache>)
 }

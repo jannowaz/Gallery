@@ -29,7 +29,11 @@ class MediaSyncWorker(
             // here, which meant every ContentObserver-triggered "incremental" sync was actually a full
             // scan). Reusing it also means both call paths (this worker and MediaViewModel) share one
             // tested implementation instead of two that can silently drift apart.
-            val newMedia = MediaRepository(applicationContext).syncNewMediaFromStore()
+            val repo = MediaRepository(applicationContext)
+            val newMedia = repo.syncNewMediaFromStore()
+            // Externally deleted files leave ghost rows (sync only adds) - sweep at most every 6h,
+            // piggybacked here because this worker already runs off the ContentObserver.
+            repo.pruneMissingMediaIfDue()
 
             if (newMedia.isNotEmpty()) {
                 // Directory rows are rebuilt inside syncNewMediaFromStore() itself now (see

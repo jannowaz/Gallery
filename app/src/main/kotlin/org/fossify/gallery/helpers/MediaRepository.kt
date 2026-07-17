@@ -65,6 +65,13 @@ fun resolveContentUriToPath(uriString: String): String? {
 }
 
 class MediaRepository(private val context: Context) : MediaRepositoryInterface {
+
+    companion object {
+        /** Process-wide throttle for [syncDirectoriesFromMedia] - this class is instantiated per
+         * call site, so an instance field would defeat the throttle entirely. */
+        @Volatile
+        private var lastDirectorySyncMs = 0L
+    }
     private val repositoryScope = CoroutineScope(Dispatchers.IO)
 
     override fun getMediaFromPath(path: String): List<Medium> {
@@ -179,15 +186,37 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     }
 
     override fun deleteMediaBatch(paths: List<String>, onProgress: (done: Int, total: Int) -> Unit): Int {
-        // One RefreshBus tick at the end instead of one per file - emptying a bin with hundreds of
-        // items used to fire hundreds of global refresh storms, which is what made "delete forever"
-        // appear frozen for minutes.
+        // Two phases: files first, then ALL database cleanup in chunked bulk statements. The
+        // previous per-file version issued four single-row transactions per path (~19,000 for a
+        // 4,800-item bin) that fought the observer-triggered background reloads for SQLite's
+        // write lock - deletion started fast and then crawled (user report 2026-07-17, stuck at
+        // 79/4800). One RefreshBus tick at the end, not one per file.
         var failed = 0
+        val deleted = ArrayList<String>(paths.size)
         paths.forEachIndexed { i, p ->
-            if (!deleteMediumInternal(p)) failed++
+            val realFile = context.resolveRecycleBinFile(p)
+            val fileGone = try { !realFile.exists() || realFile.delete() } catch (e: Exception) {
+                android.util.Log.e("MediaRepository", "deleteMediaBatch file delete failed", e)
+                false
+            }
+            if (fileGone) {
+                try { File("${realFile.path}.xmp").delete() } catch (_: Exception) { }
+                deleted.add(p)
+            } else {
+                failed++
+            }
             onProgress(i + 1, paths.size)
         }
-        if (failed < paths.size) RefreshBus.trigger()
+        deleted.chunked(SQLITE_BATCH_CHUNK_SIZE).forEach { chunk ->
+            try { context.mediaDB.deleteByPathsBatch(chunk) } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMediaBatch media rows failed", e) }
+            try { context.favoritesDB.deleteFavoritePathsBatch(chunk) } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMediaBatch favorites failed", e) }
+            try { context.mediaCacheDB.deleteByPathsBatch(chunk) } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMediaBatch cache failed", e) }
+            try { context.mediaTagDB.deleteAllForPathsBatch(chunk) } catch (e: Exception) { android.util.Log.e("MediaRepository", "deleteMediaBatch tags failed", e) }
+        }
+        if (deleted.isNotEmpty()) {
+            syncDirectoriesFromMedia(force = true)
+            RefreshBus.trigger()
+        }
         return failed
     }
 
@@ -507,8 +536,58 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
      * did), so a folder created after first launch showed its files in the Media tab but never
      * appeared in Albums - and deleted folders lingered as ghost albums with stale counts.
      */
-    fun syncDirectoriesFromMedia() {
+    /**
+     * Removes live rows whose on-disk file vanished without the app's involvement (deleted via
+     * PC/MTP, another app, a shell) - the store sync only ever ADDS rows, so such ghosts stayed
+     * visible forever. Streams paths rowid-keyed in chunks (never materialises the whole library),
+     * then bulk-deletes the missing ones from media/favorites/cache/tags. Returns the pruned count.
+     * Recycle-bin rows are deliberately skipped: their placeholder paths resolve elsewhere and the
+     * 30-day bin expiry owns their cleanup.
+     */
+    fun pruneMissingMedia(): Int {
+        val missing = mutableListOf<String>()
         try {
+            var afterRowId = 0L
+            while (true) {
+                val chunk = context.mediaDB.getLivePathsAfter(afterRowId, 800)
+                if (chunk.isEmpty()) break
+                chunk.filterTo(missing) { !File(it).exists() }
+                afterRowId = context.mediaDB.getRowId(chunk.last()) ?: break
+            }
+            if (missing.isEmpty()) return 0
+            missing.chunked(SQLITE_BATCH_CHUNK_SIZE).forEach { batch ->
+                context.mediaDB.deleteByPathsBatch(batch)
+                context.favoritesDB.deleteFavoritePathsBatch(batch)
+                context.mediaCacheDB.deleteByPathsBatch(batch)
+                context.mediaTagDB.deleteAllForPathsBatch(batch)
+            }
+            android.util.Log.i("MediaRepository", "pruneMissingMedia removed ${missing.size} ghost rows")
+            syncDirectoriesFromMedia(force = true)
+            RefreshBus.trigger()
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "pruneMissingMedia failed", e)
+        }
+        return missing.size
+    }
+
+    /** Throttled wrapper for the periodic callers - a full-library exists sweep costs real I/O. */
+    fun pruneMissingMediaIfDue(minIntervalMs: Long = 6 * 60 * 60 * 1000L) {
+        val now = System.currentTimeMillis()
+        if (now - context.config.lastMissingMediaSweep < minIntervalMs) return
+        context.config.lastMissingMediaSweep = now
+        pruneMissingMedia()
+    }
+
+    fun syncDirectoriesFromMedia(force: Boolean = false) {
+        try {
+            // Rebuilding WRITES the whole directories table (REPLACE per row) - during a mass
+            // deletion the MediaStore observer fires RefreshBus every ~1.5s, and an un-throttled
+            // rebuild per Albums reload kept grabbing SQLite's write lock away from the deletion
+            // loop. 15s of directory-count staleness is invisible; callers that just changed the
+            // media table (store sync, batch delete) pass force=true so their final state lands.
+            val now = System.currentTimeMillis()
+            if (!force && now - lastDirectorySyncMs < 15_000) return
+            lastDirectorySyncMs = now
             val aggregates = context.mediaDB.getDirectoryAggregates()
             // Empty media table means fresh DB or mid-bootstrap - don't wipe rows based on nothing.
             if (aggregates.isEmpty()) return
@@ -565,10 +644,16 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             // media" symptom. Re-scanning that one boundary second is free (getExistingPaths dedups it
             // below), and guarantees nothing on the second boundary is lost.
             val lastSyncSec = lastSync / 1000L
-            val sel = "(${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?) AND ${MediaStore.MediaColumns.DATE_MODIFIED} >= ?"
+            // DATE_ADDED (when MediaStore indexed the row) is checked alongside DATE_MODIFIED:
+            // MediaStore can index files long after their mtime - a slow volume scan of a large
+            // pushed folder, MTP/PC copies with preserved timestamps - and a sync that ran between
+            // index batches used to fast-forward lastSyncTimestamp past those stragglers' mtimes,
+            // hiding them from the library forever (repro: 500 pushed files, only 89 ever synced).
+            val sel = "(${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?) AND (${MediaStore.MediaColumns.DATE_MODIFIED} >= ? OR ${MediaStore.MediaColumns.DATE_ADDED} >= ?)"
             val args = arrayOf(
                 MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
                 MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
+                lastSyncSec.toString(),
                 lastSyncSec.toString()
             )
 
@@ -610,6 +695,9 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                     // Falls back to modified/taken if MediaStore somehow reports no date_added.
                     val addedSec = if (addedIdx >= 0) c.getLong(addedIdx) else 0L
                     val added = (addedSec * 1000L).takeIf { it > 0 } ?: maxOf(modified, taken)
+                    // The watermark must cover the ADDED axis too, or rows found via the
+                    // DATE_ADDED half of the selection keep matching forever.
+                    latestTimestamp = maxOf(latestTimestamp, added)
 
                     val size = if (sizeIdx >= 0) c.getLong(sizeIdx) else 0L
                     val mediaType = if (typeIdx >= 0) c.getInt(typeIdx) else 1
@@ -649,7 +737,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                 if (merged.isNotEmpty()) {
                     try {
                         context.mediaDB.insertAllKeepingExisting(merged)
-                        syncDirectoriesFromMedia()
+                        syncDirectoriesFromMedia(force = true)
                     } catch (e: Exception) {
                         android.util.Log.e("MediaRepository", "insertAllKeepingExisting failed", e)
                     }
@@ -664,14 +752,16 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                     // rebuild here - previously only the worker updated directories, and the
                     // ViewModel path consumed lastSyncTimestamp first, so the worker usually saw
                     // nothing new and new folders never reached the Albums list.
-                    syncDirectoriesFromMedia()
+                    syncDirectoriesFromMedia(force = true)
                 } catch (e: Exception) {
                     android.util.Log.e("MediaRepository", "insertAllKeepingExisting failed", e)
                 }
                 return newMedia
             } else {
-                // Update timestamp anyway to skip these items next time
-                context.config.lastSyncTimestamp = System.currentTimeMillis()
+                // Advance only to the newest timestamp the query actually SAW - fast-forwarding to
+                // "now" here is what permanently skipped files MediaStore indexed moments later
+                // with an older DATE_MODIFIED.
+                context.config.lastSyncTimestamp = latestTimestamp
             }
         } catch (e: Exception) {
             android.util.Log.e("MediaRepository", "syncNewMediaFromStore failed", e)
