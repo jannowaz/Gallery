@@ -146,8 +146,14 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
             val ctx = getApplication<Application>()
             withContext(Dispatchers.IO) {
                 try {
-                    val existing = ctx.mediaDB.getNewestMedia(1)
-                    if (existing.isEmpty()) {
+                    // Count including recycle-bin rows: getNewestMedia filters deleted_ts = 0, so
+                    // with every medium soft-deleted this looked like a fresh install and the
+                    // bootstrap below re-imported everything - and since it REPLACEd rows with
+                    // deletedTS=0/rating=0 defaults, one app restart silently emptied the whole
+                    // recycle bin back into the library and wiped DB ratings (found 2026-07-17
+                    // while reproducing the bin-emptying report).
+                    val isFreshDatabase = ctx.mediaDB.getTotalCountIncludingDeleted() == 0
+                    if (isFreshDatabase) {
                         val mediums = mutableListOf<Medium>()
                         val uri = MediaStore.Files.getContentUri("external")
                         val projection = arrayOf(
@@ -186,7 +192,10 @@ class ExplorerViewModel(application: Application) : AndroidViewModel(application
                                 }
                             }
                         if (mediums.isNotEmpty()) {
-                            ctx.mediaDB.insertAll(mediums)
+                            // IGNORE, not REPLACE: even if the fresh-database check above ever
+                            // misfires, bootstrap defaults must never clobber existing rows'
+                            // deleted_ts/rating.
+                            ctx.mediaDB.insertAllKeepingExisting(mediums)
                             val dirs = mediums.map { it.parentPath }.distinct()
                             dirs.forEach { dirPath ->
                                 val dirMedia = mediums.filter { it.parentPath == dirPath }

@@ -83,20 +83,35 @@ fun RecycleBinScreen(onBack: () -> Unit) {
         items = withContext(Dispatchers.IO) { repo.getDeletedMedia() }
     }
 
-    // Permanently deletes the given paths, asking for the OS delete-consent dialog so the files are
-    // actually removed and storage freed (raw File.delete is blocked under scoped storage). The
-    // list is refreshed only after the operation completes (avoids the stale-read race).
+    // Permanently deletes the given paths. With All-Files-Access (this app's normal state, it
+    // requests MANAGE_EXTERNAL_STORAGE on first launch) File.delete() works directly, so no OS
+    // consent dialog is needed at all - the scan afterwards purges the stale MediaStore rows.
+    // Without it, consent is requested in chunks: createDeleteRequest with a whole bin's worth of
+    // URIs exceeds the binder transaction limit and throws, which used to surface as nothing but a
+    // bare "cancelled" toast after several seconds of per-path URI lookups (user report
+    // 2026-07-17: "Leeren macht nichts mehr, nach einigen Sekunden steht da nur Abbrechen").
     fun permanentlyDelete(paths: List<String>) {
         if (paths.isEmpty() || deleteProgress != null) return
         scope.launch {
-            val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, paths).map { it.second } }
-            if (uris.isNotEmpty()) {
-                val granted = try { consent.request(MediaStoreOps.deleteRequest(ctx, uris)) } catch (_: Exception) { false }
-                if (!granted) { ctx.toast(ctx.getString(R.string.cancelled)); return@launch }
-            }
             deleteProgress = 0 to paths.size
+            if (org.fossify.commons.helpers.isRPlus() && !org.fossify.commons.extensions.isExternalStorageManager()) {
+                val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, paths).map { it.second } }
+                for (chunk in uris.chunked(250)) {
+                    val granted = try {
+                        consent.request(MediaStoreOps.deleteRequest(ctx, chunk))
+                    } catch (e: Exception) {
+                        android.util.Log.e("RecycleBin", "Delete consent request failed", e)
+                        false
+                    }
+                    if (!granted) { deleteProgress = null; ctx.toast(ctx.getString(R.string.cancelled)); return@launch }
+                }
+            }
             val failed = withContext(Dispatchers.IO) {
-                repo.deleteMediaBatch(paths) { done, total -> deleteProgress = done to total }
+                val f = repo.deleteMediaBatch(paths) { done, total -> deleteProgress = done to total }
+                // The direct-delete path leaves stale MediaStore rows behind - scanning the (now
+                // missing) paths removes them. Harmless no-op for rows the consent flow already purged.
+                runCatching { android.media.MediaScannerConnection.scanFile(ctx, paths.toTypedArray(), null, null) }
+                f
             }
             deleteProgress = null
             refresh++

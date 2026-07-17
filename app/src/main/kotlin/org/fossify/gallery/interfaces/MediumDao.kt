@@ -93,6 +93,11 @@ interface MediumDao {
     @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 ORDER BY date_taken DESC, last_modified DESC LIMIT :limit")
     fun getNewestMedia(limit: Int): List<Medium>
 
+    /** Includes recycle-bin rows - the "is this database empty?" bootstrap check must count them,
+     * see ExplorerViewModel.initializeDatabase. */
+    @Query("SELECT COUNT(filename) FROM media")
+    fun getTotalCountIncludingDeleted(): Int
+
     @Query("UPDATE media SET rating = :rating WHERE full_path = :path COLLATE NOCASE")
     fun updateRating(path: String, rating: Int)
 
