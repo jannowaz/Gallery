@@ -32,4 +32,10 @@ interface DirectoryDao {
 
     @Query("SELECT thumbnail FROM directories WHERE path = :path")
     fun getDirectoryThumbnail(path: String): String?
+
+    /** Removes real filesystem rows whose folder no longer holds any live media - ghost albums
+     * that kept showing with stale counts after their contents were deleted. Virtual rows
+     * (recycle bin, favorites) don't start with '/' and are left alone. */
+    @Query("DELETE FROM directories WHERE path LIKE '/%' AND path NOT IN (SELECT DISTINCT parent_path FROM media WHERE deleted_ts = 0)")
+    fun deleteDirectoriesWithoutMedia()
 }

@@ -32,28 +32,11 @@ class MediaSyncWorker(
             val newMedia = MediaRepository(applicationContext).syncNewMediaFromStore()
 
             if (newMedia.isNotEmpty()) {
-                // Only rebuild directory rows for folders touched by this batch, but read the *full*
-                // current contents of each from the DB (not just the newMedia subset) - otherwise a
-                // small incremental batch would overwrite media_count/thumbnail with a partial count
-                // for folders that already contained many older files.
-                val affectedDirs = newMedia.map { it.parentPath }.distinct()
-                affectedDirs.forEach { dirPath ->
-                    val dirMedia = applicationContext.mediaDB.getMediaFromPath(dirPath)
-                    if (dirMedia.isNotEmpty()) {
-                        val dirName = java.io.File(dirPath).name
-                        val hasImage = dirMedia.any { it.type == 1 }
-                        val hasVideo = dirMedia.any { it.type == 2 }
-                        val types = if (hasImage && hasVideo) 3 else if (hasVideo) 2 else 1
-                        applicationContext.directoryDB.insertAll(listOf(Directory(
-                            id = null, path = dirPath, tmb = dirMedia.maxByOrNull { if (it.dateSortKey > 0) it.dateSortKey else if (it.dateAdded > 0) it.dateAdded else if (it.taken > 0) it.taken else it.modified }?.path ?: "",
-                            name = dirName, mediaCnt = dirMedia.size,
-                            modified = dirMedia.maxOf { it.modified },
-                            taken = dirMedia.maxOf { it.taken },
-                            size = dirMedia.size.toLong(),
-                            location = LOCATION_INTERNAL, types = types, sortValue = "",
-                        )))
-                    }
-                }
+                // Directory rows are rebuilt inside syncNewMediaFromStore() itself now (see
+                // MediaRepository.syncDirectoriesFromMedia) - the per-affected-dir rebuild that
+                // used to live here only ran on this worker's path, while the MediaViewModel sync
+                // path consumed lastSyncTimestamp first and left new folders out of Albums forever.
+                //
                 // The ContentObserver in ComposeExplorerActivity already fires RefreshBus.trigger()
                 // the instant MediaStore changes, well before this worker's deliberate delay (see
                 // scheduleIncrementalSync) has actually written the new rows into the `media`/

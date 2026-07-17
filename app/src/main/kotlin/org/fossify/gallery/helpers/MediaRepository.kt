@@ -500,6 +500,40 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
      * Returns the media that was actually newly inserted, so callers (e.g. [org.fossify.gallery.workers.MediaSyncWorker])
      * can limit any follow-up work (like rebuilding directory rows) to just the affected folders.
      */
+    /**
+     * Rebuilds the `directories` cache from the media table (count, newest thumbnail, types, size
+     * per folder) and drops rows whose folder has no live media left. Before this existed nothing
+     * in the Compose flow ever added a directory row for a NEW folder (only the fresh-DB bootstrap
+     * did), so a folder created after first launch showed its files in the Media tab but never
+     * appeared in Albums - and deleted folders lingered as ghost albums with stale counts.
+     */
+    fun syncDirectoriesFromMedia() {
+        try {
+            val aggregates = context.mediaDB.getDirectoryAggregates()
+            // Empty media table means fresh DB or mid-bootstrap - don't wipe rows based on nothing.
+            if (aggregates.isEmpty()) return
+            val dirs = aggregates.map { agg ->
+                org.fossify.gallery.models.Directory(
+                    id = null,
+                    path = agg.parentPath,
+                    tmb = agg.thumbnail ?: "",
+                    name = File(agg.parentPath).name,
+                    mediaCnt = agg.count,
+                    modified = agg.maxModified,
+                    taken = agg.maxTaken,
+                    size = agg.totalSize,
+                    location = if (agg.parentPath.startsWith("/storage/") && !agg.parentPath.startsWith("/storage/emulated")) LOCATION_SD else LOCATION_INTERNAL,
+                    types = (if (agg.hasImages > 0) 1 else 0) or (if (agg.hasVideos > 0) 2 else 0),
+                    sortValue = "",
+                )
+            }
+            context.directoryDB.insertAll(dirs)
+            context.directoryDB.deleteDirectoriesWithoutMedia()
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "syncDirectoriesFromMedia failed", e)
+        }
+    }
+
     fun syncNewMediaFromStore(): List<Medium> {
         try {
             val lastSync = context.config.lastSyncTimestamp
@@ -615,6 +649,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                 if (merged.isNotEmpty()) {
                     try {
                         context.mediaDB.insertAllKeepingExisting(merged)
+                        syncDirectoriesFromMedia()
                     } catch (e: Exception) {
                         android.util.Log.e("MediaRepository", "insertAllKeepingExisting failed", e)
                     }
@@ -625,6 +660,11 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                 try {
                     context.mediaDB.insertAllKeepingExisting(newMedia)
                     context.config.lastSyncTimestamp = latestTimestamp
+                    // Both sync callers (MediaViewModel and MediaSyncWorker) get the directory
+                    // rebuild here - previously only the worker updated directories, and the
+                    // ViewModel path consumed lastSyncTimestamp first, so the worker usually saw
+                    // nothing new and new folders never reached the Albums list.
+                    syncDirectoriesFromMedia()
                 } catch (e: Exception) {
                     android.util.Log.e("MediaRepository", "insertAllKeepingExisting failed", e)
                 }

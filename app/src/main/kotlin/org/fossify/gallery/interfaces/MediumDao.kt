@@ -4,6 +4,19 @@ import androidx.paging.PagingSource
 import androidx.room.*
 import org.fossify.gallery.models.Medium
 
+/** Per-folder aggregate over the live (non-deleted) media rows - the source of truth the
+ * `directories` cache is rebuilt from, see MediaRepository.syncDirectoriesFromMedia. */
+data class DirectoryAggregate(
+    @ColumnInfo(name = "parent_path") val parentPath: String,
+    @ColumnInfo(name = "cnt") val count: Int,
+    @ColumnInfo(name = "max_modified") val maxModified: Long,
+    @ColumnInfo(name = "max_taken") val maxTaken: Long,
+    @ColumnInfo(name = "total_size") val totalSize: Long,
+    @ColumnInfo(name = "has_images") val hasImages: Int,
+    @ColumnInfo(name = "has_videos") val hasVideos: Int,
+    @ColumnInfo(name = "thumbnail") val thumbnail: String?,
+)
+
 @Dao
 interface MediumDao {
     @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 AND parent_path = :path COLLATE NOCASE")
@@ -97,6 +110,11 @@ interface MediumDao {
      * see ExplorerViewModel.initializeDatabase. */
     @Query("SELECT COUNT(filename) FROM media")
     fun getTotalCountIncludingDeleted(): Int
+
+    /** Thumbnail subselect mirrors the newest-first key the grids use (date_sort_key, then
+     * date_added, then last_modified), so a folder's cover is its newest visible medium. */
+    @Query("SELECT parent_path, COUNT(filename) AS cnt, MAX(last_modified) AS max_modified, MAX(date_taken) AS max_taken, SUM(size) AS total_size, MAX(CASE WHEN type = 2 THEN 0 ELSE 1 END) AS has_images, MAX(CASE WHEN type = 2 THEN 1 ELSE 0 END) AS has_videos, (SELECT m2.full_path FROM media m2 WHERE m2.parent_path = media.parent_path AND m2.deleted_ts = 0 ORDER BY CASE WHEN m2.date_sort_key > 0 THEN m2.date_sort_key WHEN m2.date_added > 0 THEN m2.date_added ELSE m2.last_modified END DESC LIMIT 1) AS thumbnail FROM media WHERE deleted_ts = 0 GROUP BY parent_path")
+    fun getDirectoryAggregates(): List<DirectoryAggregate>
 
     @Query("UPDATE media SET rating = :rating WHERE full_path = :path COLLATE NOCASE")
     fun updateRating(path: String, rating: Int)

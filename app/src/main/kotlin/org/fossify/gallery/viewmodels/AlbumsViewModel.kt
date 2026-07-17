@@ -85,6 +85,11 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
     private suspend fun fetchAndApplyDirectories() {
         withContext(Dispatchers.IO) {
             val ctx = getApplication<Application>().applicationContext
+            // Self-heal the directory cache from the media table before reading it: deletes/moves/
+            // bin-empties change media rows without running a store sync, and without this rebuild
+            // their folders lingered here as ghost albums with stale counts (and brand-new folders
+            // were missing entirely).
+            org.fossify.gallery.helpers.MediaRepository(ctx).syncDirectoriesFromMedia()
             ctx.getCachedDirectories(false, false) { dirs ->
                 val processed = ctx.addTempFolderIfNeeded(ArrayList(dirs))
                 val sorted = ctx.getSortedDirectories(processed)
