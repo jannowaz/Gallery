@@ -72,7 +72,8 @@ fun UndoBar(modifier: Modifier = Modifier, onActionLabel: ((UndoAction) -> Strin
                 }
                 Text(label, color = MaterialTheme.colorScheme.inverseOnSurface, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
-                TextButton(onClick = { scope.launch { UndoManager.undoLast() } }) {
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                TextButton(onClick = { scope.launch { if (!UndoManager.undoLast()) android.widget.Toast.makeText(ctx, ctx.getString(R.string.undo_failed), android.widget.Toast.LENGTH_SHORT).show() } }) {
                     Text(stringResource(R.string.undo), color = MaterialTheme.colorScheme.inversePrimary, style = MaterialTheme.typography.labelLarge)
                 }
             }

@@ -647,8 +647,29 @@ fun ViewerScreen(
             }
         }
         val filteredSuggestions = if (tagInput.isBlank()) tagSuggestions.filter { it.first !in currentTags }.take(8) else tagSuggestions.filter { it.first.contains(tagInput, ignoreCase = true) && it.first !in currentTags }.take(12)
-        fun addTag(tag: String) { val t = tag.trim().replace(",", "").replace(";", ""); if (t.isNotBlank() && t !in currentTags) { currentTags = currentTags + t; scope.launch(Dispatchers.IO) { repo.addTag(currentPath, t) }; tagInput = "" } }
-        fun removeTag(tag: String) { currentTags = currentTags - tag; scope.launch(Dispatchers.IO) { repo.removeTag(currentPath, tag) } }
+        // Same optimistic-with-revert pattern as the rating stars right below: the chip updates
+        // instantly, but if the XMP write fails the chip snaps back and a toast says so - before
+        // this the Boolean result was dropped and a failed write left a permanent phantom tag.
+        fun addTag(tag: String) {
+            val t = tag.trim().replace(",", "").replace(";", "")
+            if (t.isNotBlank() && t !in currentTags) {
+                val path = currentPath
+                currentTags = currentTags + t
+                tagInput = ""
+                scope.launch(Dispatchers.IO) {
+                    val ok = repo.addTag(path, t)
+                    if (!ok) withContext(Dispatchers.Main) { if (currentPath == path) currentTags = currentTags - t; ctx.toast(ctx.getString(R.string.tag_write_failed), Toast.LENGTH_SHORT) }
+                }
+            }
+        }
+        fun removeTag(tag: String) {
+            val path = currentPath
+            currentTags = currentTags - tag
+            scope.launch(Dispatchers.IO) {
+                val ok = repo.removeTag(path, tag)
+                if (!ok) withContext(Dispatchers.Main) { if (currentPath == path) currentTags = currentTags + tag; ctx.toast(ctx.getString(R.string.tag_write_failed), Toast.LENGTH_SHORT) }
+            }
+        }
         ModalBottomSheet(onDismissRequest = { showActionSheet = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).verticalScroll(rememberScrollState())) {
                 Text(File(currentPath).name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -667,7 +688,7 @@ fun ViewerScreen(
                 OutlinedTextField(value = tagInput, onValueChange = { tagInput = it }, placeholder = { Text(stringResource(R.string.add_tag)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(Radius.md), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { addTag(tagInput) }))
                 if (filteredSuggestions.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Text(stringResource(R.string.suggestions), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(4.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { filteredSuggestions.forEach { (tag, count) -> Surface(onClick = { addTag(tag) }, shape = RoundedCornerShape(Radius.lg), color = MaterialTheme.colorScheme.surfaceVariant) { Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) { Text(tag, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.width(4.dp)); Text("$count", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) } } } } }
                 if (tagInput.isNotBlank() && filteredSuggestions.none { it.first.equals(tagInput, ignoreCase = true) }) { Spacer(Modifier.height(6.dp)); TextButton(onClick = { addTag(tagInput) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.add_new_tag, tagInput.trim())) } }
-                if (quickTags.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { quickTags.forEach { tag -> val hasTag = currentTags.contains(tag); Surface(onClick = { scope.launch(Dispatchers.IO) { if (hasTag) repo.removeTag(currentPath, tag) else repo.addTag(currentPath, tag) }; currentTags = if (hasTag) currentTags - tag else currentTags + tag }, shape = RoundedCornerShape(Radius.lg), color = if (hasTag) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, color = if (hasTag) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
+                if (quickTags.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { quickTags.forEach { tag -> val hasTag = currentTags.contains(tag); Surface(onClick = { if (hasTag) removeTag(tag) else addTag(tag) }, shape = RoundedCornerShape(Radius.lg), color = if (hasTag) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, color = if (hasTag) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
                 Spacer(Modifier.height(16.dp))
             }
         }

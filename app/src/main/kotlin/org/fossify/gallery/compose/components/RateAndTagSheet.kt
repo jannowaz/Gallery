@@ -103,6 +103,9 @@ fun RateAndTagSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+            // Live progress of the tag/rating batch this sheet just triggered - hundreds of XMP
+            // writes take real time and used to run without any visible signal.
+            org.fossify.gallery.compose.util.XmpBatchIndicator()
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     if (batchCount > 1) stringResource(R.string.rate_tag_sheet_title_batch, batchCount) else stringResource(R.string.rate_tag_sheet_title_single),

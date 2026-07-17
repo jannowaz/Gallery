@@ -141,6 +141,8 @@ fun TagBrowserScreen(
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp, vertical = 8.dp)) {
+            // Progress of a running tag merge/rename (their dialogs close immediately).
+            org.fossify.gallery.compose.util.XmpBatchIndicator()
             OutlinedTextField(
                 value = tagSearchQuery,
                 onValueChange = { tagSearchQuery = it },
@@ -407,20 +409,18 @@ fun TagBrowserScreen(
                     val target = mergeTargetName.trim()
                     if (target.isBlank()) return@TextButton
                     val sources = selectedTags - target
-                    scope.launch(Dispatchers.IO) {
+                    // Close the dialog right away - the XmpBatch indicator carries the progress;
+                    // the dialog used to sit visually frozen for the whole multi-minute merge.
+                    mergeTargetTag = null
+                    scope.launch {
                         // repo.addTag/removeTag already keep the XMP file, media_cache and the
-                        // normalized media_tags table in sync per path.
-                        sources.forEach { srcTag ->
-                            val srcPaths = allTags[srcTag] ?: return@forEach
-                            srcPaths.forEach { p ->
-                                repo.addTag(p, target)
-                                repo.removeTag(p, srcTag)
-                            }
+                        // normalized media_tags table in sync per path. Short-circuit: if adding
+                        // the target tag fails, the source tag is left in place.
+                        val items = sources.flatMap { srcTag -> (allTags[srcTag] ?: emptyList()).map { it to srcTag } }
+                        org.fossify.gallery.compose.util.XmpBatch.run(ctx, items, successMessage = ctx.getString(R.string.merged_into, target)) { (p, srcTag) ->
+                            repo.addTag(p, target) && repo.removeTag(p, srcTag)
                         }
-                        withContext(Dispatchers.Main) {
-                            ctx.toast(ctx.getString(R.string.merged_into, target), Toast.LENGTH_SHORT)
-                            mergeTargetTag = null; refreshTrigger++; selectedTags = emptySet()
-                        }
+                        refreshTrigger++; selectedTags = emptySet()
                     }
                 }) { Text(stringResource(R.string.action_merge)) }
             },
@@ -446,15 +446,16 @@ fun TagBrowserScreen(
                 TextButton(onClick = {
                     val target = newName.trim()
                     if (target.isBlank() || target == oldName) return@TextButton
-                    scope.launch(Dispatchers.IO) {
+                    // Dialog closes immediately, the XmpBatch indicator shows the per-file progress.
+                    renameTargetTag = null
+                    scope.launch {
                         val paths = allTags[oldName] ?: emptyList()
                         // repo.addTag/removeTag already keep the XMP file, media_cache and the
                         // normalized media_tags table in sync per path.
-                        paths.forEach { p -> repo.addTag(p, target); repo.removeTag(p, oldName) }
-                        withContext(Dispatchers.Main) {
-                            ctx.toast(ctx.getString(R.string.renamed_tag_result, oldName, target, count), Toast.LENGTH_SHORT)
-                            renameTargetTag = null; refreshTrigger++; selectedTags = emptySet()
+                        org.fossify.gallery.compose.util.XmpBatch.run(ctx, paths, successMessage = ctx.getString(R.string.renamed_tag_result, oldName, target, count)) { p ->
+                            repo.addTag(p, target) && repo.removeTag(p, oldName)
                         }
+                        refreshTrigger++; selectedTags = emptySet()
                     }
                 }) { Text(stringResource(R.string.action_rename)) }
             },

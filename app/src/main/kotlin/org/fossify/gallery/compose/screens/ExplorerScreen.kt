@@ -818,14 +818,14 @@ fun ExplorerScreen(
             currentRating = fileCurrentRating,
             onRate = { i ->
                 fileCurrentRating = i
-                scope.launch(Dispatchers.IO) {
-                    repo.setDbRatingBatch(batch, i)
-                    batch.forEach { repo.writeRatingXmp(it, i) }
+                scope.launch {
+                    withContext(Dispatchers.IO) { repo.setDbRatingBatch(batch, i) }
+                    org.fossify.gallery.compose.util.XmpBatch.run(context, batch) { repo.writeRatingXmp(it, i) }
                 }
             },
             initialTags = fileSelectedCommonTags,
-            onAddTag = { tag -> scope.launch(Dispatchers.IO) { batch.forEach { repo.addTag(it, tag) } } },
-            onRemoveTag = { tag -> scope.launch(Dispatchers.IO) { batch.forEach { repo.removeTag(it, tag) } } },
+            onAddTag = { tag -> scope.launch { org.fossify.gallery.compose.util.XmpBatch.run(context, batch) { repo.addTag(it, tag) } } },
+            onRemoveTag = { tag -> scope.launch { org.fossify.gallery.compose.util.XmpBatch.run(context, batch) { repo.removeTag(it, tag) } } },
             suggestedTags = fileAllTags,
             suggestedTagCounts = fileTagCounts,
             onDismiss = { showFileRateTagSheet = false },

@@ -383,6 +383,11 @@
     <string name="back_again_to_exit">Erneut zurück drücken zum Verlassen</string>
     <string name="undo_compress_replaced">Original ersetzt</string>
     <string name="restored_scan_from">Letzter Scan · %s</string>
+    <string name="applied_to_count">%d Dateien aktualisiert</string>
+    <string name="batch_applying_progress">Wird angewendet… %1$d/%2$d</string>
+    <string name="tag_write_failed">Tag konnte nicht gespeichert werden</string>
+    <string name="restore_failed">Wiederherstellen fehlgeschlagen</string>
+    <string name="undo_failed">Rückgängig fehlgeschlagen</string>
     <string name="swipe_review_start">Swipe-Review starten</string>
     <string name="swipe_skip">Überspringen</string>
     <string name="swipe_convert">Konvertieren</string>

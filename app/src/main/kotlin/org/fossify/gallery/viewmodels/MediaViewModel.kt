@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.fossify.gallery.compose.util.XmpBatch
 import org.fossify.gallery.compose.screens.SortField
 import org.fossify.gallery.helpers.GroupBy
 import org.fossify.gallery.helpers.GroupOrder
@@ -311,20 +312,27 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addTagFor(paths: Collection<String>, tag: String) {
-        viewModelScope.launch(Dispatchers.IO) { paths.forEach { repository.addTag(it, tag) }; loadTaggedPaths() }
+        viewModelScope.launch {
+            XmpBatch.run(getApplication(), paths.toList()) { repository.addTag(it, tag) }
+            loadTaggedPaths()
+        }
     }
 
     fun removeTagFor(paths: Collection<String>, tag: String) {
-        viewModelScope.launch(Dispatchers.IO) { paths.forEach { repository.removeTag(it, tag) }; loadTaggedPaths() }
+        viewModelScope.launch {
+            XmpBatch.run(getApplication(), paths.toList()) { repository.removeTag(it, tag) }
+            loadTaggedPaths()
+        }
     }
 
     fun setRatingFor(paths: Collection<String>, rating: Int) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             try {
                 // One batch DB write (single InvalidationTracker notification) + per-file XMP writes
-                // (no DB write each - see MediaRepository.writeRatingXmp).
-                repository.setDbRatingBatch(paths, rating)
-                paths.forEach { repository.writeRatingXmp(it, rating) }
+                // (no DB write each - see MediaRepository.writeRatingXmp). XmpBatch surfaces the
+                // per-file progress and any write failures that used to vanish silently.
+                withContext(Dispatchers.IO) { repository.setDbRatingBatch(paths, rating) }
+                XmpBatch.run(getApplication(), paths.toList()) { repository.writeRatingXmp(it, rating) }
                 silentRefresh()
             } catch (e: Exception) {
                 android.util.Log.e("MediaViewModel", "setRatingFor failed", e)

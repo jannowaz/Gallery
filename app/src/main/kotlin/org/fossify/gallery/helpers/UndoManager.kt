@@ -44,12 +44,21 @@ object UndoManager {
 
     fun peek(): UndoAction? = _actions.value.lastOrNull()
 
-    suspend fun undoLast() {
-        val action = _actions.value.lastOrNull() ?: return
-        // Always drop the action afterwards, even if no handler is registered, so the undo bar
-        // never gets stuck.
-        undoHandlers[action.type]?.invoke(action)
+    /** Returns false when the handler threw - the undo bar shows an error toast then instead of
+     * silently disappearing as if the undo had worked. */
+    suspend fun undoLast(): Boolean {
+        val action = _actions.value.lastOrNull() ?: return true
+        // Always drop the action afterwards, even if no handler is registered or it failed, so
+        // the undo bar never gets stuck.
+        val ok = try {
+            undoHandlers[action.type]?.invoke(action)
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("UndoManager", "Undo handler failed for ${action.type}", e)
+            false
+        }
         _actions.value = _actions.value.dropLast(1)
+        return ok
     }
 
     /** Removes a specific action (used by the auto-dismiss timer of the undo bar). */

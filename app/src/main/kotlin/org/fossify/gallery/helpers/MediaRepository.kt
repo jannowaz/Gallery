@@ -776,13 +776,16 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         RefreshBus.trigger()
     }
 
-    fun restoreFromRecycleBin(path: String) {
-        try {
+    fun restoreFromRecycleBin(path: String): Boolean {
+        val ok = try {
             context.mediaDB.restoreDeleted(path)
+            true
         } catch (e: Exception) {
             android.util.Log.e("MediaRepository", "restoreFromRecycleBin failed for $path", e)
+            false
         }
         RefreshBus.trigger()
+        return ok
     }
 
     fun restoreFromRecycleBinBatch(paths: Collection<String>) {

@@ -159,7 +159,7 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
             confirmLabel = stringResource(org.fossify.commons.R.string.delete),
             onConfirm = {
                 deleteConfirm = null
-                scope.launch { try { withContext(Dispatchers.IO) { repo.deleteCollection(coll) }; reload() } catch (e: Exception) { android.util.Log.e("Collections", "Delete collection failed: ${coll.name}", e) } }
+                scope.launch { try { withContext(Dispatchers.IO) { repo.deleteCollection(coll) }; reload() } catch (e: Exception) { android.util.Log.e("Collections", "Delete collection failed: ${coll.name}", e); ctx.toast(ctx.getString(R.string.error_generic, e.message), Toast.LENGTH_LONG) } }
             },
             onDismiss = { deleteConfirm = null },
         )

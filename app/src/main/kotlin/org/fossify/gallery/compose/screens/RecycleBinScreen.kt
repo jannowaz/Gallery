@@ -165,7 +165,11 @@ fun RecycleBinScreen(onBack: () -> Unit) {
                             Text(File(m.path).parent ?: "", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         IconButton(onClick = {
-                            scope.launch { withContext(Dispatchers.IO) { repo.restoreFromRecycleBin(m.path) }; RefreshBus.trigger(); refresh++ }
+                            scope.launch {
+                                val ok = withContext(Dispatchers.IO) { repo.restoreFromRecycleBin(m.path) }
+                                if (!ok) ctx.toast(ctx.getString(R.string.restore_failed))
+                                RefreshBus.trigger(); refresh++
+                            }
                         }, enabled = deleteProgress == null) { Icon(Icons.Default.Restore, stringResource(R.string.action_restore), tint = MaterialTheme.colorScheme.primary) }
                         IconButton(onClick = {
                             pendingDelete = m
