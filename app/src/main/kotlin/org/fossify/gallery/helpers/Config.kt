@@ -39,6 +39,12 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getLong(LAST_BOOT_SCAN_TIMESTAMP, 0L)
         set(value) = prefs.edit().putLong(LAST_BOOT_SCAN_TIMESTAMP, value).apply()
 
+    /** Lifetime bytes reclaimed by accepted compressions/optimizations - shown on the swipe
+     * review's finish screen as a running total. */
+    var totalCompressionSavedBytes: Long
+        get() = prefs.getLong("total_compression_saved_bytes", 0L)
+        set(value) = prefs.edit().putLong("total_compression_saved_bytes", value).apply()
+
     var useDynamicColors: Boolean
         get() = prefs.getBoolean(USE_DYNAMIC_COLORS, true)
         set(value) = prefs.edit().putBoolean(USE_DYNAMIC_COLORS, value).apply()

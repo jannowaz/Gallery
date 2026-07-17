@@ -1,6 +1,12 @@
 package org.fossify.gallery.compose.screens.analysis
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.ui.draw.clip
+import org.fossify.gallery.helpers.formatBytes
 import org.fossify.gallery.compose.theme.Radius
 
 import android.content.Intent
@@ -253,6 +259,15 @@ fun StorageAnalysisScreen(
                         Text(stringResource(R.string.analyzed_no_optimization, state.totalFiles), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+            } else if (!state.isScanning) {
+                // First visit, nothing scanned yet - say what this tool does instead of showing
+                // bare form controls on an empty screen.
+                org.fossify.gallery.compose.components.EmptyState(
+                    icon = Icons.Default.FolderOpen,
+                    title = stringResource(R.string.storage_empty_title),
+                    subtitle = stringResource(R.string.storage_empty_subtitle),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
             }
         }
     }
@@ -325,33 +340,63 @@ private fun AnalysisCard(item: AnalysisResult, isSelected: Boolean, onClick: () 
             } else {
                 Text("${item.width}×${item.height} · ${item.imageFormat?.uppercase()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            item.reasons.forEach { reason ->
-                Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f), modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(reason, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                }
-            }
             if (item.wastedBytes > 0) {
                 val expectedSize = (item.fileSize - item.wastedBytes).coerceAtLeast(0)
                 val expectedPercent = (item.wastedBytes * 100 / item.fileSize).toInt()
+                // Bar lengths compare at a glance where text numbers need reading: the track is
+                // the current size, the filled part what would remain after compression.
+                Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.weight(1f).height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.25f))
+                    ) {
+                        Box(
+                            Modifier.fillMaxHeight()
+                                .fillMaxWidth((expectedSize.toFloat() / item.fileSize).coerceIn(0.02f, 1f))
+                                .background(MaterialTheme.colorScheme.tertiary)
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text("−$expectedPercent %", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
+                }
                 Text(
                     stringResource(R.string.estimated_size_after_compression, formatBytes(expectedSize), expectedPercent),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.tertiary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp),
                 )
+            }
+            // Findings collapsed behind one line - the full explanations are expert prose that
+            // drowned the list; they stay one tap away.
+            if (item.reasons.isNotEmpty()) {
+                var reasonsExpanded by remember(item.path) { mutableStateOf(false) }
+                Row(
+                    Modifier.clickable { reasonsExpanded = !reasonsExpanded }.padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f), modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        androidx.compose.ui.res.pluralStringResource(R.plurals.reasons_count, item.reasons.size, item.reasons.size),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Icon(
+                        if (reasonsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        null, tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f), modifier = Modifier.size(16.dp),
+                    )
+                }
+                if (reasonsExpanded) {
+                    item.reasons.forEach { reason ->
+                        Text(reason, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 18.dp, top = 2.dp))
+                    }
+                }
             }
         }
     }
 }
 
-private fun formatBytes(bytes: Long): String = when {
-    bytes >= 1_000_000_000 -> "${"%.1f".format(bytes / 1_000_000_000.0)} GB"
-    bytes >= 1_000_000 -> "${"%.1f".format(bytes / 1_000_000.0)} MB"
-    bytes >= 1_000 -> "${bytes / 1_000} KB"
-    else -> "$bytes B"
-}
 
 private fun formatKbps(kbps: Long): String = when { kbps >= 1000 -> "${"%.1f".format(kbps / 1000.0)} Mbps"; else -> "$kbps Kbps" }
 

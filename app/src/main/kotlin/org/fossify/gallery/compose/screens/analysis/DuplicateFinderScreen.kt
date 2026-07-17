@@ -1,6 +1,7 @@
 package org.fossify.gallery.compose.screens.analysis
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
+import org.fossify.gallery.helpers.formatBytes
 import org.fossify.gallery.compose.theme.Radius
 
 import android.content.Intent
@@ -218,7 +219,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                 val totalDupes = remember(state.groups) { state.groups.sumOf { it.files.size - 1 } }
                 Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))) {
                     Column(Modifier.padding(12.dp)) {
-                        Text(stringResource(R.string.duplicate_scan_summary, state.groups.size, totalDupes, dupFormatBytes(totalWasted)), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.duplicate_scan_summary, state.groups.size, totalDupes, formatBytes(totalWasted)), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                         state.restoredAt?.let { ts ->
                             Text(
                                 stringResource(R.string.restored_scan_from, java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(ts))),
@@ -233,7 +234,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                     val selSize = state.groups.flatMap { it.files }.filter { it.path in state.selectedForDeletion }.sumOf { it.size }
                     Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(Radius.md)) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(R.string.duplicate_marked_count, state.selectedForDeletion.size, dupFormatBytes(selSize)), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                            Text(stringResource(R.string.duplicate_marked_count, state.selectedForDeletion.size, formatBytes(selSize)), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
                             TextButton(onClick = { showConfirmDialog = true }) { Text(stringResource(org.fossify.commons.R.string.delete), color = MaterialTheme.colorScheme.error) }
                             TextButton(onClick = { vm.clearSelection() }) { Text(stringResource(R.string.action_empty)) }
                         }
@@ -262,6 +263,14 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                         Text(stringResource(R.string.files_scanned_count, state.totalScanned), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+            } else if (!state.isScanning) {
+                // First visit, nothing scanned yet - explain the tool instead of bare form controls.
+                org.fossify.gallery.compose.components.EmptyState(
+                    icon = Icons.Default.ContentCopy,
+                    title = stringResource(R.string.dup_empty_title),
+                    subtitle = stringResource(R.string.dup_empty_subtitle),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
             }
         }
     }
@@ -272,7 +281,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
             title = { Text(stringResource(R.string.confirm_delete_title)) },
-            text = { Text(stringResource(R.string.move_to_recycle_bin_confirm_size, count, dupFormatBytes(selSize))) },
+            text = { Text(stringResource(R.string.move_to_recycle_bin_confirm_size, count, formatBytes(selSize))) },
             confirmButton = { TextButton(onClick = { showConfirmDialog = false; vm.deleteSelected() }) { Text(stringResource(org.fossify.commons.R.string.delete), color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { showConfirmDialog = false }) { Text(stringResource(R.string.cancel)) } },
         )
@@ -302,8 +311,8 @@ private fun DuplicateGroupCard(
                     R.string.duplicate_group_summary,
                     group.files.size,
                     if (similar) stringResource(R.string.similar) else stringResource(R.string.identical),
-                    dupFormatBytes(group.size),
-                    dupFormatBytes(group.wastedBytes),
+                    formatBytes(group.size),
+                    formatBytes(group.wastedBytes),
                 ),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
@@ -337,7 +346,7 @@ private fun DuplicateGroupCard(
                         Text(
                             buildString {
                                 if (file.width > 0 && file.height > 0) append("${file.width}×${file.height} · ")
-                                append(dupFormatBytes(file.size))
+                                append(formatBytes(file.size))
                                 append(" · ")
                                 append(dateFormat.format(java.util.Date(file.modified)))
                             },
@@ -395,12 +404,6 @@ private fun thresholdLabel(t: Int): String = when {
     else -> stringResource(R.string.dup_threshold_very_loose)
 }
 
-private fun dupFormatBytes(bytes: Long): String = when {
-    bytes >= 1_000_000_000 -> "${"%.1f".format(bytes / 1_000_000_000.0)} GB"
-    bytes >= 1_000_000 -> "${"%.1f".format(bytes / 1_000_000.0)} MB"
-    bytes >= 1_000 -> "${bytes / 1_000} KB"
-    else -> "$bytes B"
-}
 
 private fun duplicateUriToPath(uri: Uri): String? {
     return try {

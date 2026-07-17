@@ -404,6 +404,18 @@
     <string name="swipe_done_title">Fertig!</string>
     <string name="swipe_done_summary">%1$d konvertiert · %2$d übersprungen · %3$d fehlgeschlagen</string>
     <string name="swipe_done_saved">%s gespart</string>
+    <string name="swipe_stat_converted">Konvertiert</string>
+    <string name="swipe_stat_skipped">Übersprungen</string>
+    <string name="swipe_stat_failed">Fehlgeschlagen</string>
+    <string name="total_saved_sum">Insgesamt bisher gespart: %s</string>
+    <string name="storage_empty_title">Speicherfresser finden</string>
+    <string name="storage_empty_subtitle">Durchsucht einen Ordner nach übergroßen Fotos und Videos und schätzt, wie viel Kompression sparen würde</string>
+    <string name="dup_empty_title">Duplikate aufspüren</string>
+    <string name="dup_empty_subtitle">Durchsucht einen Ordner nach byte-identischen oder visuell ähnlichen Fotos und Videos</string>
+    <plurals name="reasons_count">
+        <item quantity="one">%d Befund</item>
+        <item quantity="other">%d Befunde</item>
+    </plurals>
     <string name="compression_saved_percent">%1$s → %2$s (-%3$d%%)</string>
     <string name="action_dismiss">Verwerfen</string>
     <string name="action_compress">Komprimieren</string>

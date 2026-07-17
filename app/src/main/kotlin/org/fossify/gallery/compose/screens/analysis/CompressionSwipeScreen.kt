@@ -67,6 +67,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.launch
 import org.fossify.gallery.R
+import org.fossify.gallery.extensions.config
+import org.fossify.gallery.helpers.formatBytes
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.theme.Radius
 import java.io.File
@@ -349,6 +351,7 @@ private fun CompareContent(compare: SwipePhase.Compare, onKeepOriginal: () -> Un
 
 @Composable
 private fun FinishedContent(stats: SwipeStats, onBack: () -> Unit) {
+    val ctx = LocalContext.current
     Column(
         Modifier.fillMaxSize().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -357,24 +360,43 @@ private fun FinishedContent(stats: SwipeStats, onBack: () -> Unit) {
         Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(56.dp))
         Spacer(Modifier.height(16.dp))
         Text(stringResource(R.string.swipe_done_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            stringResource(R.string.swipe_done_summary, stats.converted, stats.skipped, stats.failed),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
         if (stats.savedBytes > 0) {
             Spacer(Modifier.height(8.dp))
             Text(
                 stringResource(R.string.swipe_done_saved, formatBytes(stats.savedBytes)),
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.tertiary,
                 fontWeight = FontWeight.Bold,
             )
         }
+        Spacer(Modifier.height(20.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            FinishedStat(stats.converted, stringResource(R.string.swipe_stat_converted), MaterialTheme.colorScheme.primary)
+            FinishedStat(stats.skipped, stringResource(R.string.swipe_stat_skipped), MaterialTheme.colorScheme.onSurfaceVariant)
+            if (stats.failed > 0) FinishedStat(stats.failed, stringResource(R.string.swipe_stat_failed), MaterialTheme.colorScheme.error)
+        }
+        val totalSaved = remember { ctx.config.totalCompressionSavedBytes }
+        if (totalSaved > 0) {
+            Spacer(Modifier.height(20.dp))
+            Text(
+                stringResource(R.string.total_saved_sum, formatBytes(totalSaved)),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
         Spacer(Modifier.height(24.dp))
         Button(onClick = onBack) { Text(stringResource(org.fossify.commons.R.string.ok)) }
+    }
+}
+
+@Composable
+private fun FinishedStat(value: Int, label: String, color: androidx.compose.ui.graphics.Color) {
+    Surface(shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)) {
+        Column(Modifier.padding(horizontal = 18.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("$value", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = color)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -409,9 +431,3 @@ private fun SinglePlayer(path: String, modifier: Modifier = Modifier) {
     AndroidView(factory = { playerView }, modifier = modifier)
 }
 
-private fun formatBytes(bytes: Long): String = when {
-    bytes >= 1_000_000_000 -> "${"%.1f".format(bytes / 1_000_000_000.0)} GB"
-    bytes >= 1_000_000 -> "${"%.1f".format(bytes / 1_000_000.0)} MB"
-    bytes >= 1_000 -> "${bytes / 1_000} KB"
-    else -> "$bytes B"
-}

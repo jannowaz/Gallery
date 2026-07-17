@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.extensions.compressionReviewDB
+import org.fossify.gallery.extensions.config
 import org.fossify.gallery.models.CompressionReviewItem
 import java.io.File
 
@@ -35,6 +36,7 @@ class CompressionReviewViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val newPath = CompressionKeeper.keepNew(getApplication(), item.originalPath, item.tempResultPath)
                 if (newPath != null) {
+                    getApplication<Application>().config.totalCompressionSavedBytes += (item.originalSize - item.resultSize).coerceAtLeast(0)
                     org.fossify.gallery.helpers.UndoManager.push(
                         org.fossify.gallery.helpers.UndoAction(
                             paths = setOf(item.originalPath),

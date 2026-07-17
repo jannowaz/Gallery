@@ -1,6 +1,7 @@
 package org.fossify.gallery.compose.screens.analysis
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
+import org.fossify.gallery.helpers.formatBytes
 import org.fossify.gallery.compose.theme.Radius
 
 import android.net.Uri
@@ -243,9 +244,3 @@ internal fun ComparePlayer(pathA: String, pathB: String, showB: Boolean, modifie
     AndroidView(factory = { playerView }, modifier = modifier)
 }
 
-private fun formatBytes(bytes: Long): String = when {
-    bytes >= 1_000_000_000 -> "${"%.1f".format(bytes / 1_000_000_000.0)} GB"
-    bytes >= 1_000_000 -> "${"%.1f".format(bytes / 1_000_000.0)} MB"
-    bytes >= 1_000 -> "${bytes / 1_000} KB"
-    else -> "$bytes B"
-}
