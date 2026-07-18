@@ -67,9 +67,14 @@ class RecycleBinCleanupWorker(
             }
 
             try {
-                // Daily ghost-row sweep: files deleted outside the app (PC/MTP, other apps) leave
-                // their DB rows behind because the store sync only ever adds.
-                org.fossify.gallery.helpers.MediaRepository(applicationContext).pruneMissingMedia()
+                // Ghost-row sweep: files deleted outside the app (PC/MTP, other apps) leave their
+                // DB rows behind because the store sync only ever adds. Throttled (pruneMissingMediaIfDue,
+                // not the raw pruneMissingMedia) because it's a full-library File.exists() scan - this
+                // worker's own 24h cadence isn't a real throttle since MediaSyncWorker's incremental
+                // sync already triggers the same sweep on its own 6h throttle far more often; calling
+                // the unthrottled version here just repeated that expensive I/O for nothing, and on this
+                // device was mostly getting thermally killed mid-scan without ever completing.
+                org.fossify.gallery.helpers.MediaRepository(applicationContext).pruneMissingMediaIfDue()
             } catch (e: Exception) {
                 android.util.Log.e("RecycleBinCleanup", "Missing-media sweep failed", e)
             }

@@ -90,27 +90,44 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
             // their folders lingered here as ghost albums with stale counts (and brand-new folders
             // were missing entirely).
             org.fossify.gallery.helpers.MediaRepository(ctx).syncDirectoriesFromMedia()
+            // Snapshot before this refresh's rebuild overwrites fullDirList, so recheckDirectories
+            // can tell which folders' aggregates actually moved since the last pass (see its own
+            // comment for why that matters).
+            val previous = synchronized(dirListLock) { fullDirList.associateBy { it.path } }
             ctx.getCachedDirectories(false, false) { dirs ->
                 val processed = ctx.addTempFolderIfNeeded(ArrayList(dirs))
                 val sorted = ctx.getSortedDirectories(processed)
+                val changedPaths = sorted.filter { dir ->
+                    val old = previous[dir.path]
+                    old == null || old.mediaCnt != dir.mediaCnt || old.modified != dir.modified ||
+                        old.taken != dir.taken || old.size != dir.size || old.tmb != dir.tmb
+                }.mapTo(HashSet()) { it.path }
                 synchronized(dirListLock) { fullDirList = ArrayList(sorted) }
                 updateDirectories(sorted)
-                recheckDirectories(ArrayList(sorted))
+                recheckDirectories(ArrayList(sorted), changedPaths)
             }
         }
     }
 
-    // recheckDirectories re-scans every directory from disk (via MediaFetcher.getFilesFrom), which on
-    // a folder with a six-figure item count materializes a Medium list that size - expensive enough
-    // in time and memory that two runs must never overlap. Without this cancel-previous-first guard,
-    // a RefreshBus event landing while the previous recheck (of the same huge folder) was still
-    // running started a second full rescan concurrently, doubling peak memory at exactly the moment
-    // the heap was already under pressure from that same list - a real OutOfMemoryError observed on
-    // a ~200k-media real-device library. Same cancel-previous-job pattern already used by
+    // recheckDirectories re-scans directories from disk (via MediaFetcher.getFilesFrom), which on a
+    // folder with a six-figure item count materializes a Medium list that size - expensive enough in
+    // time and memory that two runs must never overlap. Without this cancel-previous-first guard, a
+    // RefreshBus event landing while the previous recheck (of the same huge folder) was still running
+    // started a second full rescan concurrently, doubling peak memory at exactly the moment the heap
+    // was already under pressure from that same list - a real OutOfMemoryError observed on a
+    // ~200k-media, ~2900-folder real-device library. Same cancel-previous-job pattern already used by
     // MediaViewModel.prefetchSortedPathsAsync/prefetchFilteredPathsAsync for the equivalent reason.
+    //
+    // changedPaths (from fetchAndApplyDirectories' diff against the last snapshot) restricts the
+    // expensive per-folder pass to folders whose cheap SQL aggregate actually moved - on that same
+    // library, every RefreshBus tick (any single MediaStore write) used to re-scan all ~2900 folders
+    // unconditionally, which is what turned an occasional OOM into a repeating crash-retry loop
+    // (WorkManager/JobScheduler relaunching the interrupted background work that triggered the
+    // refresh, straight back into the same full rescan).
     private var recheckJob: kotlinx.coroutines.Job? = null
-    private fun recheckDirectories(dirs: ArrayList<Directory>) {
+    private fun recheckDirectories(dirs: ArrayList<Directory>, changedPaths: Set<String>) {
         recheckJob?.cancel()
+        if (changedPaths.isEmpty()) return
         recheckJob = viewModelScope.launch(Dispatchers.IO) {
             val ctx = getApplication<Application>().applicationContext
             val config = ctx.config
@@ -125,12 +142,12 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
             val fetcher = MediaFetcher(ctx)
             this@AlbumsViewModel.fetcher = fetcher
 
-            val lastModifieds = fetcher.getLastModifieds()
-            val dateTakens = fetcher.getDateTakens()
-            var changed = false
-
-            for ((index, directory) in dirs.withIndex()) {
-                if (!isActive) return@launch
+            // Per-folder flags, computed once so building the (expensive, whole-device) lookup maps
+            // below can be skipped entirely when nothing being rechecked actually needs them - e.g.
+            // the default date-modified sort never reads dateTakens, so on this library that map
+            // (an unfiltered Files-table query materializing ~200k path->Long entries) used to be
+            // built on every refresh for zero callers.
+            val folderFlags = dirs.associate { directory ->
                 val sorting = config.getFolderSorting(directory.path)
                 val grouping = config.getFolderGrouping(directory.path)
                 val getProperDateTaken = config.directorySorting and SORT_BY_DATE_TAKEN != 0
@@ -141,6 +158,19 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
                             || sorting and SORT_BY_DATE_MODIFIED != 0
                             || grouping and GROUP_BY_LAST_MODIFIED_DAILY != 0
                             || grouping and GROUP_BY_LAST_MODIFIED_MONTHLY != 0
+                directory.path to (getProperDateTaken to getProperLastModified)
+            }
+            val needsDateTaken = changedPaths.any { folderFlags[it]?.first == true }
+            val needsLastModified = changedPaths.any { folderFlags[it]?.second == true }
+
+            val lastModifieds = if (needsLastModified) fetcher.getLastModifieds() else HashMap()
+            val dateTakens = if (needsDateTaken) fetcher.getDateTakens() else HashMap()
+            var changed = false
+
+            for ((index, directory) in dirs.withIndex()) {
+                if (!isActive) return@launch
+                if (directory.path !in changedPaths) continue
+                val (getProperDateTaken, getProperLastModified) = folderFlags.getValue(directory.path)
 
                 val curMedia = fetcher.getFilesFrom(
                     curPath = directory.path,
