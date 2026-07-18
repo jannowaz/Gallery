@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
@@ -131,8 +132,13 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
         if (repo.getCollectionsCached() == null) reload()
     }
 
+    // RefreshBus's own 300ms debounce is tuned for cheap listeners - reload() isn't: it re-runs one
+    // filtered getActivePathsSortedFiltered() SQL query per collection, unconditionally, and every
+    // favorite/delete/restore/MediaStore write on the device triggers RefreshBus. A longer debounce
+    // here collapses a burst of individual actions into one reload instead of one per action, same
+    // reasoning as ExplorerScreen's own 10s debounce on its (more expensive) full rescan.
     LaunchedEffect(Unit) {
-        org.fossify.gallery.helpers.RefreshBus.events.collect { reload() }
+        org.fossify.gallery.helpers.RefreshBus.events.debounce(10_000).collect { reload() }
     }
 
     actionColl?.let { coll ->

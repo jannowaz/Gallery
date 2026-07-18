@@ -101,19 +101,32 @@ class MetadataSyncWorker(
         }
         val total = paths.size
         showProgress(0, total, 0, 0)
+        // A kill (OOM/thermal/timeout, not user-cancel - isStopped below already exits cleanly for
+        // that) loses no DB progress since MediaCache rows are flushed every 200 items, but without
+        // this check the next retry re-read XMP for every file the interrupted attempt had already
+        // just finished. Only skip files scanned moments ago (this retry, or a prior one) - anything
+        // older still gets genuinely re-read, so a real "full rescan" (e.g. after editing XMP
+        // externally) isn't weakened.
+        val existingCache = try { applicationContext.mediaCacheDB.getAllTagged().associateBy { it.fullPath } } catch (_: Exception) { emptyMap() }
         val batch = mutableListOf<MediaCache>()
         var processed = 0; var foundTags = 0; var foundRatings = 0; var lastNotify = 0L
         val hierarchyAccum = mutableMapOf<String, String>()
         for (p in paths) {
             if (isStopped) break
             try {
-                val xmp = XmpWriter.read(p)
-                if (xmp.tags.isNotEmpty()) foundTags++
-                if (xmp.rating > 0) { foundRatings++; try { applicationContext.mediaDB.updateRating(p, xmp.rating) } catch (_: Exception) { } }
-                if (xmp.hierarchy.isNotEmpty()) hierarchyAccum.putAll(xmp.hierarchy)
-                batch.add(MediaCache(fullPath = p, tags = xmp.tags.joinToString(","), rating = xmp.rating, lastScanned = now))
-                if (xmp.tags.isNotEmpty()) syncMediaTags(p, xmp.tags)
-                if (batch.size >= 200) { applicationContext.mediaCacheDB.upsertAll(batch.toList()); batch.clear() }
+                val cached = existingCache[p]
+                if (cached != null && now - cached.lastScanned < RETRY_SKIP_WINDOW_MS) {
+                    if (cached.tags.isNotBlank()) foundTags++
+                    if (cached.rating > 0) foundRatings++
+                } else {
+                    val xmp = XmpWriter.read(p)
+                    if (xmp.tags.isNotEmpty()) foundTags++
+                    if (xmp.rating > 0) { foundRatings++; try { applicationContext.mediaDB.updateRating(p, xmp.rating) } catch (_: Exception) { } }
+                    if (xmp.hierarchy.isNotEmpty()) hierarchyAccum.putAll(xmp.hierarchy)
+                    batch.add(MediaCache(fullPath = p, tags = xmp.tags.joinToString(","), rating = xmp.rating, lastScanned = now))
+                    if (xmp.tags.isNotEmpty()) syncMediaTags(p, xmp.tags)
+                    if (batch.size >= 200) { applicationContext.mediaCacheDB.upsertAll(batch.toList()); batch.clear() }
+                }
             } catch (_: Exception) { }
             processed++
             val nowMs = System.currentTimeMillis()
@@ -240,6 +253,7 @@ class MetadataSyncWorker(
 
     companion object {
         private const val WORK_NAME = "metadata_sync"
+        private const val RETRY_SKIP_WINDOW_MS = 10 * 60 * 1000L
 
         fun scheduleFullScan(context: Context) {
             val workRequest = OneTimeWorkRequestBuilder<MetadataSyncWorker>()

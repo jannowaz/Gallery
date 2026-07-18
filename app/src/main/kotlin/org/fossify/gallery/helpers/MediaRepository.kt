@@ -8,6 +8,7 @@ import android.provider.MediaStore
 import androidx.paging.PagingSource
 import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteQuery
+import kotlinx.coroutines.sync.withLock
 import org.fossify.commons.extensions.isAStorageRootFolder
 import org.fossify.gallery.compose.screens.SortField
 import org.fossify.gallery.databases.GalleryDatabase
@@ -71,6 +72,8 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
          * call site, so an instance field would defeat the throttle entirely. */
         @Volatile
         private var lastDirectorySyncMs = 0L
+
+        private const val TAGS_CACHE_COALESCE_MS = 2_000L
     }
     private val repositoryScope = CoroutineScope(Dispatchers.IO)
 
@@ -987,9 +990,24 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     }
 
     @Volatile private var tagsWithPathsCache: Map<String, List<String>>? = null
+    private var tagsCacheRefreshedAt = 0L
+    private val tagsCacheMutex = kotlinx.coroutines.sync.Mutex()
 
     fun getTagsWithPathsCached(): Map<String, List<String>>? = tagsWithPathsCache
 
-    suspend fun refreshTagsWithPathsCache(): Map<String, List<String>> =
-        getAllTagsWithPaths().also { tagsWithPathsCache = it }
+    // TagBrowserScreen and ComposeExplorerActivity both hold their own RefreshBus subscription and
+    // both call this on every event - since they share this one MediaRepository instance (via
+    // LocalMediaRepository), that's the same full media_tags scan run twice per event. The mutex
+    // serializes concurrent callers, and the freshness check lets the second one reuse what the
+    // first just computed instead of repeating the query.
+    suspend fun refreshTagsWithPathsCache(): Map<String, List<String>> = tagsCacheMutex.withLock {
+        val cached = tagsWithPathsCache
+        if (cached != null && System.currentTimeMillis() - tagsCacheRefreshedAt < TAGS_CACHE_COALESCE_MS) {
+            return@withLock cached
+        }
+        getAllTagsWithPaths().also {
+            tagsWithPathsCache = it
+            tagsCacheRefreshedAt = System.currentTimeMillis()
+        }
+    }
 }
