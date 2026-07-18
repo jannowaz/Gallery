@@ -455,6 +455,10 @@
     <string name="total_saved_sum">Total saved so far: %s</string>
     <string name="storage_empty_title">Find storage hogs</string>
     <string name="storage_empty_subtitle">Scans a folder for oversized photos and videos and estimates how much compression could save</string>
+    <string name="dup_scope_folder">Folder</string>
+    <string name="dup_scope_last_week">Last week</string>
+    <string name="dup_scope_last_month">Last month</string>
+    <string name="dup_scope_recent_desc">Checks new media for duplicates across your whole library</string>
     <string name="dup_empty_title">Track down duplicates</string>
     <string name="dup_empty_subtitle">Scans a folder for byte-identical or visually similar photos and videos</string>
     <string name="cd_pip">Picture-in-picture</string>

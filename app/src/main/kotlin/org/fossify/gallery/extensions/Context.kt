@@ -163,6 +163,9 @@ val Context.batchJobItemDB: BatchJobItemDao
 val Context.compressionReviewDB: org.fossify.gallery.interfaces.CompressionReviewDao
     get() = GalleryDatabase.getInstance(applicationContext).CompressionReviewDao()
 
+val Context.fileHashDB: org.fossify.gallery.interfaces.FileHashDao
+    get() = GalleryDatabase.getInstance(applicationContext).FileHashDao()
+
 val Context.recycleBin: File get() = filesDir
 
 fun Context.movePinnedDirectoriesToFront(dirs: ArrayList<Directory>): ArrayList<Directory> {

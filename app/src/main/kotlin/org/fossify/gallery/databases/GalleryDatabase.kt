@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import org.fossify.gallery.interfaces.*
 import org.fossify.gallery.models.*
 
-@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class, CompressionReviewItem::class], version = 23)
+@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class, CompressionReviewItem::class, org.fossify.gallery.models.FileHash::class], version = 24)
 abstract class GalleryDatabase : RoomDatabase() {
 
     abstract fun DirectoryDao(): DirectoryDao
@@ -31,6 +31,8 @@ abstract class GalleryDatabase : RoomDatabase() {
     abstract fun MediaTagDao(): MediaTagDao
 
     abstract fun CompressionReviewDao(): CompressionReviewDao
+
+    abstract fun FileHashDao(): org.fossify.gallery.interfaces.FileHashDao
 
     companion object {
         private var db: GalleryDatabase? = null
@@ -87,6 +89,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                             .addMigrations(MIGRATION_20_21)
                             .addMigrations(MIGRATION_21_22)
                             .addMigrations(MIGRATION_22_23)
+                            .addMigrations(MIGRATION_23_24)
                             .fallbackToDestructiveMigrationFrom(1, 2, 3)
                             // Room only runs migrations when upgrading an *existing* database - a
                             // fresh install gets its schema (including date_sort_key and its index)
@@ -320,6 +323,14 @@ abstract class GalleryDatabase : RoomDatabase() {
                     "CREATE TABLE IF NOT EXISTS `compression_review_items` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `job_id` TEXT NOT NULL, `original_path` TEXT NOT NULL, `temp_result_path` TEXT NOT NULL, `original_size` INTEGER NOT NULL, `result_size` INTEGER NOT NULL, `media_type` INTEGER NOT NULL, `status` TEXT NOT NULL, `error_message` TEXT, `created_at` INTEGER NOT NULL)"
                 )
                 database.execSQL("CREATE INDEX IF NOT EXISTS `index_compression_review_items_job_id` ON `compression_review_items` (`job_id`)")
+            }
+        }
+
+        private val MIGRATION_23_24 = object : Migration(23, 24) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `file_hashes` (`full_path` TEXT NOT NULL, `size` INTEGER NOT NULL, `last_modified` INTEGER NOT NULL, `partial_hash` TEXT, `full_hash` TEXT, `phash` INTEGER, PRIMARY KEY(`full_path`))"
+                )
             }
         }
     }

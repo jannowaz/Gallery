@@ -74,6 +74,13 @@ class RecycleBinCleanupWorker(
                 android.util.Log.e("RecycleBinCleanup", "Missing-media sweep failed", e)
             }
 
+            try {
+                // Hash-cache housekeeping: drop entries for files no longer in the library.
+                org.fossify.gallery.databases.GalleryDatabase.getInstance(applicationContext).FileHashDao().pruneOrphans()
+            } catch (e: Exception) {
+                android.util.Log.e("RecycleBinCleanup", "Hash-cache prune failed", e)
+            }
+
             Result.success()
         } catch (e: Exception) {
             android.util.Log.e("RecycleBinCleanup", "Cleanup failed", e)

@@ -32,12 +32,17 @@ data class DuplicateState(
     val selectedForDeletion: Set<String> = emptySet(),
     val scanDone: Boolean = false,
     val mode: DuplicateMode = DuplicateMode.EXACT,
+    val scope: DuplicateScope = DuplicateScope.FOLDER,
     val similarThreshold: Int = 10,
     /** Set when [groups] were restored from the last persisted scan instead of a fresh run. */
     val restoredAt: Long? = null,
 )
 
 enum class DuplicateMode { EXACT, SIMILAR }
+
+/** What the scan covers: a picked folder, or the recent additions checked against the whole
+ * library (battery-cheap DB-first mode, EXACT only). */
+enum class DuplicateScope { FOLDER, LAST_WEEK, LAST_MONTH }
 
 /** Which file of a duplicate group survives an auto-selection - everything else gets marked. */
 enum class KeepStrategy { NEWEST, OLDEST, LARGEST, SMALLEST, SHORTEST_NAME, SHORTEST_PATH }
@@ -75,6 +80,19 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(mode = mode, groups = emptyList(), selectedForDeletion = emptySet(), scanDone = false) }
     }
 
+    fun setScope(scope: DuplicateScope) {
+        _state.update {
+            it.copy(
+                scope = scope,
+                // The recent modes are DB-first and rely on byte-identity via the size prefilter -
+                // SIMILAR would mean perceptually hashing the whole library, the opposite of the
+                // battery promise, so it's pinned to EXACT there.
+                mode = if (scope != DuplicateScope.FOLDER) DuplicateMode.EXACT else it.mode,
+                groups = emptyList(), selectedForDeletion = emptySet(), scanDone = false,
+            )
+        }
+    }
+
     fun setThreshold(threshold: Int) {
         _state.update { it.copy(similarThreshold = threshold.coerceIn(0, 20)) }
     }
@@ -91,7 +109,15 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
                     hashedCount = 0, totalCandidates = 0, totalScanned = 0, scanDone = false, restoredAt = null,
                 )
             }
-            val flow = if (mode == DuplicateMode.SIMILAR) scanner.scanFolderSimilar(folderPath, threshold) else scanner.scanFolder(folderPath)
+            val scope = _state.value.scope
+            val flow = when {
+                scope != DuplicateScope.FOLDER -> {
+                    val days = if (scope == DuplicateScope.LAST_WEEK) 7L else 30L
+                    scanner.scanRecentAgainstLibrary(System.currentTimeMillis() - days * 24 * 60 * 60 * 1000)
+                }
+                mode == DuplicateMode.SIMILAR -> scanner.scanFolderSimilar(folderPath, threshold)
+                else -> scanner.scanFolder(folderPath)
+            }
             flow.collect { progress ->
                 when (progress) {
                     is DuplicateProgress.Collecting -> _state.update { it.copy(phase = getApplication<Application>().getString(R.string.dup_phase_found, progress.found)) }

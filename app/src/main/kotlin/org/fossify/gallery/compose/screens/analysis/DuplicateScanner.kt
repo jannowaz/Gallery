@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.flowOn
 import org.fossify.gallery.helpers.XmpWriter
 import java.io.File
 import java.security.MessageDigest
+import org.fossify.gallery.extensions.fileHashDB
+import org.fossify.gallery.extensions.mediaDB
 
 @kotlinx.serialization.Serializable
 data class DuplicateFile(
@@ -40,6 +42,102 @@ sealed class DuplicateProgress {
 
 class DuplicateScanner(private val context: Context) {
 
+    /**
+     * Persistent per-file hash memo backed by the `file_hashes` table: valid while size+mtime
+     * still match on disk. This is what makes repeat scans (and the recent-vs-library mode)
+     * battery-cheap - anything hashed once is never hashed again until the file changes.
+     */
+    private inner class HashCache(files: List<File>) {
+        private val cached = HashMap<String, org.fossify.gallery.models.FileHash>()
+        private val dirty = HashMap<String, org.fossify.gallery.models.FileHash>()
+
+        init {
+            files.map { it.absolutePath }.chunked(900).forEach { chunk ->
+                try {
+                    context.fileHashDB.getByPaths(chunk).forEach { cached[it.path] = it }
+                } catch (e: Exception) { android.util.Log.e("DuplicateScanner", "hash cache load failed", e) }
+            }
+        }
+
+        private fun validFor(file: File, entry: org.fossify.gallery.models.FileHash?) =
+            entry != null && entry.size == file.length() && entry.modified == file.lastModified()
+
+        private fun entryFor(file: File): org.fossify.gallery.models.FileHash? {
+            val p = file.absolutePath
+            return (dirty[p] ?: cached[p])?.takeIf { validFor(file, it) }
+        }
+
+        private fun update(file: File, mutate: (org.fossify.gallery.models.FileHash) -> org.fossify.gallery.models.FileHash) {
+            val base = entryFor(file) ?: org.fossify.gallery.models.FileHash(file.absolutePath, file.length(), file.lastModified())
+            dirty[file.absolutePath] = mutate(base)
+        }
+
+        fun partial(file: File): String? {
+            entryFor(file)?.partialHash?.let { return it }
+            val h = partialHash(file) ?: return null
+            update(file) { it.copy(partialHash = h) }
+            return h
+        }
+
+        fun full(file: File): String? {
+            entryFor(file)?.fullHash?.let { return it }
+            val h = hashFile(file) ?: return null
+            update(file) { it.copy(fullHash = h) }
+            return h
+        }
+
+        fun phash(file: File): Long? {
+            entryFor(file)?.phash?.let { return it }
+            val h = perceptualHash(file) ?: return null
+            update(file) { it.copy(phash = h) }
+            return h
+        }
+
+        fun flush() {
+            dirty.values.chunked(900).forEach { chunk ->
+                try {
+                    context.fileHashDB.upsertAll(chunk)
+                } catch (e: Exception) { android.util.Log.e("DuplicateScanner", "hash cache flush failed", e) }
+            }
+        }
+    }
+
+    /** The size-group -> partial-hash -> full-hash pipeline shared by both exact scan modes. */
+    private suspend fun kotlinx.coroutines.flow.FlowCollector<DuplicateProgress>.buildExactGroups(files: List<File>, cache: HashCache): List<DuplicateGroup> {
+        val bySize = files.groupBy { it.length() }.filter { it.value.size > 1 }
+        val totalCandidates = bySize.values.sumOf { it.size }
+        val byHash = HashMap<String, MutableList<File>>()
+        var hashed = 0
+        var lastPercent = -1
+        for ((size, group) in bySize) {
+            // Pre-filter with a cheap partial hash (first 64 KB) so we only fully hash real collisions
+            val byPartial = HashMap<String, MutableList<File>>()
+            for (file in group) {
+                val ph = cache.partial(file)
+                if (ph != null) byPartial.getOrPut(ph) { mutableListOf() }.add(file)
+                hashed++
+                val percent = if (totalCandidates > 0) (hashed * 100) / totalCandidates else 100
+                if (percent != lastPercent) { lastPercent = percent; emit(DuplicateProgress.Hashing(percent, hashed, totalCandidates)) }
+            }
+            for ((_, sub) in byPartial) {
+                if (sub.size < 2) continue
+                for (file in sub) {
+                    val full = cache.full(file)
+                    if (full != null) byHash.getOrPut("${size}_$full") { mutableListOf() }.add(file)
+                }
+            }
+        }
+        return byHash.values
+            .filter { it.size > 1 }
+            .map { dupFiles ->
+                DuplicateGroup(
+                    hash = "${dupFiles.first().length()}_${dupFiles.first().absolutePath.hashCode()}",
+                    files = dupFiles.map { readMetadata(it) }.sortedByDescending { it.modified },
+                )
+            }
+            .sortedByDescending { it.wastedBytes }
+    }
+
     fun scanFolder(rootPath: String): Flow<DuplicateProgress> = flow {
         val files = mutableListOf<File>()
         collectMediaFiles(rootPath, files)
@@ -49,43 +147,40 @@ class DuplicateScanner(private val context: Context) {
             emit(DuplicateProgress.Done(emptyList(), 0))
             return@flow
         }
+        val cache = HashCache(files)
+        val groups = buildExactGroups(files, cache)
+        cache.flush()
+        emit(DuplicateProgress.Done(groups, totalScanned))
+    }.flowOn(Dispatchers.IO)
 
-        val bySize = files.groupBy { it.length() }.filter { it.value.size > 1 }
-        val totalCandidates = bySize.values.sumOf { it.size }
-
-        val byHash = HashMap<String, MutableList<File>>()
-        var hashed = 0
-        var lastPercent = -1
-        for ((size, group) in bySize) {
-            // Pre-filter with a cheap partial hash (first 64 KB) so we only fully hash real collisions
-            val byPartial = HashMap<String, MutableList<File>>()
-            for (file in group) {
-                val ph = partialHash(file)
-                if (ph != null) byPartial.getOrPut(ph) { mutableListOf() }.add(file)
-                hashed++
-                val percent = if (totalCandidates > 0) (hashed * 100) / totalCandidates else 100
-                if (percent != lastPercent) { lastPercent = percent; emit(DuplicateProgress.Hashing(percent, hashed, totalCandidates)) }
-            }
-            for ((_, sub) in byPartial) {
-                if (sub.size < 2) continue
-                for (file in sub) {
-                    val full = hashFile(file)
-                    if (full != null) byHash.getOrPut("${size}_$full") { mutableListOf() }.add(file)
-                }
+    /**
+     * "New media vs. whole library": duplicates of anything added/modified since [sinceMs],
+     * searched across the entire indexed library. Deliberately DB-first for battery: probes and
+     * candidates come from the media table (exact duplicates must match in size, so only files
+     * sharing a probe's size are ever touched on disk), and the hash cache skips everything
+     * already hashed by an earlier scan. Only groups containing at least one recent file are
+     * reported - pre-existing duplicate pairs elsewhere are not this mode's question.
+     */
+    fun scanRecentAgainstLibrary(sinceMs: Long): Flow<DuplicateProgress> = flow {
+        val probes = try { context.mediaDB.getRecentLivePathSizes(sinceMs) } catch (e: Exception) {
+            android.util.Log.e("DuplicateScanner", "recent probes query failed", e); emptyList()
+        }
+        emit(DuplicateProgress.Collecting(probes.size))
+        if (probes.isEmpty()) {
+            emit(DuplicateProgress.Done(emptyList(), 0))
+            return@flow
+        }
+        val probePaths = probes.map { it.path }.toHashSet()
+        val candidates = probes.map { it.size }.distinct().chunked(900).flatMap { sizes ->
+            try { context.mediaDB.getLivePathSizesBySizes(sizes) } catch (e: Exception) {
+                android.util.Log.e("DuplicateScanner", "size candidates query failed", e); emptyList()
             }
         }
-
-        val groups = byHash.values
-            .filter { it.size > 1 }
-            .map { dupFiles ->
-                DuplicateGroup(
-                    hash = "${dupFiles.first().length()}",
-                    files = dupFiles.map { readMetadata(it) }.sortedByDescending { it.modified },
-                )
-            }
-            .sortedByDescending { it.wastedBytes }
-
-        emit(DuplicateProgress.Done(groups, totalScanned))
+        val files = candidates.asSequence().map { File(it.path) }.filter { it.exists() }.toList()
+        val cache = HashCache(files)
+        val groups = buildExactGroups(files, cache).filter { g -> g.files.any { it.path in probePaths } }
+        cache.flush()
+        emit(DuplicateProgress.Done(groups, probes.size))
     }.flowOn(Dispatchers.IO)
 
     fun scanFolderSimilar(rootPath: String, threshold: Int = 10): Flow<DuplicateProgress> = flow {
@@ -98,10 +193,11 @@ class DuplicateScanner(private val context: Context) {
             return@flow
         }
 
+        val cache = HashCache(files)
         val hashes = LongArray(total)
         val valid = BooleanArray(total)
         for (i in 0 until total) {
-            val h = perceptualHash(files[i])
+            val h = cache.phash(files[i])
             if (h != null) { hashes[i] = h; valid[i] = true }
             val percent = ((i + 1) * 100) / total
             emit(DuplicateProgress.Hashing(percent, i + 1, total))
@@ -140,6 +236,7 @@ class DuplicateScanner(private val context: Context) {
             }
             .sortedByDescending { it.wastedBytes }
 
+        cache.flush()
         emit(DuplicateProgress.Done(groups, total))
     }.flowOn(Dispatchers.IO)
 

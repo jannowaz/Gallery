@@ -17,8 +17,24 @@ data class DirectoryAggregate(
     @ColumnInfo(name = "thumbnail") val thumbnail: String?,
 )
 
+/** Path+size projection for the duplicate finder's DB-first candidate selection. */
+data class PathSize(
+    @ColumnInfo(name = "full_path") val path: String,
+    @ColumnInfo(name = "size") val size: Long,
+)
+
 @Dao
 interface MediumDao {
+
+    /** Media added or modified since [since] - the probes of the recent-vs-library duplicate scan. */
+    @Query("SELECT full_path, size FROM media WHERE deleted_ts = 0 AND (date_added >= :since OR last_modified >= :since)")
+    fun getRecentLivePathSizes(since: Long): List<PathSize>
+
+    /** All live media sharing one of the given sizes - exact duplicates must match in size, so
+     * this is the complete candidate set without touching the disk. */
+    @Query("SELECT full_path, size FROM media WHERE deleted_ts = 0 AND size IN (:sizes)")
+    fun getLivePathSizesBySizes(sizes: List<Long>): List<PathSize>
+
     @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 AND parent_path = :path COLLATE NOCASE")
     fun getMediaFromPath(path: String): List<Medium>
 

@@ -410,6 +410,10 @@
     <string name="total_saved_sum">Insgesamt bisher gespart: %s</string>
     <string name="storage_empty_title">Speicherfresser finden</string>
     <string name="storage_empty_subtitle">Durchsucht einen Ordner nach übergroßen Fotos und Videos und schätzt, wie viel Kompression sparen würde</string>
+    <string name="dup_scope_folder">Ordner</string>
+    <string name="dup_scope_last_week">Letzte Woche</string>
+    <string name="dup_scope_last_month">Letzter Monat</string>
+    <string name="dup_scope_recent_desc">Prüft neue Medien auf Duplikate im gesamten Bestand</string>
     <string name="dup_empty_title">Duplikate aufspüren</string>
     <string name="dup_empty_subtitle">Durchsucht einen Ordner nach byte-identischen oder visuell ähnlichen Fotos und Videos</string>
     <string name="cd_pip">Bild-in-Bild</string>

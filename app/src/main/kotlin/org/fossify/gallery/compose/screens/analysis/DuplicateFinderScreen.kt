@@ -137,21 +137,30 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    modifier = Modifier.weight(1f).clickable { folderPicker.launch(null) },
-                    shape = RoundedCornerShape(Radius.md),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                ) {
-                    Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.FolderOpen, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            currentFolder.substringAfterLast('/').ifEmpty { stringResource(R.string.internal_storage) },
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
+                if (state.scope == DuplicateScope.FOLDER) {
+                    Surface(
+                        modifier = Modifier.weight(1f).clickable { folderPicker.launch(null) },
+                        shape = RoundedCornerShape(Radius.md),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    ) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.FolderOpen, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                currentFolder.substringAfterLast('/').ifEmpty { stringResource(R.string.internal_storage) },
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                     }
+                } else {
+                    Text(
+                        stringResource(R.string.dup_scope_recent_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
                 Spacer(Modifier.width(8.dp))
                 Button(onClick = { if (state.isScanning) vm.cancelScan() else vm.startScan(currentFolder) }) {
@@ -163,14 +172,38 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                 }
             }
 
-            Text(
-                currentFolder,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
+            if (state.scope == DuplicateScope.FOLDER) {
+                Text(
+                    currentFolder,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
+
+            // Scan scope: a folder, or the recent additions checked against the whole library.
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = state.scope == DuplicateScope.FOLDER,
+                    onClick = { vm.setScope(DuplicateScope.FOLDER) },
+                    enabled = !state.isScanning,
+                    label = { Text(stringResource(R.string.dup_scope_folder)) },
+                )
+                FilterChip(
+                    selected = state.scope == DuplicateScope.LAST_WEEK,
+                    onClick = { vm.setScope(DuplicateScope.LAST_WEEK) },
+                    enabled = !state.isScanning,
+                    label = { Text(stringResource(R.string.dup_scope_last_week)) },
+                )
+                FilterChip(
+                    selected = state.scope == DuplicateScope.LAST_MONTH,
+                    onClick = { vm.setScope(DuplicateScope.LAST_MONTH) },
+                    enabled = !state.isScanning,
+                    label = { Text(stringResource(R.string.dup_scope_last_month)) },
+                )
+            }
 
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
@@ -182,7 +215,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                 FilterChip(
                     selected = state.mode == DuplicateMode.SIMILAR,
                     onClick = { vm.setMode(DuplicateMode.SIMILAR) },
-                    enabled = !state.isScanning,
+                    enabled = !state.isScanning && state.scope == DuplicateScope.FOLDER,
                     label = { Text(stringResource(R.string.dup_mode_similar)) },
                 )
             }
