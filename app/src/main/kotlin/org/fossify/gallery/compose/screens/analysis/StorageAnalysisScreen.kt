@@ -58,6 +58,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -217,6 +218,26 @@ fun StorageAnalysisScreen(
                                     )
                                 }
                             }
+                        }
+                        // Guided two-step workflow: lossless optimization can't lose quality (see
+                        // executeTransforms's forced losslessOnly), so it's safe to run on
+                        // everything eligible with one tap, no per-file review needed. Compression
+                        // is lossy, so it only ever queues files for the visual before/after review
+                        // in CompressionReviewScreen - never applied blind. Doing optimize first
+                        // means by the time "compress all" is tapped, the losslessly-fixable files
+                        // have already dropped out of the results (executeTransforms re-scans when
+                        // done), so compress only ever touches what's actually left to decide on.
+                        val losslessEligible = remember(state.results) { vm.losslessEligiblePaths() }
+                        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (losslessEligible.isNotEmpty()) {
+                                Button(onClick = { vm.optimizeAll() }, modifier = Modifier.weight(1f)) {
+                                    Text(stringResource(R.string.optimize_all_count, losslessEligible.size))
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = { vm.compressAll(); onNavigateToCompressionReview() },
+                                modifier = Modifier.weight(1f),
+                            ) { Text(stringResource(R.string.compress_all_count, state.results.size)) }
                         }
                         Button(
                             onClick = { onNavigateToSwipe(sortedFiltered) },

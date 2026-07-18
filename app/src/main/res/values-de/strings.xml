@@ -378,6 +378,9 @@
     <string name="action_keep_all_original">Alle Originale behalten</string>
     <string name="compare_before">Vorher</string>
     <string name="compare_after">Nachher</string>
+    <string name="compare_position">%1$d / %2$d</string>
+    <string name="compare_previous">Zurück</string>
+    <string name="compare_next">Weiter</string>
     <string name="compression_review_empty">Keine Kompressions-Jobs</string>
     <string name="swipe_review_title">Swipe-Review</string>
     <string name="back_again_to_exit">Erneut zurück drücken zum Verlassen</string>
@@ -571,6 +574,8 @@
     <string name="storage_files_scanned">%1$d / %2$d Dateien gescannt</string>
     <string name="storage_files_wasted">%1$d Dateien · %2$s verschwendet</string>
     <string name="optimize">Optimieren</string>
+    <string name="optimize_all_count">Alle optimieren (%1$d, verlustfrei)</string>
+    <string name="compress_all_count">Alle komprimieren (%1$d)</string>
     <string name="all_optimal">Alles optimal!</string>
     <string name="optimize_confirm_title">Optimierung bestätigen</string>
     <string name="lossless_only">Nur Lossless</string>

@@ -119,6 +119,33 @@ class StorageAnalysisViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(selectedPaths = emptySet()) }
         }
     }
+
+    /** Every current result [executeTransforms] could apply losslessly - drives the "Optimize all"
+     * CTA, which only makes sense to show/enable when this is non-empty. */
+    fun losslessEligiblePaths(): Set<String> =
+        engine.suggestTransformations(_state.value.results, losslessOnly = true).map { it.originalPath }.toSet()
+
+    /** One-tap entry point for the recommended "optimize everything first" workflow: lossless
+     * conversions can't lose quality (executeTransforms always forces losslessOnly regardless of
+     * the flag passed to it), so unlike the manual multi-select path this skips the confirm dialog
+     * and just runs on every currently eligible result directly. */
+    fun optimizeAll() {
+        val eligible = losslessEligiblePaths()
+        if (eligible.isEmpty()) return
+        _state.update { it.copy(selectedPaths = eligible) }
+        executeTransforms()
+    }
+
+    /** One-tap entry point for "then compress the rest": selects every current result (same
+     * "ignore the filter chip" scope as [selectAll]) and hands it to the existing compression
+     * pipeline. Meant to be tapped after [optimizeAll] - by then, the lossless-eligible files have
+     * already dropped out of [AnalysisState.results] (executeTransforms re-scans when it finishes),
+     * so this naturally only ever compresses what's left. */
+    fun compressAll() {
+        if (_state.value.results.isEmpty()) return
+        _state.update { it.copy(selectedPaths = _state.value.results.map { r -> r.path }.toSet()) }
+        startCompression()
+    }
 }
 
 data class TransformSuggestion(
