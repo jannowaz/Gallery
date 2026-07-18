@@ -351,7 +351,15 @@ private fun DuplicateGroupCard(
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.tertiary,
             )
-            group.files.forEachIndexed { index, file ->
+            // Defense in depth against a pathologically large group: even with anchor-based
+            // clustering (see DuplicateScanner), nothing stops a real cluster of dozens of
+            // legitimate burst-shot near-duplicates from being sizeable, and this card isn't itself
+            // virtualized (only the outer LazyColumn of *groups* is) - a real device hit a
+            // transitive-clustering bug that produced a single 1087-file group, and rendering every
+            // row (thumbnail + shared-element transition + text) at once froze the main thread past
+            // the ANR threshold. Bulk actions (applyKeepStrategy) still operate on the full
+            // group.files list regardless of this display cap.
+            group.files.take(MAX_INLINE_FILES).forEachIndexed { index, file ->
                 // Only the checkbox sits on the right - the old per-row preview/folder icon pair
                 // ate ~90dp of width and squeezed the path into two truncated lines. Preview is now
                 // a tap on the thumbnail/info area, folder-select an inline chip below the metadata.
@@ -424,9 +432,19 @@ private fun DuplicateGroupCard(
                     Checkbox(checked = file.path in selected, onCheckedChange = { onToggle(file.path) })
                 }
             }
+            if (group.files.size > MAX_INLINE_FILES) {
+                Text(
+                    stringResource(R.string.duplicate_group_more_files, group.files.size - MAX_INLINE_FILES),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
         }
     }
 }
+
+private const val MAX_INLINE_FILES = 40
 
 @Composable
 private fun thresholdLabel(t: Int): String = when {

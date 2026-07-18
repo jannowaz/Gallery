@@ -203,30 +203,30 @@ class DuplicateScanner(private val context: Context) {
             emit(DuplicateProgress.Hashing(percent, i + 1, total))
         }
 
-        val parent = IntArray(total) { it }
-        fun find(x: Int): Int {
-            var r = x
-            while (parent[r] != r) { parent[r] = parent[parent[r]]; r = parent[r] }
-            return r
-        }
+        // Anchor-based (not transitive-chain) clustering: each cluster is anchored to one seed
+        // image, and only images within [threshold] of that *specific* seed join it - membership
+        // never chains through an intermediate image. A prior transitive union-find version (any
+        // A~B and B~C merges A+B+C even when A and C aren't themselves similar) let one large,
+        // thematically-similar-but-not-actually-duplicate folder collapse into a single cluster
+        // spanning most of the folder (1087 files observed on a real device) - which then hung the
+        // UI trying to render one card with 1087 rows. Same O(n^2) comparison cost as before.
+        val used = BooleanArray(total)
+        val clusters = mutableListOf<MutableList<Int>>()
         for (i in 0 until total) {
-            if (!valid[i]) continue
+            if (!valid[i] || used[i]) continue
+            val cluster = mutableListOf(i)
+            used[i] = true
             for (j in i + 1 until total) {
-                if (!valid[j]) continue
+                if (!valid[j] || used[j]) continue
                 if (java.lang.Long.bitCount(hashes[i] xor hashes[j]) <= threshold) {
-                    val ri = find(i); val rj = find(j)
-                    if (ri != rj) parent[ri] = rj
+                    cluster.add(j)
+                    used[j] = true
                 }
             }
+            clusters.add(cluster)
         }
 
-        val clusters = HashMap<Int, MutableList<Int>>()
-        for (i in 0 until total) {
-            if (!valid[i]) continue
-            clusters.getOrPut(find(i)) { mutableListOf() }.add(i)
-        }
-
-        val groups = clusters.values
+        val groups = clusters
             .filter { it.size > 1 }
             .map { indices ->
                 DuplicateGroup(
