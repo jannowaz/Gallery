@@ -70,7 +70,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -91,6 +93,7 @@ fun StorageAnalysisScreen(
     val vm: StorageAnalysisViewModel = viewModel()
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     var showConfirmDialog by remember { mutableStateOf(false) }
     val defaultPath = Environment.getExternalStorageDirectory().absolutePath
     var currentFolder by remember { mutableStateOf(defaultPath) }
@@ -228,16 +231,46 @@ fun StorageAnalysisScreen(
                         // have already dropped out of the results (executeTransforms re-scans when
                         // done), so compress only ever touches what's actually left to decide on.
                         val losslessEligible = remember(state.results) { vm.losslessEligiblePaths() }
+                        val busy = state.isTransforming || state.isEnqueuingCompression
                         Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (losslessEligible.isNotEmpty()) {
-                                Button(onClick = { vm.optimizeAll() }, modifier = Modifier.weight(1f)) {
+                                Button(onClick = { vm.optimizeAll() }, enabled = !busy, modifier = Modifier.weight(1f)) {
+                                    if (state.isTransforming) {
+                                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                                        Spacer(Modifier.width(8.dp))
+                                    }
                                     Text(stringResource(R.string.optimize_all_count, losslessEligible.size))
                                 }
                             }
                             OutlinedButton(
-                                onClick = { vm.compressAll(); onNavigateToCompressionReview() },
+                                onClick = { scope.launch { vm.compressAllAwait(); onNavigateToCompressionReview() } },
+                                enabled = !busy,
                                 modifier = Modifier.weight(1f),
-                            ) { Text(stringResource(R.string.compress_all_count, state.results.size)) }
+                            ) {
+                                if (state.isEnqueuingCompression) {
+                                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                Text(stringResource(R.string.compress_all_count, state.results.size))
+                            }
+                        }
+                        // While isTransforming, optimizeProgress lags one batch item behind briefly
+                        // at the very start (executeBatch reports after each item finishes) - showing
+                        // an indeterminate bar until the first count arrives beats showing nothing.
+                        if (state.isTransforming) {
+                            val prog = state.optimizeProgress
+                            Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                if (prog != null) {
+                                    LinearProgressIndicator(progress = { prog.first / prog.second.toFloat() }, modifier = Modifier.fillMaxWidth())
+                                    Text(
+                                        stringResource(R.string.optimizing_progress, prog.first, prog.second),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                } else {
+                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                }
+                            }
                         }
                         Button(
                             onClick = { onNavigateToSwipe(sortedFiltered) },
@@ -252,8 +285,17 @@ fun StorageAnalysisScreen(
                     Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(Radius.md)) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(stringResource(R.string.selected_count_saving, state.selectedPaths.size, formatBytes(selSize)), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { showConfirmDialog = true }) { Text(stringResource(R.string.optimize)) }
-                            TextButton(onClick = { vm.startCompression(); onNavigateToCompressionReview() }) { Text(stringResource(R.string.action_compress)) }
+                            TextButton(onClick = { showConfirmDialog = true }, enabled = !state.isEnqueuingCompression) { Text(stringResource(R.string.optimize)) }
+                            TextButton(
+                                onClick = { scope.launch { vm.startCompressionAwait(); onNavigateToCompressionReview() } },
+                                enabled = !state.isEnqueuingCompression,
+                            ) {
+                                if (state.isEnqueuingCompression) {
+                                    CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                                    Spacer(Modifier.width(6.dp))
+                                }
+                                Text(stringResource(R.string.action_compress))
+                            }
                             TextButton(onClick = { vm.clearSelection() }) { Text(stringResource(R.string.action_empty)) }
                         }
                     }

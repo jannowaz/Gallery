@@ -37,6 +37,11 @@ data class AnalysisState(
     val selectedPaths: Set<String> = emptySet(),
     val transformResults: List<TransformResult> = emptyList(),
     val isTransforming: Boolean = false,
+    /** (done, total) while a batch optimize is running - null when not transforming. */
+    val optimizeProgress: Pair<Int, Int>? = null,
+    /** True while a "compress all"/"compress selection" enqueue is in flight - the DB insert
+     * itself is fast, but without this the button gives zero feedback for the tap-to-navigate gap. */
+    val isEnqueuingCompression: Boolean = false,
     /** Set when [results] were restored from the last persisted scan instead of a fresh run. */
     val restoredAt: Long? = null,
 )
@@ -94,13 +99,13 @@ class StorageAnalysisViewModel(app: Application) : AndroidViewModel(app) {
         val selected = _state.value.selectedPaths
         if (selected.isEmpty()) return
         viewModelScope.launch {
-            _state.update { it.copy(isTransforming = true, transformResults = emptyList()) }
+            _state.update { it.copy(isTransforming = true, transformResults = emptyList(), optimizeProgress = null) }
             // Force lossless-only. Lossy re-compression (e.g. JPEG Q85) would irreversibly
             // degrade quality while overwriting the original, so it is never performed.
             val suggestions = engine.suggestTransformations(_state.value.results.filter { it.path in selected }, losslessOnly = true)
             if (suggestions.isEmpty()) { _state.update { it.copy(isTransforming = false) }; return@launch }
-            val results = engine.executeBatch(suggestions) { _, _ -> }
-            _state.update { it.copy(isTransforming = false, transformResults = results, selectedPaths = emptySet()) }
+            val results = engine.executeBatch(suggestions) { done, total -> _state.update { it.copy(optimizeProgress = done to total) } }
+            _state.update { it.copy(isTransforming = false, optimizeProgress = null, transformResults = results, selectedPaths = emptySet()) }
             startAnalysis(_state.value.folderPath)
         }
     }
@@ -109,16 +114,24 @@ class StorageAnalysisViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Enqueues [org.fossify.gallery.workers.CompressionWorker] for the current selection - unlike
      * [executeTransforms] this never decides anything itself, it only produces temp files for the
-     * user to compare/accept in [CompressionReviewScreen]. */
-    fun startCompression() {
+     * user to compare/accept in [CompressionReviewScreen]. Suspend (not its own viewModelScope.launch)
+     * so callers can await the DB insert finishing before navigating to the review screen - without
+     * that, navigation could win the race and briefly show "nothing to review" before the pending
+     * rows appeared, which read as the tap having done nothing. */
+    suspend fun startCompressionAwait() {
         val selected = _state.value.selectedPaths
         if (selected.isEmpty()) return
+        _state.update { it.copy(isEnqueuingCompression = true) }
         val toCompress = _state.value.results.filter { it.path in selected }.map { it.path to it.mediaType }
-        viewModelScope.launch {
+        try {
             org.fossify.gallery.workers.CompressionWorker.enqueue(getApplication(), toCompress)
             _state.update { it.copy(selectedPaths = emptySet()) }
+        } finally {
+            _state.update { it.copy(isEnqueuingCompression = false) }
         }
     }
+
+    fun startCompression() { viewModelScope.launch { startCompressionAwait() } }
 
     /** Every current result [executeTransforms] could apply losslessly - drives the "Optimize all"
      * CTA, which only makes sense to show/enable when this is non-empty. */
@@ -141,10 +154,10 @@ class StorageAnalysisViewModel(app: Application) : AndroidViewModel(app) {
      * pipeline. Meant to be tapped after [optimizeAll] - by then, the lossless-eligible files have
      * already dropped out of [AnalysisState.results] (executeTransforms re-scans when it finishes),
      * so this naturally only ever compresses what's left. */
-    fun compressAll() {
+    suspend fun compressAllAwait() {
         if (_state.value.results.isEmpty()) return
         _state.update { it.copy(selectedPaths = _state.value.results.map { r -> r.path }.toSet()) }
-        startCompression()
+        startCompressionAwait()
     }
 }
 

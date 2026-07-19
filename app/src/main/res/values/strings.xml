@@ -621,6 +621,7 @@
     <string name="optimize">Optimize</string>
     <string name="optimize_all_count">Optimize all (%1$d, lossless)</string>
     <string name="compress_all_count">Compress all (%1$d)</string>
+    <string name="optimizing_progress">Optimizing %1$d / %2$d…</string>
     <string name="all_optimal">Everything optimal!</string>
     <string name="optimize_confirm_title">Confirm optimization</string>
     <string name="lossless_only">Lossless only</string>
