@@ -924,4 +924,12 @@
     <string name="date_range_last_year">Last year</string>
     <string name="view_and_filter">View &amp; filter</string>
     <string name="tags_count_paren">Tags (%d)</string>
+    <string name="library_health">Check library</string>
+    <string name="library_health_checking">Checking…</string>
+    <string name="library_health_ok">%1$d media, complete</string>
+    <string name="library_health_gap">%1$d media missing from the library</string>
+    <string name="library_health_dialog_title">Library incomplete</string>
+    <string name="library_health_dialog_msg">MediaStore knows %1$d items, this app has %2$d. A full rescan reads everything again and adds what is missing. It runs in the background and may take a few minutes on a large library.</string>
+    <string name="library_health_rescan">Rescan now</string>
+    <string name="library_health_started">Rescan started</string>
 </resources>

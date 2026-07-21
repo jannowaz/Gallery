@@ -91,6 +91,48 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         }
     }
 
+    /** What MediaStore holds vs what this app's library table holds. See [libraryHealth]. */
+    data class LibraryHealth(val inMediaStore: Int, val inLibrary: Int) {
+        val missing: Int get() = (inMediaStore - inLibrary).coerceAtLeast(0)
+
+        /**
+         * Whether the gap is big enough to be worth reporting. A handful of rows is normal: the two
+         * counts are taken moments apart and MediaStore keeps growing while the app runs, so a
+         * camera shot or a chat download lands between them. A real sync failure is orders of
+         * magnitude larger - the one this check exists for was 3,761.
+         */
+        val isSignificant: Boolean get() = missing > 100
+    }
+
+    /**
+     * Compares MediaStore's image+video count against the library table's live rows.
+     *
+     * Exists because a sync bug once left 3,761 files permanently invisible and there was no way to
+     * notice: nobody counts album contents by hand, and the app looked perfectly healthy. Two counts
+     * are enough to catch the entire class of "media silently never appears" problems, whatever
+     * causes the next one.
+     */
+    fun libraryHealth(): LibraryHealth {
+        val store = countInMediaStore(MediaStore.Images.Media.EXTERNAL_CONTENT_URI) +
+            countInMediaStore(MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+        val library = try {
+            context.mediaDB.getLiveMediaCount()
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "getLiveMediaCount failed", e)
+            0
+        }
+        return LibraryHealth(inMediaStore = store, inLibrary = library)
+    }
+
+    /** Projects a single column so the cursor window stays small on a six-figure library. */
+    private fun countInMediaStore(uri: Uri): Int = try {
+        context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns._ID), null, null, null)
+            ?.use { it.count } ?: 0
+    } catch (e: Exception) {
+        android.util.Log.e("MediaRepository", "countInMediaStore failed for $uri", e)
+        0
+    }
+
     /** Capped, paths-only variant of [getMediaFromPath] for preview strips. See MediumDao. */
     fun getPreviewPathsFromPath(path: String, limit: Int): List<String> {
         return try {

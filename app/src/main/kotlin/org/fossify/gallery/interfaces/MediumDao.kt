@@ -61,6 +61,10 @@ interface MediumDao {
     @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts != 0")
     fun getDeletedMedia(): List<Medium>
 
+    /** Live (non-recycle-bin) row count, for the library health check in Settings. */
+    @Query("SELECT COUNT(filename) FROM media WHERE deleted_ts = 0")
+    fun getLiveMediaCount(): Int
+
     @Query("SELECT COUNT(filename) FROM media WHERE deleted_ts != 0")
     fun getDeletedMediaCount(): Long
 

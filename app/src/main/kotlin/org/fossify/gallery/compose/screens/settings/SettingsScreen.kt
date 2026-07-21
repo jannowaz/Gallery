@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.provider.MediaStore
 import android.widget.Toast
+import org.fossify.gallery.workers.MediaSyncWorker
 import org.fossify.gallery.workers.MetadataSyncWorker
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -304,6 +305,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             FullBackupImportNav(ctx, scope)
             SettingsNav(stringResource(R.string.set_export_settings)) { a?.startActivity(Intent(a, SettingsActivity::class.java).putExtra("open_section", "export_settings")) }
             SettingsNav(stringResource(R.string.set_import_settings)) { a?.startActivity(Intent(a, SettingsActivity::class.java).putExtra("open_section", "import_settings")) }
+            LibraryHealthNav(ctx, scope)
             ClearCacheNav(ctx, scope)
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
@@ -539,6 +541,57 @@ private fun formatCacheSize(bytes: Long): String = when {
     bytes >= 1_000 -> String.format(Locale.US, "%.1f KB", bytes / 1_000.0)
     bytes > 0 -> "$bytes B"
     else -> "0 KB"
+}
+
+/**
+ * Compares MediaStore's count against the library table's and offers a full rescan when they
+ * diverge. Deliberately tap-to-check rather than automatic: counting a six-figure library costs a
+ * couple of seconds, and paying that on every Settings open to answer a question that is almost
+ * always "fine" would be the wrong trade.
+ *
+ * Exists because a sync bug left 3,761 files permanently invisible with nothing in the UI hinting
+ * at it - the app looked healthy, and only counting files on the device by hand revealed it.
+ */
+@Composable
+internal fun LibraryHealthNav(ctx: Context, scope: CoroutineScope) {
+    val repo = LocalMediaRepository.current
+    var subtitle by remember { mutableStateOf("") }
+    var checking by remember { mutableStateOf(false) }
+    var gap by remember { mutableStateOf<org.fossify.gallery.helpers.MediaRepository.LibraryHealth?>(null) }
+
+    SettingsNav(
+        stringResource(R.string.library_health),
+        if (checking) stringResource(R.string.library_health_checking) else subtitle,
+    ) {
+        if (checking) return@SettingsNav
+        checking = true
+        scope.launch {
+            val health = withContext(Dispatchers.IO) { repo.libraryHealth() }
+            checking = false
+            subtitle = if (health.isSignificant) {
+                ctx.getString(R.string.library_health_gap, health.missing)
+            } else {
+                ctx.getString(R.string.library_health_ok, health.inLibrary)
+            }
+            if (health.isSignificant) gap = health
+        }
+    }
+
+    gap?.let { health ->
+        AlertDialog(
+            onDismissRequest = { gap = null },
+            title = { Text(stringResource(R.string.library_health_dialog_title)) },
+            text = { Text(stringResource(R.string.library_health_dialog_msg, health.inMediaStore, health.inLibrary)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    MediaSyncWorker.scheduleFullRescan(ctx)
+                    Toast.makeText(ctx, R.string.library_health_started, Toast.LENGTH_SHORT).show()
+                    gap = null
+                }) { Text(stringResource(R.string.library_health_rescan)) }
+            },
+            dismissButton = { TextButton(onClick = { gap = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
 }
 
 @Composable

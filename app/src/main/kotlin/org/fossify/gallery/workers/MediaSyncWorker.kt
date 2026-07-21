@@ -111,6 +111,15 @@ class MediaSyncWorker(
          */
         fun scheduleGapRepair(context: Context) {
             if (context.config.syncGapRepairDone) return
+            scheduleFullRescan(context)
+        }
+
+        /**
+         * Same full rescan as [scheduleGapRepair] but unconditional - for the "recheck library"
+         * action in Settings, where the user is asking for it explicitly and the one-shot flag has
+         * long since been set.
+         */
+        fun scheduleFullRescan(context: Context) {
             val constraints = Constraints.Builder()
                 .setRequiresBatteryNotLow(true)
                 .build()

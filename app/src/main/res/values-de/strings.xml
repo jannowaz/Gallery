@@ -879,4 +879,12 @@
     <string name="date_range_last_year">Letztes Jahr</string>
     <string name="view_and_filter">Ansicht &amp; Filter</string>
     <string name="tags_count_paren">Tags (%d)</string>
+    <string name="library_health">Bibliothek prüfen</string>
+    <string name="library_health_checking">Prüfe…</string>
+    <string name="library_health_ok">%1$d Medien, vollständig</string>
+    <string name="library_health_gap">%1$d Medien fehlen in der Bibliothek</string>
+    <string name="library_health_dialog_title">Bibliothek unvollständig</string>
+    <string name="library_health_dialog_msg">MediaStore kennt %1$d Einträge, diese App hat %2$d. Ein vollständiger Neuabgleich liest alles erneut ein und ergänzt das Fehlende. Er läuft im Hintergrund und kann bei großen Bibliotheken einige Minuten dauern.</string>
+    <string name="library_health_rescan">Jetzt neu abgleichen</string>
+    <string name="library_health_started">Neuabgleich gestartet</string>
 </resources>
