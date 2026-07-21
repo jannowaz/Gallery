@@ -28,12 +28,24 @@ class Config(context: Context) : BaseConfig(context) {
         private const val PINNED_COLLECTIONS = "pinned_collections"
         private const val LAST_SYNC_TIMESTAMP = "last_sync_timestamp"
         private const val LAST_BOOT_SCAN_TIMESTAMP = "last_boot_scan_timestamp"
+        private const val SYNC_GAP_REPAIR_DONE = "sync_gap_repair_done"
         fun newInstance(context: Context) = Config(context)
     }
 
     var lastSyncTimestamp: Long
         get() = prefs.getLong(LAST_SYNC_TIMESTAMP, 0L)
         set(value) = prefs.edit().putLong(LAST_SYNC_TIMESTAMP, value).apply()
+
+    /**
+     * Whether the one-shot repair rescan has already run. Existing installs carry a media table that
+     * is permanently missing whatever the old truncating incremental sync dropped (3,761 files on the
+     * device this was found on) - those rows sit below lastSyncTimestamp, so fixing the sync logic
+     * alone never brings them back. Set once the repair completes, so it costs one pass, not one per
+     * launch. See MediaSyncWorker.scheduleGapRepair.
+     */
+    var syncGapRepairDone: Boolean
+        get() = prefs.getBoolean(SYNC_GAP_REPAIR_DONE, false)
+        set(value) = prefs.edit().putBoolean(SYNC_GAP_REPAIR_DONE, value).apply()
 
     var lastBootScanTimestamp: Long
         get() = prefs.getLong(LAST_BOOT_SCAN_TIMESTAMP, 0L)

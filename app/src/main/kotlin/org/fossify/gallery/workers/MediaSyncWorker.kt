@@ -1,13 +1,16 @@
 package org.fossify.gallery.workers
 
 import android.content.Context
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.Data
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.LOCATION_INTERNAL
@@ -30,7 +33,15 @@ class MediaSyncWorker(
             // scan). Reusing it also means both call paths (this worker and MediaViewModel) share one
             // tested implementation instead of two that can silently drift apart.
             val repo = MediaRepository(applicationContext)
-            val newMedia = repo.syncNewMediaFromStore()
+            val isGapRepair = inputData.getBoolean(KEY_FULL_RESCAN, false)
+            val newMedia = repo.syncNewMediaFromStore(fullRescan = isGapRepair)
+            if (isGapRepair) {
+                // Only after the pass actually completed - a failure throws out of here and leaves
+                // the flag unset, so the repair is retried on the next launch instead of being
+                // silently marked done with rows still missing.
+                applicationContext.config.syncGapRepairDone = true
+                android.util.Log.i("MediaSyncWorker", "Gap repair done, recovered ${newMedia.size} rows")
+            }
             // Externally deleted files leave ghost rows (sync only adds) - sweep at most every 6h,
             // piggybacked here because this worker already runs off the ContentObserver.
             repo.pruneMissingMediaIfDue()
@@ -60,6 +71,8 @@ class MediaSyncWorker(
     }
 
     companion object {
+        const val KEY_FULL_RESCAN = "full_rescan"
+        private const val GAP_REPAIR_WORK_NAME = "media_sync_gap_repair"
         private const val WORK_NAME = "media_sync"
         private const val INITIAL_WORK_NAME = "media_sync_initial"
 
@@ -84,6 +97,30 @@ class MediaSyncWorker(
                 ExistingWorkPolicy.KEEP,
                 workRequest,
             )
+        }
+
+        /**
+         * One-shot repair for installs whose media table is missing rows an older, truncating
+         * version of the incremental sync dropped. Those rows sit below lastSyncTimestamp, so no
+         * amount of normal incremental syncing brings them back - this ignores the watermark once
+         * and re-examines everything MediaStore has.
+         *
+         * No-op after it has succeeded once (config.syncGapRepairDone). KEEP policy so a relaunch
+         * while it is still running doesn't restart it from the top, and battery-not-low because on
+         * a six-figure library this walks the whole store.
+         */
+        fun scheduleGapRepair(context: Context) {
+            if (context.config.syncGapRepairDone) return
+            val constraints = Constraints.Builder()
+                .setRequiresBatteryNotLow(true)
+                .build()
+            val workRequest = OneTimeWorkRequestBuilder<MediaSyncWorker>()
+                .setInputData(Data.Builder().putBoolean(KEY_FULL_RESCAN, true).build())
+                .setConstraints(constraints)
+                .setInitialDelay(15, TimeUnit.SECONDS)
+                .addTag(GAP_REPAIR_WORK_NAME)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(GAP_REPAIR_WORK_NAME, ExistingWorkPolicy.KEEP, workRequest)
         }
 
         fun scheduleIncrementalSync(context: Context) {

@@ -294,6 +294,8 @@ class ComposeExplorerActivity : ComponentActivity() {
                 RecycleBinCleanupWorker.schedule(this@ComposeExplorerActivity)
                 MediaSyncWorker.schedule(this@ComposeExplorerActivity)
                 MediaSyncWorker.scheduleInitialSync(this@ComposeExplorerActivity)
+                // Self-clearing after one successful run; see MediaSyncWorker.scheduleGapRepair.
+                MediaSyncWorker.scheduleGapRepair(this@ComposeExplorerActivity)
                 MetadataSyncWorker.cancelAutomatic(this@ComposeExplorerActivity)
                 MetadataSyncWorker.cancel(this@ComposeExplorerActivity)
                 // Sweep batch_job_items left behind by a MediaBatchWorker job that was interrupted

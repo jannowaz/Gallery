@@ -42,6 +42,11 @@ import java.io.File
 // few thousand paths can exceed that limit and throw at runtime. Chunk comfortably under it instead.
 private const val SQLITE_BATCH_CHUNK_SIZE = 900
 
+// How many MediaStore rows syncNewMediaFromStore() holds in memory before deduping them against the
+// DB and starting a fresh batch. This used to be a hard `break` that discarded everything past the
+// limit - see the comment at the cursor loop for what that cost.
+private const val CANDIDATE_BATCH_SIZE = 10000
+
 // Column order shared by every hand-written filtered query below - must match MediumDao's @Query
 // column lists exactly, since Medium's constructor (via FilteredMediaPagingSource.convertRows) reads
 // the cursor positionally.
@@ -626,18 +631,45 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         }
     }
 
-    fun syncNewMediaFromStore(): List<Medium> {
+    /**
+     * @param fullRescan ignores the stored watermark for this one run and re-examines every
+     * image/video MediaStore knows about. Used by the one-shot gap repair (see
+     * MediaSyncWorker.scheduleGapRepair) to recover rows an older, truncating version of this sync
+     * dropped below the watermark. Deliberately does NOT go down the isFirstSync path: that one adds
+     * a full `scanMediaFromDisk()` and merges both lists in memory, which is far heavier than simply
+     * letting the (now batched) cursor loop below walk everything and insert only what is missing.
+     */
+    fun syncNewMediaFromStore(fullRescan: Boolean = false): List<Medium> {
         try {
-            val lastSync = context.config.lastSyncTimestamp
+            val storedSync = context.config.lastSyncTimestamp
+            val lastSync = if (fullRescan) 0L else storedSync
             // Was `context.mediaDB.getAllPaths().toSet()` - materialized every path in the entire
             // library (200,000+ rows on a large library) into memory on *every single call* just to
             // do an in-memory `in` check against a handful of recently-modified rows below. This
             // ContentObserver-triggered sync fires often (see ComposeExplorerActivity's mediaObserver),
             // so that cost was paid repeatedly, not just once. Replaced with `getExistingPaths()`
             // batch-checked below, scoped to just the bounded candidate set this function actually
-            // needs to dedup (the incremental MediaStore query is already capped at 10,000 rows).
-            val isFirstSync = lastSync == 0L || !context.mediaDB.hasAnyMedia()
+            // needs to dedup (the cursor loop flushes in CANDIDATE_BATCH_SIZE chunks).
+            // Keyed off the STORED watermark, not the possibly-overridden `lastSync`: a repair
+            // rescan on a populated library is not a first sync and must not trigger the heavy
+            // disk-scan-and-merge branch below.
+            val isFirstSync = storedSync == 0L || !context.mediaDB.hasAnyMedia()
             val candidates = mutableListOf<Medium>()
+            val newMedia = mutableListOf<Medium>()
+
+            // Dedups whatever has accumulated in [candidates] against the DB, moves the genuinely
+            // new rows into [newMedia], and empties [candidates]. Called every CANDIDATE_BATCH_SIZE
+            // rows while reading the cursor, and once more after it - so peak memory is one batch of
+            // candidates rather than the entire (potentially six-figure) result set.
+            fun flushCandidates() {
+                if (candidates.isEmpty()) return
+                val existing = candidates.map { it.path }
+                    .chunked(SQLITE_BATCH_CHUNK_SIZE)
+                    .flatMap { context.mediaDB.getExistingPaths(it) }
+                    .toSet()
+                candidates.filterTo(newMedia) { it.path !in existing }
+                candidates.clear()
+            }
             val uri = MediaStore.Files.getContentUri("external")
             val proj = arrayOf(
                 MediaStore.MediaColumns.DATA,
@@ -682,9 +714,24 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                 val addedIdx = c.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
                 val sizeIdx = c.getColumnIndex(MediaStore.MediaColumns.SIZE)
                 val typeIdx = c.getColumnIndex(MediaStore.Files.FileColumns.MEDIA_TYPE)
-                var scanned = 0
                 while (c.moveToNext()) {
-                    if (scanned++ >= 10000) break // Lower limit for incremental sync
+                    // Deliberately NOT capped with a `break` any more. It used to stop after 10,000
+                    // rows, and because this query is ordered by DATE_MODIFIED DESC while the
+                    // selection also matches on DATE_ADDED, the rows it dropped were exactly the
+                    // ones with an old mtime but a fresh date_added - i.e. a bulk copy of files that
+                    // kept their original timestamps. latestTimestamp below then still advanced to
+                    // the maximum over the rows that *were* processed, moving the watermark past the
+                    // dropped rows' date_added, so they matched neither half of the selection ever
+                    // again and stayed invisible permanently.
+                    //
+                    // Measured on a real device before this change: 206,432 items in MediaStore vs
+                    // 202,671 in the media table - 3,761 files permanently missing, all sharing one
+                    // date_added (a single bulk copy) with mtimes spread over months.
+                    //
+                    // Memory stays bounded the way the cap intended: `candidates` is flushed to the
+                    // DB-dedup every CANDIDATE_BATCH_SIZE rows (see flushCandidates below) instead
+                    // of the whole result set being held at once.
+                    if (candidates.size >= CANDIDATE_BATCH_SIZE) flushCandidates()
                     var path = if (dataIdx >= 0) c.getString(dataIdx) else null
                     if (path.isNullOrBlank()) {
                         val relPath = if (relPathIdx >= 0) c.getString(relPathIdx) ?: "" else ""
@@ -718,13 +765,8 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                     candidates.add(Medium(null, name, path, File(path).parent ?: "", modified, taken, size, type, 0, false, 0L, 0L, 0, dateAdded = added))
                 }
             }
-            // Batch-check just this bounded candidate set (<=10,000, typically far fewer) against the
-            // DB instead of the whole-library set this used to dedup against in memory.
-            val existingCandidatePaths = candidates.map { it.path }
-                .chunked(SQLITE_BATCH_CHUNK_SIZE)
-                .flatMap { context.mediaDB.getExistingPaths(it) }
-                .toSet()
-            val newMedia = candidates.filterTo(mutableListOf()) { it.path !in existingCandidatePaths }
+            // Whatever is left in the last, partial batch.
+            flushCandidates()
 
             val deletedPaths = try {
                 context.mediaDB.getDeletedMedia().map { it.path }.toSet()
