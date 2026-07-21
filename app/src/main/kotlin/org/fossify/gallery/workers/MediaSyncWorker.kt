@@ -65,13 +65,21 @@ class MediaSyncWorker(
 
             Result.success()
         } catch (e: Exception) {
-            android.util.Log.e("MediaSyncWorker", "Sync failed", e)
-            Result.failure()
+            // retry(), not failure(): a sync failure is usually transient (MediaStore momentarily
+            // unavailable, storage unmounted mid-scan), and failure() gives up for good - the DB
+            // then stays stale until the next ContentObserver tick or the 168h periodic run happens
+            // to land. The sync is watermark-filtered and inserts via insertAllKeepingExisting, so
+            // re-running it is idempotent and safe. runAttemptCount is capped so a genuinely
+            // non-transient failure (a real bug, not a blip) doesn't retry forever with backoff,
+            // which is the pitfall failure() was avoiding by never retrying at all.
+            android.util.Log.e("MediaSyncWorker", "Sync failed (attempt ${runAttemptCount + 1})", e)
+            if (runAttemptCount < MAX_RETRIES) Result.retry() else Result.failure()
         }
     }
 
     companion object {
         const val KEY_FULL_RESCAN = "full_rescan"
+        private const val MAX_RETRIES = 3
         private const val GAP_REPAIR_WORK_NAME = "media_sync_gap_repair"
         private const val WORK_NAME = "media_sync"
         private const val INITIAL_WORK_NAME = "media_sync_initial"
