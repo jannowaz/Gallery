@@ -35,7 +35,13 @@ data class Medium(
     @PrimaryKey(autoGenerate = true) var id: Long?,
     @ColumnInfo(name = "filename") var name: String,
     @ColumnInfo(name = "full_path", collate = ColumnInfo.NOCASE) var path: String,
-    @ColumnInfo(name = "parent_path") var parentPath: String,
+    // NOCASE, matching full_path above. Every path comparison in every DAO is written
+    // `... = :path COLLATE NOCASE` (inherited upstream convention), and against a BINARY-collated
+    // column SQLite cannot use the index at all: EXPLAIN QUERY PLAN showed the per-folder query
+    // falling back to `USING INDEX index_media_deleted_ts_is_favorite (deleted_ts=?)`, i.e. a scan
+    // of every live row, once per folder. On a 163k-item/~2.8k-folder library that was ~465M row
+    // visits per pass and the bulk of a 356s cold-start CPU burn.
+    @ColumnInfo(name = "parent_path", collate = ColumnInfo.NOCASE) var parentPath: String,
     @ColumnInfo(name = "last_modified") var modified: Long,
     @ColumnInfo(name = "date_taken") var taken: Long,
     @ColumnInfo(name = "size") var size: Long,

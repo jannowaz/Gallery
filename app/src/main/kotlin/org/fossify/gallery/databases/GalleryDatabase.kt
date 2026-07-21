@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import org.fossify.gallery.interfaces.*
 import org.fossify.gallery.models.*
 
-@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class, CompressionReviewItem::class, org.fossify.gallery.models.FileHash::class], version = 24)
+@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class, CompressionReviewItem::class, org.fossify.gallery.models.FileHash::class], version = 25)
 abstract class GalleryDatabase : RoomDatabase() {
 
     abstract fun DirectoryDao(): DirectoryDao
@@ -90,6 +90,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                             .addMigrations(MIGRATION_21_22)
                             .addMigrations(MIGRATION_22_23)
                             .addMigrations(MIGRATION_23_24)
+                            .addMigrations(MIGRATION_24_25)
                             .fallbackToDestructiveMigrationFrom(1, 2, 3)
                             // Room only runs migrations when upgrading an *existing* database - a
                             // fresh install gets its schema (including date_sort_key and its index)
@@ -331,6 +332,44 @@ abstract class GalleryDatabase : RoomDatabase() {
                 database.execSQL(
                     "CREATE TABLE IF NOT EXISTS `file_hashes` (`full_path` TEXT NOT NULL, `size` INTEGER NOT NULL, `last_modified` INTEGER NOT NULL, `partial_hash` TEXT, `full_hash` TEXT, `phash` INTEGER, PRIMARY KEY(`full_path`))"
                 )
+            }
+        }
+
+        /**
+         * Gives `parent_path` a NOCASE collation (see Medium.parentPath). Every DAO compares paths
+         * with an explicit `COLLATE NOCASE`, which against this BINARY-collated column made
+         * `index_media_deleted_ts_parent_path` unusable - EXPLAIN QUERY PLAN fell back to scanning
+         * every live row, once per folder. Measured cause of a 356s cold-start CPU burn on a
+         * 163k-item/~2.8k-folder library.
+         *
+         * A collation is part of the column definition, so SQLite has no ALTER for it and the table
+         * has to be rebuilt. The CREATE below is verbatim Room's own expected schema for v25
+         * (app/schemas/.../25.json, schema export enabled in this change) rather than a hand-rolled
+         * reconstruction - a mismatch here would only surface as a runtime crash on a real device.
+         *
+         * Note this also drops the stray `DEFAULT 0` that `date_added`/`date_sort_key` carried from
+         * their ALTER TABLE migrations; the entity never declared a defaultValue, so the rebuilt
+         * table matches what Room expects rather than what had drifted into the DB. Both columns
+         * are NOT NULL and are copied explicitly below, so no row loses a value.
+         */
+        private val MIGRATION_24_25 = object : Migration(24, 25) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `media_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `filename` TEXT NOT NULL, `full_path` TEXT NOT NULL COLLATE NOCASE, `parent_path` TEXT NOT NULL COLLATE NOCASE, `last_modified` INTEGER NOT NULL, `date_taken` INTEGER NOT NULL, `size` INTEGER NOT NULL, `type` INTEGER NOT NULL, `video_duration` INTEGER NOT NULL, `is_favorite` INTEGER NOT NULL, `deleted_ts` INTEGER NOT NULL, `media_store_id` INTEGER NOT NULL, `rating` INTEGER NOT NULL, `date_added` INTEGER NOT NULL, `date_sort_key` INTEGER NOT NULL)"
+                )
+                database.execSQL(
+                    "INSERT INTO `media_new` (`id`, `filename`, `full_path`, `parent_path`, `last_modified`, `date_taken`, `size`, `type`, `video_duration`, `is_favorite`, `deleted_ts`, `media_store_id`, `rating`, `date_added`, `date_sort_key`) " +
+                        "SELECT `id`, `filename`, `full_path`, `parent_path`, `last_modified`, `date_taken`, `size`, `type`, `video_duration`, `is_favorite`, `deleted_ts`, `media_store_id`, `rating`, `date_added`, `date_sort_key` FROM `media`"
+                )
+                database.execSQL("DROP TABLE `media`")
+                database.execSQL("ALTER TABLE `media_new` RENAME TO `media`")
+                // Recreated after the rename - DROP TABLE took the old table's indices with it.
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_media_full_path` ON `media` (`full_path`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_date_sort_key` ON `media` (`deleted_ts`, `date_sort_key`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_size` ON `media` (`deleted_ts`, `size`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_rating_last_modified` ON `media` (`deleted_ts`, `rating`, `last_modified`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_parent_path` ON `media` (`deleted_ts`, `parent_path`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_is_favorite` ON `media` (`deleted_ts`, `is_favorite`)")
             }
         }
     }

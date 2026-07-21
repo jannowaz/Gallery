@@ -38,6 +38,14 @@ interface MediumDao {
     @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 AND parent_path = :path COLLATE NOCASE")
     fun getMediaFromPath(path: String): List<Medium>
 
+    /** Just the paths, capped - for thumbnail/preview strips that only ever show a handful per
+     * folder. Same predicate (and same (deleted_ts, parent_path) index) as [getMediaFromPath], but
+     * one column instead of fourteen and LIMIT pushed into SQLite instead of materialising every
+     * row of the folder into a Medium and then dropping all but the first few. On a library with
+     * many folders that difference is the whole query cost - see AlbumsScreen's preview strip. */
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 AND parent_path = :path COLLATE NOCASE LIMIT :limit")
+    fun getPreviewPathsFromPath(path: String, limit: Int): List<String>
+
     @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 AND full_path IN (:paths)")
     fun getMediaByPaths(paths: List<String>): List<Medium>
 

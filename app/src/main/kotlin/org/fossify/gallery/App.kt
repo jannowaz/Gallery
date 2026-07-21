@@ -85,6 +85,11 @@ class App : FossifyApp(), ImageLoaderFactory {
         // trigger fired by a worker in a headless process is recorded for replay rather than lost.
         RefreshBus.startForegroundTracking()
 
+        // HotThreadSampler is deliberately NOT started here. It costs real CPU of its own
+        // (Thread.getAllStackTraces() over ~56 threads twice a second), which distorts exactly the
+        // kind of measurement it exists to support - call HotThreadSampler.start() by hand when
+        // investigating, don't leave it wired into startup.
+
         // Seed the Compose-observable blur mirror from the persisted setting - BlurState (not
         // Config directly) is what every blur call site and toggle reads/writes through, since
         // flipping a plain SharedPreferences-backed boolean doesn't recompose anything that

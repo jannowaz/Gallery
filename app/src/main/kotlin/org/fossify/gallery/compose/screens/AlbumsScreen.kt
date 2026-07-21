@@ -103,6 +103,9 @@ import android.widget.Toast
 import org.fossify.commons.extensions.toast
 import java.io.File
 
+/** How many thumbnails the list-mode album row shows. Also the SQL LIMIT for fetching them. */
+private const val ALBUM_PREVIEW_COUNT = 4
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun AlbumsScreen(
@@ -169,7 +172,13 @@ fun AlbumsScreen(
     LaunchedEffect(sortedDirs, isGrid) {
         if (!isGrid) {
             albumPreviews = withContext(Dispatchers.IO) {
-                sortedDirs.associate { dir -> dir.path to repo.getMediaFromPath(dir.path).map { it.path }.take(4) }
+                // Capped in SQL, not after the fact. This runs once per folder, and getMediaFromPath
+                // returned every live row of the folder as a full 14-column Medium just to keep the
+                // first four paths - so on a large library it materialised essentially the entire
+                // media table per pass. Measured on a 163k-item/~2.8k-folder device: this was the
+                // cold-start CPU burn, ~85% of all on-CPU samples sitting in this one query, one
+                // core pegged for minutes (several, in fact - the passes overlap).
+                sortedDirs.associate { dir -> dir.path to repo.getPreviewPathsFromPath(dir.path, ALBUM_PREVIEW_COUNT) }
             }
         }
     }

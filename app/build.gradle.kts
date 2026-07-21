@@ -156,6 +156,14 @@ android {
     }
 }
 
+// Room writes the exact expected schema per version to app/schemas. Every migration up to v24 was
+// written without this, i.e. against a hand-reconstructed CREATE TABLE - and a mismatch there only
+// surfaces as a runtime crash on a user's device, never at build time. With the export on, the
+// generated JSON is the reference for what a migration has to produce.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 detekt {
     baseline = file("detekt-baseline.xml")
     config.setFrom("$rootDir/detekt.yml")

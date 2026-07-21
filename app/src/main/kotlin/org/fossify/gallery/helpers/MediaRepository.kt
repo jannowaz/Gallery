@@ -86,6 +86,16 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         }
     }
 
+    /** Capped, paths-only variant of [getMediaFromPath] for preview strips. See MediumDao. */
+    fun getPreviewPathsFromPath(path: String, limit: Int): List<String> {
+        return try {
+            context.mediaDB.getPreviewPathsFromPath(path, limit)
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "getPreviewPathsFromPath failed for $path", e)
+            emptyList()
+        }
+    }
+
     override fun isFavorite(path: String): Boolean {
         return try {
             context.favoritesDB.isFavorite(path)

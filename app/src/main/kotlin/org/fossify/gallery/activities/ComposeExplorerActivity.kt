@@ -612,7 +612,9 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
         val result = withContext(Dispatchers.IO) {
             val dirs = if (favPaths.isEmpty()) emptyList() else previewRepo.getAllDirectories().filter { it.path in favPaths }
             val colls = if (collIds.isEmpty()) emptyList() else previewRepo.getCollections().filter { it.id.toString() in collIds }
-            val thumbs = colls.associate { c -> c.id.toString() to (c.getIncludedPaths().firstNotNullOfOrNull { p -> previewRepo.getMediaFromPath(p).firstOrNull()?.path } ?: "") }
+            // Same shape as AlbumsScreen's preview strip: only the first path is ever used, so cap
+            // it in SQL rather than loading every row of the folder and discarding all but one.
+            val thumbs = colls.associate { c -> c.id.toString() to (c.getIncludedPaths().firstNotNullOfOrNull { p -> previewRepo.getPreviewPathsFromPath(p, 1).firstOrNull() } ?: "") }
             Triple(dirs, colls, thumbs)
         }
         pinnedFavDirs = result.first; pinnedColls = result.second; pinnedCollThumbs = result.third
