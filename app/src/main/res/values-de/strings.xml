@@ -887,4 +887,9 @@
     <string name="library_health_dialog_msg">MediaStore kennt %1$d Einträge, diese App hat %2$d. Ein vollständiger Neuabgleich liest alles erneut ein und ergänzt das Fehlende. Er läuft im Hintergrund und kann bei großen Bibliotheken einige Minuten dauern.</string>
     <string name="library_health_rescan">Jetzt neu abgleichen</string>
     <string name="library_health_started">Neuabgleich gestartet</string>
+    <string name="add_to_favorites">Zu Favoriten hinzufügen</string>
+    <string name="explorer">Explorer</string>
+    <string name="rating">Bewertung</string>
+    <string name="remove">Entfernen</string>
+    <string name="remove_from_favorites">Aus Favoriten entfernen</string>
 </resources>
