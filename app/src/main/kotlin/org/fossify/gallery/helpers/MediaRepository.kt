@@ -654,22 +654,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             // rescan on a populated library is not a first sync and must not trigger the heavy
             // disk-scan-and-merge branch below.
             val isFirstSync = storedSync == 0L || !context.mediaDB.hasAnyMedia()
-            val candidates = mutableListOf<Medium>()
             val newMedia = mutableListOf<Medium>()
-
-            // Dedups whatever has accumulated in [candidates] against the DB, moves the genuinely
-            // new rows into [newMedia], and empties [candidates]. Called every CANDIDATE_BATCH_SIZE
-            // rows while reading the cursor, and once more after it - so peak memory is one batch of
-            // candidates rather than the entire (potentially six-figure) result set.
-            fun flushCandidates() {
-                if (candidates.isEmpty()) return
-                val existing = candidates.map { it.path }
-                    .chunked(SQLITE_BATCH_CHUNK_SIZE)
-                    .flatMap { context.mediaDB.getExistingPaths(it) }
-                    .toSet()
-                candidates.filterTo(newMedia) { it.path !in existing }
-                candidates.clear()
-            }
             val uri = MediaStore.Files.getContentUri("external")
             val proj = arrayOf(
                 MediaStore.MediaColumns.DATA,
@@ -703,7 +688,16 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             )
 
             val storageRoot = Environment.getExternalStorageDirectory().absolutePath
-            var latestTimestamp = lastSync
+
+            // Peak memory is one batch, not the whole (potentially six-figure) result set: each full
+            // batch is deduped against the DB here and only the genuinely new rows are retained.
+            val batcher = SyncBatcher(CANDIDATE_BATCH_SIZE, lastSync) { batch ->
+                val existing = batch.map { it.path }
+                    .chunked(SQLITE_BATCH_CHUNK_SIZE)
+                    .flatMap { context.mediaDB.getExistingPaths(it) }
+                    .toSet()
+                batch.filterTo(newMedia) { it.path !in existing }
+            }
 
             context.contentResolver.query(uri, proj, sel, args, "${MediaStore.MediaColumns.DATE_MODIFIED} DESC")?.use { c ->
                 val dataIdx = c.getColumnIndex(MediaStore.MediaColumns.DATA)
@@ -731,42 +725,37 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                     // Memory stays bounded the way the cap intended: `candidates` is flushed to the
                     // DB-dedup every CANDIDATE_BATCH_SIZE rows (see flushCandidates below) instead
                     // of the whole result set being held at once.
-                    if (candidates.size >= CANDIDATE_BATCH_SIZE) flushCandidates()
-                    var path = if (dataIdx >= 0) c.getString(dataIdx) else null
-                    if (path.isNullOrBlank()) {
-                        val relPath = if (relPathIdx >= 0) c.getString(relPathIdx) ?: "" else ""
-                        val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "" else ""
-                        path = "$storageRoot/$relPath$name"
-                    }
-                    if (path.isNullOrBlank()) continue
+                    val path = SyncFields.resolvePath(
+                        data = if (dataIdx >= 0) c.getString(dataIdx) else null,
+                        storageRoot = storageRoot,
+                        relativePath = if (relPathIdx >= 0) c.getString(relPathIdx) else null,
+                        displayName = if (nameIdx >= 0) c.getString(nameIdx) else null,
+                    ) ?: continue
                     val name = File(path).name
                     val modifiedSec = if (dateIdx >= 0) c.getLong(dateIdx) else 0L
                     val modified = modifiedSec * 1000L
-                    latestTimestamp = maxOf(latestTimestamp, modified)
                     // date_taken (already millis, unlike date_modified/date_added which are seconds)
                     // is preserved for grouping/display; the actual sort now keys on date_added (see
                     // below). Falling back to modified when MediaStore has no date_taken (non-EXIF
                     // file) keeps taken from being an inconsistent 0.
-                    val taken = (if (takenIdx >= 0) c.getLong(takenIdx) else 0L).takeIf { it > 0 } ?: modified
-                    // DATE_ADDED = when the file entered the media library (seconds -> millis). This
-                    // is what date_sort_key keys on, so a just-downloaded photo with an old EXIF
-                    // date_taken still sorts to the top, while a file moved via a RELATIVE_PATH fast
-                    // move (MediaStore keeps its original date_added) stays put instead of jumping.
-                    // Falls back to modified/taken if MediaStore somehow reports no date_added.
-                    val addedSec = if (addedIdx >= 0) c.getLong(addedIdx) else 0L
-                    val added = (addedSec * 1000L).takeIf { it > 0 } ?: maxOf(modified, taken)
-                    // The watermark must cover the ADDED axis too, or rows found via the
-                    // DATE_ADDED half of the selection keep matching forever.
-                    latestTimestamp = maxOf(latestTimestamp, added)
+                    val taken = SyncFields.takenMs(if (takenIdx >= 0) c.getLong(takenIdx) else 0L, modified)
+                    val added = SyncFields.addedMs(if (addedIdx >= 0) c.getLong(addedIdx) else 0L, modified, taken)
 
                     val size = if (sizeIdx >= 0) c.getLong(sizeIdx) else 0L
                     val mediaType = if (typeIdx >= 0) c.getInt(typeIdx) else 1
                     val type = if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) 2 else 1
-                    candidates.add(Medium(null, name, path, File(path).parent ?: "", modified, taken, size, type, 0, false, 0L, 0L, 0, dateAdded = added))
+                    // Watermark and batching both go through SyncBatcher.add, which cannot advance
+                    // the one without emitting the other - see IncrementalSyncCore.
+                    batcher.add(
+                        Medium(null, name, path, File(path).parent ?: "", modified, taken, size, type, 0, false, 0L, 0L, 0, dateAdded = added),
+                        modifiedMs = modified,
+                        addedMs = added,
+                    )
                 }
             }
             // Whatever is left in the last, partial batch.
-            flushCandidates()
+            batcher.finish()
+            val latestTimestamp = batcher.watermark
 
             val deletedPaths = try {
                 context.mediaDB.getDeletedMedia().map { it.path }.toSet()
