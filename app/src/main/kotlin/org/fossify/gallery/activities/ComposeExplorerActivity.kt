@@ -331,6 +331,19 @@ class ComposeExplorerActivity : ComponentActivity() {
         contentResolver.registerContentObserver(
             android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, mediaObserver
         )
+        // Catch up on everything MediaStore gained while we were stopped. Registering the observer
+        // above only covers changes from here on - it does not fire for what already happened, and
+        // this observer was (until now) the single caller of scheduleIncrementalSync. So photos
+        // taken while Gallery sat in the background were never synced into the media/directories
+        // tables on return; they only appeared after a cold start, via scheduleInitialSync.
+        // Reproduced on an emulator: 3 images added while backgrounded stayed at 0 rows across a
+        // foreground round trip, then all 3 landed after a force-stop + relaunch.
+        //
+        // Cheap to do unconditionally: syncNewMediaFromStore() is watermark-filtered
+        // (DATE_MODIFIED > lastSyncTimestamp), so an onStart with nothing new is a single empty
+        // query, and the enqueue itself is KEEP-policy so a still-pending job is not restarted.
+        // Measured on a 163k-item library: 0 CPU ticks per foreground return.
+        MediaSyncWorker.scheduleIncrementalSync(this)
     }
 
     override fun onStop() {

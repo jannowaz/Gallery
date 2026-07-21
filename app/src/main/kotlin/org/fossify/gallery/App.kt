@@ -17,6 +17,7 @@ import org.fossify.commons.FossifyApp
 import org.fossify.gallery.compose.util.BlurState
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.helpers.CrashLogger
+import org.fossify.gallery.helpers.RefreshBus
 
 class App : FossifyApp(), ImageLoaderFactory {
 
@@ -78,6 +79,11 @@ class App : FossifyApp(), ImageLoaderFactory {
         }
         super.onCreate()
         Reprint.initialize(this)
+
+        // Gates RefreshBus on the process being in the foreground. Registered here, before any
+        // Activity exists, so the very first onStart is the one that opens the gate - and so a
+        // trigger fired by a worker in a headless process is recorded for replay rather than lost.
+        RefreshBus.startForegroundTracking()
 
         // Seed the Compose-observable blur mirror from the persisted setting - BlurState (not
         // Config directly) is what every blur call site and toggle reads/writes through, since

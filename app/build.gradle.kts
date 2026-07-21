@@ -175,6 +175,7 @@ dependencies {
     implementation(libs.exif)
     implementation(libs.android.gif.drawable)
     implementation(libs.androidx.lifecycle.runtime)
+    implementation(libs.androidx.lifecycle.process)
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.4")
     implementation("com.drewnoakes:metadata-extractor:2.19.0")
     implementation(libs.androidx.constraintlayout)
