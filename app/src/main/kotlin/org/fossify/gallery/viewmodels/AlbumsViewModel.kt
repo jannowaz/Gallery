@@ -48,6 +48,10 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
     private val dirListLock = Any()
     private var fullDirList = ArrayList<Directory>()
 
+    /** Whether a directory pass has run in this process yet - see fetchAndApplyDirectories. Guarded
+     * by [dirListLock] because load() and silentReload() can both be in flight at once. */
+    private var didFirstDirectoryPass = false
+
     init {
         _searchQuery
             .debounce(300L)
@@ -97,11 +101,41 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
             ctx.getCachedDirectories(false, false) { dirs ->
                 val processed = ctx.addTempFolderIfNeeded(ArrayList(dirs))
                 val sorted = ctx.getSortedDirectories(processed)
-                val changedPaths = sorted.filter { dir ->
-                    val old = previous[dir.path]
-                    old == null || old.mediaCnt != dir.mediaCnt || old.modified != dir.modified ||
-                        old.taken != dir.taken || old.size != dir.size || old.tmb != dir.tmb
-                }.mapTo(HashSet()) { it.path }
+                // First pass of this process: take what the DB says as the baseline instead of
+                // treating every folder as changed. fullDirList is in-memory, so on a cold start
+                // `previous` is empty and the comparison below marked all of them - measured on a
+                // real device as "2839 von 2839 Ordnern", i.e. recheckDirectories did a full-device
+                // disk rescan on every single launch (~34s of the cold-start CPU). The changedPaths
+                // mechanism was added to stop that happening per RefreshBus tick, but cold start has
+                // nothing to diff against by construction, so it never helped there.
+                //
+                // This was tried once before and reverted, because back then the disk rescan was the
+                // only thing making the album counts right: the media table was silently missing
+                // 3,761 files (truncating incremental sync - fixed since, see
+                // MediaRepository.syncNewMediaFromStore), and syncDirectoriesFromMedia() above
+                // rebuilds the directory rows from exactly that table on every pass. With the media
+                // table now matching MediaStore, the DB is a sound baseline. Verified by comparing
+                // the album counts against `ls` on the actual folders - the check that caught the
+                // regression the first time.
+                //
+                // Keyed off an explicit flag, not `previous.isEmpty()`: on a fresh install the very
+                // first pass legitimately has no directories yet, and the empty-check would then
+                // also skip the *second* pass (right after the initial sync populates them), leaving
+                // the recheck permanently unrun.
+                val isFirstPass = synchronized(dirListLock) {
+                    val first = !didFirstDirectoryPass
+                    didFirstDirectoryPass = true
+                    first
+                }
+                val changedPaths = if (isFirstPass) {
+                    emptySet()
+                } else {
+                    sorted.filter { dir ->
+                        val old = previous[dir.path]
+                        old == null || old.mediaCnt != dir.mediaCnt || old.modified != dir.modified ||
+                            old.taken != dir.taken || old.size != dir.size || old.tmb != dir.tmb
+                    }.mapTo(HashSet()) { it.path }
+                }
                 synchronized(dirListLock) { fullDirList = ArrayList(sorted) }
                 updateDirectories(sorted)
                 recheckDirectories(ArrayList(sorted), changedPaths)
