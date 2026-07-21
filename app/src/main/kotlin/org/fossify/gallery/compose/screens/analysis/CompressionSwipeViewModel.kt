@@ -100,6 +100,14 @@ class CompressionSwipeViewModel(app: Application) : AndroidViewModel(app) {
                         engine.compressImage(item.path, edge, quality)
                     }
                 }
+            } catch (e: OutOfMemoryError) {
+                // Same reasoning as CompressionWorker's per-item handler: OutOfMemoryError is an
+                // Error, so it would otherwise escape this catch and take the whole app down from
+                // inside viewModelScope, mid-swipe. Here it just fails the one item and leaves the
+                // triage session intact.
+                android.util.Log.e("CompressionSwipe", "OOM compressing ${item.path}", e)
+                fail(getApplication<Application>().getString(R.string.opt_err_image_too_large))
+                return@launch
             } catch (e: Exception) {
                 fail(e.message)
                 return@launch

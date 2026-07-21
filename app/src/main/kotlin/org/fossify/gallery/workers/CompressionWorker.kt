@@ -91,6 +91,19 @@ class CompressionWorker(
                         }
                         item.copy(tempResultPath = outFile.absolutePath, resultSize = outFile.length(), status = CompressionReviewItem.STATUS_DONE)
                     }
+                } catch (e: OutOfMemoryError) {
+                    // Caught separately because OutOfMemoryError is an Error, not an Exception: it
+                    // used to slip past the catch below AND the outer try, killing the worker with
+                    // every remaining item still PENDING - so one oversized photo (compressImage
+                    // holds the decoded bitmap, up to just under 2x the target edge, and the scaled
+                    // copy at the same time) took down the whole "compress all" run. Now it fails
+                    // that one item and the batch carries on. Same handling, and the same message,
+                    // as StorageAnalysisViewModel's own compression path already uses.
+                    android.util.Log.e("CompressionWorker", "OOM compressing ${item.originalPath}", e)
+                    item.copy(
+                        status = CompressionReviewItem.STATUS_FAILED,
+                        errorMessage = applicationContext.getString(org.fossify.gallery.R.string.opt_err_image_too_large),
+                    )
                 } catch (e: Exception) {
                     item.copy(status = CompressionReviewItem.STATUS_FAILED, errorMessage = e.message)
                 }
