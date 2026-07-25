@@ -104,6 +104,7 @@ import org.fossify.gallery.compose.components.RenameDialog
 import org.fossify.gallery.compose.components.SectionHeader
 import org.fossify.gallery.compose.components.UndoBar
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.R
 import androidx.compose.ui.res.stringResource
 import org.fossify.commons.extensions.toast
@@ -243,7 +244,7 @@ fun ExplorerScreen(
     var allEntries by remember { mutableStateOf(org.fossify.gallery.helpers.MediaStoreOps.cachedEntriesUnder(storageRoot)) }
     LaunchedEffect(Unit) {
         if (allEntries == null) {
-            allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.refreshEntriesUnder(context, storageRoot) }
+            allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.refreshEntriesFromDb(context, storageRoot) }
         }
     }
     // Re-fetch after rename/move/mover/delete etc. so the tree doesn't keep showing files/folders
@@ -251,18 +252,18 @@ fun ExplorerScreen(
     // the loadedPath guard) so this refresh happens quietly instead of flashing the skeleton loader.
     //
     // RefreshBus's own debounce (300ms, shared by every other collector on the bus) is tuned for
-    // cheap listeners - this one isn't cheap: refreshEntriesUnder() is a full-device MediaStore scan
-    // (measured ~6s on a real ~200k-item library, see MediaStoreOps.refreshEntriesUnder's doc
-    // comment). Folder *structure* changes (a file added/removed/moved) are inherently rare compared
-    // to how often RefreshBus actually fires - every favorite/delete/restore explicitly triggers it
+    // cheap listeners - this one isn't cheap: refreshEntriesFromDb() reads every live media row
+    // (measured ~1.8s on a real ~206k-item library, down from ~8s when this read MediaStore directly).
+    // Folder *structure* changes (a file added/removed/moved) are inherently rare compared to how
+    // often RefreshBus actually fires - every favorite/delete/restore explicitly triggers it
     // (MediaRepository), and so does every debounced MediaStore write from ANY app on the device via
     // the ContentObserver in ComposeExplorerActivity. Without an additional, much longer debounce
     // here, a short burst of individual actions (e.g. favoriting several photos one at a time) queued
-    // one full 6s device-wide rescan per action while this tab was mounted - a self-inflicted,
-    // sustained MediaProvider CPU cost with no benefit, since the tree rarely actually changed shape.
+    // one full device-wide rescan per action while this tab was mounted - a self-inflicted,
+    // sustained cost with no benefit, since the tree rarely actually changed shape.
     LaunchedEffect(Unit) {
         org.fossify.gallery.helpers.RefreshBus.events.debounce(10_000).collect {
-            allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.refreshEntriesUnder(context, storageRoot) }
+            allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.refreshEntriesFromDb(context, storageRoot) }
         }
     }
 

@@ -6,6 +6,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
+import org.fossify.gallery.extensions.mediaDB
 import java.io.File
 
 /**
@@ -228,21 +229,39 @@ object MediaStoreOps {
         return cachedEntries?.takeIf { cachedRoot == root }
     }
 
-    /** Re-queries MediaStore and refreshes the cache used by [cachedEntriesUnder].
-     *
-     * A local-Room-DB-backed variant (via a `full_path LIKE` query against the already-synced
-     * `media` table) was tried here instead of this raw ContentResolver scan, on the theory that
-     * `media.full_path`'s index (see Medium.kt) would make it a range scan instead of a linear scan.
-     * Measured on-device on a ~200k-item library it was consistently SLOWER (7.5-10.3s vs ~6s for
-     * this version, even after forcing the index with `INDEXED BY` once EXPLAIN QUERY PLAN showed
-     * SQLite's planner was picking a different index by default) - so it was reverted. Left as a
-     * cautionary note: a query that looks like a clear win on paper (and even checks out via
-     * EXPLAIN QUERY PLAN / a desktop sqlite3 sanity check) still needs an actual on-device
-     * measurement before assuming it's faster.
-     */
+    /** Re-queries MediaStore and refreshes the cache used by [cachedEntriesUnder]. Kept for the
+     * off-[storageRoot] case (SD cards etc.); the storage-root path now goes through
+     * [refreshEntriesFromDb], which is much faster - see its doc. */
     fun refreshEntriesUnder(context: Context, rootPath: String): List<MediaEntry> {
         val root = rootPath.trimEnd('/')
         val fresh = mediaEntriesUnder(context, root)
+        cachedRoot = root
+        cachedEntries = fresh
+        return fresh
+    }
+
+    /**
+     * Same cache, but sourced from the Room `media` table instead of a full-device MediaStore
+     * cursor. Measured on-device on a ~206k-item library: **1.8s vs 8.1s** for the MediaStore scan.
+     *
+     * An earlier DB attempt was reverted as slower (see git history), but it used a
+     * `full_path LIKE 'root/%'` predicate - which, because `full_path` is COLLATE NOCASE, cannot use
+     * the index and degrades to a full scan plus per-row collation work (the same index-defeating
+     * trap fixed for parent_path in 2026-07-21). This query does the opposite: no SQL filtering at
+     * all, just `SELECT ... WHERE deleted_ts = 0`, and the root-prefix filtering stays in Kotlin
+     * where the caller already does it. Do NOT reintroduce a LIKE here.
+     *
+     * Only sound now that the media table actually matches MediaStore (the sync-truncation fix of
+     * 2026-07-21); before that this would have shown folders with silently missing files.
+     */
+    fun refreshEntriesFromDb(context: Context, rootPath: String): List<MediaEntry> {
+        val root = rootPath.trimEnd('/')
+        val fresh = try {
+            context.mediaDB.getAllLiveEntriesForExplorer()
+        } catch (e: Exception) {
+            android.util.Log.e("MediaStoreOps", "DB entry load failed, falling back to MediaStore", e)
+            return refreshEntriesUnder(context, root)
+        }
         cachedRoot = root
         cachedEntries = fresh
         return fresh

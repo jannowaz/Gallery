@@ -65,6 +65,11 @@ interface MediumDao {
     @Query("SELECT COUNT(filename) FROM media WHERE deleted_ts = 0")
     fun getLiveMediaCount(): Int
 
+    /** All live paths + the fields the Explorer's folder-tree reconstruction needs, straight from
+     * the indexed media table instead of a full-device MediaStore cursor. See MediaStoreOps.MediaEntry. */
+    @Query("SELECT full_path AS path, filename AS name, last_modified AS modified, size, date_added AS dateAdded FROM media WHERE deleted_ts = 0")
+    fun getAllLiveEntriesForExplorer(): List<org.fossify.gallery.helpers.MediaStoreOps.MediaEntry>
+
     @Query("SELECT COUNT(filename) FROM media WHERE deleted_ts != 0")
     fun getDeletedMediaCount(): Long
 
