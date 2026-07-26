@@ -134,7 +134,19 @@ fun FavoritesScreen(
                         } else {
                             Text(stringResource(R.string.folders), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                         }
-                        val favoriteDirItems = remember(favoriteDirs) { favoriteDirs.map { AlbumGridItem(key = it.path, name = it.name, thumbnailPath = it.tmb, count = it.mediaCnt) } }
+                        // Sort the favorite folders by the same field as the media below, so the
+                        // whole tab responds to the sort setting instead of the folder strip staying
+                        // in a fixed order while the media reorders. Same mapping as AlbumsScreen.
+                        val favoriteDirItems = remember(favoriteDirs, viewSettings.sortBy, viewSettings.sortDesc) {
+                            val asc = when (viewSettings.sortBy) {
+                                SortField.DATE -> favoriteDirs.sortedBy { it.modified }
+                                SortField.SIZE -> favoriteDirs.sortedBy { it.size }
+                                SortField.COUNT -> favoriteDirs.sortedBy { it.mediaCnt }
+                                else -> favoriteDirs.sortedBy { it.name.lowercase() } // NAME, and RATING (folders have none)
+                            }
+                            (if (viewSettings.sortDesc) asc.reversed() else asc)
+                                .map { AlbumGridItem(key = it.path, name = it.name, thumbnailPath = it.tmb, count = it.mediaCnt) }
+                        }
                         LibraryAlbumGrid(
                             items = favoriteDirItems,
                             viewSettings = viewSettings,
