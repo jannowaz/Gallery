@@ -216,9 +216,18 @@ private fun PagedContent(
     // Collection): row.pagingIndex is a position within the filtered grid, so resolving it against the
     // unfiltered path list would open whatever unrelated file happens to sit at that index instead.
     fun openViewerPaged(index: Int) {
+        // Grab the tapped item's PATH from the (fresh) paging list before switching threads, and
+        // resolve the viewer's start index by that path below - not by the raw paging index. The path
+        // list from activePathsSortedFiltered() is cached by (filter, sort, desc), and a move does NOT
+        // change that key, so right after a move it can still contain the moved-away items while the
+        // grid's pagingIndex is already fresh. Passing the fresh index into the stale list opened the
+        // wrong medium, offset by exactly the number of moved elements. Resolving by identity opens the
+        // item that was actually tapped regardless of any transient grid/path-list skew.
+        val tappedPath = safePeek(lazyPagingItems, index)?.path
         scope.launch {
             val paths = if (hasFilter) viewModel.activePathsSortedFiltered() else viewModel.activePathsSorted()
-            onNavigateToViewer?.invoke(paths, index)
+            val resolved = tappedPath?.let { paths.indexOf(it) }?.takeIf { it >= 0 } ?: index
+            onNavigateToViewer?.invoke(paths, resolved)
         }
     }
 
@@ -278,7 +287,12 @@ private fun PagedContent(
                 LazyVerticalGrid(state = gridState, columns = GridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
                     items(
                         count = rows.size,
-                        key = { i -> when (val r = rows[i]) { is PagedRow.Header -> "header_${i}_${r.label}"; is PagedRow.Item -> safePeek(lazyPagingItems, r.pagingIndex)?.path ?: "empty_${r.pagingIndex}" } },
+                        // Key by pagingIndex (unique per row), NOT the item path: an offset-based
+                        // PagingSource can return the same row in two adjacent pages when the
+                        // underlying order shifts mid-scroll (e.g. media moved while scrolling a large
+                        // Collection), and a duplicate path key then crashed LazyVerticalGrid with
+                        // "Key ... was already used". pagingIndex can never collide.
+                        key = { i -> when (val r = rows[i]) { is PagedRow.Header -> "header_${i}_${r.label}"; is PagedRow.Item -> "item_${r.pagingIndex}" } },
                         span = { i -> if (rows[i] is PagedRow.Header) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
                         contentType = { i -> if (rows[i] is PagedRow.Header) "header" else (safePeek(lazyPagingItems, (rows[i] as PagedRow.Item).pagingIndex)?.type ?: 0) },
                     ) { i ->
@@ -381,7 +395,8 @@ private fun PagedContent(
                                 MonthHeader(label = row.label, count = row.count)
                             }
                             is PagedRow.Item -> item(
-                                key = safePeek(lazyPagingItems, row.pagingIndex)?.path ?: "empty_${row.pagingIndex}",
+                                // pagingIndex, not path: offset-paging can surface a path twice mid-scroll (see grid branch).
+                                key = "item_${row.pagingIndex}",
                                 contentType = safePeek(lazyPagingItems, row.pagingIndex)?.type ?: 0,
                             ) {
                                 val m = safeGet(lazyPagingItems, row.pagingIndex)
@@ -456,8 +471,8 @@ private fun PagedContent(
                             stickyHeader(key = "header_${headerSeq}_${row.label}") { MonthHeader(label = row.label, count = row.count) }
                         }
                         is PagedRow.Item -> {
-                            val path = safePeek(lazyPagingItems, row.pagingIndex)?.path
-                            item(key = path ?: "empty_${row.pagingIndex}", contentType = safePeek(lazyPagingItems, row.pagingIndex)?.type ?: 0) {
+                            // pagingIndex, not path: offset-paging can surface a path twice mid-scroll (see grid branch).
+                            item(key = "item_${row.pagingIndex}", contentType = safePeek(lazyPagingItems, row.pagingIndex)?.type ?: 0) {
                                 val m = safeGet(lazyPagingItems, row.pagingIndex)
                                 if (m != null) {
                                     val isVideo = remember(m.path) { m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
