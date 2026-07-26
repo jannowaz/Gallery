@@ -734,9 +734,13 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             // Peak memory is one batch, not the whole (potentially six-figure) result set: each full
             // batch is deduped against the DB here and only the genuinely new rows are retained.
             val batcher = SyncBatcher(CANDIDATE_BATCH_SIZE, lastSync) { batch ->
+                // Dedup against LIVE paths only (not getExistingPaths): a freshly re-created file on a
+                // path that still carries a soft-deleted recycle-bin row must be treated as new so it
+                // reaches newMedia and gets revived below. Safe because this loop is timestamp-filtered
+                // (fresh DATE_ADDED/DATE_MODIFIED), so an untouched recycle-bin item never gets here.
                 val existing = batch.map { it.path }
                     .chunked(SQLITE_BATCH_CHUNK_SIZE)
-                    .flatMap { context.mediaDB.getExistingPaths(it) }
+                    .flatMap { context.mediaDB.getLivePaths(it) }
                     .toSet()
                 batch.filterTo(newMedia) { it.path !in existing }
             }
@@ -832,6 +836,11 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
                 return merged
             } else if (newMedia.isNotEmpty()) {
                 try {
+                    // Revive BEFORE the insert: any newMedia path that still carries a soft-deleted
+                    // row would otherwise be IGNOREd by insertAllKeepingExisting (unique full_path)
+                    // and stay invisible. reviveSoftDeleted un-deletes and refreshes those in place,
+                    // keeping their id/favorite/rating/tag associations (which REPLACE would lose).
+                    reviveSoftDeleted(newMedia)
                     context.mediaDB.insertAllKeepingExisting(newMedia)
                     context.config.lastSyncTimestamp = latestTimestamp
                     // Both sync callers (MediaViewModel and MediaSyncWorker) get the directory
@@ -909,6 +918,35 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     // are in the recycle bin) - not the whole library. Whether a found file already exists in the DB
     // is checked below via a batch query scoped to just this function's own (small, non-recursive,
     // ~7-folder) candidate set, the same pattern syncNewMediaFromStore() uses for its own candidates.
+    /**
+     * A freshly re-created file can land on a path that still carries a soft-deleted (recycle-bin)
+     * row - the recycle bin only sets `deleted_ts`, it does not move the file off disk, so nothing
+     * stops a new file taking the same path later. `insertAllKeepingExisting` IGNOREs it (unique
+     * `full_path`), leaving the new file permanently invisible - the reproduced "not all new media
+     * show up, even after refresh" bug. Un-delete and refresh those rows to the new file's metadata.
+     *
+     * Correctness rests on the caller: [candidates] here come only from the timestamp-filtered
+     * incremental MediaStore loop (fresh DATE_ADDED/DATE_MODIFIED), so an untouched recycle-bin item
+     * - whose on-disk file keeps its old timestamps - never reaches this and is never resurrected.
+     */
+    private fun reviveSoftDeleted(candidates: List<Medium>) {
+        if (candidates.isEmpty()) return
+        try {
+            val byPath = candidates.associateBy { it.path }
+            val softDeleted = byPath.keys.chunked(SQLITE_BATCH_CHUNK_SIZE)
+                .flatMap { context.mediaDB.getSoftDeletedPaths(it) }
+            if (softDeleted.isEmpty()) return
+            softDeleted.forEach { dbPath ->
+                // getSoftDeletedPaths returns the DB's stored casing; map back case-insensitively.
+                val m = byPath[dbPath] ?: byPath.entries.firstOrNull { it.key.equals(dbPath, ignoreCase = true) }?.value
+                if (m != null) context.mediaDB.reviveMedium(dbPath, m.modified, m.taken, m.size, m.type, m.dateAdded)
+            }
+            android.util.Log.i("MediaRepository", "Revived ${softDeleted.size} re-created files from soft-deleted rows")
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "reviveSoftDeleted failed", e)
+        }
+    }
+
     private fun recentDiskMedia(knownPaths: Set<String>): List<Medium> {
         val candidates = mutableListOf<Medium>()
         val exts = videoExts + imageExts

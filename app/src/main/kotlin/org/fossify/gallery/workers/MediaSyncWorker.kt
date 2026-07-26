@@ -34,7 +34,7 @@ class MediaSyncWorker(
             // tested implementation instead of two that can silently drift apart.
             val repo = MediaRepository(applicationContext)
             val isGapRepair = inputData.getBoolean(KEY_FULL_RESCAN, false)
-            val newMedia = repo.syncNewMediaFromStore(fullRescan = isGapRepair)
+            var newMedia = repo.syncNewMediaFromStore(fullRescan = isGapRepair)
             if (isGapRepair) {
                 // Only after the pass actually completed - a failure throws out of here and leaves
                 // the flag unset, so the repair is retried on the next launch instead of being
@@ -63,6 +63,21 @@ class MediaSyncWorker(
                 RefreshBus.trigger()
             }
 
+            // Close the KEEP-coalescing gap. scheduleIncrementalSync uses ExistingWorkPolicy.KEEP, so
+            // a MediaStore write that lands *after* this run's cursor query - but within the 1500ms
+            // observer debounce, with no later observer event - is swallowed and would sit unsynced
+            // until some unrelated future trigger. Rescheduling from here can't fix it (KEEP drops a
+            // re-enqueue of a unique job that is still RUNNING - this very worker). Instead sweep again
+            // in-process: this run found new media, so MediaStore was actively changing; re-query until
+            // caught up. Each sweep is a cheap watermark-filtered query that returns empty once there
+            // is nothing newer, so it converges. Bounded so a burst still being written doesn't pin the
+            // worker - whatever is left after the cap is picked up by the next trigger.
+            var sweeps = 0
+            while (newMedia.isNotEmpty() && sweeps++ < MAX_CATCHUP_SWEEPS) {
+                newMedia = repo.syncNewMediaFromStore()
+                if (newMedia.isNotEmpty()) RefreshBus.trigger()
+            }
+
             Result.success()
         } catch (e: Exception) {
             // retry(), not failure(): a sync failure is usually transient (MediaStore momentarily
@@ -80,6 +95,10 @@ class MediaSyncWorker(
     companion object {
         const val KEY_FULL_RESCAN = "full_rescan"
         private const val MAX_RETRIES = 3
+        // Extra in-process re-queries after a productive sync, to catch writes that landed during the
+        // previous query but were swallowed by the observer debounce. Small: each is a fast empty-ish
+        // query and the next trigger handles anything still arriving after the cap.
+        private const val MAX_CATCHUP_SWEEPS = 3
         private const val GAP_REPAIR_WORK_NAME = "media_sync_gap_repair"
         private const val WORK_NAME = "media_sync"
         private const val INITIAL_WORK_NAME = "media_sync_initial"

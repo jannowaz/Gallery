@@ -94,6 +94,23 @@ interface MediumDao {
     @Query("SELECT full_path FROM media WHERE full_path IN (:paths)")
     fun getExistingPaths(paths: List<String>): List<String>
 
+    // Dedup that ignores soft-deleted (recycle-bin) rows: a path that exists ONLY as a deleted_ts!=0
+    // row must count as "not present" so a freshly re-created file there flows into the new-media set
+    // and gets revived, instead of being deduped away and then IGNOREd by insertAllKeepingExisting -
+    // which left it permanently invisible (see MediaRepository.reviveSoftDeleted).
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 AND full_path IN (:paths)")
+    fun getLivePaths(paths: List<String>): List<String>
+
+    @Query("SELECT full_path FROM media WHERE deleted_ts != 0 AND full_path IN (:paths)")
+    fun getSoftDeletedPaths(paths: List<String>): List<String>
+
+    // Un-deletes a row and refreshes it to a re-created file's metadata. Only safe to call for paths
+    // the timestamp-filtered incremental sync actually matched (a fresh DATE_ADDED/DATE_MODIFIED), so
+    // an untouched recycle-bin item - whose file keeps its old timestamps - is never resurrected. The
+    // date/last_modified writes fire trg_media_date_sort_key_upd, re-sorting it to its new date.
+    @Query("UPDATE media SET deleted_ts = 0, last_modified = :lastModified, date_taken = :dateTaken, size = :size, type = :type, date_added = :dateAdded WHERE full_path = :path COLLATE NOCASE")
+    fun reviveMedium(path: String, lastModified: Long, dateTaken: Long, size: Long, type: Int, dateAdded: Long)
+
     @Query("SELECT EXISTS(SELECT 1 FROM media LIMIT 1)")
     fun hasAnyMedia(): Boolean
 
