@@ -83,10 +83,30 @@ class MediaBatchWorker(
         // Ensures this actually runs as a promoted foreground service (not just a look-alike
         // notification) - a batch of large media files is exactly the long-running, screen-off case
         // that needs real FGS protection from Doze/background execution limits.
-        setForeground(createForegroundInfo(0, 0))
+        try {
+            setForeground(createForegroundInfo(0, 0))
+        } catch (e: Exception) {
+            // On Android 12+ a dataSync foreground service cannot be started while the app is in the
+            // background (ForegroundServiceStartNotAllowedException). If the user taps "move all" and
+            // then leaves the app before WorkManager actually starts this worker, setForeground()
+            // throws here - which, when swallowed, looked exactly like "the whole batch failed with
+            // nothing moved". Log it loudly; the retry below runs without the FGS promotion.
+            android.util.Log.e(TAG, "setForeground failed (app likely backgrounded at worker start)", e)
+        }
 
         val jobId = inputData.getString(KEY_JOB_ID) ?: return Result.failure()
         val operation = inputData.getString(KEY_OPERATION)?.let { runCatching { BatchOperation.valueOf(it) }.getOrNull() } ?: return Result.failure()
+
+        // Give up (rather than retry forever) once WorkManager has already restarted this a few
+        // times - each restart means the process was killed mid-run, and endless 30s-backoff retries
+        // are exactly what left jobs stuck in TIMING_DELAY on-device. Clear this job's rows so a
+        // failed batch doesn't leave dead queue entries behind.
+        if (runAttemptCount >= MAX_ATTEMPTS) {
+            android.util.Log.w(TAG, "giving up on job $jobId after $runAttemptCount attempts")
+            withContext(Dispatchers.IO) { applicationContext.batchJobItemDB.deleteJob(jobId) }
+            showResultNotification(operation, 0, 0, cancelled = true)
+            return Result.failure()
+        }
 
         return try {
             val items = withContext(Dispatchers.IO) { applicationContext.batchJobItemDB.getForJob(jobId) }
@@ -145,7 +165,7 @@ class MediaBatchWorker(
             // the final counts from outputData instead, not progress.
             Result.success(androidx.work.workDataOf("done" to done, "failed" to failed, "total" to total))
         } catch (e: Exception) {
-            android.util.Log.e("MediaBatchWorker", "Job $jobId failed", e)
+            android.util.Log.e(TAG, "Job $jobId failed", e)
             Result.failure()
         }
     }
@@ -178,7 +198,15 @@ class MediaBatchWorker(
                 true
             }
             BatchOperation.MOVE_COPY_DELETE -> {
-                val uri = MediaStoreOps.uriForPath(applicationContext, item.sourcePath) ?: return false
+                val uri = MediaStoreOps.uriForPath(applicationContext, item.sourcePath)
+                if (uri == null) {
+                    // No MediaStore row for this path. The usual cause in a "move all pairs" run is a
+                    // stale pair: the source folder was listed (flattenMoverPairs) before the batch
+                    // started, but MediaStore never indexed some of those files (or indexed them
+                    // under a different DATA path), so uriForPath finds nothing.
+                    android.util.Log.w(TAG, "MOVE fail: no MediaStore uri for ${item.sourcePath}")
+                    return false
+                }
                 val targetRel = MediaStoreOps.relativePathFor(File(item.targetPath).parent ?: "")
                 // Same-volume moves (the common case - the Mover feature/widget used to always
                 // byte-copy here even within internal storage, which was the actual cause of "why
@@ -188,10 +216,18 @@ class MediaBatchWorker(
                 // storage -> SD card) still needs the manual copy, since there's no single rename
                 // syscall that can relocate bytes across two different filesystems.
                 if (MediaStoreOps.sameVolume(item.sourcePath, item.targetPath)) {
-                    if (!MediaStoreOps.move(applicationContext, uri, targetRel)) return false
+                    if (!MediaStoreOps.move(applicationContext, uri, targetRel)) {
+                        // update() returned 0 or threw. Most likely a name collision (target already
+                        // has a file of that name) or MediaProvider rejecting the RELATIVE_PATH write.
+                        android.util.Log.w(TAG, "MOVE fail: move() false for ${item.sourcePath} -> $targetRel")
+                        return false
+                    }
                 } else {
                     val newUri = MediaStoreOps.copy(applicationContext, uri, File(item.targetPath).name, targetRel, MediaStoreOps.isVideoPath(item.sourcePath))
-                        ?: return false
+                    if (newUri == null) {
+                        android.util.Log.w(TAG, "MOVE fail: copy() null for ${item.sourcePath} -> $targetRel")
+                        return false
+                    }
                     applicationContext.contentResolver.delete(uri, null, null)
                 }
                 // Same reasoning as MOVE_FAST above - this op additionally goes through a fresh
@@ -210,7 +246,14 @@ class MediaBatchWorker(
                 MediaStoreOps.copy(applicationContext, uri, File(item.targetPath).name, targetRel, MediaStoreOps.isVideoPath(item.sourcePath)) != null
             }
         }
-    } catch (_: Exception) { false }
+    } catch (e: Exception) {
+        // Previously swallowed silently, which is why a batch could report "N failed" with no way
+        // to tell why. A MediaProvider write throwing here (e.g. RecoverableSecurityException, or a
+        // transient failure once the process has been hammering it for hundreds of moves) is a prime
+        // suspect for "the later half of a big move-all run fails".
+        android.util.Log.w(TAG, "processItem threw for ${item.sourcePath} -> ${item.targetPath}", e)
+        false
+    }
 
     private fun showResultNotification(operation: BatchOperation, done: Int, failed: Int, cancelled: Boolean) {
         try {
@@ -232,8 +275,23 @@ class MediaBatchWorker(
     companion object {
         private const val CHANNEL_ID = "media_batch_ops"
         private const val NOTIFICATION_ID = 2003
+        private const val TAG = "MediaBatchWorker"
         const val KEY_JOB_ID = "job_id"
         const val KEY_OPERATION = "operation"
+
+        /** Fixed unique-work name for ALL batch ops. This is the fix for the stacking bug: it used to
+         * be the random per-call jobId, so enqueueUniqueWork treated every "move all" tap as a
+         * distinct job and REPLACE never replaced anything - a user re-tapping because nothing
+         * appeared to happen piled up 8 concurrent 291-item jobs that then deadlocked each other in
+         * WorkManager's retry backoff. A single fixed name means REPLACE actually cancels the
+         * previous batch and runs exactly one at a time. Batch media ops touching MediaStore are
+         * better serialized than run in parallel anyway (fewer provider write conflicts). */
+        private const val UNIQUE_WORK_NAME = "media_batch_op"
+
+        /** How many times WorkManager may retry after the worker's process is killed mid-run (a big
+         * move on a memory-pressured device) before giving up. Without a cap the default 30s-backoff
+         * retries accumulate into exactly the TIMING_DELAY-stuck jobs seen on-device. Read in doWork. */
+        const val MAX_ATTEMPTS = 3
 
         /** Persists [items] under a fresh jobId and enqueues the worker; the caller must already have
          * obtained MediaStore write consent for MOVE_FAST/MOVE_COPY_DELETE/RENAME before calling this. */
@@ -241,12 +299,16 @@ class MediaBatchWorker(
             val jobId = java.util.UUID.randomUUID().toString()
             withContext(Dispatchers.IO) {
                 context.batchJobItemDB.insertAll(items.map { it.copy(jobId = jobId) })
+                // Drop any rows from a previous, now-superseded batch (its worker is about to be
+                // REPLACEd and will never touch them). Keeps the table from accumulating dead rows.
+                context.batchJobItemDB.deleteAllExcept(jobId)
             }
             val request = OneTimeWorkRequestBuilder<MediaBatchWorker>()
                 .setInputData(Data.Builder().putString(KEY_JOB_ID, jobId).putString(KEY_OPERATION, operation.name).build())
                 .addTag(jobId)
+                .addTag(UNIQUE_WORK_NAME)
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork(jobId, ExistingWorkPolicy.REPLACE, request)
+            WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_WORK_NAME, ExistingWorkPolicy.REPLACE, request)
             return jobId
         }
     }
