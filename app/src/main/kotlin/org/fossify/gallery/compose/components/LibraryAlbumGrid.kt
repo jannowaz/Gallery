@@ -89,34 +89,15 @@ fun LibraryAlbumGrid(
         ScrollToTopEffect(tabIndex) { listState.animateScrollToItem(0) }
         LazyColumn(modifier.fillMaxSize(), state = listState) {
             items(items, key = { it.key }) { item ->
-                val selected = item.key in selectedKeys
-                AppCard(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = s.md, vertical = s.xs).clickableItem(item, onClick, onLongClick),
-                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else containerColor,
-                ) {
-                    Row(Modifier.padding(s.md).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (viewSettings.displayMode == DisplayMode.DARK) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                            Text(subtitle?.invoke(item) ?: resolvedCountLabel(item.count), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        if (selected) {
-                            Icon(Icons.Default.Check, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = s.sm).size(20.dp))
-                        } else {
-                            val previews = item.previewPaths.ifEmpty { if (item.thumbnailPath.isNotEmpty()) listOf(item.thumbnailPath) else emptyList() }
-                            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                if (previews.isEmpty()) {
-                                    Box(Modifier.size(44.dp).clip(RoundedCornerShape(Radius.xs)).background(MaterialTheme.colorScheme.surfaceVariant))
-                                } else {
-                                    previews.take(3).forEach { p ->
-                                        Box(Modifier.size(44.dp).clip(RoundedCornerShape(Radius.xs))) {
-                                            GalleryImage(path = p, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 12.dp, thumbnailSize = 128)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                AlbumListRow(
+                    name = item.name,
+                    subtitle = subtitle?.invoke(item) ?: resolvedCountLabel(item.count),
+                    coverPath = item.thumbnailPath.ifEmpty { item.previewPaths.firstOrNull() ?: "" },
+                    selected = item.key in selectedKeys,
+                    showChevron = true, // every album/collection/favorite/folder row opens on tap
+                    showThumbnail = viewSettings.showFolderThumbnails,
+                    modifier = Modifier.padding(horizontal = s.md, vertical = s.xs).clickableItem(item, onClick, onLongClick),
+                )
             }
         }
     } else {

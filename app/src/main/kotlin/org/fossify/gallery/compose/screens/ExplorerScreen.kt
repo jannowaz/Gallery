@@ -563,32 +563,18 @@ fun ExplorerScreen(
                         }
                     } else {
                         items(folderItems, key = { it.path }) { item ->
-                            Card(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).combinedClickable(
+                            org.fossify.gallery.compose.components.AlbumListRow(
+                                name = item.name,
+                                subtitle = stringResource(R.string.media_count, item.mediaCount),
+                                coverPath = item.thumbnailPath.ifEmpty { item.previewPaths.firstOrNull() ?: "" },
+                                selected = item.path in selectedFolderPaths,
+                                showChevron = true,
+                                showThumbnail = folderSettings.showFolderThumbnails,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp).combinedClickable(
                                     onClick = { if (hasFileSelection) Unit else if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); currentPath = item.path } },
                                     onLongClick = { if (!hasFileSelection) { selectedFilePaths = emptySet(); selectedFolderPaths = selectedFolderPaths + item.path } }
                                 ),
-                                shape = RoundedCornerShape(Radius.md),
-                                colors = CardDefaults.cardColors(containerColor = if (item.path in selectedFolderPaths) MaterialTheme.colorScheme.primaryContainer else folderCardColor)
-                            ) {
-                                Row(Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (folderSettings.displayMode == DisplayMode.DARK) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                                        Text(stringResource(R.string.media_count, item.mediaCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        if (item.previewPaths.isEmpty()) {
-                                            Box(Modifier.size(44.dp).clip(RoundedCornerShape(Radius.sm)).background(MaterialTheme.colorScheme.surfaceVariant))
-                                        } else {
-                                            item.previewPaths.take(3).forEach { p ->
-                                                Box(Modifier.size(44.dp).clip(RoundedCornerShape(Radius.sm))) {
-                                                    GalleryImage(path = p, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 12.dp, thumbnailSize = 128)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            )
                         }
                     }
                 }
