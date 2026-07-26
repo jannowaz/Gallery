@@ -11,7 +11,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -244,12 +244,20 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Lazily decodes and caches the aspect ratio of an image (mosaic layout). Decoding runs in the repo. */
-    private val aspectRequests = MutableSharedFlow<String>(extraBufferCapacity = 64)
+    /** Lazily decodes and caches the aspect ratio of an image (mosaic layout). Decoding runs in the repo.
+     *
+     * An UNLIMITED channel, not a buffered SharedFlow: the previous MutableSharedFlow(extraBufferCapacity
+     * = 64) + tryEmit() silently dropped requests whenever more than 64 tiles asked for their ratio
+     * faster than the 200ms-batched decoder drained them - i.e. any fast scroll through a mosaic. A
+     * dropped request never retried (requestAspect fires once per tile via LaunchedEffect(path) and the
+     * path isn't in aspectRatios, so nothing re-asks), leaving those tiles stuck at the 1f square
+     * fallback - the "mosaic not always rendered right" report. trySend on an UNLIMITED channel never
+     * fails, so no request is lost. */
+    private val aspectRequests = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
 
     init {
         viewModelScope.launch {
-            aspectRequests
+            aspectRequests.receiveAsFlow()
                 .chunked(20, 200) // Batch of 20 or every 200ms
                 .collect { paths ->
                     val updates = withContext(Dispatchers.Default) {
@@ -262,7 +270,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun requestAspect(path: String) {
         if (_state.value.aspectRatios.containsKey(path)) return
-        aspectRequests.tryEmit(path)
+        aspectRequests.trySend(path)
     }
 
     // Helper for batching flow
