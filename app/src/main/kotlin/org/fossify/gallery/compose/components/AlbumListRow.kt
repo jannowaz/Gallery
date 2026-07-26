@@ -53,22 +53,26 @@ fun AlbumListRow(
     selected: Boolean = false,
     showChevron: Boolean = false,
     showThumbnail: Boolean = true,
+    // Two-columns-side-by-side layout (see LibraryAlbumGrid): each row is only half the width, so
+    // the cover shrinks, the chevron is dropped and the name may wrap to two lines - without this
+    // the name gets clipped to "Zu..." with no room to read it.
+    dense: Boolean = false,
 ) {
     val s = LocalSpacing.current
     val container = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
     AppCard(modifier = modifier.fillMaxWidth(), color = container) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = s.md, vertical = s.sm),
+            Modifier.fillMaxWidth().padding(horizontal = if (dense) s.sm else s.md, vertical = s.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AlbumCover(coverPath = coverPath, showThumbnail = showThumbnail)
-            Spacer(Modifier.width(s.md))
+            AlbumCover(coverPath = coverPath, showThumbnail = showThumbnail, size = if (dense) 40.dp else 56.dp)
+            Spacer(Modifier.width(if (dense) s.sm else s.md))
             Column(Modifier.weight(1f)) {
                 Text(
                     name,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = if (dense) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium,
-                    maxLines = 1,
+                    maxLines = if (dense) 2 else 1,
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -85,9 +89,9 @@ fun AlbumListRow(
             when {
                 selected -> {
                     Spacer(Modifier.width(s.sm))
-                    Icon(Icons.Default.Check, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                    Icon(Icons.Default.Check, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(if (dense) 20.dp else 24.dp))
                 }
-                showChevron -> {
+                showChevron && !dense -> {
                     Spacer(Modifier.width(s.xs))
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), modifier = Modifier.size(24.dp))
                 }
@@ -96,12 +100,12 @@ fun AlbumListRow(
     }
 }
 
-/** 56dp leading cover: image, video frame, or a folder-icon placeholder for empty/thumbnail-off. */
+/** Leading cover: image, video frame, or a folder-icon placeholder for empty/thumbnail-off. */
 @Composable
-private fun AlbumCover(coverPath: String, showThumbnail: Boolean) {
+private fun AlbumCover(coverPath: String, showThumbnail: Boolean, size: androidx.compose.ui.unit.Dp = 56.dp) {
     val shape = RoundedCornerShape(Radius.sm)
     val hasThumb = showThumbnail && coverPath.isNotEmpty() && File(coverPath).exists()
-    Box(Modifier.size(56.dp).clip(shape), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(size).clip(shape), contentAlignment = Alignment.Center) {
         if (hasThumb) {
             val isVideo = coverPath.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
             if (isVideo) {

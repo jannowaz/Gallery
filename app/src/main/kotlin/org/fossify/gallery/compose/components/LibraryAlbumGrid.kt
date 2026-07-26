@@ -85,9 +85,17 @@ fun LibraryAlbumGrid(
     val itemSpacing = viewSettings.spacing.dp
 
     if (viewSettings.viewType == ViewType.LIST) {
-        val listState = rememberLazyListState()
+        val listState = rememberLazyGridState()
         ScrollToTopEffect(tabIndex) { listState.animateScrollToItem(0) }
-        LazyColumn(modifier.fillMaxSize(), state = listState) {
+        // The list honors the column setting too, but capped at 2: a list row (cover + name + count
+        // + chevron) needs real width to stay readable, so more than two side by side would squeeze
+        // it. columnCount is >= 2 in the sheet, so in practice this is one or two columns.
+        val listColumns = viewSettings.columnCount.coerceIn(1, 2)
+        LazyVerticalGrid(
+            state = listState,
+            columns = GridCells.Fixed(listColumns),
+            modifier = modifier.fillMaxSize(),
+        ) {
             items(items, key = { it.key }) { item ->
                 AlbumListRow(
                     name = item.name,
@@ -96,7 +104,8 @@ fun LibraryAlbumGrid(
                     selected = item.key in selectedKeys,
                     showChevron = true, // every album/collection/favorite/folder row opens on tap
                     showThumbnail = viewSettings.showFolderThumbnails,
-                    modifier = Modifier.padding(horizontal = s.md, vertical = s.xs).clickableItem(item, onClick, onLongClick),
+                    dense = listColumns > 1,
+                    modifier = Modifier.padding(horizontal = if (listColumns > 1) s.xs else s.md, vertical = s.xs).clickableItem(item, onClick, onLongClick),
                 )
             }
         }

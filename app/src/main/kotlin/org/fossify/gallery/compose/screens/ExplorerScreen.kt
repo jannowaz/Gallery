@@ -562,19 +562,33 @@ fun ExplorerScreen(
                             }
                         }
                     } else {
-                        items(folderItems, key = { it.path }) { item ->
-                            org.fossify.gallery.compose.components.AlbumListRow(
-                                name = item.name,
-                                subtitle = stringResource(R.string.media_count, item.mediaCount),
-                                coverPath = item.thumbnailPath.ifEmpty { item.previewPaths.firstOrNull() ?: "" },
-                                selected = item.path in selectedFolderPaths,
-                                showChevron = true,
-                                showThumbnail = folderSettings.showFolderThumbnails,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp).combinedClickable(
-                                    onClick = { if (hasFileSelection) Unit else if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); currentPath = item.path } },
-                                    onLongClick = { if (!hasFileSelection) { selectedFilePaths = emptySet(); selectedFolderPaths = selectedFolderPaths + item.path } }
-                                ),
-                            )
+                        // Same column setting as the grid, capped at 2 (readable list rows) - matches
+                        // LibraryAlbumGrid's list. Chunked into rows since this shares one LazyColumn
+                        // with the file section below.
+                        val listCols = folderSettings.columnCount.coerceIn(1, 2)
+                        folderItems.chunked(listCols).forEach { chunk ->
+                            item(key = "folderrow_" + chunk.joinToString { it.path }) {
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                                    chunk.forEach { item ->
+                                        Box(Modifier.weight(1f)) {
+                                            org.fossify.gallery.compose.components.AlbumListRow(
+                                                name = item.name,
+                                                subtitle = stringResource(R.string.media_count, item.mediaCount),
+                                                coverPath = item.thumbnailPath.ifEmpty { item.previewPaths.firstOrNull() ?: "" },
+                                                selected = item.path in selectedFolderPaths,
+                                                showChevron = true,
+                                                showThumbnail = folderSettings.showFolderThumbnails,
+                                                dense = listCols > 1,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp).combinedClickable(
+                                                    onClick = { if (hasFileSelection) Unit else if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); currentPath = item.path } },
+                                                    onLongClick = { if (!hasFileSelection) { selectedFilePaths = emptySet(); selectedFolderPaths = selectedFolderPaths + item.path } }
+                                                ),
+                                            )
+                                        }
+                                    }
+                                    repeat(listCols - chunk.size) { Spacer(Modifier.weight(1f)) }
+                                }
+                            }
                         }
                     }
                 }
