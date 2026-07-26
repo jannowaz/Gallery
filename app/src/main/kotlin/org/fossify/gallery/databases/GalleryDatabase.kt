@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import org.fossify.gallery.interfaces.*
 import org.fossify.gallery.models.*
 
-@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class, CompressionReviewItem::class, org.fossify.gallery.models.FileHash::class], version = 25)
+@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class, CompressionReviewItem::class, org.fossify.gallery.models.FileHash::class], version = 26)
 abstract class GalleryDatabase : RoomDatabase() {
 
     abstract fun DirectoryDao(): DirectoryDao
@@ -91,6 +91,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                             .addMigrations(MIGRATION_22_23)
                             .addMigrations(MIGRATION_23_24)
                             .addMigrations(MIGRATION_24_25)
+                            .addMigrations(MIGRATION_25_26)
                             .fallbackToDestructiveMigrationFrom(1, 2, 3)
                             // Room only runs migrations when upgrading an *existing* database - a
                             // fresh install gets its schema (including date_sort_key and its index)
@@ -370,6 +371,27 @@ abstract class GalleryDatabase : RoomDatabase() {
                 database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_rating_last_modified` ON `media` (`deleted_ts`, `rating`, `last_modified`)")
                 database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_parent_path` ON `media` (`deleted_ts`, `parent_path`)")
                 database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_is_favorite` ON `media` (`deleted_ts`, `is_favorite`)")
+                // DROP TABLE above took the date_sort_key triggers with it, not just the indices.
+                // Recreate them or every row inserted after this upgrade keeps date_sort_key at its 0
+                // default and sinks to the bottom of the date-sorted Media tab. (This line was missing
+                // originally; MIGRATION_25_26 heals installs that already ran this without it.)
+                createDateSortKeyTriggers(database)
+            }
+        }
+
+        // MIGRATION_24_25's table rebuild dropped the date_sort_key triggers (SQLite drops a table's
+        // triggers with DROP TABLE) but only recreated the indices, so every install that upgraded
+        // through v25 lost them: newly synced media - a fresh screenshot, a download - got
+        // date_sort_key = 0 and never appeared at the top of the date-sorted Media tab, even though
+        // Albums (which keys off MAX(last_modified)) showed the folder immediately. Recreate the
+        // triggers and rebuild date_sort_key for every existing row from its real date columns so the
+        // rows written while the triggers were missing are corrected in place.
+        private val MIGRATION_25_26 = object : Migration(25, 26) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                createDateSortKeyTriggers(database)
+                database.execSQL(
+                    "UPDATE media SET date_sort_key = CASE WHEN date_added > 0 THEN date_added WHEN date_taken > 0 THEN date_taken ELSE last_modified END"
+                )
             }
         }
     }
