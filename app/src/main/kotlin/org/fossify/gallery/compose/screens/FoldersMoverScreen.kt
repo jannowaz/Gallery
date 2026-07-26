@@ -111,8 +111,11 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     val allMovedFormat = stringResource(R.string.folder_mover_all_moved)
     val moveStoppedFormat = stringResource(R.string.folder_mover_stopped)
 
+    // Observe by tag, not unique-work name: enqueue registers under the fixed UNIQUE_WORK_NAME and
+    // adds the jobId only as a tag, so getWorkInfosForUniqueWorkFlow(jobId) returned nothing - the
+    // progress/"moving" state never resolved (isMoving stuck true, counts stuck at 0).
     val workInfo by remember(activeJobId) {
-        activeJobId?.let { androidx.work.WorkManager.getInstance(ctx).getWorkInfosForUniqueWorkFlow(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
+        activeJobId?.let { androidx.work.WorkManager.getInstance(ctx).getWorkInfosByTagFlow(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
     }.collectAsState(initial = emptyList())
     val activeWorkInfo = workInfo.firstOrNull()
     val isMoving = activeJobId != null && activeWorkInfo?.state?.isFinished != true
@@ -254,7 +257,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                 }
             } else {
                 TextButton(
-                    onClick = { activeJobId?.let { androidx.work.WorkManager.getInstance(ctx).cancelUniqueWork(it) } },
+                    onClick = { activeJobId?.let { androidx.work.WorkManager.getInstance(ctx).cancelAllWorkByTag(it) } },
                     modifier = Modifier.align(Alignment.CenterHorizontally).padding(8.dp),
                 ) { Text(stringResource(R.string.cancel)) }
             }

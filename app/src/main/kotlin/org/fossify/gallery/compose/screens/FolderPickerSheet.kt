@@ -409,7 +409,12 @@ fun FolderPickerSheet(
 
     val jobId = activeJobId
     if (jobId != null) {
-        val workInfo by remember(jobId) { WorkManager.getInstance(ctx).getWorkInfosForUniqueWorkFlow(jobId) }
+        // Observe by tag, not by unique-work name: MediaBatchWorker.enqueue registers under the fixed
+        // UNIQUE_WORK_NAME ("media_batch_op") and only adds this call's jobId as a TAG, so
+        // getWorkInfosForUniqueWorkFlow(jobId) matched nothing - info stayed null, the progress bar
+        // sat frozen at 0/total and the isFinished effect that toasts + dismisses never fired even
+        // though the move itself completed. (Regressed with the fixed-name mover-stacking fix.)
+        val workInfo by remember(jobId) { WorkManager.getInstance(ctx).getWorkInfosByTagFlow(jobId) }
             .collectAsState(initial = emptyList())
         val info = workInfo.firstOrNull()
         LaunchedEffect(info?.state) {
