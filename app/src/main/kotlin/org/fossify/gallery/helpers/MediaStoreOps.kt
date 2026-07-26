@@ -229,12 +229,49 @@ object MediaStoreOps {
         return cachedEntries?.takeIf { cachedRoot == root }
     }
 
+    /**
+     * Returns all cached entries whose path lies under [rootPath], via binary range search instead
+     * of a full linear scan. Requires [entries] to be sorted ascending by `path` (natural/UTF-16
+     * order) - guaranteed because both cache producers ([refreshEntriesFromDb], [refreshEntriesUnder])
+     * store their list through [sortedByPath].
+     *
+     * On a ~206k-item library the old `entries.filter { it.path.startsWith("root/") }` was O(N) per
+     * folder open (~340ms); this is O(log N + k) where k is the subtree size - a few ms even deep in
+     * the tree. The one-time sort cost is paid once at cache-load time, not per navigation.
+     *
+     * All strings prefixed by `"root/"` occupy the contiguous range `["root/", "root0")`: the char
+     * after `/` (0x2F) in any child path is always < `0` (0x30), so `root + "0"` is a tight exclusive
+     * upper bound. Both the sort and this search use Kotlin's natural String order, matching
+     * `startsWith`, so the range is exact.
+     */
+    fun entriesUnder(entries: List<MediaEntry>, rootPath: String): List<MediaEntry> {
+        val prefix = rootPath.trimEnd('/') + "/"
+        val upper = prefix.dropLast(1) + (prefix.last() + 1) // "root/" -> "root0"
+        val lo = lowerBound(entries, prefix)
+        val hi = lowerBound(entries, upper)
+        return if (lo >= hi) emptyList() else entries.subList(lo, hi).toList()
+    }
+
+    /** First index whose `path >= key`, over a list sorted ascending by `path`. */
+    private fun lowerBound(entries: List<MediaEntry>, key: String): Int {
+        var lo = 0
+        var hi = entries.size
+        while (lo < hi) {
+            val mid = (lo + hi) ushr 1
+            if (entries[mid].path < key) lo = mid + 1 else hi = mid
+        }
+        return lo
+    }
+
+    /** Sorted ascending by `path` in natural String order so [entriesUnder] can binary-search it. */
+    private fun sortedByPath(entries: List<MediaEntry>): List<MediaEntry> = entries.sortedBy { it.path }
+
     /** Re-queries MediaStore and refreshes the cache used by [cachedEntriesUnder]. Kept for the
      * off-[storageRoot] case (SD cards etc.); the storage-root path now goes through
      * [refreshEntriesFromDb], which is much faster - see its doc. */
     fun refreshEntriesUnder(context: Context, rootPath: String): List<MediaEntry> {
         val root = rootPath.trimEnd('/')
-        val fresh = mediaEntriesUnder(context, root)
+        val fresh = sortedByPath(mediaEntriesUnder(context, root))
         cachedRoot = root
         cachedEntries = fresh
         return fresh
@@ -262,8 +299,9 @@ object MediaStoreOps {
             android.util.Log.e("MediaStoreOps", "DB entry load failed, falling back to MediaStore", e)
             return refreshEntriesUnder(context, root)
         }
+        val sorted = sortedByPath(fresh)
         cachedRoot = root
-        cachedEntries = fresh
-        return fresh
+        cachedEntries = sorted
+        return sorted
     }
 }

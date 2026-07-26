@@ -313,8 +313,11 @@ fun ExplorerScreen(
             // Reconstruct the folder tree from MediaStore (raw directory listing is blocked under
             // scoped storage). Subfolders are derived from the media paths beneath the current path.
             val cache = allEntries
+            // Binary range search over the path-sorted cache (O(log N + k)) instead of an O(N) scan
+            // of all ~206k entries on every folder open - the first-visit cost that made deep
+            // navigation feel slow. The cache is kept sorted by MediaStoreOps' refresh paths.
             val entries = if (cache != null && root.startsWith(storageRoot))
-                cache.filter { it.path.startsWith("$root/") }
+                org.fossify.gallery.helpers.MediaStoreOps.entriesUnder(cache, root)
             else org.fossify.gallery.helpers.MediaStoreOps.mediaEntriesUnder(context, root)
             // Subfolder tiles (structure + counts + thumbnails) are still derived from the MediaStore
             // entry list - a recursive prefix walk that's fast there and cached; a DB-backed variant of
