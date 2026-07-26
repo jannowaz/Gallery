@@ -97,6 +97,11 @@ fun LibraryAlbumGrid(
         LazyVerticalGrid(
             state = listState,
             columns = GridCells.Fixed(listColumns),
+            // "Anchor at bottom": align the list to the bottom edge when it's shorter than the
+            // viewport, in the SAME order, so a short Collections/Favorites list sits within thumb
+            // reach instead of up top. Not reverseLayout (that would flip the order); a full-height
+            // list just scrolls as usual. Only affects this first-view list, not the media within.
+            verticalArrangement = if (viewSettings.anchorBottom) Arrangement.Bottom else Arrangement.Top,
             modifier = modifier.fillMaxSize(),
         ) {
             items(items, key = { it.key }) { item ->
@@ -120,6 +125,8 @@ fun LibraryAlbumGrid(
             state = gridState,
             columns = GridCells.Fixed(org.fossify.gallery.compose.util.rememberEffectiveColumnCount(viewSettings.columnCount)),
             contentPadding = PaddingValues(itemSpacing / 2),
+            // Bottom-anchored, same order (see LIST branch above).
+            verticalArrangement = if (viewSettings.anchorBottom) Arrangement.Bottom else Arrangement.Top,
             modifier = modifier.fillMaxSize(),
         ) {
             items(items, key = { it.key }) { item ->

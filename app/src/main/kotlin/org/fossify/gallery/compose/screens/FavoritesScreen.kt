@@ -161,7 +161,10 @@ fun FavoritesScreen(
                     }
                     if (favoriteMedia.isNotEmpty()) {
                         Text(stringResource(R.string.media), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                        MediaScreen(modifier = Modifier.weight(1f), viewSettings = viewSettings, mediaOverride = favoriteMedia, onNavigateToViewer = onNavigateToViewer, tabIndex = tabIndex)
+                        // anchorBottom is meant to bottom-anchor only the favorites FIRST view (the
+                        // folder list above), not the media display within - so strip it here, keeping
+                        // the media grid in its normal top-down order regardless of the setting.
+                        MediaScreen(modifier = Modifier.weight(1f), viewSettings = viewSettings.copy(anchorBottom = false), mediaOverride = favoriteMedia, onNavigateToViewer = onNavigateToViewer, tabIndex = tabIndex)
                     }
                 }
             }
