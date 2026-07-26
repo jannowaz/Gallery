@@ -579,6 +579,7 @@ fun ExplorerScreen(
                                                 showChevron = true,
                                                 showThumbnail = folderSettings.showFolderThumbnails,
                                                 dense = listCols > 1,
+                                                pathHint = org.fossify.gallery.compose.components.folderPathHint(item.path),
                                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp).combinedClickable(
                                                     onClick = { if (hasFileSelection) Unit else if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); currentPath = item.path } },
                                                     onLongClick = { if (!hasFileSelection) { selectedFilePaths = emptySet(); selectedFolderPaths = selectedFolderPaths + item.path } }

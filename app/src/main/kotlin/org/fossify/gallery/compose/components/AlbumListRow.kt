@@ -36,13 +36,25 @@ import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import java.io.File
 
 /**
+ * The last up to [maxSegments] path segments of the folder that CONTAINS [fullPath] - shown as a
+ * faint path hint on folder rows so two folders with the same name in different locations (e.g. two
+ * "Screenshots") can be told apart. Empty for a top-level folder with nothing above it.
+ */
+fun folderPathHint(fullPath: String, maxSegments: Int = 3): String {
+    val parent = fullPath.trimEnd('/').substringBeforeLast('/', "")
+    val segments = parent.split('/').filter { it.isNotEmpty() }
+    return segments.takeLast(maxSegments).joinToString("/")
+}
+
+/**
  * The one list row used by every folder-style list in the app - Albums, Collections, Favorites and
  * the Explorer's folder section - so they read as a single, consistent list instead of four
  * slightly different ones (the Explorer used to hand-roll its own near-identical variant).
  *
- * Material list-item shape: a leading cover thumbnail, a two-line title/subtitle block that takes
- * the remaining width, and a trailing affordance - a check when selected, otherwise an optional
- * chevron for rows that navigate. Grid and mosaic layouts are unaffected; this is the LIST view only.
+ * Material list-item shape: a leading cover thumbnail, a title/subtitle block that takes the
+ * remaining width, and a trailing affordance - a check when selected, otherwise an optional chevron
+ * for rows that navigate. Folder rows may also carry a faint [pathHint] third line. Grid and mosaic
+ * layouts are unaffected; this is the LIST view only.
  */
 @Composable
 fun AlbumListRow(
@@ -57,6 +69,9 @@ fun AlbumListRow(
     // the cover shrinks, the chevron is dropped and the name may wrap to two lines - without this
     // the name gets clipped to "Zu..." with no room to read it.
     dense: Boolean = false,
+    // Faint path line for folder rows (see folderPathHint). When present the name stays on one line
+    // so the extra line doesn't stack with a two-line name; null on containers (Collections/Tags).
+    pathHint: String? = null,
 ) {
     val s = LocalSpacing.current
     val container = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
@@ -72,7 +87,8 @@ fun AlbumListRow(
                     name,
                     style = if (dense) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium,
-                    maxLines = if (dense) 2 else 1,
+                    // Two-line names only when there's no path line to make room for.
+                    maxLines = if (dense && pathHint == null) 2 else 1,
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -83,6 +99,15 @@ fun AlbumListRow(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (!pathHint.isNullOrEmpty()) {
+                    Text(
+                        pathHint,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
                     )
                 }
             }

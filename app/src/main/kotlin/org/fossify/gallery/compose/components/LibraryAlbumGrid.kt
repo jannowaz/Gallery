@@ -70,6 +70,9 @@ fun LibraryAlbumGrid(
     countLabel: ((Int) -> String)? = null,
     selectedKeys: Set<String> = emptySet(),
     subtitle: ((AlbumGridItem) -> String)? = null,
+    // Faint containing-path hint for folder-backed lists (Albums, Favorites) to disambiguate
+    // same-named folders. Left null by container lists (Collections/Tags), which have no path.
+    pathHint: ((AlbumGridItem) -> String?)? = null,
     tabIndex: Int? = null,
 ) {
     val s = LocalSpacing.current
@@ -105,6 +108,7 @@ fun LibraryAlbumGrid(
                     showChevron = true, // every album/collection/favorite/folder row opens on tap
                     showThumbnail = viewSettings.showFolderThumbnails,
                     dense = listColumns > 1,
+                    pathHint = pathHint?.invoke(item),
                     modifier = Modifier.padding(horizontal = if (listColumns > 1) s.xs else s.md, vertical = s.xs).clickableItem(item, onClick, onLongClick),
                 )
             }

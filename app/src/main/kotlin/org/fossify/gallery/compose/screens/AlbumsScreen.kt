@@ -202,6 +202,7 @@ fun AlbumsScreen(
                         },
                         onLongClick = { item -> selectedPaths = selectedPaths + item.key },
                         selectedKeys = selectedPaths,
+                        pathHint = { org.fossify.gallery.compose.components.folderPathHint(it.key) },
                         modifier = Modifier.weight(1f),
                         tabIndex = tabIndex,
                     )

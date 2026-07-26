@@ -153,6 +153,7 @@ fun FavoritesScreen(
                             onClick = { item -> if (hasFolderSelection) selectedFolderPaths = if (item.key in selectedFolderPaths) selectedFolderPaths - item.key else selectedFolderPaths + item.key else onFolderClick(item.key) },
                             onLongClick = { item -> selectedFolderPaths = selectedFolderPaths + item.key },
                             selectedKeys = selectedFolderPaths,
+                            pathHint = { org.fossify.gallery.compose.components.folderPathHint(it.key) },
                             modifier = if (favoriteMedia.isEmpty()) Modifier.weight(1f) else Modifier.heightIn(max = 320.dp),
                             tabIndex = tabIndex,
                         )
