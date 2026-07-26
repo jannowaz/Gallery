@@ -1216,11 +1216,12 @@ private fun MainSheets(
                     // streaming model can't represent - every other tab builds its grouped rows
                     // from a fully-loaded list instead, so Tag grouping stays available there.
                     supportsTagGrouping = selectedTab != 0,
-                    // Collections and Tags don't consume ViewSettings.sortBy/groupBy at all -
-                    // CollectionsScreen has no user-facing ordering, TagBrowserScreen has its own
-                    // fixed ordering (count desc, then hierarchy/alphabetical) unrelated to this
-                    // sort/group model. Showing Sort/Gruppierung there would just be dead controls.
-                    supportsSorting = selectedTab != 3 && selectedTab != 5,
+                    // Collections and Tags are flat container lists: they sort by name or item count
+                    // (CollectionsScreen/TagBrowserScreen apply it) but have no date/size/rating,
+                    // grouping, mosaic layout or file names - isContainerMode trims the sheet to just
+                    // the applicable controls instead of showing ones that do nothing.
+                    isContainerMode = selectedTab == 3 || selectedTab == 5,
+                    supportsSorting = true,
                     // Only Explorer's media listing is a "currently browsing one specific path"
                     // screen from this shared sheet's perspective (a drilled-into folder has its
                     // own separate sheet in FolderMediaScreen, with the same toggle).

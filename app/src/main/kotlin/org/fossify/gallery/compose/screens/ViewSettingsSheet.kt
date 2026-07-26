@@ -93,6 +93,11 @@ fun ViewSettingsContent(
     onToggleMode: (() -> Unit)? = null,
     modeOptions: List<String>? = null,
     isAlbumMode: Boolean = false,
+    // A flat list of named containers (Collections, Tags) rather than media or folders. Such lists
+    // sort only by name or item count and can't be grouped, mosaicked or show file names - so the
+    // sheet hides those options instead of offering ones that do nothing. See CollectionsScreen /
+    // TagBrowserScreen, which apply the name/count sort this exposes.
+    isContainerMode: Boolean = false,
     supportsTagGrouping: Boolean = true,
     supportsSorting: Boolean = true,
     // Only meaningful for a path-scoped screen (a specific opened folder, or Explorer's current
@@ -131,12 +136,15 @@ fun ViewSettingsContent(
             // View Type
             Text(stringResource(R.string.view_appearance), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
+            // Mosaic is a media-grid layout (variable aspect ratios); album/container lists render
+            // it identically to the tile grid, so it's only offered where it actually differs.
+            val viewTypes = if (isAlbumMode || isContainerMode) ViewType.entries.filter { it != ViewType.MOSAIC } else ViewType.entries
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    ViewType.entries.forEachIndexed { i, vt ->
+                    viewTypes.forEachIndexed { i, vt ->
                         SegmentedButton(
                             selected = local.viewType == vt,
                             onClick = { local = local.copy(viewType = vt); onSettingsChange(local, applyGlobally) },
-                            shape = SegmentedButtonDefaults.itemShape(i, ViewType.entries.size)
+                            shape = SegmentedButtonDefaults.itemShape(i, viewTypes.size)
                         ) { Text(when(vt) { ViewType.GRID -> stringResource(R.string.view_type_grid); ViewType.LIST -> stringResource(R.string.view_type_list); ViewType.MOSAIC -> stringResource(R.string.view_type_mosaic) }) }
                     }
             }
@@ -187,10 +195,15 @@ fun ViewSettingsContent(
             Text(stringResource(R.string.sorting), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                // RATING only makes sense per media item, COUNT (file count) only per folder - each
-                // mode gets the other's option filtered out instead of both lists carrying a
-                // meaningless entry.
-                val sortFields = if (isAlbumMode) SortField.entries.filter { it != SortField.RATING } else SortField.entries.filter { it != SortField.COUNT }
+                // RATING only makes sense per media item, COUNT (file count) only per folder/
+                // container - each mode carries just its applicable fields instead of a meaningless
+                // entry. Containers (Collections/Tags) have no date/size/rating at all, only a name
+                // and an item count.
+                val sortFields = when {
+                    isContainerMode -> listOf(SortField.NAME, SortField.COUNT)
+                    isAlbumMode -> SortField.entries.filter { it != SortField.RATING }
+                    else -> SortField.entries.filter { it != SortField.COUNT }
+                }
                 sortFields.forEachIndexed { i, sf ->
                     SegmentedButton(
                         selected = local.sortBy == sf,
@@ -222,7 +235,7 @@ fun ViewSettingsContent(
             // so a "grouping method that doesn't match the sort order" simply isn't a state that
             // exists to configure. The only independent choice left is on/off, plus the one deliberate
             // override (Tag) that isn't derived from any sort field.
-            if (!isAlbumMode) {
+            if (!isAlbumMode && !isContainerMode) {
             Spacer(Modifier.height(12.dp))
             HorizontalDivider()
             Spacer(Modifier.height(8.dp))
@@ -270,7 +283,7 @@ fun ViewSettingsContent(
             }
             }
             }
-            if (!isAlbumMode) {
+            if (!isAlbumMode && !isContainerMode) {
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.show_filenames), style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.weight(1f))

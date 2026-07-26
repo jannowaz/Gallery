@@ -172,8 +172,16 @@ fun TagBrowserScreen(
                 // Both the sort/filter and the AlbumGridItem mapping were previously recomputed on
                 // every recomposition of this screen (e.g. every tag selection toggle), not just
                 // when allTags/hierarchy/the search query actually changed.
-                val filteredTags = remember(allTags, hierarchy, tagSearchQuery) {
-                    if (tagSearchQuery.isBlank()) allTags.entries.toList().sortedWith(compareByDescending<Map.Entry<String, List<String>>> { it.key in hierarchy.values }.thenBy { it.key }) else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }.sortedByDescending { it.value.size }
+                // Sort follows the sheet's name/count choice (containers have no other sortable
+                // field). The ↳ child markers below still show hierarchy; the ordering is the user's.
+                val filteredTags = remember(allTags, tagSearchQuery, viewSettings.sortBy, viewSettings.sortDesc) {
+                    val base = if (tagSearchQuery.isBlank()) allTags.entries.toList()
+                        else allTags.entries.filter { (tag, _) -> tag.contains(tagSearchQuery, ignoreCase = true) }
+                    val asc = when (viewSettings.sortBy) {
+                        org.fossify.gallery.compose.screens.SortField.COUNT -> base.sortedBy { it.value.size }
+                        else -> base.sortedBy { it.key.lowercase() }
+                    }
+                    if (viewSettings.sortDesc) asc.reversed() else asc
                 }
                 val tagGridItems = remember(filteredTags, hierarchy) {
                     filteredTags.map { AlbumGridItem(key = it.key, name = if (it.key in hierarchy) "↳ ${it.key}" else it.key, thumbnailPath = it.value.firstOrNull() ?: "", count = it.value.size, previewPaths = it.value.take(3)) }

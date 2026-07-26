@@ -22,8 +22,12 @@ class Config(context: Context) : BaseConfig(context) {
         private const val USE_DYNAMIC_COLORS = "use_dynamic_colors"
         private const val COLLECTIONS_VIEW_TYPE = "collections_view_type"
         private const val COLLECTIONS_COLUMN_CNT = "collections_column_cnt"
+        private const val COLLECTIONS_SORT_BY = "collections_sort_by"
+        private const val COLLECTIONS_SORT_DESC = "collections_sort_desc"
         private const val TAGS_VIEW_TYPE = "tags_view_type"
         private const val TAGS_COLUMN_CNT = "tags_column_cnt"
+        private const val TAGS_SORT_BY = "tags_sort_by"
+        private const val TAGS_SORT_DESC = "tags_sort_desc"
         private const val PINNED_FAV_FOLDERS = "pinned_fav_folders"
         private const val PINNED_COLLECTIONS = "pinned_collections"
         private const val LAST_SYNC_TIMESTAMP = "last_sync_timestamp"
@@ -83,9 +87,25 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getInt(COLLECTIONS_COLUMN_CNT, 3)
         set(value) = prefs.edit().putInt(COLLECTIONS_COLUMN_CNT, value).apply()
 
+    // Collections default to name ascending; SortField.NAME = 0.
+    var collectionsSortBy: Int
+        get() = prefs.getInt(COLLECTIONS_SORT_BY, 0)
+        set(value) = prefs.edit().putInt(COLLECTIONS_SORT_BY, value).apply()
+    var collectionsSortDesc: Boolean
+        get() = prefs.getBoolean(COLLECTIONS_SORT_DESC, false)
+        set(value) = prefs.edit().putBoolean(COLLECTIONS_SORT_DESC, value).apply()
+
     var tagsViewType: Int
         get() = prefs.getInt(TAGS_VIEW_TYPE, 0)
         set(value) = prefs.edit().putInt(TAGS_VIEW_TYPE, value).apply()
+
+    // Tags default to most-used first, preserving the old fixed ordering; SortField.COUNT = 4.
+    var tagsSortBy: Int
+        get() = prefs.getInt(TAGS_SORT_BY, 4)
+        set(value) = prefs.edit().putInt(TAGS_SORT_BY, value).apply()
+    var tagsSortDesc: Boolean
+        get() = prefs.getBoolean(TAGS_SORT_DESC, true)
+        set(value) = prefs.edit().putBoolean(TAGS_SORT_DESC, value).apply()
 
     var tagsColumnCnt: Int
         get() = prefs.getInt(TAGS_COLUMN_CNT, 3)

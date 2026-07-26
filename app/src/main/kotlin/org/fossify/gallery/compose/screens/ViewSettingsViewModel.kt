@@ -70,6 +70,8 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
         val ctx = getApplication<Application>().applicationContext
         ctx.config.collectionsViewType = s.viewType.value
         ctx.config.collectionsColumnCnt = s.columnCount
+        ctx.config.collectionsSortBy = s.sortBy.value
+        ctx.config.collectionsSortDesc = s.sortDesc
         ctx.config.fileRoundedCorners = s.roundedCorners
         ctx.config.thumbnailSpacing = s.spacing
     }
@@ -79,6 +81,8 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
         val ctx = getApplication<Application>().applicationContext
         ctx.config.tagsViewType = s.viewType.value
         ctx.config.tagsColumnCnt = s.columnCount
+        ctx.config.tagsSortBy = s.sortBy.value
+        ctx.config.tagsSortDesc = s.sortDesc
         ctx.config.fileRoundedCorners = s.roundedCorners
         ctx.config.thumbnailSpacing = s.spacing
     }
@@ -238,6 +242,8 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
                 roundedCorners = c.fileRoundedCorners,
                 spacing = c.thumbnailSpacing,
                 showFolderThumbnails = c.showFolderThumbnails,
+                sortBy = SortField.from(c.collectionsSortBy),
+                sortDesc = c.collectionsSortDesc,
             ),
             tags = ViewSettings(
                 viewType = ViewType.from(c.tagsViewType),
@@ -245,6 +251,8 @@ class ViewSettingsViewModel(application: Application) : AndroidViewModel(applica
                 roundedCorners = c.fileRoundedCorners,
                 spacing = c.thumbnailSpacing,
                 showFolderThumbnails = c.showFolderThumbnails,
+                sortBy = SortField.from(c.tagsSortBy),
+                sortDesc = c.tagsSortDesc,
             ),
         )
     }

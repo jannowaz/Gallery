@@ -307,13 +307,23 @@ fun CollectionsScreen(onCollectionClick: (MediaCollection) -> Unit = {}, modifie
             when (s) {
                 "loading" -> MediaSkeleton(columns = viewSettings.columnCount)
                 "empty" -> EmptyState(Icons.Default.CollectionsBookmark, stringResource(R.string.no_collections), subtitle = stringResource(R.string.tap_to_create_collection))
-                else -> LibraryAlbumGrid(
-                    items = albumItems,
-                    viewSettings = viewSettings,
-                    onClick = { item -> collections.find { it.id.toString() == item.key }?.let(onCollectionClick) },
-                    onLongClick = { item -> actionColl = collections.find { it.id.toString() == item.key } },
-                    modifier = Modifier.fillMaxSize(),
-                )
+                else -> {
+                    // Apply the sheet's name/count sort (containers have no other sortable field).
+                    val sortedItems = remember(albumItems, viewSettings.sortBy, viewSettings.sortDesc) {
+                        val asc = when (viewSettings.sortBy) {
+                            SortField.COUNT -> albumItems.sortedBy { it.count }
+                            else -> albumItems.sortedBy { it.name.lowercase() }
+                        }
+                        if (viewSettings.sortDesc) asc.reversed() else asc
+                    }
+                    LibraryAlbumGrid(
+                        items = sortedItems,
+                        viewSettings = viewSettings,
+                        onClick = { item -> collections.find { it.id.toString() == item.key }?.let(onCollectionClick) },
+                        onLongClick = { item -> actionColl = collections.find { it.id.toString() == item.key } },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
     }
