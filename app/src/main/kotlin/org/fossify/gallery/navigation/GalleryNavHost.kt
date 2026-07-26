@@ -159,8 +159,11 @@ fun GalleryNavHost(
                     // Compose reuses enterTransition/exitTransition for pops too.
                     enterTransition = { fadeIn(AppMotion.medium) + scaleIn(initialScale = 0.92f, animationSpec = AppMotion.medium) },
                     exitTransition = { fadeOut(AppMotion.medium) },
-                    popEnterTransition = { fadeIn(AppMotion.medium) },
-                    popExitTransition = { fadeOut(AppMotion.medium) + scaleOut(targetScale = 0.92f, animationSpec = AppMotion.medium) },
+                    // Pop back (e.g. Viewer -> folder) is snappier: the revealed screen was fully
+                    // rendered a moment ago, so a quick fade reads as instant, while a 300ms one feels
+                    // like a wait when the content is already there.
+                    popEnterTransition = { fadeIn(AppMotion.short) },
+                    popExitTransition = { fadeOut(AppMotion.short) + scaleOut(targetScale = 0.92f, animationSpec = AppMotion.short) },
                 ) {
                     composable<Home> {
                         CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
@@ -187,8 +190,9 @@ fun GalleryNavHost(
                     composable<Viewer>(
                         enterTransition = { fadeIn(AppMotion.medium) },
                         exitTransition = { fadeOut(AppMotion.medium) },
-                        popEnterTransition = { fadeIn(AppMotion.medium) },
-                        popExitTransition = { fadeOut(AppMotion.medium) },
+                        popEnterTransition = { fadeIn(AppMotion.short) },
+                        // Snappy dismiss back to the folder - see Home's popExit note.
+                        popExitTransition = { fadeOut(AppMotion.short) },
                     ) { backStackEntry ->
                         val route = backStackEntry.toRoute<Viewer>()
                         val viewerPaths = remember { ViewerArgs.paths }

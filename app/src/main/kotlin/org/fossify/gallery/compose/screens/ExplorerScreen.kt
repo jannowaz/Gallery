@@ -130,6 +130,28 @@ private data class ExplorerItem(
     val rating: Int = 0,
 )
 
+private data class ExplorerContent(
+    val folders: List<ExplorerItem>,
+    val files: List<ExplorerItem>,
+    val tags: Map<String, List<String>>,
+)
+
+/**
+ * Process-level cache of computed folder contents, keyed by path + sort order. Building one folder's
+ * view is O(all media) - it prefix-filters the whole ~200k-entry list to reconstruct the subtree
+ * (measured ~340-610ms on a real library). Without this cache that recompute ran again every time
+ * the user opened a photo and came back (Explorer is disposed while the Viewer is up, then
+ * recreated), and on every folder-to-folder step, flashing the skeleton loader each time. With it, a
+ * revisit is instant. Cleared wholesale on any RefreshBus tick, since a media change anywhere can
+ * alter any folder's count/thumbnail.
+ */
+private object ExplorerContentCache {
+    private val map = java.util.concurrent.ConcurrentHashMap<String, ExplorerContent>()
+    fun get(key: String): ExplorerContent? = map[key]
+    fun put(key: String, content: ExplorerContent) { map[key] = content }
+    fun clear() = map.clear()
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, FlowPreview::class)
 @Composable
 fun ExplorerScreen(
@@ -158,12 +180,20 @@ fun ExplorerScreen(
     // gesture immediately fall through to the tab-switch fallback instead of going up a level,
     // any time after having viewed at least one image while browsing a subfolder.
     val navStack = rememberSaveable(saver = listSaver<SnapshotStateList<String>, String>(save = { it.toList() }, restore = { it.toMutableStateList() })) { mutableStateListOf(internalStoragePath) }
-    var currentPath by remember { mutableStateOf(internalStoragePath) }
-    var folderItems by remember { mutableStateOf<List<ExplorerItem>>(emptyList()) }
-    var fileItems by remember { mutableStateOf<List<ExplorerItem>>(emptyList()) }
-    var fileTagsByPath by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
+    // Seed straight from the process cache so a Viewer round-trip (which disposes and recreates this
+    // whole screen) paints the folder immediately instead of reloading with a skeleton. navStack
+    // survives the recreate, so its top is the folder we're returning to; currentPath starts there
+    // too (rather than the root) so nothing loads the wrong path first.
+    val seedPath = navStack.lastOrNull() ?: internalStoragePath
+    val seed = remember(seedPath, folderSettings.sortBy, folderSettings.sortDesc, mediaSettings.sortBy, mediaSettings.sortDesc, mediaSettings.groupBy) {
+        ExplorerContentCache.get("$seedPath|${folderSettings.sortBy}|${folderSettings.sortDesc}|${mediaSettings.sortBy}|${mediaSettings.sortDesc}|${mediaSettings.groupBy}")
+    }
+    var currentPath by remember { mutableStateOf(seedPath) }
+    var folderItems by remember { mutableStateOf(seed?.folders ?: emptyList()) }
+    var fileItems by remember { mutableStateOf(seed?.files ?: emptyList()) }
+    var fileTagsByPath by remember { mutableStateOf(seed?.tags ?: emptyMap()) }
     var collapsedGroupKeys by rememberSaveable { mutableStateOf(setOf<String>()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoading by remember { mutableStateOf(seed == null) }
     var selectedFolderPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     val hasFolderSelection = selectedFolderPaths.isNotEmpty()
     // Mirrors selectedFolderPaths, but for the file grid below - previously that grid had no
@@ -263,9 +293,17 @@ fun ExplorerScreen(
     // sustained cost with no benefit, since the tree rarely actually changed shape.
     LaunchedEffect(Unit) {
         org.fossify.gallery.helpers.RefreshBus.events.debounce(10_000).collect {
+            // A media change anywhere can alter any folder's count/thumbnail/contents, so drop the
+            // whole cached tree; the reload below repopulates the current folder, others lazily.
+            ExplorerContentCache.clear()
             allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.refreshEntriesFromDb(context, storageRoot) }
         }
     }
+
+    // Cache is per path AND per sort order, since the cached lists are already sorted; a sort change
+    // is simply a different key (miss + recompute) rather than needing an explicit invalidation.
+    fun contentCacheKey(path: String) =
+        "$path|${folderSettings.sortBy}|${folderSettings.sortDesc}|${mediaSettings.sortBy}|${mediaSettings.sortDesc}|${mediaSettings.groupBy}"
 
     suspend fun loadFolderContents(path: String) {
         val (sortedFolders, sortedFiles, sortedTags) = withContext(Dispatchers.IO) {
@@ -331,14 +369,28 @@ fun ExplorerScreen(
         folderItems = sortedFolders
         fileTagsByPath = sortedTags
         fileItems = sortedFiles
+        ExplorerContentCache.put(contentCacheKey(path), ExplorerContent(sortedFolders, sortedFiles, sortedTags))
     }
 
     // Tracks which path the currently-shown folderItems/fileItems belong to, so that a silent
     // background refresh (RefreshBus, same currentPath) can update the list in place instead of
     // forcing the full-screen skeleton loader back up.
-    var loadedPath by remember { mutableStateOf<String?>(null) }
+    var loadedPath by remember { mutableStateOf(if (seed != null) seedPath else null) }
     LaunchedEffect(currentPath, allEntries, folderSettings.sortBy, folderSettings.sortDesc, mediaSettings.sortBy, mediaSettings.sortDesc) {
         if (currentPath.startsWith(storageRoot) && allEntries == null) { isLoading = true; return@LaunchedEffect }
+        // Instant path: a previously-computed view for this folder+sort is served straight from the
+        // cache with no skeleton and no recompute - this is what makes coming back from the Viewer
+        // (and revisiting a folder) feel immediate instead of flashing the loader. The cache is
+        // cleared on every RefreshBus tick (below), so a hit is never stale.
+        val cached = ExplorerContentCache.get(contentCacheKey(currentPath))
+        if (cached != null) {
+            folderItems = cached.folders
+            fileItems = cached.files
+            fileTagsByPath = cached.tags
+            loadedPath = currentPath
+            isLoading = false
+            return@LaunchedEffect
+        }
         if (loadedPath != currentPath) isLoading = true
         loadFolderContents(currentPath)
         loadedPath = currentPath
