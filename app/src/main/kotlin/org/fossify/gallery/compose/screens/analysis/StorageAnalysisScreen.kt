@@ -32,7 +32,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -43,6 +45,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.AlertDialog
@@ -80,7 +83,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
+import java.io.File
+import kotlin.math.min
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,6 +118,49 @@ fun StorageAnalysisScreen(
         onExit = onBack,
     )
 
+    val listState = rememberLazyListState()
+
+    // Media-type filter first (drives the folder breakdown), then the folder filter, then sort -
+    // this is the exact set the list shows, and the same set every "mark" action operates on so
+    // selection is what-you-see-is-what-you-get.
+    val byType = remember(state.results, state.filterMode) {
+        when (state.filterMode) {
+            FilterMode.ALL -> state.results
+            FilterMode.IMAGES -> state.results.filter { it.mediaType == 1 }
+            FilterMode.VIDEOS -> state.results.filter { it.mediaType == 2 }
+        }
+    }
+    val folderCounts = remember(byType) {
+        byType.groupingBy { File(it.path).parent ?: "" }.eachCount().entries
+            .sortedByDescending { it.value }.map { it.key to it.value }
+    }
+    val visible = remember(byType, state.folderFilter) {
+        val f = state.folderFilter
+        if (f == null) byType else byType.filter { File(it.path).parent == f }
+    }
+    val sortedVisible = remember(visible, state.sortMode) {
+        when (state.sortMode) {
+            AnalysisSortMode.WASTED -> visible.sortedByDescending { it.wastedBytes }
+            AnalysisSortMode.SIZE -> visible.sortedByDescending { it.fileSize }
+            AnalysisSortMode.NAME -> visible.sortedBy { it.name.lowercase() }
+        }
+    }
+
+    // A filter can go stale after an optimize/compress re-scan drops a folder - fall back to "all".
+    LaunchedEffect(state.folderFilter, sortedVisible.isEmpty()) {
+        if (state.folderFilter != null && sortedVisible.isEmpty() && state.results.isNotEmpty()) vm.setFolderFilter(null)
+    }
+
+    // Once results exist the scan form is dead weight above the list - collapse it (the header's
+    // gear re-opens it for a new scan). Kept open while there are no results, including during a scan.
+    var configExpanded by remember { mutableStateOf(true) }
+    LaunchedEffect(state.results.isEmpty()) { configExpanded = state.results.isEmpty() }
+
+    // Paths of the currently visible (filtered) set - every "mark" action and the one-tap CTAs
+    // operate on this so the whole screen is what-you-see-is-what-you-get: a folder/type filter can
+    // never optimize or delete a file it is hiding.
+    val visiblePaths = remember(sortedVisible) { sortedVisible.map { it.path }.toSet() }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -119,42 +168,104 @@ fun StorageAnalysisScreen(
                 navigationIcon = { IconButton(onClick = guardedBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 actions = {
                     if (state.results.isNotEmpty()) {
-                        IconButton(onClick = { vm.selectAll() }) { Icon(Icons.Default.CheckCircle, stringResource(R.string.action_select_all)) }
+                        SelectMenu(
+                            shownCount = sortedVisible.size,
+                            folderFiltered = state.folderFilter != null,
+                            onMarkAllShown = { vm.selectPaths(visiblePaths) },
+                            onMarkNext = { n ->
+                                val start = listState.firstVisibleItemIndex.coerceIn(0, (sortedVisible.size - 1).coerceAtLeast(0))
+                                vm.selectPaths(sortedVisible.subList(start, min(start + n, sortedVisible.size)).map { it.path }, additive = true)
+                            },
+                            onMarkFolder = { state.folderFilter?.let { vm.selectFolder(it) } },
+                            onClear = { vm.clearSelection() },
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
             )
-        }
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            // Folder selection + scan button
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    modifier = Modifier.weight(1f).clickable { folderPicker.launch(null) },
-                    shape = RoundedCornerShape(Radius.md),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                ) {
-                    Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.FolderOpen, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            currentFolder.substringAfterLast('/').ifEmpty { stringResource(R.string.internal_storage) },
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
+        },
+        bottomBar = {
+            // Anchored at the bottom instead of stacked into the scrolling column, so marking files
+            // never shrinks the list you're working through.
+            if (state.selectedPaths.isNotEmpty()) {
+                val selSize = state.results.filter { it.path in state.selectedPaths }.sumOf { it.wastedBytes }
+                Surface(color = MaterialTheme.colorScheme.secondaryContainer, tonalElevation = 3.dp, shadowElevation = 8.dp) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.selected_count_saving, state.selectedPaths.size, formatBytes(selSize)), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { vm.clearSelection() }) { Text(stringResource(R.string.action_empty)) }
+                        TextButton(
+                            onClick = { scope.launch { vm.startCompressionAwait(); onNavigateToCompressionReview() } },
+                            enabled = !state.isEnqueuingCompression,
+                        ) {
+                            if (state.isEnqueuingCompression) {
+                                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(6.dp))
+                            }
+                            Text(stringResource(R.string.action_compress))
+                        }
+                        TextButton(onClick = { showConfirmDialog = true }, enabled = !state.isEnqueuingCompression) { Text(stringResource(R.string.optimize)) }
                     }
                 }
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    onClick = { if (state.isScanning) vm.cancelScan() else vm.startAnalysis(currentFolder) },
-                ) {
-                    if (state.isScanning) {
-                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                        Spacer(Modifier.width(8.dp))
+            }
+        },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            // Compact results header with a collapse toggle for the scan form below.
+            if (state.results.isNotEmpty()) {
+                val visibleWasted = remember(sortedVisible) { sortedVisible.sumOf { it.wastedBytes } }
+                Surface(color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)) {
+                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.storage_files_wasted, sortedVisible.size, formatBytes(visibleWasted)), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            state.restoredAt?.let { ts ->
+                                Text(
+                                    stringResource(R.string.restored_scan_from, java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(ts))),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        IconButton(onClick = { configExpanded = !configExpanded }) {
+                            Icon(
+                                if (configExpanded) Icons.Default.ExpandLess else Icons.Default.Tune,
+                                stringResource(R.string.dup_config_toggle),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     }
-                    Text(if (state.isScanning) stringResource(R.string.cancel) else stringResource(R.string.analyze))
+                }
+            }
+
+            // Scan configuration - collapsed once results exist to give the list the screen.
+            AnimatedVisibility(visible = configExpanded) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        modifier = Modifier.weight(1f).clickable { folderPicker.launch(null) },
+                        shape = RoundedCornerShape(Radius.md),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    ) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.FolderOpen, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                currentFolder.substringAfterLast('/').ifEmpty { stringResource(R.string.internal_storage) },
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = { if (state.isScanning) vm.cancelScan() else vm.startAnalysis(currentFolder) },
+                    ) {
+                        if (state.isScanning) {
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(if (state.isScanning) stringResource(R.string.cancel) else stringResource(R.string.analyze))
+                    }
                 }
             }
 
@@ -163,147 +274,114 @@ fun StorageAnalysisScreen(
                 Text(stringResource(R.string.storage_files_scanned, state.scannedCount, state.totalFiles), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
-            // Summary header
             if (state.results.isNotEmpty()) {
-                val totalWasted = remember(state.results) { state.results.sumOf { it.wastedBytes } }
-                val filtered = remember(state.results, state.filterMode) {
-                    when (state.filterMode) {
-                    FilterMode.ALL -> state.results
-                    FilterMode.IMAGES -> state.results.filter { it.mediaType == 1 }
-                        FilterMode.VIDEOS -> state.results.filter { it.mediaType == 2 }
-                    }
-                }
-                // Sort folded into its own remember(filtered, sortMode) - previously re-sorted on
-                // every recomposition of this screen (e.g. every selection toggle), not just when
-                // the filtered set or sort choice actually changed.
-                val sortedFiltered = remember(filtered, state.sortMode) {
-                    when (state.sortMode) {
-                        AnalysisSortMode.WASTED -> filtered.sortedByDescending { it.wastedBytes }
-                        AnalysisSortMode.SIZE -> filtered.sortedByDescending { it.fileSize }
-                        AnalysisSortMode.NAME -> filtered.sortedBy { it.name.lowercase() }
-                    }
-                }
                 var showSortMenu by remember { mutableStateOf(false) }
-                Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(stringResource(R.string.storage_files_wasted, filtered.size, formatBytes(totalWasted)), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        state.restoredAt?.let { ts ->
+                // Filter + sort row (moved out of the old summary card so the list gets more height).
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = state.filterMode == FilterMode.ALL, onClick = { vm.setFilterMode(FilterMode.ALL) }, label = { Text(stringResource(R.string.filter_all)) })
+                    FilterChip(selected = state.filterMode == FilterMode.IMAGES, onClick = { vm.setFilterMode(FilterMode.IMAGES) }, label = { Text(stringResource(R.string.images)) })
+                    FilterChip(selected = state.filterMode == FilterMode.VIDEOS, onClick = { vm.setFilterMode(FilterMode.VIDEOS) }, label = { Text(stringResource(R.string.videos)) })
+                    Spacer(Modifier.weight(1f))
+                    Box {
+                        IconButton(onClick = { showSortMenu = true }, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.AutoMirrored.Filled.Sort, stringResource(R.string.sort_analysis_by), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                        }
+                        DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.sort_savings)) },
+                                trailingIcon = { if (state.sortMode == AnalysisSortMode.WASTED) Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp)) },
+                                onClick = { vm.setSortMode(AnalysisSortMode.WASTED); showSortMenu = false },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.sort_size)) },
+                                trailingIcon = { if (state.sortMode == AnalysisSortMode.SIZE) Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp)) },
+                                onClick = { vm.setSortMode(AnalysisSortMode.SIZE); showSortMenu = false },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.sort_name)) },
+                                trailingIcon = { if (state.sortMode == AnalysisSortMode.NAME) Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp)) },
+                                onClick = { vm.setSortMode(AnalysisSortMode.NAME); showSortMenu = false },
+                            )
+                        }
+                    }
+                }
+
+                // Folder filter: work a whole-storage scan area by area instead of one mixed list.
+                if (folderCounts.size > 1) {
+                    LazyRow(
+                        Modifier.fillMaxWidth(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        item {
+                            FilterChip(
+                                selected = state.folderFilter == null,
+                                onClick = { vm.setFolderFilter(null) },
+                                label = { Text("${stringResource(R.string.dup_folder_all)} · ${byType.size}") },
+                            )
+                        }
+                        items(folderCounts, key = { it.first }) { (folder, count) ->
+                            FilterChip(
+                                selected = state.folderFilter == folder,
+                                onClick = { vm.setFolderFilter(if (state.folderFilter == folder) null else folder) },
+                                leadingIcon = { Icon(Icons.Default.FolderOpen, null, Modifier.size(16.dp)) },
+                                label = { Text("${folder.substringAfterLast('/')} · $count", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            )
+                        }
+                    }
+                }
+
+                // Guided two-step workflow, scoped to the visible set (WYSIWYG): lossless optimization
+                // can't lose quality, so it runs on everything eligible with one tap; compression is
+                // lossy so it only ever queues files for the before/after review, never applied blind.
+                val losslessEligible = remember(state.results) { vm.losslessEligiblePaths() }
+                val losslessEligibleVisible = remember(losslessEligible, visiblePaths) { losslessEligible intersect visiblePaths }
+                val busy = state.isTransforming || state.isEnqueuingCompression
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (losslessEligibleVisible.isNotEmpty()) {
+                        Button(onClick = { vm.optimizeAll(visiblePaths) }, enabled = !busy, modifier = Modifier.weight(1f)) {
+                            if (state.isTransforming) {
+                                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                                Spacer(Modifier.width(8.dp))
+                            }
+                            Text(stringResource(R.string.optimize_all_count, losslessEligibleVisible.size))
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = { scope.launch { vm.compressAllAwait(visiblePaths); onNavigateToCompressionReview() } },
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        if (state.isEnqueuingCompression) {
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(stringResource(R.string.compress_all_count, sortedVisible.size))
+                    }
+                }
+                if (state.isTransforming) {
+                    val prog = state.optimizeProgress
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
+                        if (prog != null) {
+                            LinearProgressIndicator(progress = { prog.first / prog.second.toFloat() }, modifier = Modifier.fillMaxWidth())
                             Text(
-                                stringResource(R.string.restored_scan_from, java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(ts))),
+                                stringResource(R.string.optimizing_progress, prog.first, prog.second),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                        }
-                        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            FilterChip(selected = state.filterMode == FilterMode.ALL, onClick = { vm.setFilterMode(FilterMode.ALL) }, label = { Text(stringResource(R.string.filter_all)) })
-                            FilterChip(selected = state.filterMode == FilterMode.IMAGES, onClick = { vm.setFilterMode(FilterMode.IMAGES) }, label = { Text(stringResource(R.string.images)) })
-                            FilterChip(selected = state.filterMode == FilterMode.VIDEOS, onClick = { vm.setFilterMode(FilterMode.VIDEOS) }, label = { Text(stringResource(R.string.videos)) })
-                            Spacer(Modifier.weight(1f))
-                            Box {
-                                IconButton(onClick = { showSortMenu = true }, modifier = Modifier.size(36.dp)) {
-                                    Icon(Icons.AutoMirrored.Filled.Sort, stringResource(R.string.sort_analysis_by), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                                }
-                                DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.sort_savings)) },
-                                        trailingIcon = { if (state.sortMode == AnalysisSortMode.WASTED) Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp)) },
-                                        onClick = { vm.setSortMode(AnalysisSortMode.WASTED); showSortMenu = false },
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.sort_size)) },
-                                        trailingIcon = { if (state.sortMode == AnalysisSortMode.SIZE) Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp)) },
-                                        onClick = { vm.setSortMode(AnalysisSortMode.SIZE); showSortMenu = false },
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.sort_name)) },
-                                        trailingIcon = { if (state.sortMode == AnalysisSortMode.NAME) Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp)) },
-                                        onClick = { vm.setSortMode(AnalysisSortMode.NAME); showSortMenu = false },
-                                    )
-                                }
-                            }
-                        }
-                        // Guided two-step workflow: lossless optimization can't lose quality (see
-                        // executeTransforms's forced losslessOnly), so it's safe to run on
-                        // everything eligible with one tap, no per-file review needed. Compression
-                        // is lossy, so it only ever queues files for the visual before/after review
-                        // in CompressionReviewScreen - never applied blind. Doing optimize first
-                        // means by the time "compress all" is tapped, the losslessly-fixable files
-                        // have already dropped out of the results (executeTransforms re-scans when
-                        // done), so compress only ever touches what's actually left to decide on.
-                        val losslessEligible = remember(state.results) { vm.losslessEligiblePaths() }
-                        val busy = state.isTransforming || state.isEnqueuingCompression
-                        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (losslessEligible.isNotEmpty()) {
-                                Button(onClick = { vm.optimizeAll() }, enabled = !busy, modifier = Modifier.weight(1f)) {
-                                    if (state.isTransforming) {
-                                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                                        Spacer(Modifier.width(8.dp))
-                                    }
-                                    Text(stringResource(R.string.optimize_all_count, losslessEligible.size))
-                                }
-                            }
-                            OutlinedButton(
-                                onClick = { scope.launch { vm.compressAllAwait(); onNavigateToCompressionReview() } },
-                                enabled = !busy,
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                if (state.isEnqueuingCompression) {
-                                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                                    Spacer(Modifier.width(8.dp))
-                                }
-                                Text(stringResource(R.string.compress_all_count, state.results.size))
-                            }
-                        }
-                        // While isTransforming, optimizeProgress lags one batch item behind briefly
-                        // at the very start (executeBatch reports after each item finishes) - showing
-                        // an indeterminate bar until the first count arrives beats showing nothing.
-                        if (state.isTransforming) {
-                            val prog = state.optimizeProgress
-                            Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                                if (prog != null) {
-                                    LinearProgressIndicator(progress = { prog.first / prog.second.toFloat() }, modifier = Modifier.fillMaxWidth())
-                                    Text(
-                                        stringResource(R.string.optimizing_progress, prog.first, prog.second),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                } else {
-                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                                }
-                            }
-                        }
-                        Button(
-                            onClick = { onNavigateToSwipe(sortedFiltered) },
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                        ) { Text(stringResource(R.string.swipe_review_start)) }
-                    }
-                }
-
-                // Action bar
-                if (state.selectedPaths.isNotEmpty()) {
-                    val selSize = state.results.filter { it.path in state.selectedPaths }.sumOf { it.wastedBytes }
-                    Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(Radius.md)) {
-                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(R.string.selected_count_saving, state.selectedPaths.size, formatBytes(selSize)), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { showConfirmDialog = true }, enabled = !state.isEnqueuingCompression) { Text(stringResource(R.string.optimize)) }
-                            TextButton(
-                                onClick = { scope.launch { vm.startCompressionAwait(); onNavigateToCompressionReview() } },
-                                enabled = !state.isEnqueuingCompression,
-                            ) {
-                                if (state.isEnqueuingCompression) {
-                                    CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-                                    Spacer(Modifier.width(6.dp))
-                                }
-                                Text(stringResource(R.string.action_compress))
-                            }
-                            TextButton(onClick = { vm.clearSelection() }) { Text(stringResource(R.string.action_empty)) }
+                        } else {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         }
                     }
                 }
+                OutlinedButton(
+                    onClick = { onNavigateToSwipe(sortedVisible) },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                ) { Text(stringResource(R.string.swipe_review_start)) }
 
                 // Results list
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp)) {
-                    items(sortedFiltered, key = { it.path }) { item ->
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp)) {
+                    items(sortedVisible, key = { it.path }) { item ->
                         AnalysisCard(
                             item = item,
                             isSelected = item.path in state.selectedPaths,
@@ -311,7 +389,7 @@ fun StorageAnalysisScreen(
                             onView = { onNavigateToViewer(item.path) }
                         )
                     }
-                    item { Spacer(Modifier.height(80.dp)) }
+                    item { Spacer(Modifier.height(12.dp)) }
                 }
             } else if (!state.isScanning && state.totalFiles > 0) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -374,6 +452,54 @@ fun StorageAnalysisScreen(
             text = { Text(stringResource(R.string.optimize_done_text, success, failed, formatBytes(saved))) },
             confirmButton = { TextButton(onClick = { vm.clearTransformResults() }) { Text(stringResource(org.fossify.commons.R.string.ok)) } }
         )
+    }
+}
+
+/**
+ * Top-bar "Select" menu. Marks files for the cleanup actions: all shown (filter-aware, WYSIWYG),
+ * the next 10/25/50 from the current scroll position (additive, so a long list is worked in
+ * batches, biggest wasters first when sorted by savings), or every file in the filtered folder.
+ */
+@Composable
+private fun SelectMenu(
+    shownCount: Int,
+    folderFiltered: Boolean,
+    onMarkAllShown: () -> Unit,
+    onMarkNext: (Int) -> Unit,
+    onMarkFolder: () -> Unit,
+    onClear: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { expanded = true }) { Text(stringResource(R.string.analysis_select)) }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            Text(
+                stringResource(R.string.analysis_mark_hint),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+            DropdownMenuItem(text = { Text(stringResource(R.string.analysis_mark_all_shown, shownCount)) }, onClick = { onMarkAllShown(); expanded = false })
+            androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            Text(
+                stringResource(R.string.analysis_mark_from_scroll),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
+            listOf(10, 25, 50).forEach { n ->
+                DropdownMenuItem(text = { Text(stringResource(R.string.dup_batch_next, n)) }, onClick = { onMarkNext(n); expanded = false })
+            }
+            androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            if (folderFiltered) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.analysis_mark_folder)) },
+                    leadingIcon = { Icon(Icons.Default.FolderOpen, null) },
+                    onClick = { onMarkFolder(); expanded = false },
+                )
+            }
+            DropdownMenuItem(text = { Text(stringResource(R.string.selection_clear)) }, onClick = { onClear(); expanded = false })
+        }
     }
 }
 

@@ -36,6 +36,9 @@ data class DuplicateState(
     val similarThreshold: Int = 10,
     /** Set when [groups] were restored from the last persisted scan instead of a fresh run. */
     val restoredAt: Long? = null,
+    /** Active results filter: only groups touching this folder are shown. null = all folders.
+     * Lets a device-wide scan be worked through folder by folder instead of one mixed list. */
+    val folderFilter: String? = null,
 )
 
 enum class DuplicateMode { EXACT, SIMILAR }
@@ -77,7 +80,7 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setMode(mode: DuplicateMode) {
-        _state.update { it.copy(mode = mode, groups = emptyList(), selectedForDeletion = emptySet(), scanDone = false) }
+        _state.update { it.copy(mode = mode, groups = emptyList(), selectedForDeletion = emptySet(), scanDone = false, folderFilter = null) }
     }
 
     fun setScope(scope: DuplicateScope) {
@@ -88,9 +91,15 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
                 // SIMILAR would mean perceptually hashing the whole library, the opposite of the
                 // battery promise, so it's pinned to EXACT there.
                 mode = if (scope != DuplicateScope.FOLDER) DuplicateMode.EXACT else it.mode,
-                groups = emptyList(), selectedForDeletion = emptySet(), scanDone = false,
+                groups = emptyList(), selectedForDeletion = emptySet(), scanDone = false, folderFilter = null,
             )
         }
+    }
+
+    /** Narrows the visible results to groups that have at least one file in [folder]; null shows
+     * all. Selection is left untouched so a filter can be flipped through without losing marks. */
+    fun setFolderFilter(folder: String?) {
+        _state.update { it.copy(folderFilter = folder) }
     }
 
     fun setThreshold(threshold: Int) {
@@ -105,7 +114,7 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
             _state.update {
                 it.copy(
                     isScanning = true, progress = 0, phase = getApplication<Application>().getString(R.string.dup_phase_collecting), folderPath = folderPath,
-                    groups = emptyList(), selectedForDeletion = emptySet(),
+                    groups = emptyList(), selectedForDeletion = emptySet(), folderFilter = null,
                     hashedCount = 0, totalCandidates = 0, totalScanned = 0, scanDone = false, restoredAt = null,
                 )
             }
@@ -139,14 +148,26 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { s -> s.copy(selectedForDeletion = if (path in s.selectedForDeletion) s.selectedForDeletion - path else s.selectedForDeletion + path) }
     }
 
-    /** Per group, selects every file except the single one [strategy] keeps - replaces the
-     * current selection. Unlike the folder bulk-select this is deliberately allowed in SIMILAR
-     * mode too (that's where the size-based strategies are actually meaningful, since EXACT
-     * duplicates are byte-identical): the screen shows a caution toast there, and deletion still
-     * goes through the confirm dialog into the recycle bin either way. */
-    fun applyKeepStrategy(strategy: KeepStrategy) {
+    /** Per group, marks every file except the single one [strategy] keeps.
+     *
+     * [targetHashes] limits which groups are affected (null = every group). When a subset is
+     * given the marks are added to the current selection ([additive]); over the whole set they
+     * replace it - so "all groups · newest" is a clean one-shot, while "next 25 · smallest" from
+     * the scroll position stacks batch after batch as the user works down a long list.
+     *
+     * Deliberately allowed in SIMILAR mode too (that's where the size-based strategies are
+     * actually meaningful, since EXACT duplicates are byte-identical): the screen shows a caution
+     * toast there, and deletion still goes through the confirm dialog into the recycle bin. */
+    fun applyKeepStrategy(strategy: KeepStrategy, targetHashes: Set<String>? = null, additive: Boolean = targetHashes != null, restrictToFolder: String? = null) {
         _state.update { s ->
-            val toDelete = s.groups.flatMap { g ->
+            val targets = if (targetHashes == null) s.groups else s.groups.filter { it.hash in targetHashes }
+            // The keeper is always chosen from the WHOLE group (so "smallest" means smallest overall
+            // and a copy always survives), but under a folder filter only the files that live in that
+            // folder are actually marked - filtering to a folder means "clean up THIS folder", so a
+            // strategy must never mark a copy sitting in some other, unshown folder. This is why a
+            // filtered "all groups · smallest" marks far fewer files than the grand total.
+            fun inFolder(path: String) = restrictToFolder == null || File(path).parent == restrictToFolder
+            val toDelete = targets.flatMap { g ->
                 val keeper = when (strategy) {
                     KeepStrategy.NEWEST -> g.files.maxWithOrNull(compareBy({ it.modified }, { it.size }))
                     KeepStrategy.OLDEST -> g.files.minWithOrNull(compareBy({ it.modified }, { it.path }))
@@ -155,9 +176,20 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
                     KeepStrategy.SHORTEST_NAME -> g.files.minWithOrNull(compareBy({ it.name.length }, { it.name }))
                     KeepStrategy.SHORTEST_PATH -> g.files.minWithOrNull(compareBy({ it.path.length }, { it.path }))
                 }
-                g.files.filter { it.path != keeper?.path }
+                g.files.filter { it.path != keeper?.path && inFolder(it.path) }
             }.map { it.path }.toSet()
-            s.copy(selectedForDeletion = toDelete)
+            val newSelection = when {
+                targetHashes == null -> toDelete                       // whole set: replace outright
+                additive -> s.selectedForDeletion + toDelete           // batch "next N": stack on top
+                else -> {
+                    // Scoped replace (folder filter active): recompute marks only for the visible
+                    // groups' files in the filtered folder and leave every other mark untouched -
+                    // WYSIWYG, so a filtered strategy never touches a file you can't see.
+                    val scopePaths = targets.flatMap { it.files }.filter { inFolder(it.path) }.map { it.path }.toSet()
+                    (s.selectedForDeletion - scopePaths) + toDelete
+                }
+            }
+            s.copy(selectedForDeletion = newSelection)
         }
     }
 
@@ -169,11 +201,19 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
      * large - "other found entries", not "everything in this folder". */
     fun selectAllInFolder(path: String) {
         val folder = File(path).parent ?: return
+        selectFolder(folder)
+    }
+
+    /** Adds every duplicate-group file living directly in [folder] to the selection. Backs both
+     * the per-row "Mark folder" chip and the "Mark all shown" action when a folder filter is
+     * active - a folder full of junk copies is cleared in one tap, while the matching originals
+     * in other folders stay untouched as keepers. */
+    fun selectFolder(folder: String) {
         _state.update { s ->
-            // Same EXACT-only guard as selectAllButNewest, enforced here too (not just in the
-            // Screen's icon visibility) so this can never mass-select SIMILAR-mode files - those
-            // are only perceptually similar, not verified identical, regardless of which UI ends
-            // up calling this.
+            // Same EXACT-only guard as the size strategies' folder variant, enforced here too (not
+            // just in the Screen's icon visibility) so this can never mass-select SIMILAR-mode
+            // files - those are only perceptually similar, not verified identical, regardless of
+            // which UI ends up calling this.
             if (s.mode != DuplicateMode.EXACT) return@update s
             val sameFolderPaths = s.groups.asSequence().flatMap { it.files }.filter { File(it.path).parent == folder }.map { it.path }
             s.copy(selectedForDeletion = s.selectedForDeletion + sameFolderPaths)
@@ -205,6 +245,37 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
                     .filter { it.files.size > 1 }
                 s.copy(groups = remaining, selectedForDeletion = emptySet())
             }
+            // Keep the persisted scan in step with what's now on screen, so a later app restart
+            // doesn't resurrect the just-deleted entries from the remembered scan.
+            persistCurrent()
+        }
+    }
+
+    /**
+     * Re-checks that every listed file still exists on disk and prunes the ones that don't (and any
+     * group left with a single copy), then re-persists. Makes the results live against deletions
+     * that happened outside this screen - emptying the recycle bin, deleting in the main gallery,
+     * a file manager - without forcing a fresh multi-minute scan. Called on every screen resume;
+     * a no-op (no state emission) when nothing actually vanished.
+     */
+    fun revalidate() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val current = _state.value.groups
+            if (current.isEmpty()) return@launch
+            val pruned = current
+                .map { g -> g.copy(files = g.files.filter { File(it.path).exists() }) }
+                .filter { it.files.size > 1 }
+            if (pruned == current) return@launch
+            val livePaths = pruned.asSequence().flatMap { it.files }.map { it.path }.toSet()
+            _state.update { it.copy(groups = pruned, selectedForDeletion = it.selectedForDeletion intersect livePaths) }
+            persistCurrent()
+        }
+    }
+
+    private suspend fun persistCurrent() {
+        val s = _state.value
+        withContext(Dispatchers.IO) {
+            ScanResultStore.saveDuplicateScan(getApplication(), s.folderPath, s.mode.name, s.groups)
         }
     }
 }

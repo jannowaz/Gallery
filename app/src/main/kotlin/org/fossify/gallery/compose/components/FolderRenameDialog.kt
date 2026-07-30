@@ -80,8 +80,11 @@ fun FolderRenameDialog(folderPath: String, onDismiss: () -> Unit, onRenamed: (ol
         }
     }
 
+    // Observe by tag, not by unique-work name: MediaBatchWorker enqueues under a fixed
+    // UNIQUE_WORK_NAME and adds the jobId only as a tag, so getWorkInfosForUniqueWorkFlow(jobId)
+    // matched nothing and the progress bar sat at 0/x. Same fix as RenameDialog/FoldersMoverScreen.
     val workInfo by remember(jobId) {
-        jobId?.let { WorkManager.getInstance(ctx).getWorkInfosForUniqueWorkFlow(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
+        jobId?.let { WorkManager.getInstance(ctx).getWorkInfosByTagFlow(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
     }.collectAsState(initial = emptyList())
     val activeWorkInfo = workInfo.firstOrNull()
 

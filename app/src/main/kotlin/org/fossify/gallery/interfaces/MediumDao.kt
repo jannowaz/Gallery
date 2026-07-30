@@ -104,6 +104,12 @@ interface MediumDao {
     @Query("SELECT full_path FROM media WHERE deleted_ts != 0 AND full_path IN (:paths)")
     fun getSoftDeletedPaths(paths: List<String>): List<String>
 
+    // Soft-deleted rows with the fields reviveSoftDeleted needs to tell a genuinely re-created file
+    // (different size/mtime on disk) from the very file the user just deleted (identical) - only the
+    // former should be un-deleted; resurrecting the latter defeats the deletion.
+    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts != 0 AND full_path IN (:paths)")
+    fun getSoftDeletedMedia(paths: List<String>): List<Medium>
+
     // Un-deletes a row and refreshes it to a re-created file's metadata. Only safe to call for paths
     // the timestamp-filtered incremental sync actually matched (a fresh DATE_ADDED/DATE_MODIFIED), so
     // an untouched recycle-bin item - whose file keeps its old timestamps - is never resurrected. The

@@ -70,8 +70,13 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<Str
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
+    // Observe by tag, not by unique-work name: MediaBatchWorker.enqueue registers the work under a
+    // fixed UNIQUE_WORK_NAME and adds the jobId only as a tag, so getWorkInfosForUniqueWorkFlow(jobId)
+    // matched nothing - info stayed null, the progress bar sat at 0/x, and the completion effect
+    // (which auto-dismisses and remaps the selection) never fired, so only Cancel closed the dialog
+    // even though the rename had already finished. Same fix as FolderPickerSheet/FoldersMoverScreen.
     val workInfo by remember(jobId) {
-        jobId?.let { WorkManager.getInstance(ctx).getWorkInfosForUniqueWorkFlow(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
+        jobId?.let { WorkManager.getInstance(ctx).getWorkInfosByTagFlow(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
     }.collectAsState(initial = emptyList())
     val activeWorkInfo = workInfo.firstOrNull()
 

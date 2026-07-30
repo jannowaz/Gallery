@@ -934,14 +934,24 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
         try {
             val byPath = candidates.associateBy { it.path }
             val softDeleted = byPath.keys.chunked(SQLITE_BATCH_CHUNK_SIZE)
-                .flatMap { context.mediaDB.getSoftDeletedPaths(it) }
+                .flatMap { context.mediaDB.getSoftDeletedMedia(it) }
             if (softDeleted.isEmpty()) return
-            softDeleted.forEach { dbPath ->
-                // getSoftDeletedPaths returns the DB's stored casing; map back case-insensitively.
-                val m = byPath[dbPath] ?: byPath.entries.firstOrNull { it.key.equals(dbPath, ignoreCase = true) }?.value
-                if (m != null) context.mediaDB.reviveMedium(dbPath, m.modified, m.taken, m.size, m.type, m.dateAdded)
+            var revived = 0
+            softDeleted.forEach { deletedRow ->
+                // getSoftDeletedMedia returns the DB's stored casing; map back case-insensitively.
+                val m = byPath[deletedRow.path] ?: byPath.entries.firstOrNull { it.key.equals(deletedRow.path, ignoreCase = true) }?.value
+                    ?: return@forEach
+                // Only un-delete if the on-disk file is genuinely a DIFFERENT file than the one that
+                // was recycled - i.e. its size or mtime changed. When they match, this is the exact
+                // file the user just deleted (its recent DATE_ADDED/DATE_MODIFIED merely put it inside
+                // the incremental sync window), and resurrecting it would defeat the deletion - which
+                // is exactly what made an optimized/compressed original, or a just-added duplicate,
+                // reappear right after being sent to the recycle bin.
+                if (m.size == deletedRow.size && m.modified == deletedRow.modified) return@forEach
+                context.mediaDB.reviveMedium(deletedRow.path, m.modified, m.taken, m.size, m.type, m.dateAdded)
+                revived++
             }
-            android.util.Log.i("MediaRepository", "Revived ${softDeleted.size} re-created files from soft-deleted rows")
+            if (revived > 0) android.util.Log.i("MediaRepository", "Revived $revived re-created files from soft-deleted rows")
         } catch (e: Exception) {
             android.util.Log.e("MediaRepository", "reviveSoftDeleted failed", e)
         }

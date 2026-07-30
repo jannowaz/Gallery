@@ -250,7 +250,7 @@ fun GalleryNavHost(
                         DuplicateFinderScreen(
                             initialFolder = route.folderPath,
                             onBack = { navController.popBackStack() },
-                            onNavigateToViewer = { path -> ViewerArgs.paths = listOf(path); navController.navigate(Viewer(0)) },
+                            onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex.coerceAtLeast(0))) },
                         )
                         }
                     }

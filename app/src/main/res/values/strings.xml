@@ -598,6 +598,13 @@
     </plurals>
     <string name="select_folder_duplicates">Mark all found duplicates from this folder</string>
     <string name="select_folder_duplicates_short">Mark folder</string>
+    <string name="keep_scope_hint">Apply to:</string>
+    <string name="dup_batch_all">All groups</string>
+    <string name="dup_batch_next">Next %1$d</string>
+    <string name="dup_config_toggle">Scan settings</string>
+    <string name="dup_folder_all">All folders</string>
+    <string name="dup_folder_filter_hint">Filter by folder</string>
+    <string name="dup_select_all_shown">Mark all shown</string>
     <string name="internal_storage">Internal storage</string>
     <string name="scanning_short">Scanning…</string>
     <string name="dup_mode_exact">Exact</string>
@@ -616,6 +623,11 @@
     <string name="analyze">Analyze</string>
     <string name="storage_files_scanned">%1$d / %2$d files scanned</string>
     <string name="storage_files_wasted">%1$d files · %2$s wasted</string>
+    <string name="analysis_select">Select</string>
+    <string name="analysis_mark_hint">Mark for cleanup</string>
+    <string name="analysis_mark_all_shown">Mark all shown (%1$d)</string>
+    <string name="analysis_mark_from_scroll">From scroll position:</string>
+    <string name="analysis_mark_folder">Mark all in this folder</string>
     <string name="optimize">Optimize</string>
     <string name="optimize_all_count">Optimize all (%1$d, lossless)</string>
     <string name="compress_all_count">Compress all (%1$d)</string>
@@ -797,6 +809,7 @@
     <string name="dup_phase_comparing">Comparing…</string>
     <string name="opt_err_image_too_large">Image too large</string>
     <string name="opt_err_no_savings">No savings</string>
+    <string name="opt_err_color_precision">Skipped to stay lossless (16-bit or wide-gamut source)</string>
     <string name="opt_err_inplace_disabled">In-place overwrite disabled</string>
     <string name="opt_err_target_exists">Target file already exists</string>
     <string name="reason_video_bitrate">Bitrate %1$s at %2$s – YouTube recommends %3$s (%4$s× higher)</string>
@@ -891,6 +904,8 @@
     <string name="similar">similar</string>
     <string name="identical">identical</string>
     <string name="duplicate_group_summary">%1$d× %2$s · %3$s · %4$s savable</string>
+    <string name="dup_group_header">%1$d× %2$s · %3$s total · %4$s savable</string>
+    <string name="dup_group_marked_count">%1$d marked</string>
     <string name="duplicate_group_more_files">+ %1$d more files not shown</string>
     <string name="duplicate_scan_summary">%1$d groups · %2$d duplicates · %3$s savable</string>
     <string name="duplicate_marked_count">%1$d marked · %2$s</string>

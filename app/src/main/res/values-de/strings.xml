@@ -555,6 +555,13 @@
     </plurals>
     <string name="select_folder_duplicates">Alle gefundenen Duplikate aus diesem Ordner markieren</string>
     <string name="select_folder_duplicates_short">Ordner markieren</string>
+    <string name="keep_scope_hint">Anwenden auf:</string>
+    <string name="dup_batch_all">Alle Gruppen</string>
+    <string name="dup_batch_next">Nächste %1$d</string>
+    <string name="dup_config_toggle">Scan-Einstellungen</string>
+    <string name="dup_folder_all">Alle Ordner</string>
+    <string name="dup_folder_filter_hint">Nach Ordner filtern</string>
+    <string name="dup_select_all_shown">Alle angezeigten markieren</string>
     <string name="internal_storage">Interner Speicher</string>
     <string name="scanning_short">Scannt…</string>
     <string name="dup_mode_exact">Exakt</string>
@@ -573,6 +580,11 @@
     <string name="analyze">Analysieren</string>
     <string name="storage_files_scanned">%1$d / %2$d Dateien gescannt</string>
     <string name="storage_files_wasted">%1$d Dateien · %2$s verschwendet</string>
+    <string name="analysis_select">Auswählen</string>
+    <string name="analysis_mark_hint">Zum Aufräumen markieren</string>
+    <string name="analysis_mark_all_shown">Alle angezeigten markieren (%1$d)</string>
+    <string name="analysis_mark_from_scroll">Ab Scroll-Position:</string>
+    <string name="analysis_mark_folder">Alle in diesem Ordner markieren</string>
     <string name="optimize">Optimieren</string>
     <string name="optimize_all_count">Alle optimieren (%1$d, verlustfrei)</string>
     <string name="compress_all_count">Alle komprimieren (%1$d)</string>
@@ -754,6 +766,7 @@
     <string name="dup_phase_comparing">Vergleichen…</string>
     <string name="opt_err_image_too_large">Bild zu groß</string>
     <string name="opt_err_no_savings">Keine Ersparnis</string>
+    <string name="opt_err_color_precision">Übersprungen, um verlustfrei zu bleiben (16-Bit- oder Weitgamut-Quelle)</string>
     <string name="opt_err_inplace_disabled">In-place-Überschreiben deaktiviert</string>
     <string name="opt_err_target_exists">Zieldatei existiert bereits</string>
     <string name="reason_video_bitrate">Bitrate %1$s bei %2$s – YouTube empfiehlt %3$s (%4$s× höher)</string>
@@ -848,6 +861,8 @@
     <string name="similar">ähnlich</string>
     <string name="identical">gleich</string>
     <string name="duplicate_group_summary">%1$d× %2$s · %3$s · %4$s sparbar</string>
+    <string name="dup_group_header">%1$d× %2$s · %3$s gesamt · %4$s sparbar</string>
+    <string name="dup_group_marked_count">%1$d markiert</string>
     <string name="duplicate_group_more_files">+ %1$d weitere Dateien nicht angezeigt</string>
     <string name="duplicate_scan_summary">%1$d Gruppen · %2$d Duplikate · %3$s sparbar</string>
     <string name="duplicate_marked_count">%1$d markiert · %2$s</string>
