@@ -206,6 +206,10 @@ fun StorageAnalysisScreen(
                         TextButton(onClick = { showConfirmDialog = true }, enabled = !state.isEnqueuingCompression) { Text(stringResource(R.string.optimize)) }
                     }
                 }
+            } else {
+                // No selection: surface the recycle-bin safety net as a visible "Undo" after an
+                // optimize (restores originals) or a delete.
+                org.fossify.gallery.compose.components.UndoBar()
             }
         },
     ) { padding ->
@@ -343,6 +347,11 @@ fun StorageAnalysisScreen(
                             if (state.isTransforming) {
                                 CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                                 Spacer(Modifier.width(8.dp))
+                            } else {
+                                // Check mark reinforces "safe / lossless" - this is the button that
+                                // changes files directly, so it should read as the trustworthy one.
+                                Icon(Icons.Default.CheckCircle, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
                             }
                             Text(stringResource(R.string.optimize_all_count, losslessEligibleVisible.size))
                         }
@@ -359,6 +368,12 @@ fun StorageAnalysisScreen(
                         Text(stringResource(R.string.compress_all_count, sortedVisible.size))
                     }
                 }
+                Text(
+                    stringResource(R.string.analysis_cta_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
                 if (state.isTransforming) {
                     val prog = state.optimizeProgress
                     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {

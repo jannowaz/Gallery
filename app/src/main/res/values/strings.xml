@@ -428,6 +428,7 @@
     <string name="swipe_review_title">Swipe review</string>
     <string name="back_again_to_exit">Press back again to leave</string>
     <string name="undo_compress_replaced">Original replaced</string>
+    <string name="undo_optimized_count">%1$d optimized</string>
     <string name="restored_scan_from">Last scan · %s</string>
     <string name="applied_to_count">%d files updated</string>
     <string name="batch_applying_progress">Applying… %1$d/%2$d</string>
@@ -590,6 +591,7 @@
     <string name="keep_smallest">Smallest</string>
     <string name="keep_shortest_name">Shortest name</string>
     <string name="keep_shortest_path">Shortest path</string>
+    <string name="keep_highest_rated">Highest rating / favorite</string>
     <string name="similar_select_caution">Similar files are not identical – review the selection</string>
     <string name="deleting_forever_progress">Deleting permanently… %1$d/%2$d</string>
     <plurals name="deleted_forever_count">
@@ -631,6 +633,7 @@
     <string name="optimize">Optimize</string>
     <string name="optimize_all_count">Optimize all (%1$d, lossless)</string>
     <string name="compress_all_count">Compress all (%1$d)</string>
+    <string name="analysis_cta_hint">Optimize is lossless • Compress shows a preview first</string>
     <string name="optimizing_progress">Optimizing %1$d / %2$d…</string>
     <string name="all_optimal">Everything optimal!</string>
     <string name="optimize_confirm_title">Confirm optimization</string>
@@ -906,6 +909,11 @@
     <string name="duplicate_group_summary">%1$d× %2$s · %3$s · %4$s savable</string>
     <string name="dup_group_header">%1$d× %2$s · %3$s total · %4$s savable</string>
     <string name="dup_group_marked_count">%1$d marked</string>
+    <string name="dup_confirm_keeps_copies">%1$d groups keep at least one copy</string>
+    <string name="dup_confirm_all_deleted">%1$d group(s): every copy would be deleted</string>
+    <string name="dup_confirm_rated">%1$d rated/favorite file(s) affected</string>
+    <string name="dup_stays">keeps</string>
+    <string name="dup_group_all_marked">All copies marked</string>
     <string name="duplicate_group_more_files">+ %1$d more files not shown</string>
     <string name="duplicate_scan_summary">%1$d groups · %2$d duplicates · %3$s savable</string>
     <string name="duplicate_marked_count">%1$d marked · %2$s</string>

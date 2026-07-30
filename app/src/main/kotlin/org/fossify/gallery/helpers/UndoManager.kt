@@ -1,8 +1,10 @@
 package org.fossify.gallery.helpers
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
 
 enum class UndoType {
     DELETE,
@@ -14,6 +16,11 @@ enum class UndoType {
     /** A compression review/swipe replaced the original (now in the recycle bin) with the
      * compressed copy at extra["newPath"] - undo restores the original and deletes the copy. */
     COMPRESS_REPLACE,
+
+    /** A lossless "Optimize" batch replaced each original (now in the recycle bin) with a converted
+     * copy - extra maps originalPath -> newPath for every file. Undo restores all originals and
+     * deletes the generated copies. Batch-shaped (a whole "Optimize all" run) unlike COMPRESS_REPLACE. */
+    OPTIMIZE_REPLACE,
 }
 
 data class UndoAction(
@@ -51,7 +58,10 @@ object UndoManager {
         // Always drop the action afterwards, even if no handler is registered or it failed, so
         // the undo bar never gets stuck.
         val ok = try {
-            undoHandlers[action.type]?.invoke(action)
+            // Handlers do Room writes and file ops (restoreFromRecycleBin, delete, worker enqueue) -
+            // the undo bar fires them from a Main-dispatcher scope, so without hopping to IO Room
+            // throws "Cannot access database on the main thread" and every undo silently fails.
+            withContext(Dispatchers.IO) { undoHandlers[action.type]?.invoke(action) }
             true
         } catch (e: Exception) {
             android.util.Log.e("UndoManager", "Undo handler failed for ${action.type}", e)

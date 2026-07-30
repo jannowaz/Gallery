@@ -20,6 +20,9 @@ import org.fossify.gallery.extensions.copyNonDimensionAttributesTo
 import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.helpers.RefreshBus
+import org.fossify.gallery.helpers.UndoAction
+import org.fossify.gallery.helpers.UndoManager
+import org.fossify.gallery.helpers.UndoType
 import org.fossify.gallery.helpers.XmpWriter
 import org.fossify.gallery.models.Medium
 import java.io.File
@@ -127,6 +130,19 @@ class StorageAnalysisViewModel(app: Application) : AndroidViewModel(app) {
             val suggestions = engine.suggestTransformations(_state.value.results.filter { it.path in selected }, losslessOnly = true)
             if (suggestions.isEmpty()) { _state.update { it.copy(isTransforming = false) }; return@launch }
             val results = engine.executeBatch(suggestions) { done, total -> _state.update { it.copy(optimizeProgress = done to total) } }
+            // One-tap undo for the whole batch: restore every original from the recycle bin and
+            // delete the generated copies. The originals are only soft-deleted (recoverable), so this
+            // is always safe - it just makes the safety net visible instead of buried in the bin.
+            val replaced = results.filter { it.success && it.newPath.isNotEmpty() }
+            if (replaced.isNotEmpty()) {
+                UndoManager.push(
+                    UndoAction(
+                        paths = replaced.map { it.originalPath }.toSet(),
+                        type = UndoType.OPTIMIZE_REPLACE,
+                        extra = replaced.associate { it.originalPath to it.newPath },
+                    )
+                )
+            }
             _state.update { it.copy(isTransforming = false, optimizeProgress = null, transformResults = results, selectedPaths = emptySet()) }
             startAnalysis(_state.value.folderPath)
         }

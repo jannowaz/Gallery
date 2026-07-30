@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -208,6 +209,9 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                         }
                     }
                 }
+            } else {
+                // No selection: surface the recycle-bin safety net as a visible "Undo" after a delete.
+                org.fossify.gallery.compose.components.UndoBar()
             }
         },
     ) { padding ->
@@ -416,12 +420,48 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
     }
 
     if (showConfirmDialog) {
-        val count = state.selectedForDeletion.size
-        val selSize = state.groups.flatMap { it.files }.filter { it.path in state.selectedForDeletion }.sumOf { it.size }
+        val sel = state.selectedForDeletion
+        val count = sel.size
+        val selSize = state.groups.flatMap { it.files }.filter { it.path in sel }.sumOf { it.size }
+        // Per-group survivor accounting drives the reassurance ("N groups keep a copy") and the two
+        // warnings (a group where every copy is marked; a rated/favorite file about to be deleted) -
+        // the visible safety signals that turn "did I just lose something?" into a confident action.
+        val affected = state.groups.filter { g -> g.files.any { it.path in sel } }
+        val fullyMarked = affected.count { g -> g.files.all { it.path in sel } }
+        val keepingCopy = affected.size - fullyMarked
+        val ratedAffected = state.groups.flatMap { it.files }.count { it.path in sel && it.rating > 0 }
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
             title = { Text(stringResource(R.string.confirm_delete_title)) },
-            text = { Text(stringResource(R.string.move_to_recycle_bin_confirm_size, count, formatBytes(selSize))) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.move_to_recycle_bin_confirm_size, count, formatBytes(selSize)))
+                    if (keepingCopy > 0) {
+                        Spacer(Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF43A047), modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.dup_confirm_keeps_copies, keepingCopy), style = MaterialTheme.typography.labelMedium, color = Color(0xFF43A047))
+                        }
+                    }
+                    if (fullyMarked > 0) {
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.dup_confirm_all_deleted, fullyMarked), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                    if (ratedAffected > 0) {
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Star, null, tint = RatingStarColor, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.dup_confirm_rated, ratedAffected), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            },
             confirmButton = { TextButton(onClick = { showConfirmDialog = false; vm.deleteSelected() }) { Text(stringResource(org.fossify.commons.R.string.delete), color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { showConfirmDialog = false }) { Text(stringResource(R.string.cancel)) } },
         )
@@ -483,6 +523,11 @@ private fun AutoSelectAction(
             androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.keep_smallest)) }, onClick = { apply(KeepStrategy.SMALLEST) })
             androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.keep_shortest_name)) }, onClick = { apply(KeepStrategy.SHORTEST_NAME) })
             androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.keep_shortest_path)) }, onClick = { apply(KeepStrategy.SHORTEST_PATH) })
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text(stringResource(R.string.keep_highest_rated)) },
+                leadingIcon = { Icon(Icons.Default.Star, null, tint = RatingStarColor) },
+                onClick = { apply(KeepStrategy.HIGHEST_RATED) },
+            )
             androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 4.dp))
             if (folderFiltered) {
                 androidx.compose.material3.DropdownMenuItem(
@@ -517,6 +562,10 @@ private fun DuplicateGroupCard(
     var expanded by remember(group.hash) { mutableStateOf(false) }
     val totalSize = remember(group.files) { group.files.sumOf { it.size } }
     val markedInGroup = group.files.count { it.path in selected }
+    // Every copy in the group is marked = nothing would survive. The recycle bin still makes it
+    // recoverable, but flag it loudly so the user never destroys a group unknowingly.
+    val allMarked = markedInGroup > 0 && markedInGroup == group.files.size
+    val keepGreen = Color(0xFF43A047)
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
         shape = RoundedCornerShape(Radius.md),
@@ -537,7 +586,18 @@ private fun DuplicateGroupCard(
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.tertiary,
                     )
-                    if (markedInGroup > 0) {
+                    if (allMarked) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(13.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                stringResource(R.string.dup_group_all_marked),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    } else if (markedInGroup > 0) {
                         Text(
                             stringResource(R.string.dup_group_marked_count, markedInGroup),
                             style = MaterialTheme.typography.labelSmall,
@@ -569,11 +629,20 @@ private fun DuplicateGroupCard(
                                 }
                             }
                             if (isSel) {
-                                Box(Modifier.size(72.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)))
+                                // Marked for deletion: red scrim + trash badge.
+                                Box(Modifier.size(72.dp).background(MaterialTheme.colorScheme.error.copy(alpha = 0.4f)))
+                                Icon(
+                                    Icons.Default.Delete, null,
+                                    tint = Color.White,
+                                    modifier = Modifier.align(Alignment.TopEnd).padding(3.dp).size(18.dp),
+                                )
+                            } else if (markedInGroup > 0) {
+                                // A survivor while others in the group are marked: green "keeps" badge,
+                                // so it's obvious at a glance which copy will remain.
                                 Icon(
                                     Icons.Default.CheckCircle, null,
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.align(Alignment.TopEnd).padding(3.dp).size(18.dp),
+                                    tint = keepGreen,
+                                    modifier = Modifier.align(Alignment.TopStart).padding(3.dp).size(18.dp),
                                 )
                             }
                         }
@@ -615,7 +684,14 @@ private fun DuplicateGroupCard(
                     Column(Modifier.weight(1f).clip(RoundedCornerShape(Radius.sm)).clickable { onView(groupPaths, index) }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(file.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                            if (index == 0) {
+                            // With a selection in the group, a survivor gets a green "keeps" chip so
+                            // it's unmistakable which copy stays; otherwise the newest is just labelled.
+                            if (markedInGroup > 0 && file.path !in selected) {
+                                Spacer(Modifier.width(6.dp))
+                                Surface(shape = RoundedCornerShape(Radius.xs), color = keepGreen.copy(alpha = 0.18f)) {
+                                    Text(stringResource(R.string.dup_stays), Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, color = keepGreen, fontWeight = FontWeight.SemiBold)
+                                }
+                            } else if (markedInGroup == 0 && index == 0) {
                                 Spacer(Modifier.width(6.dp))
                                 Surface(shape = RoundedCornerShape(Radius.xs), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)) {
                                     Text(stringResource(R.string.newest), Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)

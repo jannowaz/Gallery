@@ -385,6 +385,7 @@
     <string name="swipe_review_title">Swipe-Review</string>
     <string name="back_again_to_exit">Erneut zurück drücken zum Verlassen</string>
     <string name="undo_compress_replaced">Original ersetzt</string>
+    <string name="undo_optimized_count">%1$d optimiert</string>
     <string name="restored_scan_from">Letzter Scan · %s</string>
     <string name="applied_to_count">%d Dateien aktualisiert</string>
     <string name="batch_applying_progress">Wird angewendet… %1$d/%2$d</string>
@@ -547,6 +548,7 @@
     <string name="keep_smallest">Kleinste</string>
     <string name="keep_shortest_name">Kürzester Name</string>
     <string name="keep_shortest_path">Kürzester Pfad</string>
+    <string name="keep_highest_rated">Höchste Bewertung / Favorit</string>
     <string name="similar_select_caution">Ähnliche Dateien sind nicht identisch – Auswahl prüfen</string>
     <string name="deleting_forever_progress">Wird endgültig gelöscht… %1$d/%2$d</string>
     <plurals name="deleted_forever_count">
@@ -588,6 +590,7 @@
     <string name="optimize">Optimieren</string>
     <string name="optimize_all_count">Alle optimieren (%1$d, verlustfrei)</string>
     <string name="compress_all_count">Alle komprimieren (%1$d)</string>
+    <string name="analysis_cta_hint">Optimieren ist verlustfrei • Komprimieren zeigt vorher eine Vorschau</string>
     <string name="optimizing_progress">Optimiere %1$d / %2$d…</string>
     <string name="all_optimal">Alles optimal!</string>
     <string name="optimize_confirm_title">Optimierung bestätigen</string>
@@ -863,6 +866,11 @@
     <string name="duplicate_group_summary">%1$d× %2$s · %3$s · %4$s sparbar</string>
     <string name="dup_group_header">%1$d× %2$s · %3$s gesamt · %4$s sparbar</string>
     <string name="dup_group_marked_count">%1$d markiert</string>
+    <string name="dup_confirm_keeps_copies">%1$d Gruppen behalten mindestens 1 Kopie</string>
+    <string name="dup_confirm_all_deleted">%1$d Gruppe(n): alle Kopien würden gelöscht</string>
+    <string name="dup_confirm_rated">%1$d bewertete/favorisierte Datei(en) betroffen</string>
+    <string name="dup_stays">bleibt</string>
+    <string name="dup_group_all_marked">Alle Kopien markiert</string>
     <string name="duplicate_group_more_files">+ %1$d weitere Dateien nicht angezeigt</string>
     <string name="duplicate_scan_summary">%1$d Gruppen · %2$d Duplikate · %3$s sparbar</string>
     <string name="duplicate_marked_count">%1$d markiert · %2$s</string>

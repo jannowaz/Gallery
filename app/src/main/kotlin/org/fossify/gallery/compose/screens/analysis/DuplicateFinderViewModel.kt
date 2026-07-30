@@ -48,7 +48,7 @@ enum class DuplicateMode { EXACT, SIMILAR }
 enum class DuplicateScope { FOLDER, LAST_WEEK, LAST_MONTH }
 
 /** Which file of a duplicate group survives an auto-selection - everything else gets marked. */
-enum class KeepStrategy { NEWEST, OLDEST, LARGEST, SMALLEST, SHORTEST_NAME, SHORTEST_PATH }
+enum class KeepStrategy { NEWEST, OLDEST, LARGEST, SMALLEST, SHORTEST_NAME, SHORTEST_PATH, HIGHEST_RATED }
 
 class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(DuplicateState())
@@ -175,6 +175,9 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
                     KeepStrategy.SMALLEST -> g.files.minWithOrNull(compareBy({ it.size }, { it.modified }))
                     KeepStrategy.SHORTEST_NAME -> g.files.minWithOrNull(compareBy({ it.name.length }, { it.name }))
                     KeepStrategy.SHORTEST_PATH -> g.files.minWithOrNull(compareBy({ it.path.length }, { it.path }))
+                    // Keep the best-rated copy (ties -> newest, then largest) so an auto-select never
+                    // marks away the version the user deliberately starred.
+                    KeepStrategy.HIGHEST_RATED -> g.files.maxWithOrNull(compareBy({ it.rating }, { it.modified }, { it.size }))
                 }
                 g.files.filter { it.path != keeper?.path && inFolder(it.path) }
             }.map { it.path }.toSet()
