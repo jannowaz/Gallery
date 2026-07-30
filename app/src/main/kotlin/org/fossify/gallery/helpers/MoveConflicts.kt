@@ -57,20 +57,29 @@ object MoveConflicts {
      * the path while keeping the old file restorable.
      */
     suspend fun freeTargetsForReplace(context: Context, items: List<BatchJobItem>) = withContext(Dispatchers.IO) {
-        items.filter { collides(it) }.forEach { item ->
-            val targetPath = item.targetPath
-            val uri = MediaStoreOps.uriForPath(context, targetPath) ?: return@forEach
-            val backupPath = uniquePath(targetPath)
-            val backupName = File(backupPath).name
-            if (MediaStoreOps.rename(context, uri, backupName)) {
-                runCatching {
-                    val parent = File(targetPath).parent ?: ""
-                    context.mediaDB.updateMedium(targetPath, parent, backupName, backupPath)
-                    context.mediaDB.softDelete(backupPath, System.currentTimeMillis())
-                }
-            }
-        }
+        items.filter { collides(it) }.forEach { backupToRecycleBin(context, it.targetPath) }
         RefreshBus.trigger()
+    }
+
+    /**
+     * Renames the file at [path] aside to a free "name (n).ext" and soft-deletes that copy into the
+     * recycle bin, freeing [path] while keeping the file restorable. Returns true if [path] is now
+     * free. Caller must be on a background thread (no dispatcher hop, so the editor's existing
+     * background save can use it directly). Used to make an in-place overwrite recoverable: back up
+     * the original here first, then write the new content to the now-free path - so a failed or
+     * interrupted write can never corrupt the original.
+     */
+    fun backupToRecycleBin(context: Context, path: String): Boolean {
+        val uri = MediaStoreOps.uriForPath(context, path) ?: return false
+        val backupPath = uniquePath(path)
+        val backupName = File(backupPath).name
+        if (!MediaStoreOps.rename(context, uri, backupName)) return false
+        runCatching {
+            val parent = File(path).parent ?: ""
+            context.mediaDB.updateMedium(path, parent, backupName, backupPath)
+            context.mediaDB.softDelete(backupPath, System.currentTimeMillis())
+        }
+        return true
     }
 
     /** "dir/photo.jpg" -> "dir/photo (1).jpg", incrementing until neither disk nor [reserved] has it. */

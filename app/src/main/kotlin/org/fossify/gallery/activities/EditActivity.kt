@@ -78,8 +78,11 @@ import org.fossify.gallery.helpers.ASPECT_RATIO_OTHER
 import org.fossify.gallery.helpers.ASPECT_RATIO_SIXTEEN_NINE
 import org.fossify.gallery.helpers.ColorModeHelper
 import org.fossify.gallery.helpers.FilterThumbnailsManager
+import org.fossify.gallery.helpers.MoveConflicts
 import org.fossify.gallery.helpers.getPermissionToRequest
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.models.FilterItem
+import org.fossify.gallery.models.Medium
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
@@ -908,6 +911,17 @@ class EditActivity : BaseCropActivity() {
     private fun saveBitmapToPath(bitmap: Bitmap, path: String, showSavingToast: Boolean) {
         try {
             ensureBackgroundThread {
+                // Overwriting the SOURCE file in place used to open it with FileOutputStream (which
+                // truncates it to 0 bytes) and then stream the re-encoded bytes in - so a failed or
+                // interrupted encode (OOM on a large image, crash, full storage) left the original
+                // permanently corrupted, with no backup. Detect that case (target == the loaded
+                // source) and route it through the safe, recoverable path instead.
+                val originalFilePath = uri?.takeIf { it.scheme == "file" }?.path
+                val isOverwrite = originalFilePath != null && File(path).absolutePath == File(originalFilePath).absolutePath
+                if (isOverwrite) {
+                    saveBitmapOverwriteSafely(bitmap, path, showSavingToast)
+                    return@ensureBackgroundThread
+                }
                 val file = File(path)
                 val fileDirItem = FileDirItem(path, path.getFilenameFromPath())
                 try {
@@ -928,6 +942,48 @@ class EditActivity : BaseCropActivity() {
         } catch (e: OutOfMemoryError) {
             toast(org.fossify.commons.R.string.out_of_memory_error)
         }
+    }
+
+    /**
+     * Recoverable, corruption-proof "overwrite original": (1) encode into a temp file so the original
+     * is never touched until a complete new file exists; (2) back the original up recoverably (renamed
+     * aside + recycle bin); (3) move the temp file onto the now-free original path; (4) carry EXIF +
+     * the original's timeline (date_added/date_taken/mtime) over so the edit keeps its place in the
+     * grid. A failure at any point before step 3 leaves the original untouched or restorable.
+     */
+    private fun saveBitmapOverwriteSafely(bitmap: Bitmap, path: String, showSavingToast: Boolean) {
+        if (showSavingToast) toast(org.fossify.commons.R.string.saving)
+        val file = File(path)
+        val tmp = File(cacheDir, "edit_${System.nanoTime()}.${path.substringAfterLast('.', "jpg")}")
+        try {
+            FileOutputStream(tmp).use { out ->
+                val bmp = if (resizeWidth > 0 && resizeHeight > 0) bitmap.scale(resizeWidth, resizeHeight, false) else bitmap
+                bmp.compress(path.getCompressionFormat(), 95, out)
+            }
+        } catch (e: OutOfMemoryError) {
+            runCatching { tmp.delete() }; toast(org.fossify.commons.R.string.out_of_memory_error); return
+        } catch (e: Exception) {
+            runCatching { tmp.delete() }; toast(R.string.image_editing_failed); return
+        }
+        if (!tmp.exists() || tmp.length() == 0L) { runCatching { tmp.delete() }; toast(R.string.image_editing_failed); return }
+
+        val origMedium = runCatching { mediaDB.getMediaByPaths(listOf(path)).firstOrNull() }.getOrNull()
+        val origModified = file.lastModified()
+        val backedUp = runCatching { MoveConflicts.backupToRecycleBin(this, path) }.getOrDefault(false)
+
+        val placed = tmp.renameTo(file) || runCatching { tmp.copyTo(file, overwrite = true); tmp.delete() }.isSuccess
+        if (!placed) { runCatching { tmp.delete() }; toast(R.string.image_editing_failed); return }
+
+        writeExif(oldExif, file.toUri())
+        if (origModified > 0) runCatching { file.setLastModified(origModified) }
+        origMedium?.let { m ->
+            runCatching {
+                mediaDB.insertAllKeepingExisting(listOf(Medium(null, file.name, path, file.parent ?: "", m.modified, m.taken, file.length(), m.type, m.videoDuration, false, 0L, 0L, m.rating, dateAdded = m.dateAdded)))
+            }
+        }
+        setResult(RESULT_OK, intent)
+        scanFinalPath(path)
+        if (backedUp) toast(R.string.edit_original_backed_up)
     }
 
     private fun saveBitmapToFile(file: File, bitmap: Bitmap, out: OutputStream, showSavingToast: Boolean) {
