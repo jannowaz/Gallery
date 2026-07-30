@@ -978,7 +978,7 @@ class EditActivity : BaseCropActivity() {
 
         val origMedium = runCatching { mediaDB.getMediaByPaths(listOf(path)).firstOrNull() }.getOrNull()
         val origModified = file.lastModified()
-        val backedUp = runCatching { MoveConflicts.backupToRecycleBin(this, path) }.getOrDefault(false)
+        val backedUp = runCatching { MoveConflicts.backupToRecycleBin(this, path) }.getOrNull() != null
 
         val placed = tmp.renameTo(file) || runCatching { tmp.copyTo(file, overwrite = true); tmp.delete() }.isSuccess
         if (!placed) { runCatching { tmp.delete() }; toast(R.string.image_editing_failed); return }

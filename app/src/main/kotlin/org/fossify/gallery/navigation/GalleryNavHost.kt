@@ -85,11 +85,12 @@ fun GalleryNavHost(
             }
             org.fossify.gallery.helpers.RefreshBus.trigger()
         }
-        // Batch version of the above for a lossless "Optimize" run: extra maps each originalPath to
-        // its generated newPath. Restore every original from the recycle bin and delete every copy.
+        // Batch version of the above for a lossless "Optimize" run: extra maps each original's
+        // recycle-bin path (a .trashed path after trashing) to its generated newPath. Restore every
+        // original from the recycle bin (which un-trashes it back to its home) and delete every copy.
         UndoManager.registerHandler(UndoType.OPTIMIZE_REPLACE) { action ->
-            action.extra.forEach { (originalPath, newPath) ->
-                repo.restoreFromRecycleBin(originalPath)
+            action.extra.forEach { (binPath, newPath) ->
+                repo.restoreFromRecycleBin(binPath)
                 runCatching { java.io.File(newPath).delete() }
                 runCatching { android.media.MediaScannerConnection.scanFile(ctx, arrayOf(newPath), null, null) }
             }

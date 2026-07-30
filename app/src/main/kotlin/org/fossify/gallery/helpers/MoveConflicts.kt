@@ -62,24 +62,39 @@ object MoveConflicts {
     }
 
     /**
-     * Renames the file at [path] aside to a free "name (n).ext" and soft-deletes that copy into the
-     * recycle bin, freeing [path] while keeping the file restorable. Returns true if [path] is now
-     * free. Caller must be on a background thread (no dispatcher hop, so the editor's existing
-     * background save can use it directly). Used to make an in-place overwrite recoverable: back up
-     * the original here first, then write the new content to the now-free path - so a failed or
-     * interrupted write can never corrupt the original.
+     * Backs the file at [path] into the recycle bin, freeing [path] while keeping the file restorable,
+     * and returns the recycle-bin row's resulting path (or null if nothing could be backed up). That
+     * returned path is what [org.fossify.gallery.helpers.MediaRepository.restoreFromRecycleBin] must be
+     * called with to undo - after a trash the row no longer lives at [path]. Caller must be on a
+     * background thread (no dispatcher hop, so the editor's existing background save can use it
+     * directly). Used to make an in-place overwrite recoverable: back up the original here first, then
+     * write the new content to the now-free path - so a failed or interrupted write can never corrupt
+     * the original.
      */
-    fun backupToRecycleBin(context: Context, path: String): Boolean {
-        val uri = MediaStoreOps.uriForPath(context, path) ?: return false
+    fun backupToRecycleBin(context: Context, path: String): String? {
+        val uri = MediaStoreOps.uriForPath(context, path) ?: return null
+        val now = System.currentTimeMillis()
+        // Preferred: MediaStore-trash the file - frees the original path AND hides the backed-up old
+        // version from other apps (same as a normal delete). Re-point the row to the trashed path but
+        // keep the original filename for display.
+        val trashedPath = MediaStoreOps.setTrashed(context, uri, true)
+        if (trashedPath != null && trashedPath != path) {
+            runCatching {
+                context.mediaDB.updateMedium(path, File(trashedPath).parent ?: File(path).parent ?: "", File(path).name, trashedPath)
+                context.mediaDB.softDelete(trashedPath, now)
+            }
+            return trashedPath
+        }
+        // Fallback (pre-Android-11 / no All-Files-Access): rename aside + DB-only soft-delete. Frees
+        // the path but stays visible to other apps - the best we can do without trash support.
         val backupPath = uniquePath(path)
         val backupName = File(backupPath).name
-        if (!MediaStoreOps.rename(context, uri, backupName)) return false
+        if (!MediaStoreOps.rename(context, uri, backupName)) return null
         runCatching {
-            val parent = File(path).parent ?: ""
-            context.mediaDB.updateMedium(path, parent, backupName, backupPath)
-            context.mediaDB.softDelete(backupPath, System.currentTimeMillis())
+            context.mediaDB.updateMedium(path, File(path).parent ?: "", File(path).name, backupPath)
+            context.mediaDB.softDelete(backupPath, now)
         }
-        return true
+        return backupPath
     }
 
     /** "dir/photo.jpg" -> "dir/photo (1).jpg", incrementing until neither disk nor [reserved] has it. */

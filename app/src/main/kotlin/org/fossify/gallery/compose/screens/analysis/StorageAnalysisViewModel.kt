@@ -139,7 +139,11 @@ class StorageAnalysisViewModel(app: Application) : AndroidViewModel(app) {
                     UndoAction(
                         paths = replaced.map { it.originalPath }.toSet(),
                         type = UndoType.OPTIMIZE_REPLACE,
-                        extra = replaced.associate { it.originalPath to it.newPath },
+                        // Key = the original's recycle-bin path (a .trashed path after trashing), value
+                        // = the generated copy. Undo restores the bin row (which no longer lives at the
+                        // original path) and deletes the copy. Fall back to originalPath if, on some
+                        // pre-11 path, no backup path came back.
+                        extra = replaced.associate { (if (it.backupPath.isNotEmpty()) it.backupPath else it.originalPath) to it.newPath },
                     )
                 )
             }
@@ -216,6 +220,9 @@ data class TransformResult(
     val newPath: String,
     val savedBytes: Long,
     val error: String? = null,
+    // Where the original ended up in the recycle bin (a .trashed path after trashing). Undo restores
+    // THIS, not originalPath - after a trash the bin row no longer lives at originalPath.
+    val backupPath: String = "",
 )
 
 class TransformationEngine(private val context: android.content.Context) {
@@ -298,6 +305,7 @@ class TransformationEngine(private val context: android.content.Context) {
             val sameFile = finalFile.absolutePath == original.absolutePath
 
             val saved: Long
+            var backupPath = ""
             if (sameFile) {
                 // Refuse to overwrite an original in place - that has no undo and risks data loss.
                 // Lossless transforms always change the extension, so this only guards the lossy path.
@@ -314,7 +322,8 @@ class TransformationEngine(private val context: android.content.Context) {
                     // and the optimized copy sorts in place instead of jumping to the top as brand new.
                     inheritTimeline(origMedium, finalFile)
                     // Move the original to the recycle bin instead of hard-deleting it (recoverable).
-                    softDeleteOriginal(original)
+                    // Keep the resulting bin path so undo can restore the actual (possibly trashed) row.
+                    backupPath = softDeleteOriginal(original)
                 }
                 else { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Rename failed") }
             }
@@ -329,29 +338,42 @@ class TransformationEngine(private val context: android.content.Context) {
             if (!sameFile) {
                 try { context.mediaCacheDB.deleteByPathSync(s.originalPath) } catch (e: Exception) { android.util.Log.e("StorageAnalysis", "Cache row cleanup failed for ${s.originalPath}", e) }
             }
-            // Only scan the NEW file. The original was just soft-deleted (DB flag; the file itself
-            // stays on disk until the recycle bin is emptied) - re-scanning its still-present path
-            // re-registers it in MediaStore, which the incremental sync's reviveSoftDeleted then
-            // un-deletes, resurrecting the "removed" original next to its optimized copy.
+            // Only scan the NEW file. The original was just trashed/soft-deleted - it now lives at a
+            // .trashed path (or, pre-11, still on disk under a flag). Re-scanning the original's path
+            // would re-register it in MediaStore, which the incremental sync's reviveSoftDeleted could
+            // then un-delete, resurrecting the "removed" original next to its optimized copy.
             try { android.media.MediaScannerConnection.scanFile(context, arrayOf(newPath), null, null) } catch (_: Exception) { }
             RefreshBus.trigger()
-            TransformResult(true, s.originalPath, newPath, saved)
+            TransformResult(true, s.originalPath, newPath, saved, backupPath = backupPath)
         } catch (e: OutOfMemoryError) {
             TransformResult(false, s.originalPath, "", 0, context.getString(R.string.opt_err_image_too_large))
         } catch (e: Exception) { TransformResult(false, s.originalPath, "", 0, e.message) }
     }
 
-    fun softDeleteOriginal(original: File) {
-        try {
-            val path = original.absolutePath
+    /** Soft-deletes [original] into the recycle bin and returns the resulting bin-row path (the
+     * .trashed path when trashing succeeded, else the original) - the caller records this so undo can
+     * restore the actual row, which no longer lives at the original path after a trash. */
+    fun softDeleteOriginal(original: File): String {
+        val path = original.absolutePath
+        return try {
             val medium = Medium(
                 null, original.name, path, original.parent ?: "", original.lastModified(), original.lastModified(),
                 original.length(), if (path.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS) 2 else 1,
                 0, false, 0L, 0L, 0,
             )
+            // Ensure a DB row exists at the original path, then hand off to the shared backup helper: it
+            // MediaStore-trashes the file (hidden from other apps, same as a normal delete) and re-points
+            // the row to the .trashed path, falling back to DB-only soft-delete pre-Android-11.
             context.mediaDB.insertAllKeepingExisting(listOf(medium))
-            context.mediaDB.softDelete(path, System.currentTimeMillis())
-        } catch (e: Exception) { android.util.Log.e("StorageAnalysis", "Recycle-bin registration failed for ${original.absolutePath}", e) }
+            org.fossify.gallery.helpers.MoveConflicts.backupToRecycleBin(context, path) ?: run {
+                // Backup helper couldn't touch the file (e.g. not in MediaStore) - fall back to flag-only.
+                context.mediaDB.softDelete(path, System.currentTimeMillis())
+                path
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("StorageAnalysis", "Recycle-bin registration failed for $path", e)
+            path
+        }
     }
 
     /**
