@@ -1011,7 +1011,20 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     fun moveToRecycleBin(path: String) {
         try {
             val now = System.currentTimeMillis()
-            context.mediaDB.softDelete(path, now)
+            // Also trash in MediaStore so the "deleted" file is actually hidden from other apps and
+            // the store - not just flagged in our own DB (where it stayed fully visible everywhere
+            // else, a real privacy gap for a delete). Trashing renames the file, so re-point the row
+            // to its new path. Pre-Android-11 / no All-Files-Access: falls back to DB-only soft-delete.
+            val uri = MediaStoreOps.uriForPath(context, path)
+            val trashedPath = if (uri != null) MediaStoreOps.setTrashed(context, uri, true) else null
+            if (trashedPath != null && trashedPath != path) {
+                // full_path points at the trashed file (for thumbnail/restore/delete), but keep the
+                // ORIGINAL filename for display so the bin shows "photo.jpg", not ".trashed-…-photo.jpg".
+                context.mediaDB.updateMedium(path, File(trashedPath).parent ?: File(path).parent ?: "", File(path).name, trashedPath)
+                context.mediaDB.softDelete(trashedPath, now)
+            } else {
+                context.mediaDB.softDelete(path, now)
+            }
         } catch (e: Exception) {
             android.util.Log.e("MediaRepository", "moveToRecycleBin failed for $path", e)
         }
@@ -1031,18 +1044,25 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             .flatMap { MediaStoreOps.mediaEntriesUnder(context, it) }.map { it.path }.distinct()
 
     fun moveToRecycleBinBatch(paths: Collection<String>) {
-        try {
-            val now = System.currentTimeMillis()
-            paths.chunked(SQLITE_BATCH_CHUNK_SIZE).forEach { context.mediaDB.softDeleteBatch(it, now) }
-        } catch (e: Exception) {
-            android.util.Log.e("MediaRepository", "moveToRecycleBinBatch failed", e)
-        }
+        // Per-item because each needs its own MediaStore trash + path re-point (see moveToRecycleBin).
+        // Deleting a folder isn't perf-critical enough to warrant keeping the old flag-only fast path
+        // at the cost of leaving every file visible to other apps.
+        paths.forEach { moveToRecycleBin(it) }
         RefreshBus.trigger()
     }
 
     fun restoreFromRecycleBin(path: String): Boolean {
         val ok = try {
-            context.mediaDB.restoreDeleted(path)
+            // Un-trash in MediaStore (re-pointing the row to its restored path), mirroring
+            // moveToRecycleBin. [path] is the recycle-bin row's path = the trashed file's path.
+            val uri = MediaStoreOps.uriForPathIncludingTrashed(context, path)
+            val restoredPath = if (uri != null) MediaStoreOps.setTrashed(context, uri, false) else null
+            if (restoredPath != null && restoredPath != path) {
+                context.mediaDB.updateMedium(path, File(restoredPath).parent ?: "", File(restoredPath).name, restoredPath)
+                context.mediaDB.restoreDeleted(restoredPath)
+            } else {
+                context.mediaDB.restoreDeleted(path)
+            }
             true
         } catch (e: Exception) {
             android.util.Log.e("MediaRepository", "restoreFromRecycleBin failed for $path", e)
@@ -1053,11 +1073,7 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     }
 
     fun restoreFromRecycleBinBatch(paths: Collection<String>) {
-        try {
-            paths.chunked(SQLITE_BATCH_CHUNK_SIZE).forEach { context.mediaDB.restoreDeletedBatch(it) }
-        } catch (e: Exception) {
-            android.util.Log.e("MediaRepository", "restoreFromRecycleBinBatch failed", e)
-        }
+        paths.forEach { restoreFromRecycleBin(it) }
         RefreshBus.trigger()
     }
 

@@ -30,6 +30,52 @@ object MediaStoreOps {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) android.os.Environment.isExternalStorageManager()
         else true
 
+    /**
+     * (Un)trashes [uri] via MediaStore's IS_TRASHED so a "deleted" file is actually hidden from
+     * every other app (and the store), not just flagged in this app's DB. With All-Files-Access this
+     * runs silently (like [move]); otherwise it throws and we fall back to a DB-only soft-delete.
+     * Trashing renames the file (to ".trashed-<expiry>-<name>"), so this returns the file's NEW DATA
+     * path afterwards - the recycle-bin row must be re-pointed to it. Null on failure / pre-Android-11.
+     */
+    fun setTrashed(context: Context, uri: Uri, trashed: Boolean): String? {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) return null
+        return try {
+            val values = ContentValues().apply { put(MediaStore.MediaColumns.IS_TRASHED, if (trashed) 1 else 0) }
+            if (context.contentResolver.update(uri, values, null, null) <= 0) return null
+            val args = android.os.Bundle().apply { putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE) }
+            context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), args, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
+            }
+        } catch (_: Exception) { null }
+    }
+
+    /** Like [uriForPath] but also matches trashed items - needed to resolve a file in the recycle bin
+     * (default queries hide trashed rows), so restore can flip IS_TRASHED back off. */
+    fun uriForPathIncludingTrashed(context: Context, path: String): Uri? {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) return uriForPath(context, path)
+        val collection = MediaStore.Files.getContentUri("external")
+        val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.Files.FileColumns.MEDIA_TYPE)
+        return try {
+            val args = android.os.Bundle().apply {
+                putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION, "${MediaStore.MediaColumns.DATA} = ?")
+                putStringArray(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, arrayOf(path))
+                putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE)
+            }
+            context.contentResolver.query(collection, projection, args, null)?.use { c ->
+                if (c.moveToFirst()) {
+                    val id = c.getLong(c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
+                    val type = c.getInt(c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MEDIA_TYPE))
+                    val base = when (type) {
+                        MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+                        MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO -> MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+                        else -> collection
+                    }
+                    ContentUris.withAppendedId(base, id)
+                } else null
+            }
+        } catch (_: Exception) { null }
+    }
+
     /** Resolves the MediaStore content URI for a given absolute file path, or null if unknown. */
     fun uriForPath(context: Context, path: String): Uri? {
         val collection = MediaStore.Files.getContentUri("external")
