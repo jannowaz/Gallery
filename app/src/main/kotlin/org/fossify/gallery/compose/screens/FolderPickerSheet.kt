@@ -72,6 +72,7 @@ import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.extensions.batchJobItemDB
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
 import org.fossify.gallery.helpers.MediaStoreOps
 import org.fossify.gallery.helpers.MoveConflicts
@@ -113,6 +114,9 @@ fun FolderPickerSheet(
     // Non-null while the name-collision dialog is up: the built batch whose targets collide with
     // existing files, held until the user picks keep-both / skip / cancel.
     var pendingConflict by remember { mutableStateOf<List<BatchJobItem>?>(null) }
+    // Source paths of items a finished batch could not move/copy - shown before the sheet closes so a
+    // partial failure isn't just a fleeting "N failed" toast.
+    var failedPaths by remember { mutableStateOf<List<String>>(emptyList()) }
     val scope = rememberCoroutineScope()
     val consent = rememberMediaStoreConsent()
     // Set once a copy/move job is enqueued; while non-null the sheet shows progress instead of the
@@ -407,6 +411,24 @@ fun FolderPickerSheet(
         )
     }
 
+    if (failedPaths.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { failedPaths = emptyList(); onDismiss() },
+            title = { Text(stringResource(R.string.move_failed_title, failedPaths.size)) },
+            text = {
+                Column {
+                    failedPaths.take(10).forEach { p ->
+                        Text("• ${File(p).name}", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (failedPaths.size > 10) {
+                        Text(stringResource(R.string.and_more_count, failedPaths.size - 10), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { failedPaths = emptyList(); onDismiss() }) { Text(stringResource(org.fossify.commons.R.string.ok)) } },
+        )
+    }
+
     if (confirmTarget != null) {
         val dest = confirmTarget!!
         val parentPath = File(dest).parent ?: rootPath
@@ -450,13 +472,18 @@ fun FolderPickerSheet(
                 // IO error, ...), which silently misrepresented a partial failure as full success.
                 val failed = info.outputData.getInt("failed", 0)
                 val done = info.outputData.getInt("done", 0)
-                val msg = if (failed > 0) ctx.getString(R.string.notif_batch_done_with_failures, done, failed)
-                else ctx.getString(if (isMoveOperation) R.string.files_moved else R.string.files_copied)
-                ctx.toast(msg, Toast.LENGTH_SHORT)
-                onDismiss()
+                if (failed > 0) {
+                    // Hold the sheet open and list exactly which files stayed behind, instead of a
+                    // fleeting count-only toast. Failed items are the leftover rows for this job.
+                    failedPaths = withContext(Dispatchers.IO) { ctx.batchJobItemDB.getForJob(jobId).map { it.sourcePath } }
+                    if (failedPaths.isEmpty()) onDismiss() // counts said failures but rows already gone
+                } else {
+                    ctx.toast(ctx.getString(if (isMoveOperation) R.string.files_moved else R.string.files_copied), Toast.LENGTH_SHORT)
+                    onDismiss()
+                }
             }
         }
-        androidx.compose.material3.AlertDialog(
+        if (failedPaths.isEmpty()) androidx.compose.material3.AlertDialog(
             onDismissRequest = onDismiss,
             title = { Text(if (isMoveOperation) stringResource(R.string.moving_in_progress) else stringResource(R.string.copying_in_progress)) },
             text = {

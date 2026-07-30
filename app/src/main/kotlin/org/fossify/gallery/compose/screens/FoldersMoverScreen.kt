@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PlayArrow
@@ -77,6 +78,7 @@ import org.fossify.gallery.compose.components.ConfirmDestructive
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.theme.LocalSpacing
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
+import org.fossify.gallery.extensions.batchJobItemDB
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.helpers.FolderPair
 import org.fossify.gallery.helpers.MediaStoreOps
@@ -108,6 +110,9 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     var pendingRemove by remember { mutableStateOf<FolderPair?>(null) }
     // Non-null while the name-collision dialog is up (the built batch whose targets already exist).
     var pendingConflict by remember { mutableStateOf<List<org.fossify.gallery.models.BatchJobItem>?>(null) }
+    // Source paths of items a finished batch could NOT move - surfaced in a dialog instead of just a
+    // "N failed" toast, so the user sees exactly which files stayed behind.
+    var failedPaths by remember { mutableStateOf<List<String>>(emptyList()) }
     val storageRoot = Environment.getExternalStorageDirectory().absolutePath
     val moverConsent = rememberMediaStoreConsent()
     val allMovedFormat = stringResource(R.string.folder_mover_all_moved)
@@ -141,6 +146,12 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                 else -> allMovedFormat.format(moveProgress)
             }
             ctx.toast(msg, Toast.LENGTH_SHORT)
+            val jid = activeJobId
+            if (moveFailed > 0 && jid != null) {
+                // Failed items stay in the batch table (only successes are deleted per-item), so the
+                // leftover rows for this job ARE the ones that didn't move - list them for the user.
+                failedPaths = withContext(Dispatchers.IO) { ctx.batchJobItemDB.getForJob(jid).map { it.sourcePath } }
+            }
             activeJobId = null
         }
     }
@@ -207,7 +218,10 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
             )
-        }
+        },
+        // Visible one-tap undo after a move (the worker pushes an UndoType.MOVE that re-enqueues the
+        // reverse move) - the dedicated mover previously only toasted, offering no way back.
+        bottomBar = { org.fossify.gallery.compose.components.UndoBar() },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (pairs.isEmpty() && !isMoving) {
@@ -305,6 +319,25 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
             onKeepBoth = { pendingConflict = null; proceedMove(org.fossify.gallery.helpers.MoveConflicts.keepBoth(items)) },
             onSkip = { pendingConflict = null; proceedMove(org.fossify.gallery.helpers.MoveConflicts.withoutConflicts(items)) },
             onCancel = { pendingConflict = null },
+        )
+    }
+
+    if (failedPaths.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { failedPaths = emptyList() },
+            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text(stringResource(R.string.move_failed_title, failedPaths.size)) },
+            text = {
+                Column {
+                    failedPaths.take(10).forEach { p ->
+                        Text("• ${File(p).name}", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (failedPaths.size > 10) {
+                        Text(stringResource(R.string.and_more_count, failedPaths.size - 10), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { failedPaths = emptyList() }) { Text(stringResource(org.fossify.commons.R.string.ok)) } },
         )
     }
 }
