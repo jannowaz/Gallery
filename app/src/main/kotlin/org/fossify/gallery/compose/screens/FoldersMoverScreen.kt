@@ -106,6 +106,8 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     var activeJobId by remember { mutableStateOf<String?>(null) }
     var editingIndex by remember { mutableIntStateOf(-1) }
     var pendingRemove by remember { mutableStateOf<FolderPair?>(null) }
+    // Non-null while the name-collision dialog is up (the built batch whose targets already exist).
+    var pendingConflict by remember { mutableStateOf<List<org.fossify.gallery.models.BatchJobItem>?>(null) }
     val storageRoot = Environment.getExternalStorageDirectory().absolutePath
     val moverConsent = rememberMediaStoreConsent()
     val allMovedFormat = stringResource(R.string.folder_mover_all_moved)
@@ -168,26 +170,34 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
         showAddDialog = false
     }
 
+    // Consent (only when the app lacks all-files access) + enqueue for an already-resolved set.
+    fun proceedMove(items: List<org.fossify.gallery.models.BatchJobItem>) {
+        if (items.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); return }
+        scope.launch {
+            // With MANAGE_EXTERNAL_STORAGE (this app requires it) the app can already read/write/delete
+            // any file on shared storage directly - createWriteRequest's consent dialog is redundant,
+            // and requesting it anyway used to make "Move all" toast R.string.cancelled instead of
+            // moving anything (MoverWidgetProvider's "move now" enqueues the same worker with no
+            // consent step and works fine).
+            if (!MediaStoreOps.hasAllFilesAccess(ctx)) {
+                val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, items.map { it.sourcePath }) }
+                if (uris.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); return@launch }
+                val granted = try { moverConsent.request(MediaStoreOps.writeRequest(ctx, uris.map { it.second })) } catch (_: Exception) { false }
+                if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); return@launch }
+            }
+            activeJobId = MediaBatchWorker.enqueue(ctx, BatchOperation.MOVE_COPY_DELETE, items)
+        }
+    }
+
     fun startMove() {
         if (pairs.isEmpty() || isMoving) return
         val allMoves = flattenMoverPairs(pairs)
         if (allMoves.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); return }
         scope.launch {
-            // With MANAGE_EXTERNAL_STORAGE (this app requires it, see all_files_access_title/
-            // require_all_files_access) the app can already read/write/delete any file on shared
-            // storage directly - createWriteRequest's consent dialog is redundant in that case, and
-            // requesting it anyway was the actual cause of "Move all" immediately toasting
-            // R.string.cancelled ("Abgebrochen") instead of moving anything: MoverWidgetProvider's
-            // "move now" button enqueues the exact same worker with no consent step at all and
-            // works fine, which is the tell that consent isn't actually needed here.
-            if (!MediaStoreOps.hasAllFilesAccess(ctx)) {
-                val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, allMoves.map { it.first }) }
-                if (uris.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); return@launch }
-                val granted = try { moverConsent.request(MediaStoreOps.writeRequest(ctx, uris.map { it.second })) } catch (_: Exception) { false }
-                if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); return@launch }
-            }
-            val items = allMoves.map { (srcPath, destPath) -> BatchJobItem(jobId = "", sourcePath = srcPath, targetPath = destPath) }
-            activeJobId = MediaBatchWorker.enqueue(ctx, BatchOperation.MOVE_COPY_DELETE, items)
+            val items = allMoves.map { (srcPath, destPath) -> org.fossify.gallery.models.BatchJobItem(jobId = "", sourcePath = srcPath, targetPath = destPath) }
+            // Ask before letting same-name collisions fail silently in the worker.
+            val conflicts = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MoveConflicts.conflicting(items) }
+            if (conflicts.isEmpty()) proceedMove(items) else pendingConflict = items
         }
     }
     Scaffold(
@@ -285,6 +295,16 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                 savePairs()
             },
             onDismiss = { pendingRemove = null },
+        )
+    }
+
+    pendingConflict?.let { items ->
+        val conflictCount = remember(items) { org.fossify.gallery.helpers.MoveConflicts.conflicting(items).size }
+        org.fossify.gallery.compose.components.MoveConflictDialog(
+            conflictCount = conflictCount,
+            onKeepBoth = { pendingConflict = null; proceedMove(org.fossify.gallery.helpers.MoveConflicts.keepBoth(items)) },
+            onSkip = { pendingConflict = null; proceedMove(org.fossify.gallery.helpers.MoveConflicts.withoutConflicts(items)) },
+            onCancel = { pendingConflict = null },
         )
     }
 }

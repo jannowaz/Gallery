@@ -73,9 +73,16 @@ object MediaStoreOps {
      * Moves [uri] into [targetRelativePath] (e.g. "Pictures/Foo") by updating RELATIVE_PATH.
      * Requires prior write consent. Returns true on success.
      */
-    fun move(context: Context, uri: Uri, targetRelativePath: String): Boolean = try {
+    fun move(context: Context, uri: Uri, targetRelativePath: String, newName: String? = null): Boolean = try {
         val rel = targetRelativePath.trim('/') + "/"
-        val values = ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, rel) }
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.RELATIVE_PATH, rel)
+            // Also rename in the same write when the target name differs from the source (the
+            // "keep both" collision resolution retargets to "name (1).ext") - without this the file
+            // would move under its original name and re-collide with the existing file it was meant
+            // to sit beside. A no-op update when the name is unchanged.
+            if (newName != null) put(MediaStore.MediaColumns.DISPLAY_NAME, newName)
+        }
         context.contentResolver.update(uri, values, null, null) > 0
     } catch (_: Exception) { false }
 

@@ -74,6 +74,7 @@ import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
 import org.fossify.gallery.helpers.MediaStoreOps
+import org.fossify.gallery.helpers.MoveConflicts
 import org.fossify.gallery.models.BatchJobItem
 import org.fossify.gallery.workers.BatchOperation
 import org.fossify.gallery.workers.MediaBatchWorker
@@ -109,6 +110,9 @@ fun FolderPickerSheet(
     var confirmTarget by remember { mutableStateOf<String?>(null) }
     var pendingCreateFolder by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
+    // Non-null while the name-collision dialog is up: the built batch whose targets collide with
+    // existing files, held until the user picks keep-both / skip / cancel.
+    var pendingConflict by remember { mutableStateOf<List<BatchJobItem>?>(null) }
     val scope = rememberCoroutineScope()
     val consent = rememberMediaStoreConsent()
     // Set once a copy/move job is enqueued; while non-null the sheet shows progress instead of the
@@ -172,6 +176,23 @@ fun FolderPickerSheet(
 
     val isSearchingMode = searchQuery.length >= 2
 
+    // Consent (move only) + enqueue for an already-resolved item set.
+    fun proceed(items: List<BatchJobItem>) {
+        if (items.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); onDismiss(); return }
+        scope.launch {
+            // Moving someone else's media requires user consent via the system dialog. Copying
+            // creates a new app-owned file, which needs no consent.
+            if (isMoveOperation) {
+                val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, items.map { it.sourcePath }) }.map { it.second }
+                val granted = try {
+                    consent.request(MediaStoreOps.writeRequest(ctx, uris))
+                } catch (_: Exception) { false }
+                if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); onDismiss(); return@launch }
+            }
+            activeJobId = MediaBatchWorker.enqueue(ctx, if (isMoveOperation) BatchOperation.MOVE_FAST else BatchOperation.COPY, items)
+        }
+    }
+
     fun performCopyMove(destPath: String) {
         if (onTargetSelected != null) {
             onTargetSelected.invoke(destPath)
@@ -185,16 +206,10 @@ fun FolderPickerSheet(
                 ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_LONG); onDismiss(); return@launch
             }
             val items = srcPaths.map { path -> BatchJobItem(jobId = "", sourcePath = path, targetPath = "${destPath.trimEnd('/')}/${File(path).name}") }
-            // Moving someone else's media requires user consent via the system dialog. Copying
-            // creates a new app-owned file, which needs no consent.
-            if (isMoveOperation) {
-                val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, srcPaths) }.map { it.second }
-                val granted = try {
-                    consent.request(MediaStoreOps.writeRequest(ctx, uris))
-                } catch (_: Exception) { false }
-                if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); onDismiss(); return@launch }
-            }
-            activeJobId = MediaBatchWorker.enqueue(ctx, if (isMoveOperation) BatchOperation.MOVE_FAST else BatchOperation.COPY, items)
+            // Detect same-name collisions up front: rather than let each one fail silently in the
+            // worker (a rejected RELATIVE_PATH write), ask the user how to resolve them safely.
+            val conflicts = withContext(Dispatchers.IO) { MoveConflicts.conflicting(items) }
+            if (conflicts.isEmpty()) proceed(items) else pendingConflict = items
         }
     }
 
@@ -379,6 +394,16 @@ fun FolderPickerSheet(
                 }) { Text(stringResource(R.string.action_create)) }
             },
             dismissButton = { TextButton(onClick = { pendingCreateFolder = false; newFolderName = "" }) { Text(stringResource(R.string.cancel)) } }
+        )
+    }
+
+    pendingConflict?.let { items ->
+        val conflictCount = remember(items) { MoveConflicts.conflicting(items).size }
+        org.fossify.gallery.compose.components.MoveConflictDialog(
+            conflictCount = conflictCount,
+            onKeepBoth = { pendingConflict = null; proceed(MoveConflicts.keepBoth(items)) },
+            onSkip = { pendingConflict = null; proceed(MoveConflicts.withoutConflicts(items)) },
+            onCancel = { pendingConflict = null },
         )
     }
 

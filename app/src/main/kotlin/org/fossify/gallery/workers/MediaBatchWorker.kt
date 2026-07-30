@@ -184,7 +184,7 @@ class MediaBatchWorker(
             BatchOperation.MOVE_FAST -> {
                 val uri = MediaStoreOps.uriForPath(applicationContext, item.sourcePath) ?: return false
                 val targetRel = MediaStoreOps.relativePathFor(File(item.targetPath).parent ?: "")
-                if (!MediaStoreOps.move(applicationContext, uri, targetRel)) return false
+                if (!MediaStoreOps.move(applicationContext, uri, targetRel, File(item.targetPath).name)) return false
                 // Repoint the existing Room row's path columns in place (exactly what RENAME already
                 // does below) instead of deleting it and waiting for a MediaStore rescan to reinsert
                 // it - that rescan only knows MediaStore's own date_modified/date_taken, and Android's
@@ -216,7 +216,7 @@ class MediaBatchWorker(
                 // storage -> SD card) still needs the manual copy, since there's no single rename
                 // syscall that can relocate bytes across two different filesystems.
                 if (MediaStoreOps.sameVolume(item.sourcePath, item.targetPath)) {
-                    if (!MediaStoreOps.move(applicationContext, uri, targetRel)) {
+                    if (!MediaStoreOps.move(applicationContext, uri, targetRel, File(item.targetPath).name)) {
                         // update() returned 0 or threw. Most likely a name collision (target already
                         // has a file of that name) or MediaProvider rejecting the RELATIVE_PATH write.
                         android.util.Log.w(TAG, "MOVE fail: move() false for ${item.sourcePath} -> $targetRel")
