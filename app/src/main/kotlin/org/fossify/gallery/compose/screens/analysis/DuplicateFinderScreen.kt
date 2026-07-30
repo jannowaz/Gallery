@@ -429,13 +429,27 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
         val affected = state.groups.filter { g -> g.files.any { it.path in sel } }
         val fullyMarked = affected.count { g -> g.files.all { it.path in sel } }
         val keepingCopy = affected.size - fullyMarked
-        val ratedAffected = state.groups.flatMap { it.files }.count { it.path in sel && it.rating > 0 }
+        val ratedAffected = state.groups.flatMap { it.files }.count { it.path in sel && (it.rating > 0 || it.isFavorite) }
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
             title = { Text(stringResource(R.string.confirm_delete_title)) },
             text = {
                 Column {
                     Text(stringResource(R.string.move_to_recycle_bin_confirm_size, count, formatBytes(selSize)))
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        stringResource(R.string.dup_confirm_retention, RECYCLE_BIN_DAYS),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (state.mode == DuplicateMode.SIMILAR) {
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.dup_confirm_similar), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
                     if (keepingCopy > 0) {
                         Spacer(Modifier.height(6.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -586,6 +600,15 @@ private fun DuplicateGroupCard(
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.tertiary,
                     )
+                    if (!similar) {
+                        // EXACT groups are a real byte-for-byte hash match, not a guess - say so, so
+                        // deleting a "duplicate" feels safe rather than like trusting a heuristic.
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CheckCircle, null, tint = keepGreen, modifier = Modifier.size(11.dp))
+                            Spacer(Modifier.width(3.dp))
+                            Text(stringResource(R.string.dup_verified_exact), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                     if (allMarked) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(13.dp))
@@ -760,6 +783,10 @@ private fun DuplicateGroupCard(
 }
 
 private const val MAX_INLINE_FILES = 40
+
+// Mirrors RecycleBinCleanupWorker.RETENTION_MS (30 days) - shown in the delete confirm so the user
+// knows exactly how long a "deleted" file stays recoverable.
+private const val RECYCLE_BIN_DAYS = 30
 
 @Composable
 private fun thresholdLabel(t: Int): String = when {

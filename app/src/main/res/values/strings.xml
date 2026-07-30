@@ -912,6 +912,9 @@
     <string name="dup_confirm_keeps_copies">%1$d groups keep at least one copy</string>
     <string name="dup_confirm_all_deleted">%1$d group(s): every copy would be deleted</string>
     <string name="dup_confirm_rated">%1$d rated/favorite file(s) affected</string>
+    <string name="dup_confirm_retention">Recoverable from the recycle bin for %1$d days</string>
+    <string name="dup_confirm_similar">These are visually similar, not identical — please review</string>
+    <string name="dup_verified_exact">byte-identical (verified)</string>
     <string name="dup_stays">keeps</string>
     <string name="dup_group_all_marked">All copies marked</string>
     <string name="duplicate_group_more_files">+ %1$d more files not shown</string>

@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.flowOn
 import org.fossify.gallery.helpers.XmpWriter
 import java.io.File
 import java.security.MessageDigest
+import org.fossify.gallery.extensions.favoritesDB
 import org.fossify.gallery.extensions.fileHashDB
 import org.fossify.gallery.extensions.mediaDB
 
@@ -23,6 +24,7 @@ data class DuplicateFile(
     val durationMs: Long = 0,
     val rating: Int = 0,
     val tags: List<String> = emptyList(),
+    val isFavorite: Boolean = false,
 )
 
 @kotlinx.serialization.Serializable
@@ -41,6 +43,12 @@ sealed class DuplicateProgress {
 }
 
 class DuplicateScanner(private val context: Context) {
+
+    /** All favorited paths, loaded once per scanner instance - used to flag [DuplicateFile.isFavorite]
+     * so an auto-select can keep the starred copy and the delete confirm can warn about favorites. */
+    private val favoritePaths: Set<String> by lazy {
+        runCatching { context.favoritesDB.getValidFavoritePaths().toHashSet() }.getOrDefault(hashSetOf())
+    }
 
     /**
      * Persistent per-file hash memo backed by the `file_hashes` table: valid while size+mtime
@@ -357,6 +365,7 @@ class DuplicateScanner(private val context: Context) {
             durationMs = durationMs,
             rating = rating,
             tags = tags,
+            isFavorite = path in favoritePaths,
         )
     }
 }
