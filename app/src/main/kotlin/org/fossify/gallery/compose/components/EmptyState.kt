@@ -29,6 +29,7 @@ fun EmptyState(
     title: String,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    note: String? = null,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
 ) {
@@ -54,6 +55,16 @@ fun EmptyState(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = s.xl),
+                )
+            }
+            if (note != null) {
+                Spacer(Modifier.height(s.lg))
+                Text(
+                    note,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(horizontal = s.xl),
                 )

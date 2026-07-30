@@ -422,6 +422,7 @@ fun StorageAnalysisScreen(
                     icon = Icons.Default.FolderOpen,
                     title = stringResource(R.string.storage_empty_title),
                     subtitle = stringResource(R.string.storage_empty_subtitle),
+                    note = stringResource(R.string.dup_safety_note),
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             }
@@ -461,10 +462,33 @@ fun StorageAnalysisScreen(
         val success = state.transformResults.count { it.success }
         val failed = state.transformResults.size - success
         val saved = state.transformResults.sumOf { it.savedBytes }
+        // Group the skipped files by reason so "3 skipped" becomes "2 already optimal, 1 kept lossless"
+        // - transparency about what the tool did and did NOT touch, and why.
+        val skipReasons = remember(state.transformResults) {
+            state.transformResults.filterNot { it.success }
+                .groupingBy { it.error?.takeIf { e -> e.isNotBlank() } ?: "" }
+                .eachCount().entries.sortedByDescending { it.value }
+        }
         AlertDialog(
             onDismissRequest = { vm.clearTransformResults() },
             title = { Text(stringResource(R.string.optimize_done_title)) },
-            text = { Text(stringResource(R.string.optimize_done_text, success, failed, formatBytes(saved))) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.optimize_done_text, success, failed, formatBytes(saved)))
+                    if (skipReasons.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(stringResource(R.string.optimize_skipped_title), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        skipReasons.take(6).forEach { (reason, n) ->
+                            Text(
+                                "• ${if (reason.isBlank()) stringResource(R.string.optimize_skip_generic) else reason} ($n)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
+                    }
+                }
+            },
             confirmButton = { TextButton(onClick = { vm.clearTransformResults() }) { Text(stringResource(org.fossify.commons.R.string.ok)) } }
         )
     }

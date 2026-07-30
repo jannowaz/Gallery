@@ -638,6 +638,9 @@
     <string name="all_optimal">Everything optimal!</string>
     <string name="optimize_confirm_title">Confirm optimization</string>
     <string name="lossless_only">Lossless only</string>
+    <string name="optimize_skipped_title">Skipped:</string>
+    <string name="optimize_skip_generic">Not optimizable</string>
+    <string name="dup_safety_note">Deleted files go to the recycle bin — recoverable for 30 days.</string>
     <string name="optimize_done_title">Optimization complete</string>
     <string name="optimize_done_text">%1$d successful, %2$d failed. %3$s saved.</string>
     <string name="tags_removed_count">%d tag(s) removed</string>

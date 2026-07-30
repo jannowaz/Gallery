@@ -11,8 +11,10 @@ import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -413,6 +415,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                     icon = Icons.Default.ContentCopy,
                     title = stringResource(R.string.dup_empty_title),
                     subtitle = stringResource(R.string.dup_empty_subtitle),
+                    note = stringResource(R.string.dup_safety_note),
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             }
@@ -555,6 +558,7 @@ private fun AutoSelectAction(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DuplicateGroupCard(
     group: DuplicateGroup,
@@ -644,7 +648,14 @@ private fun DuplicateGroupCard(
                 ) {
                     items(group.files.take(MAX_INLINE_FILES), key = { it.path }) { file ->
                         val isSel = file.path in selected
-                        Box(Modifier.size(72.dp).clip(RoundedCornerShape(Radius.sm)).clickable { onView(groupPaths, groupPaths.indexOf(file.path)) }) {
+                        // Tap = enlarge in the viewer; long-press = mark/unmark for deletion, so a
+                        // single file can be selected right from the strip without expanding the group.
+                        Box(
+                            Modifier.size(72.dp).clip(RoundedCornerShape(Radius.sm)).combinedClickable(
+                                onClick = { onView(groupPaths, groupPaths.indexOf(file.path)) },
+                                onLongClick = { onToggle(file.path) },
+                            )
+                        ) {
                             GalleryImage(path = file.path, contentDescription = file.name, modifier = Modifier.size(72.dp).sharedElementKey("media_${file.path}"))
                             if (file.mediaType == 2) {
                                 Box(Modifier.size(72.dp), contentAlignment = Alignment.Center) {

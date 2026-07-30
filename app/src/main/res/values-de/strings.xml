@@ -595,6 +595,9 @@
     <string name="all_optimal">Alles optimal!</string>
     <string name="optimize_confirm_title">Optimierung bestätigen</string>
     <string name="lossless_only">Nur Lossless</string>
+    <string name="optimize_skipped_title">Übersprungen:</string>
+    <string name="optimize_skip_generic">Nicht optimierbar</string>
+    <string name="dup_safety_note">Gelöschte Dateien landen im Papierkorb — 30 Tage wiederherstellbar.</string>
     <string name="optimize_done_title">Optimierung abgeschlossen</string>
     <string name="optimize_done_text">%1$d erfolgreich, %2$d fehlgeschlagen. %3$s gespart.</string>
     <string name="tags_removed_count">%d Tag(s) entfernt</string>
