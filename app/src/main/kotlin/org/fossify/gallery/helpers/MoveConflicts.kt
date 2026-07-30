@@ -1,5 +1,9 @@
 package org.fossify.gallery.helpers
 
+import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.models.BatchJobItem
 import java.io.File
 
@@ -39,6 +43,34 @@ object MoveConflicts {
                 item
             }
         }
+    }
+
+    /**
+     * "Replace" resolution, made recoverable: for every colliding item, the EXISTING target file is
+     * renamed aside to a free "name (n).ext" and soft-deleted into the recycle bin (recoverable for
+     * the bin's retention window), which frees the original path so the incoming file can take it with
+     * its canonical name. Returns [items] unchanged (they keep their original targets, now free). Any
+     * target that couldn't be freed is left alone - its item then simply fails and is reported.
+     *
+     * This app's recycle bin is a soft-delete flag that leaves files on disk, so a straight
+     * "delete the existing then move in" would still collide; renaming aside is what actually frees
+     * the path while keeping the old file restorable.
+     */
+    suspend fun freeTargetsForReplace(context: Context, items: List<BatchJobItem>) = withContext(Dispatchers.IO) {
+        items.filter { collides(it) }.forEach { item ->
+            val targetPath = item.targetPath
+            val uri = MediaStoreOps.uriForPath(context, targetPath) ?: return@forEach
+            val backupPath = uniquePath(targetPath)
+            val backupName = File(backupPath).name
+            if (MediaStoreOps.rename(context, uri, backupName)) {
+                runCatching {
+                    val parent = File(targetPath).parent ?: ""
+                    context.mediaDB.updateMedium(targetPath, parent, backupName, backupPath)
+                    context.mediaDB.softDelete(backupPath, System.currentTimeMillis())
+                }
+            }
+        }
+        RefreshBus.trigger()
     }
 
     /** "dir/photo.jpg" -> "dir/photo (1).jpg", incrementing until neither disk nor [reserved] has it. */

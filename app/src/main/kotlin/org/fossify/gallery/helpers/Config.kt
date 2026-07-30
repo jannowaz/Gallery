@@ -873,6 +873,18 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getString(LAST_COPY_MOVE_DESTINATION, internalStoragePath) ?: internalStoragePath
         set(path) = prefs.edit().putString(LAST_COPY_MOVE_DESTINATION, path).apply()
 
+    /** Most-recently-used move/copy destinations (newest first), for one-tap re-selection in the
+     * folder picker. Stored newline-separated; capped when written via [pushRecentCopyMoveDestination]. */
+    var recentCopyMoveDestinations: List<String>
+        get() = prefs.getString(RECENT_COPY_MOVE_DESTINATIONS, "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
+        set(list) = prefs.edit().putString(RECENT_COPY_MOVE_DESTINATIONS, list.joinToString("\n")).apply()
+
+    /** Moves [path] to the front of the recents (dedup, max 5). */
+    fun pushRecentCopyMoveDestination(path: String) {
+        if (path.isBlank()) return
+        recentCopyMoveDestinations = (listOf(path) + recentCopyMoveDestinations.filter { it != path }).take(5)
+    }
+
     // Last folder browsed in the Explorer tab - used to default the destination picker when
     // turning a folder into a Mover pair's source (see MoverConfig.kt/FolderPathPickerSheet),
     // since that's usually where the user is about to file things away to next anyway.

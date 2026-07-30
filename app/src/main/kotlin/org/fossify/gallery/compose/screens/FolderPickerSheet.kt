@@ -9,6 +9,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -204,6 +205,7 @@ fun FolderPickerSheet(
             return
         }
         conf.lastCopyMoveDestination = destPath
+        conf.pushRecentCopyMoveDestination(destPath)
         scope.launch {
             val srcPaths = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, sourcePaths) }.map { it.first }
             if (srcPaths.isEmpty()) {
@@ -247,6 +249,21 @@ fun FolderPickerSheet(
                 Text(stringResource(R.string.files_count, sourcePaths.size), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(8.dp))
+
+            // Recent destinations: one tap re-uses a folder the user moved/copied to lately.
+            val recents = remember { conf.recentCopyMoveDestinations.filter { Files.isDirectory(Paths.get(it)) } }
+            if (recents.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    recents.forEach { path ->
+                        androidx.compose.material3.AssistChip(
+                            onClick = { if (onTargetSelected != null) performCopyMove(path) else confirmTarget = path },
+                            label = { Text(path.substringAfterLast('/'), maxLines = 1) },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.DriveFileMove, null, Modifier.size(16.dp)) },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
 
             // Search bar
             OutlinedTextField(
@@ -392,7 +409,8 @@ fun FolderPickerSheet(
                 TextButton(onClick = {
                     if (newFolderName.isNotBlank()) {
                         val newDir = File(currentPath, newFolderName)
-                        try { newDir.mkdirs(); currentPath = newDir.path } catch (_: Exception) { ctx.toast(ctx.getString(R.string.create_folder_error)) }
+                        val ok = try { newDir.mkdirs() || newDir.isDirectory } catch (_: Exception) { false }
+                        if (ok) currentPath = newDir.path else ctx.toast(ctx.getString(R.string.create_folder_error))
                         pendingCreateFolder = false; newFolderName = ""
                     }
                 }) { Text(stringResource(R.string.action_create)) }
@@ -406,6 +424,7 @@ fun FolderPickerSheet(
         org.fossify.gallery.compose.components.MoveConflictDialog(
             conflictCount = conflictCount,
             onKeepBoth = { pendingConflict = null; proceed(MoveConflicts.keepBoth(items)) },
+            onReplace = { pendingConflict = null; scope.launch { MoveConflicts.freeTargetsForReplace(ctx, items); proceed(items) } },
             onSkip = { pendingConflict = null; proceed(MoveConflicts.withoutConflicts(items)) },
             onCancel = { pendingConflict = null },
         )
@@ -440,6 +459,17 @@ fun FolderPickerSheet(
                     Text(stringResource(if (isMoveOperation) R.string.move_files_to else R.string.copy_files_to, sourcePaths.size))
                     Spacer(Modifier.height(4.dp))
                     Text(dest, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
+                    // Pre-warn about name collisions so the user isn't surprised by the resolution
+                    // dialog after confirming - the count of files that already exist at the target.
+                    val collisions = remember(dest) { sourcePaths.count { File(dest.trimEnd('/'), File(it).name).exists() } }
+                    if (collisions > 0) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            stringResource(R.string.move_conflict_prewarn, collisions),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             },
             confirmButton = {

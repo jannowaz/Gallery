@@ -925,8 +925,11 @@
     <string name="duplicate_marked_count">%1$d marked · %2$s</string>
     <string name="move_failed_title">%1$d file(s) could not be moved</string>
     <string name="and_more_count">…and %1$d more</string>
+    <string name="move_conflict_prewarn">⚠ %1$d file(s) already exist here — you can resolve this next</string>
     <string name="move_conflict_title">Names already exist</string>
     <string name="move_conflict_text">%1$d file(s) already exist in the destination. How do you want to proceed?</string>
+    <string name="move_conflict_replace">Replace</string>
+    <string name="move_conflict_recoverable_note">All options are recoverable — nothing is permanently overwritten.</string>
     <string name="move_conflict_keep_both">Keep both</string>
     <string name="move_conflict_skip">Skip these</string>
     <string name="undo_deleted_count">%d deleted</string>

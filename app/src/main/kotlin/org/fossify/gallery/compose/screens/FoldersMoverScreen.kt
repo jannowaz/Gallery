@@ -317,6 +317,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
         org.fossify.gallery.compose.components.MoveConflictDialog(
             conflictCount = conflictCount,
             onKeepBoth = { pendingConflict = null; proceedMove(org.fossify.gallery.helpers.MoveConflicts.keepBoth(items)) },
+            onReplace = { pendingConflict = null; scope.launch { org.fossify.gallery.helpers.MoveConflicts.freeTargetsForReplace(ctx, items); proceedMove(items) } },
             onSkip = { pendingConflict = null; proceedMove(org.fossify.gallery.helpers.MoveConflicts.withoutConflicts(items)) },
             onCancel = { pendingConflict = null },
         )
