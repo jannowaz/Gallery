@@ -75,6 +75,7 @@
     <string name="image_editing_cancelled">Bildbearbeitung abgebrochen</string>
     <string name="video_editing_cancelled">Videobearbeitung abgebrochen</string>
     <string name="file_edited_successfully">Datei erfolgreich bearbeitet</string>
+    <string name="edit_overwrite_confirm">Original überschreiben? Die bisherige Version wird im Papierkorb gesichert (30 Tage wiederherstellbar).</string>
     <string name="edit_original_backed_up">Original im Papierkorb gesichert</string>
     <string name="image_edited_successfully">Bild erfolgreich bearbeitet</string>
     <string name="video_edited_successfully">Video erfolgreich bearbeitet</string>

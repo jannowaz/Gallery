@@ -177,7 +177,7 @@ class EditActivity : BaseCropActivity() {
         binding.editorToolbar.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
                 R.id.save_as -> startSaveFlow(overwrite = false)
-                R.id.overwrite_original -> startSaveFlow(overwrite = true)
+                R.id.overwrite_original -> confirmOverwriteOriginal()
                 R.id.edit -> editWith()
                 R.id.share -> shareImage()
                 else -> return@setOnMenuItemClickListener false
@@ -378,6 +378,15 @@ class EditActivity : BaseCropActivity() {
 
     private fun setOldExif() {
         oldExif = readExif(uri!!)
+    }
+
+    // Overwriting the original is the one irreversible-feeling action here, so confirm it - and make
+    // the safety net explicit: the current version is kept in the recycle bin, not destroyed.
+    private fun confirmOverwriteOriginal() {
+        org.fossify.commons.dialogs.ConfirmationDialog(
+            this, getString(R.string.edit_overwrite_confirm), 0,
+            R.string.overwrite_original, org.fossify.commons.R.string.cancel,
+        ) { startSaveFlow(overwrite = true) }
     }
 
     private fun startSaveFlow(overwrite: Boolean) {
