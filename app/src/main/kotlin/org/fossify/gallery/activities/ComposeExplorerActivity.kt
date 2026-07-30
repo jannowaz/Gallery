@@ -10,10 +10,11 @@ import android.os.Build
 import android.os.Environment
 import android.os.Bundle
 import android.widget.Toast
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import org.fossify.commons.extensions.handleAppPasswordProtection
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
@@ -27,6 +28,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -71,6 +73,7 @@ import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Image
@@ -220,7 +223,7 @@ private enum class ActiveSheet { VIEW_SETTINGS }
  * filtering applies (Media/Favorites, see MainSheets); other tabs always render VIEW regardless. */
 private enum class SheetSection { FILTER, VIEW }
 
-class ComposeExplorerActivity : ComponentActivity() {
+class ComposeExplorerActivity : FragmentActivity() {
 
     /** Pre-Android-12 fallback for auto-PiP: 12+ uses setAutoEnterEnabled (see VideoPage), older
      * versions only get this hint when the user leaves via Home while a viewer video plays. */
@@ -241,6 +244,37 @@ class ComposeExplorerActivity : ComponentActivity() {
     ) { granted ->
         if (granted.values.any { it }) {
             recreate()
+        }
+    }
+
+    // --- App password lock ---------------------------------------------------------------------
+    // The "App password protection" setting was fully configurable but never enforced anywhere in the
+    // Compose UI: SplashActivity launched straight into this host, so anyone who opened the app saw
+    // everything regardless of the toggle - a security setting that quietly did nothing (worse than
+    // none, since the user believes they're protected). These three members gate the whole content
+    // behind the commons SecurityDialog on launch and again after every real backgrounding.
+    // Compose-observable so the opaque cover below can hide the gallery (and its recents thumbnail)
+    // while the PIN/pattern/fingerprint prompt is up or before it's been answered.
+    private val showLockCover = mutableStateOf(false)
+    private var isAppUnlocked = false
+    private var lockPromptInFlight = false
+
+    private fun maybeLockApp() {
+        if (!config.isAppPasswordProtectionOn) { isAppUnlocked = true; showLockCover.value = false; return }
+        if (isAppUnlocked || lockPromptInFlight) return
+        showLockCover.value = true
+        lockPromptInFlight = true
+        // Commons handles the SecurityDialog (PIN/pattern) + biometric auto-prompt and the toggle
+        // check itself; it calls back true on success / when protection is off, false on cancel.
+        handleAppPasswordProtection { success ->
+            lockPromptInFlight = false
+            if (success) {
+                isAppUnlocked = true
+                showLockCover.value = false
+            } else {
+                // Refused/cancelled - don't reveal the gallery. Leave to the launcher.
+                finish()
+            }
         }
     }
 
@@ -273,6 +307,9 @@ class ComposeExplorerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Cover the very first frame when a launch lock is armed, so the gallery never flashes before
+        // onResume() gets a chance to raise the prompt.
+        showLockCover.value = config.isAppPasswordProtectionOn
         addOnPictureInPictureModeChangedListener { info ->
             org.fossify.gallery.compose.util.PipState.inPip = info.isInPictureInPictureMode
         }
@@ -284,7 +321,7 @@ class ComposeExplorerActivity : ComponentActivity() {
         // ExplorerViewModel's init).
 
         if (hasMediaPermissions()) {
-            setContent { GalleryNavHost() }
+            setContent { GalleryNavHost(); LockCover() }
             // Fire-and-forget scheduling/cleanup: none of it needs to complete before the first
             // frame, and each call already hands its actual work off to WorkManager's/Room's own
             // background executor - running the WorkManager.getInstance()+enqueue setup itself off
@@ -304,7 +341,7 @@ class ComposeExplorerActivity : ComponentActivity() {
             }
         } else {
             requestPermissionLauncher.launch(getMediaPermissionStrings())
-            setContent { GalleryNavHost() }
+            setContent { GalleryNavHost(); LockCover() }
             lifecycleScope.launch(Dispatchers.IO) { RecycleBinCleanupWorker.schedule(this@ComposeExplorerActivity) }
         }
     }
@@ -348,9 +385,38 @@ class ComposeExplorerActivity : ComponentActivity() {
         MediaSyncWorker.scheduleIncrementalSync(this)
     }
 
+    override fun onResume() {
+        super.onResume()
+        maybeLockApp()
+    }
+
     override fun onStop() {
         super.onStop()
         contentResolver.unregisterContentObserver(mediaObserver)
+        // Re-arm the lock for the next foreground - but only on a genuine backgrounding, not a
+        // config change (rotation), which also passes through onStop and would otherwise re-prompt
+        // for the PIN on every rotate.
+        if (!isChangingConfigurations && config.isAppPasswordProtectionOn) {
+            isAppUnlocked = false
+            showLockCover.value = true
+        }
+    }
+
+    /** Opaque cover drawn above the whole NavHost while the app is locked - hides the gallery (and
+     * its entry in the recents switcher) until the launch/return password prompt is answered. */
+    @Composable
+    private fun LockCover() {
+        if (!showLockCover.value) return
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                // Swallow every tap so nothing behind the cover is interactable while locked.
+                .clickable(enabled = true, indication = null, interactionSource = remember { MutableInteractionSource() }) {},
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(48.dp))
+        }
     }
 
     private fun getMediaPermissionStrings(): Array<String> {
