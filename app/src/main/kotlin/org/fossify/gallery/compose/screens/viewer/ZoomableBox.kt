@@ -86,6 +86,9 @@ class ZoomState(private val scope: CoroutineScope) {
     fun onTransform(centroid: Offset, pan: Offset, zoom: Float, size: IntSize) {
         viewSize = size
         markInteracting()
+        // A live pinch must win over a still-running double-tap zoom animation, or the two fight over
+        // scale/offset frame-by-frame.
+        animJob?.cancel()
         val newScale = (scale * zoom).coerceIn(ZOOM_MIN, ZOOM_MAX)
         val center = Offset(size.width / 2f, size.height / 2f)
         val d = centroid - center
@@ -112,10 +115,15 @@ class ZoomState(private val scope: CoroutineScope) {
         offset = Offset.Zero
     }
 
+    private var animJob: Job? = null
     private fun animateTo(targetScale: Float, targetOffset: Offset, size: IntSize) {
         val startScale = scale
         val startOffset = offset
-        scope.launch {
+        // Cancel any in-flight zoom animation first: a second quick double-tap otherwise launches a
+        // parallel interpolation that reads a mid-animation scale as its start and then fights the
+        // first one, landing at the wrong zoom level with visible jitter.
+        animJob?.cancel()
+        animJob = scope.launch {
             animate(0f, 1f, animationSpec = androidx.compose.animation.core.tween(220, easing = FastOutSlowInEasing)) { t, _ ->
                 scale = startScale + (targetScale - startScale) * t
                 offset = Offset(
