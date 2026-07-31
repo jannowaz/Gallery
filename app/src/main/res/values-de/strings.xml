@@ -947,4 +947,7 @@
         <item quantity="one">%d Frame gespeichert</item>
         <item quantity="other">%d Frames gespeichert</item>
     </plurals>
+    <string name="save_as_collection">Als Sammlung speichern</string>
+    <string name="collection_saved">Sammlung „%1$s“ gespeichert</string>
+    <string name="name">Name</string>
 </resources>

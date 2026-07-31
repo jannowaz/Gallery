@@ -469,6 +469,11 @@ private fun applyCollection(
     // library no longer silently drops eligible files past that cap.
     mainVM.setPathFilter(incPaths.ifEmpty { null })
     mainVM.setExcludePathFilter(excPaths.ifEmpty { null })
+    // Smart-collection filter dimensions (size/date/type) - so opening a saved filter restores the
+    // whole thing, not just its folders/tags/rating.
+    mainVM.setMinSizeFilter(coll.minSize)
+    mainVM.setDateRangeFilter(coll.dateRange)
+    mainVM.setTypeFilter(coll.typeFilter)
     mainVM.setSelectedTab(0)
 }
 

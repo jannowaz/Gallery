@@ -15,7 +15,12 @@ data class MediaCollection(
     @ColumnInfo(name = "tag_filter") val tagFilter: String = "",
     @ColumnInfo(name = "rating_filter") val ratingFilter: Int = 0,
     @ColumnInfo(name = "search_query") val searchQuery: String = "",
-    @ColumnInfo(name = "sort_order") val sortOrder: Int = 0
+    @ColumnInfo(name = "sort_order") val sortOrder: Int = 0,
+    // Smart-collection filter dimensions beyond folders/tags/rating, so a saved filter can capture
+    // the full MediaFilter (see MediaViewModel.MediaFilter). 0 = inactive for each.
+    @ColumnInfo(name = "min_size") val minSize: Long = 0L,
+    @ColumnInfo(name = "date_range") val dateRange: Int = 0,
+    @ColumnInfo(name = "type_filter") val typeFilter: Int = 0,
 ) {
     fun getIncludedPaths(): List<String> {
         return try {

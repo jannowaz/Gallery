@@ -1139,6 +1139,9 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
             tagNames = tagNames,
             pathFilter = incPaths.ifEmpty { null },
             excludePaths = excPaths.ifEmpty { null },
+            minSize = coll.minSize,
+            dateRange = coll.dateRange,
+            typeFilter = coll.typeFilter,
         )
         if (!filter.isActive) return emptyList()
         return getActivePathsSortedFiltered(filter, SortField.DATE, true)

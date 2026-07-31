@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import org.fossify.gallery.interfaces.*
 import org.fossify.gallery.models.*
 
-@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class, CompressionReviewItem::class, org.fossify.gallery.models.FileHash::class], version = 26)
+@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class, CompressionReviewItem::class, org.fossify.gallery.models.FileHash::class], version = 27)
 abstract class GalleryDatabase : RoomDatabase() {
 
     abstract fun DirectoryDao(): DirectoryDao
@@ -92,6 +92,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                             .addMigrations(MIGRATION_23_24)
                             .addMigrations(MIGRATION_24_25)
                             .addMigrations(MIGRATION_25_26)
+                            .addMigrations(MIGRATION_26_27)
                             .fallbackToDestructiveMigrationFrom(1, 2, 3)
                             // Room only runs migrations when upgrading an *existing* database - a
                             // fresh install gets its schema (including date_sort_key and its index)
@@ -392,6 +393,17 @@ abstract class GalleryDatabase : RoomDatabase() {
                 database.execSQL(
                     "UPDATE media SET date_sort_key = CASE WHEN date_added > 0 THEN date_added WHEN date_taken > 0 THEN date_taken ELSE last_modified END"
                 )
+            }
+        }
+
+        // Smart collections: let a saved collection carry the size/date/type filter dimensions too,
+        // not just folders/tags/rating - so "save the current filter as a collection" round-trips
+        // the whole MediaFilter.
+        private val MIGRATION_26_27 = object : Migration(26, 27) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE collections ADD COLUMN min_size INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE collections ADD COLUMN date_range INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE collections ADD COLUMN type_filter INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

@@ -1,5 +1,8 @@
 package org.fossify.gallery.compose.screens
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.fossify.gallery.compose.theme.AppMotion
+import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.compose.theme.Radius
 
 import android.content.Intent
@@ -51,6 +54,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -189,6 +193,7 @@ private fun PagedContent(
     onNavigateToViewer: ((paths: List<String>, startIndex: Int) -> Unit)?,
     unratedLabel: String,
     pickMultiple: Boolean = false,
+    onSaveAsCollection: (() -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -258,7 +263,8 @@ private fun PagedContent(
                     ratingFilter, activeTagName, activePathName, activeCollectionName, activeFolderFilterName,
                     minSizeFilter, dateRangeFilter, typeFilter,
                     filteredResultCount ?: lazyPagingItems.itemCount, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
-                    onClearSizeFilter, onClearDateFilter, onClearTypeFilter, onClearFilter
+                    onClearSizeFilter, onClearDateFilter, onClearTypeFilter, onClearFilter,
+                    onSaveAsCollection = onSaveAsCollection,
                 )
                 val quickTags = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
                 QuickTagRow(quickTags = quickTags, visible = quickTags.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
@@ -362,7 +368,8 @@ private fun PagedContent(
                     ratingFilter, activeTagName, activePathName, activeCollectionName, activeFolderFilterName,
                     minSizeFilter, dateRangeFilter, typeFilter,
                     filteredResultCount ?: lazyPagingItems.itemCount, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
-                    onClearSizeFilter, onClearDateFilter, onClearTypeFilter, onClearFilter
+                    onClearSizeFilter, onClearDateFilter, onClearTypeFilter, onClearFilter,
+                    onSaveAsCollection = onSaveAsCollection,
                 )
                 val quickTagsM = remember { ctx.config.quickTags.filter { it.isNotBlank() } }
                 QuickTagRow(quickTags = quickTagsM, visible = quickTagsM.isNotEmpty() && hasSelection, selectedCommonTags = selectedCommonTags, onToggleTag = { tag -> viewModel.toggleQuickTag(selectedPaths, tag) })
@@ -598,6 +605,10 @@ fun MediaScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var currentRating by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+    val repo = LocalMediaRepository.current
+    var showSaveCollection by remember { mutableStateOf(false) }
+    // Offer "save as collection" only for an ad-hoc filter, not when already inside a collection.
+    val onSaveAsCollection: (() -> Unit)? = if (activeCollectionName == null) ({ showSaveCollection = true }) else null
     val snackbarHostState = remember { SnackbarHostState() }
     val pendingUndo by UndoManager.actions.collectAsState()
     val taggedPaths = state.taggedPaths
@@ -755,6 +766,7 @@ fun MediaScreen(
                         onNavigateToViewer = onNavigateToViewer,
                         unratedLabel = unratedLabel,
                         pickMultiple = pickMultiple,
+                        onSaveAsCollection = onSaveAsCollection,
                     )
                 }
             }
@@ -972,7 +984,8 @@ fun MediaScreen(
                     ratingFilter, activeTagName, activePathName, activeCollectionName, activeFolderFilterName,
                     minSizeFilter, dateRangeFilter, typeFilter,
                     displayMedia.size, onClearRatingFilter, onClearTagFilter, onClearPathFilter,
-                    onClearSizeFilter, onClearDateFilter, onClearTypeFilter, onClearFilter
+                    onClearSizeFilter, onClearDateFilter, onClearTypeFilter, onClearFilter,
+                    onSaveAsCollection = onSaveAsCollection,
                 )
                 Box(Modifier.dragSelectionGesture(dragSelection, enabled = hasSelection) { path -> selectedPaths = selectedPaths + path }) {
                 LazyColumn(state = listState, reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
@@ -1140,6 +1153,44 @@ fun MediaScreen(
             onDismiss = { showDeleteConfirm = false },
         )
     }
+
+    if (showSaveCollection) {
+        // A sensible default name from whatever filter dimensions are active, e.g. "★4 · Images · > 10 MB".
+        val defaultName = remember {
+            buildList {
+                if (ratingFilter > 0) add("★$ratingFilter")
+                activeTagName?.takeIf { it.isNotBlank() }?.let { add("#$it") }
+                when (typeFilter) { 1 -> add(ctx.getString(R.string.images)); 2 -> add(ctx.getString(R.string.videos)) }
+                if (minSizeFilter > 0) add("> ${formatFileSize(minSizeFilter)}")
+                when (dateRangeFilter) { 1 -> add(ctx.getString(R.string.today)); 2 -> add(ctx.getString(R.string.date_range_last_7_days)); 3 -> add(ctx.getString(R.string.date_range_last_30_days)); 4 -> add(ctx.getString(R.string.date_range_last_year)) }
+                activeFolderFilterName?.let { add(it) }
+            }.joinToString(" · ").ifBlank { ctx.getString(R.string.save_as_collection) }
+        }
+        var name by remember { mutableStateOf(defaultName) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showSaveCollection = false },
+            title = { Text(stringResource(R.string.save_as_collection)) },
+            text = { androidx.compose.material3.OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text(stringResource(R.string.name)) }) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    val n = name.trim().ifBlank { defaultName }
+                    val coll = org.fossify.gallery.models.MediaCollection(
+                        name = n,
+                        includedPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(pathFilter?.toList() ?: emptyList()),
+                        excludedPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(excludePathFilter?.toList() ?: emptyList()),
+                        tagFilter = activeTagName ?: "",
+                        ratingFilter = ratingFilter,
+                        minSize = minSizeFilter,
+                        dateRange = dateRangeFilter,
+                        typeFilter = typeFilter,
+                    )
+                    scope.launch { withContext(Dispatchers.IO) { repo.insertCollection(coll); repo.refreshCollectionsCache() }; ctx.toast(ctx.getString(R.string.collection_saved, n)) }
+                    showSaveCollection = false
+                }) { Text(stringResource(org.fossify.commons.R.string.ok)) }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { showSaveCollection = false }) { Text(stringResource(org.fossify.commons.R.string.cancel)) } },
+        )
+    }
 }
 
 @Composable
@@ -1148,7 +1199,8 @@ private fun FilterBreadcrumbs(
     minSizeFilter: Long, dateRangeFilter: Int, typeFilter: Int,
     resultCount: Int, onClearRating: () -> Unit, onClearTag: () -> Unit, onClearPath: () -> Unit,
     onClearSize: () -> Unit, onClearDate: () -> Unit, onClearType: () -> Unit,
-    onClearAll: () -> Unit
+    onClearAll: () -> Unit,
+    onSaveAsCollection: (() -> Unit)? = null,
 ) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         if (activeCollectionName != null) ActiveFilterChip(stringResource(R.string.filter_collection, activeCollectionName)) { onClearPath() }
@@ -1167,6 +1219,9 @@ private fun FilterBreadcrumbs(
         ) { onClearType() }
         Text(stringResource(R.string.result_count, resultCount), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         androidx.compose.material3.AssistChip(onClick = onClearAll, label = { Text(stringResource(R.string.clear_all_filters)) }, leadingIcon = { Icon(Icons.Default.Close, null, Modifier.size(18.dp)) })
+        // Turn the live filter into a saved, auto-updating collection (only offered for an ad-hoc
+        // filter, not when already viewing a collection).
+        if (onSaveAsCollection != null) androidx.compose.material3.AssistChip(onClick = onSaveAsCollection, label = { Text(stringResource(R.string.save_as_collection)) }, leadingIcon = { Icon(Icons.Default.BookmarkAdd, null, Modifier.size(18.dp)) })
     }
 }
 @Composable
