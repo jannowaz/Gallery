@@ -933,4 +933,5 @@
     <string name="remove">Entfernen</string>
     <string name="remove_from_favorites">Aus Favoriten entfernen</string>
     <string name="pick_unsupported_type">Dieses Element kann hier nicht ausgewählt werden</string>
+    <string name="pick_confirm_count">Auswählen (%1$d)</string>
 </resources>

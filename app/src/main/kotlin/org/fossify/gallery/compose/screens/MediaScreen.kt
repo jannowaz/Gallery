@@ -70,6 +70,9 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -185,6 +188,7 @@ private fun PagedContent(
     onClearFilter: () -> Unit,
     onNavigateToViewer: ((paths: List<String>, startIndex: Int) -> Unit)?,
     unratedLabel: String,
+    pickMultiple: Boolean = false,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -321,7 +325,7 @@ private fun PagedContent(
                                     showFileType = ctx.config.showThumbnailFileTypes,
                                     markFavorite = ctx.config.markFavoriteItems,
                                     onClick = {
-                                        if (hasSelection) {
+                                        if (hasSelection || pickMultiple) {
                                             selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path
                                             rangeAnchorIndex = row.pagingIndex
                                         } else openViewerPaged(row.pagingIndex)
@@ -423,7 +427,7 @@ private fun PagedContent(
                                         showFileType = ctx.config.showThumbnailFileTypes,
                                         markFavorite = ctx.config.markFavoriteItems,
                                         onClick = {
-                                            if (hasSelection) {
+                                            if (hasSelection || pickMultiple) {
                                                 selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path
                                                 rangeAnchorIndex = row.pagingIndex
                                             } else openViewerPaged(row.pagingIndex)
@@ -486,7 +490,7 @@ private fun PagedContent(
                                         cardColor = mediaCardColor,
                                         fileSizeLabel = formatFileSize(m.size),
                                         onClick = {
-                                            if (hasSelection) {
+                                            if (hasSelection || pickMultiple) {
                                                 selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path
                                                 rangeAnchorIndex = row.pagingIndex
                                             } else openViewerPaged(row.pagingIndex)
@@ -542,6 +546,12 @@ fun MediaScreen(
     onClearScrollToPath: () -> Unit = {},
     onSelectionActiveChanged: (Boolean) -> Unit = {},
     tabIndex: Int? = null,
+    // Picker multi-select (EXTRA_ALLOW_MULTIPLE). When true, taps toggle selection instead of opening
+    // the viewer, the normal (delete/share/…) selection bar is replaced by a "Select (N)" confirm bar,
+    // and confirming hands the chosen paths to onConfirmPick. Both default off, so normal browsing and
+    // selection behaviour is completely unchanged.
+    pickMultiple: Boolean = false,
+    onConfirmPick: ((List<String>) -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     val viewModel: MediaViewModel = viewModel()
@@ -744,6 +754,7 @@ fun MediaScreen(
                         onClearFilter = onClearFilter,
                         onNavigateToViewer = onNavigateToViewer,
                         unratedLabel = unratedLabel,
+                        pickMultiple = pickMultiple,
                     )
                 }
             }
@@ -832,7 +843,7 @@ fun MediaScreen(
                                 showFileType = ctx.config.showThumbnailFileTypes,
                                 markFavorite = ctx.config.markFavoriteItems,
                                 onClick = {
-                                    if (hasSelection) {
+                                    if (hasSelection || pickMultiple) {
                                         selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path
                                         rangeAnchorIndex = originalIdx
                                     } else openViewer(originalIdx)
@@ -924,7 +935,7 @@ fun MediaScreen(
                                 showFileType = ctx.config.showThumbnailFileTypes,
                                 markFavorite = ctx.config.markFavoriteItems,
                                 onClick = {
-                                    if (hasSelection) {
+                                    if (hasSelection || pickMultiple) {
                                         selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path
                                         rangeAnchorIndex = originalIdx
                                     } else openViewer(originalIdx)
@@ -983,7 +994,7 @@ fun MediaScreen(
                                 cardColor = mediaCardColor,
                                 fileSizeLabel = formatFileSize(m.size),
                                 onClick = {
-                                    if (hasSelection) {
+                                    if (hasSelection || pickMultiple) {
                                         selectedPaths = if (m.path in selectedPaths) selectedPaths - m.path else selectedPaths + m.path
                                         rangeAnchorIndex = originalIdx
                                     } else openViewer(originalIdx)
@@ -1011,7 +1022,7 @@ fun MediaScreen(
             visible = showMultiSelectHint && !hasSelection && displayMedia.isNotEmpty(),
             modifier = Modifier.align(Alignment.TopCenter).padding(top = contentTopInset + 8.dp),
         )
-        AnimatedVisibility(visible=hasSelection,enter=slideInVertically(initialOffsetY={-it})+fadeIn(AppMotion.medium),exit=slideOutVertically(targetOffsetY={-it})+fadeOut(AppMotion.medium),modifier=Modifier.align(Alignment.TopCenter)) {
+        AnimatedVisibility(visible=hasSelection && !pickMultiple,enter=slideInVertically(initialOffsetY={-it})+fadeIn(AppMotion.medium),exit=slideOutVertically(targetOffsetY={-it})+fadeOut(AppMotion.medium),modifier=Modifier.align(Alignment.TopCenter)) {
             SelectionTopAppBar(
                 modifier = Modifier.onGloballyPositioned { selectionBarHeightPx = it.size.height },
                 count = selectedPaths.size,
@@ -1042,6 +1053,19 @@ fun MediaScreen(
                 onRename = { showRenameDialog = true },
                 onInfo = { try { selectedPaths.firstOrNull()?.let { p -> (ctx as? android.app.Activity)?.let { a -> PropertiesDialog(a, p, false) } } } catch (e: Exception) { ctx.toast(ctx.getString(R.string.info_error, e.message), Toast.LENGTH_LONG) } },
             )
+        }
+        // Picker multi-select confirm bar - replaces the normal selection bar (gated above) while
+        // acting as a picker. Returns the chosen paths to the caller via onConfirmPick.
+        AnimatedVisibility(visible = pickMultiple && hasSelection, enter = slideInVertically(initialOffsetY = { it }) + fadeIn(AppMotion.medium), exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(AppMotion.medium), modifier = Modifier.align(Alignment.BottomCenter)) {
+            Surface(color = MaterialTheme.colorScheme.primaryContainer, tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { selectedPaths = emptySet() }) { Icon(Icons.Default.Close, stringResource(org.fossify.commons.R.string.cancel), tint = MaterialTheme.colorScheme.onPrimaryContainer) }
+                    Text("${selectedPaths.size}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                    androidx.compose.material3.Button(onClick = { onConfirmPick?.invoke(selectedPaths.toList()) }, enabled = selectedPaths.isNotEmpty()) {
+                        Text(stringResource(R.string.pick_confirm_count, selectedPaths.size))
+                    }
+                }
+            }
         }
         SnackbarHost(hostState=snackbarHostState,modifier=Modifier.align(Alignment.BottomCenter).padding(bottom = if (pendingUndo.isNotEmpty()) 64.dp else 0.dp))
         UndoBar(modifier = Modifier.align(Alignment.BottomCenter))

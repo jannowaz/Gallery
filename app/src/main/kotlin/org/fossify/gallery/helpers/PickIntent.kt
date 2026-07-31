@@ -68,6 +68,29 @@ object PickIntent {
         activity.finish()
     }
 
+    /**
+     * Returns several [paths] to the caller as a ClipData of readable content:// URIs and finishes -
+     * the EXTRA_ALLOW_MULTIPLE result shape. Silently drops any path that doesn't match the requested
+     * kind or has no resolvable URI; no-op with a toast if nothing valid remains.
+     */
+    fun returnMultiple(activity: Activity, paths: List<String>) {
+        val uris = paths
+            .filter { matchesRequiredKind(activity.intent, it) }
+            .mapNotNull { MediaStoreOps.uriForPath(activity, it) }
+        if (uris.isEmpty()) {
+            activity.toast(activity.getString(org.fossify.commons.R.string.unknown_error_occurred))
+            return
+        }
+        val clip = android.content.ClipData.newUri(activity.contentResolver, "media", uris.first())
+        uris.drop(1).forEach { clip.addItem(android.content.ClipData.Item(it)) }
+        val data = Intent().apply {
+            clipData = clip
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        activity.setResult(Activity.RESULT_OK, data)
+        activity.finish()
+    }
+
     /** Convenience for the onNavigateToViewer callbacks: pick the tapped item in pick mode, else run
      * [openViewer]. [paths]/[index] mirror the viewer callback - the tapped item is paths[index]. */
     fun handleMediaTap(activity: Activity?, paths: List<String>, index: Int, openViewer: () -> Unit) {

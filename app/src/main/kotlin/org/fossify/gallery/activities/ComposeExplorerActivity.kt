@@ -1152,6 +1152,8 @@ private fun MainTabContent(
             onClearScrollToPath = { mainVM.clearLastViewedPath() },
             onSelectionActiveChanged = onMediaSelectionChanged,
             tabIndex = 0,
+            pickMultiple = (ctx as? android.app.Activity)?.let { org.fossify.gallery.helpers.PickIntent.isPick(it.intent) && org.fossify.gallery.helpers.PickIntent.allowsMultiple(it.intent) } ?: false,
+            onConfirmPick = { paths -> (ctx as? android.app.Activity)?.let { org.fossify.gallery.helpers.PickIntent.returnMultiple(it, paths) } },
         )
         1 -> AlbumsScreen(
             viewModel = albumsViewModel,
