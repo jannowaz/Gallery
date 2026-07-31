@@ -709,6 +709,20 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit) {
     }
     LaunchedEffect(Unit) { if (!hasAllFilesAccess(ctx)) showAllFilesPrompt = true }
 
+    // Picker mode (GET_CONTENT/PICK): constrain the all-media tab to the kind the caller asked for,
+    // so an "select a photo" pick only shows images (a video pick only videos) there. The hard
+    // guarantee that the wrong kind can never be returned lives in PickIntent.handleMediaTap, which
+    // also covers taps inside folders where this grid filter doesn't apply.
+    LaunchedEffect(Unit) {
+        val act = ctx as? android.app.Activity
+        if (act != null && org.fossify.gallery.helpers.PickIntent.isPick(act.intent)) {
+            when (org.fossify.gallery.helpers.PickIntent.requiredKind(act.intent)) {
+                1 -> mainVM.setTypeFilter(1)
+                2 -> mainVM.setTypeFilter(2)
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         mainVM.initializeDatabase { mainVM.triggerMediaRefresh() }
     }

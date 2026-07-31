@@ -970,4 +970,5 @@
     <string name="library_health_dialog_msg">MediaStore knows %1$d items, this app has %2$d. A full rescan reads everything again and adds what is missing. It runs in the background and may take a few minutes on a large library.</string>
     <string name="library_health_rescan">Rescan now</string>
     <string name="library_health_started">Rescan started</string>
+    <string name="pick_unsupported_type">This item can\'t be selected here</string>
 </resources>
