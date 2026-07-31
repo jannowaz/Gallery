@@ -972,4 +972,5 @@
     <string name="library_health_started">Rescan started</string>
     <string name="pick_unsupported_type">This item can\'t be selected here</string>
     <string name="pick_confirm_count">Select (%1$d)</string>
+    <string name="trim_invalid_range">Set the end point after the start</string>
 </resources>

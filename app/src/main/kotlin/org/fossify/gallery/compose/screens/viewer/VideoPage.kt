@@ -420,9 +420,12 @@ fun VideoPage(
                             }
                         }
                     }
-                    // Trim bar
+                    // Trim bar - sits just above the seek bar (which is BottomCenter-aligned). Without an
+                    // explicit align it defaulted to the parent Box's TopStart, rendering the trim
+                    // controls at the very top of the screen under the status bar - visually detached
+                    // from the seek bar they belong to, and awkward to reach.
                     if (trimMode) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 56.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = { trimStartMs = player.currentPosition.toFloat(); onInteract() }) {
                                 Text(stringResource(R.string.trim_start).format((trimStartMs / 1000).toInt() / 60, (trimStartMs / 1000).toInt() % 60), color = TrimStartColor, style = MaterialTheme.typography.labelSmall)
                             }
@@ -436,21 +439,36 @@ fun VideoPage(
                                 val start = trimStartMs.toLong() * 1000; val end = trimEndMs.toLong() * 1000
                                 scope.launch(Dispatchers.IO) {
                                     try {
+                                        // Empty/inverted range would mux zero samples and make muxer.stop() throw.
+                                        if (end <= start) { withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.trim_invalid_range), android.widget.Toast.LENGTH_SHORT) }; return@launch }
                                         val outFile = File(path.replaceBeforeLast('.', path.substringBeforeLast('.') + "_trimmed"))
                                         val extractor = android.media.MediaExtractor(); extractor.setDataSource(path)
                                         val muxer = android.media.MediaMuxer(outFile.absolutePath, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
                                         val trackCount = extractor.trackCount
                                         val indexMap = IntArray(trackCount) { -1 }
-                                        for (i in 0 until trackCount) { extractor.selectTrack(i); indexMap[i] = muxer.addTrack(extractor.getTrackFormat(i)) }
+                                        var bufCap = 1 shl 20
+                                        for (i in 0 until trackCount) {
+                                            val fmt = extractor.getTrackFormat(i)
+                                            extractor.selectTrack(i); indexMap[i] = muxer.addTrack(fmt)
+                                            // A single 4K/high-bitrate keyframe can exceed 1 MB; sizing the copy buffer
+                                            // from the track's declared max sample size avoids readSampleData throwing
+                                            // "buffer too small" and the whole trim failing.
+                                            if (fmt.containsKey(android.media.MediaFormat.KEY_MAX_INPUT_SIZE)) bufCap = maxOf(bufCap, fmt.getInteger(android.media.MediaFormat.KEY_MAX_INPUT_SIZE))
+                                        }
                                         muxer.start()
                                         extractor.seekTo(start, android.media.MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-                                        val buf = java.nio.ByteBuffer.allocate(1 shl 20); val info = android.media.MediaCodec.BufferInfo()
+                                        val buf = java.nio.ByteBuffer.allocate(bufCap.coerceAtMost(16 shl 20)); val info = android.media.MediaCodec.BufferInfo()
+                                        // The seek can land on a sync frame slightly before `start`; rebase timestamps on
+                                        // the first copied sample so the output starts at 0 instead of going negative
+                                        // (negative presentationTimeUs corrupts the muxed file), rather than offsetting by start.
+                                        var baseTime = -1L
                                         while (true) {
                                             info.offset = 0; info.size = extractor.readSampleData(buf, 0)
                                             if (info.size < 0) break
                                             val t = extractor.sampleTime
                                             if (t > end) break
-                                            info.presentationTimeUs = t - start; info.flags = extractor.sampleFlags
+                                            if (baseTime < 0L) baseTime = t
+                                            info.presentationTimeUs = (t - baseTime).coerceAtLeast(0L); info.flags = extractor.sampleFlags
                                             muxer.writeSampleData(indexMap[extractor.sampleTrackIndex], buf, info); extractor.advance()
                                         }
                                         muxer.stop(); muxer.release(); extractor.release()
