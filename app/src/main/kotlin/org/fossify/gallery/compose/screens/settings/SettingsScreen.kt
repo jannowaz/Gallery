@@ -256,43 +256,50 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
             SectionLabel(stringResource(R.string.set_security))
-            SecurityNav(stringResource(R.string.set_app_password), conf.isAppPasswordProtectionOn) {
+            // conf reads aren't reactive, so bump this after each toggle so the On/Off labels below
+            // refresh immediately instead of showing stale state until the screen is re-entered.
+            var securityTick by remember { mutableIntStateOf(0) }
+            SecurityNav(stringResource(R.string.set_app_password), securityTick.let { conf.isAppPasswordProtectionOn }) {
                 SecurityDialog(a!!, conf.appPasswordHash, if (conf.isAppPasswordProtectionOn) conf.appProtectionType else SHOW_ALL_TABS) { hash, type, success ->
                     if (success) {
                         val wasOn = conf.isAppPasswordProtectionOn
                         conf.isAppPasswordProtectionOn = !wasOn
                         conf.appPasswordHash = if (wasOn) "" else hash
                         conf.appProtectionType = type
+                        securityTick++
                     }
                 }
             }
-            SecurityNav(stringResource(R.string.set_hidden_password), conf.isHiddenPasswordProtectionOn) {
+            SecurityNav(stringResource(R.string.set_hidden_password), securityTick.let { conf.isHiddenPasswordProtectionOn }) {
                 SecurityDialog(a!!, conf.hiddenPasswordHash, if (conf.isHiddenPasswordProtectionOn) conf.hiddenProtectionType else SHOW_ALL_TABS) { hash, type, success ->
                     if (success) {
                         val wasOn = conf.isHiddenPasswordProtectionOn
                         conf.isHiddenPasswordProtectionOn = !wasOn
                         conf.hiddenPasswordHash = if (wasOn) "" else hash
                         conf.hiddenProtectionType = type
+                        securityTick++
                     }
                 }
             }
-            SecurityNav(stringResource(R.string.set_excluded_password), conf.isExcludedPasswordProtectionOn) {
+            SecurityNav(stringResource(R.string.set_excluded_password), securityTick.let { conf.isExcludedPasswordProtectionOn }) {
                 SecurityDialog(a!!, conf.excludedPasswordHash, if (conf.isExcludedPasswordProtectionOn) conf.excludedProtectionType else SHOW_ALL_TABS) { hash, type, success ->
                     if (success) {
                         val wasOn = conf.isExcludedPasswordProtectionOn
                         conf.isExcludedPasswordProtectionOn = !wasOn
                         conf.excludedPasswordHash = if (wasOn) "" else hash
                         conf.excludedProtectionType = type
+                        securityTick++
                     }
                 }
             }
-            SecurityNav(stringResource(R.string.set_delete_password), conf.isDeletePasswordProtectionOn) {
+            SecurityNav(stringResource(R.string.set_delete_password), securityTick.let { conf.isDeletePasswordProtectionOn }) {
                 SecurityDialog(a!!, conf.deletePasswordHash, if (conf.isDeletePasswordProtectionOn) conf.deleteProtectionType else SHOW_ALL_TABS) { hash, type, success ->
                     if (success) {
                         val wasOn = conf.isDeletePasswordProtectionOn
                         conf.isDeletePasswordProtectionOn = !wasOn
                         conf.deletePasswordHash = if (wasOn) "" else hash
                         conf.deleteProtectionType = type
+                        securityTick++
                     }
                 }
             }
