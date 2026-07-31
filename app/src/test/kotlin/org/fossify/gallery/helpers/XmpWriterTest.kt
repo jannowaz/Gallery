@@ -145,6 +145,32 @@ class XmpWriterTest {
     }
 
     @Test
+    fun `re-parenting is not reverted by a stale foreign hierarchy field`() {
+        // A file that came from digiKam carries a TagsList encoding the OLD parent chain.
+        val file = mediaFile("photo.png")
+        File(tmp.root, "photo.xmp").writeText(
+            """<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+    <rdf:Description rdf:about="" xmlns:digiKam="http://www.digikam.org/ns/1.0/">
+      <digiKam:TagsList><rdf:Seq><rdf:li>Places/Germany/Munich</rdf:li></rdf:Seq></digiKam:TagsList>
+    </rdf:Description>
+  </rdf:RDF>
+</x:xmpmeta>
+<?xpacket end="w"?>"""
+        )
+
+        // Re-parent Munich under Bavaria in this app and write it out.
+        assertTrue(XmpWriter.write(file.absolutePath, listOf("Munich"), 0, mapOf("Munich" to "Bavaria")))
+
+        // The stale TagsList must be gone (else it would re-teach Munich->Germany on the next scan)...
+        assertFalse("stale foreign TagsList must be stripped when we rewrite the hierarchy",
+            File(tmp.root, "photo.xmp").readText().contains("Places/Germany/Munich"))
+        // ...and the read-back hierarchy reflects the new parent, not the old one.
+        assertEquals("Bavaria", XmpWriter.read(file.absolutePath).hierarchy["Munich"])
+    }
+
+    @Test
     fun `cyclic hierarchy does not hang the writer`() {
         val file = mediaFile("photo.png")
         assertTrue(XmpWriter.write(file.absolutePath, listOf("a"), 0, mapOf("a" to "b", "b" to "a")))

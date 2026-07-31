@@ -217,6 +217,13 @@ object XmpWriter {
         xmpmeta = xmpmeta.replace(Regex("\\s+xmp:Rating=\"\\d+\""), "")
         if (touchHierarchy) {
             xmpmeta = xmpmeta.replace(Regex("<[A-Za-z0-9]+:hierarchicalSubject[^>]*>.*?</[A-Za-z0-9]+:hierarchicalSubject>", RegexOption.DOT_MATCHES_ALL), "")
+            // The other apps' hierarchy encodings we also parse (digiKam's TagsList, Microsoft Photo's
+            // LastKeywordXMP/IPTC) must be stripped for the same reason: left in place, a stale copy of
+            // one of them would - because parseXmp reads it AFTER lr:hierarchicalSubject and overwrites
+            // per child - silently revert a re-parenting done here on the next metadata scan. Our
+            // lr:hierarchicalSubject (which those apps also read) stays the single source of truth.
+            xmpmeta = xmpmeta.replace(Regex("<[A-Za-z0-9]+:TagsList[^>]*>.*?</[A-Za-z0-9]+:TagsList>", RegexOption.DOT_MATCHES_ALL), "")
+            xmpmeta = xmpmeta.replace(Regex("<[A-Za-z0-9]+:LastKeyword(?:XMP|IPTC)[^>]*>.*?</[A-Za-z0-9]+:LastKeyword(?:XMP|IPTC)>", RegexOption.DOT_MATCHES_ALL), "")
         }
         return xmpmeta
     }
