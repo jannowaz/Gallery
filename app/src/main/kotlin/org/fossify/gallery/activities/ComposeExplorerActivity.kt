@@ -15,6 +15,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import org.fossify.commons.extensions.handleAppPasswordProtection
+import org.fossify.commons.extensions.handleLockedFolderOpening
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
@@ -1140,7 +1141,7 @@ private fun MainTabContent(
         )
         1 -> AlbumsScreen(
             viewModel = albumsViewModel,
-            onFolderClick = { dir -> navController.navigate(Folder(dir.path)) },
+            onFolderClick = { dir -> openFolderChecked(ctx, dir.path) { navController.navigate(Folder(dir.path)) } },
             viewSettings = tabSettings.albums,
             onSelectionActiveChanged = onMediaSelectionChanged,
             tabIndex = 1,
@@ -1177,7 +1178,7 @@ private fun MainTabContent(
             viewSettings = tabSettings.collections,
             onCollectionClick = { coll -> applyCollection(coll, mainVM, ctx) },
         )
-        4 -> FavoritesScreen(viewSettings = tabSettings.favorites, onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) }, onFolderClick = { navController.navigate(Folder(it)) }, tabIndex = 4)
+        4 -> FavoritesScreen(viewSettings = tabSettings.favorites, onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) }, onFolderClick = { path -> openFolderChecked(ctx, path) { navController.navigate(Folder(path)) } }, tabIndex = 4)
         5 -> TagBrowserScreen(
             onBack = {},
             onTagFilterApplied = { tagNames, tagName ->
@@ -1700,3 +1701,13 @@ private fun OmniSearchPanel(
 private fun hasAllFilesAccess(ctx: android.content.Context): Boolean =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Environment.isExternalStorageManager()
     else ContextCompat.checkSelfPermission(ctx, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+
+/** Opens a folder only after passing its per-folder lock, if one is set. commons
+ * handleLockedFolderOpening no-ops (calls back true) for unprotected folders, so this is a cheap
+ * pass-through except on folders the user explicitly locked - mirroring the legacy folder grid, which
+ * gated album opening the same way (the Compose grid navigated straight in, bypassing the lock). */
+private fun openFolderChecked(ctx: android.content.Context, path: String, onOpen: () -> Unit) {
+    val activity = ctx as? android.app.Activity
+    if (activity == null) { onOpen(); return }
+    activity.handleLockedFolderOpening(path) { success -> if (success) onOpen() }
+}

@@ -74,6 +74,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.dialogs.SecurityDialog
+import org.fossify.commons.extensions.handleHiddenFolderPasswordProtection
 import org.fossify.commons.helpers.PROTECTION_FINGERPRINT
 import org.fossify.commons.helpers.SHOW_ALL_TABS
 import org.fossify.commons.helpers.VIEW_TYPE_GRID
@@ -146,7 +147,19 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             SettingsNav(stringResource(R.string.theme_mode_label), themeModeLabel) { showThemeModeDialog = true }
             SettingsSwitch(stringResource(R.string.set_amoled_background), conf.useAmoledBackground) { conf.useAmoledBackground = it; org.fossify.gallery.compose.theme.ThemePrefsBus.invalidate() }
             SettingsSwitch(stringResource(R.string.set_dynamic_colors), conf.useDynamicColors) { conf.useDynamicColors = it; org.fossify.gallery.compose.theme.ThemePrefsBus.invalidate() }
-            SettingsSwitch(stringResource(R.string.set_show_hidden), conf.showHiddenMedia) { conf.showHiddenMedia = it }
+            // Controlled (not the internal-state SettingsSwitch) so a cancelled hidden-items password
+            // prompt visually reverts the toggle. Enabling "show hidden" behind the hidden-items
+            // password mirrors the legacy viewer, where revealing hidden media asked for it first;
+            // the Compose switch flipped it with no prompt at all.
+            var showHiddenChecked by remember { mutableStateOf(conf.showHiddenMedia) }
+            SettingsSwitchControlled(stringResource(R.string.set_show_hidden), showHiddenChecked) { want ->
+                when {
+                    !want -> { showHiddenChecked = false; conf.showHiddenMedia = false }
+                    a != null && conf.isHiddenPasswordProtectionOn ->
+                        a.handleHiddenFolderPasswordProtection { showHiddenChecked = true; conf.showHiddenMedia = true }
+                    else -> { showHiddenChecked = true; conf.showHiddenMedia = true }
+                }
+            }
             SettingsSwitch(stringResource(R.string.set_animate_gifs), conf.animateGifs) { conf.animateGifs = it }
             SettingsSwitch(stringResource(R.string.set_max_brightness), conf.maxBrightness) { conf.maxBrightness = it }
             SettingsSwitch(stringResource(R.string.set_search_all_files), conf.searchAllFilesByDefault) { conf.searchAllFilesByDefault = it }
@@ -434,6 +447,19 @@ internal fun SettingsSwitch(label: String, checked: Boolean, onChange: (Boolean)
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Switch(checked = internalChecked, onCheckedChange = { internalChecked = it; onChange(it) })
+        }
+    }
+}
+
+/** Like [SettingsSwitch] but stateless - the caller owns [checked], so it can veto/revert a toggle
+ * (e.g. when a password prompt behind the switch is cancelled). */
+@Composable
+internal fun SettingsSwitchControlled(label: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(Radius.sm),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Switch(checked = checked, onCheckedChange = onToggle)
         }
     }
 }

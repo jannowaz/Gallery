@@ -131,6 +131,7 @@ import org.fossify.gallery.compose.util.dragSelectionGesture
 import org.fossify.gallery.compose.util.rememberSelectionDragState
 import org.fossify.gallery.helpers.UndoAction
 import org.fossify.gallery.helpers.UndoManager
+import org.fossify.gallery.helpers.withDeletePasswordCheck
 import org.fossify.gallery.helpers.UndoType
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
@@ -1109,7 +1110,8 @@ fun MediaScreen(
             confirmLabel = stringResource(org.fossify.commons.R.string.delete),
             onConfirm = {
                 showDeleteConfirm = false
-                val d = selectedPaths.toSet(); viewModel.softDeletePaths(d); UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE)); selectedPaths = emptySet()
+                val d = selectedPaths.toSet()
+                ctx.withDeletePasswordCheck { viewModel.softDeletePaths(d); UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE)); selectedPaths = emptySet() }
             },
             onDismiss = { showDeleteConfirm = false },
         )

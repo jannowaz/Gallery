@@ -137,6 +137,7 @@ import org.fossify.gallery.extensions.openEditor
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import org.fossify.gallery.helpers.UndoAction
 import org.fossify.gallery.helpers.UndoManager
+import org.fossify.gallery.helpers.withDeletePasswordCheck
 import org.fossify.gallery.helpers.UndoType
 import java.io.File
 import kotlin.math.abs
@@ -288,12 +289,14 @@ fun ViewerScreen(
     fun performDelete() {
         val idx = pagerState.currentPage
         val p = items.getOrNull(idx) ?: return
-        ctx.config.lastViewedPath = p
-        scope.launch(Dispatchers.IO) { repo.moveToRecycleBin(p) }
-        UndoManager.push(UndoAction(paths = setOf(p), type = UndoType.DELETE))
-        if (items.size <= 1) onClose() else {
-            items.removeAt(idx)
-            if (idx >= items.size) scope.launch { pagerState.scrollToPage(items.size - 1) }
+        ctx.withDeletePasswordCheck {
+            ctx.config.lastViewedPath = p
+            scope.launch(Dispatchers.IO) { repo.moveToRecycleBin(p) }
+            UndoManager.push(UndoAction(paths = setOf(p), type = UndoType.DELETE))
+            if (items.size <= 1) onClose() else {
+                items.removeAt(idx)
+                if (idx >= items.size) scope.launch { pagerState.scrollToPage(items.size - 1) }
+            }
         }
     }
     fun deleteCurrent() {

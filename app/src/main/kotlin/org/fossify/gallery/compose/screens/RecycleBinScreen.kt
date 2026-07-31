@@ -62,6 +62,7 @@ import org.fossify.gallery.helpers.MediaStoreOps
 import org.fossify.gallery.helpers.RefreshBus
 import org.fossify.gallery.models.Medium
 import java.io.File
+import org.fossify.gallery.helpers.withDeletePasswordCheck
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,6 +93,10 @@ fun RecycleBinScreen(onBack: () -> Unit) {
     // 2026-07-17: "Leeren macht nichts mehr, nach einigen Sekunden steht da nur Abbrechen").
     fun permanentlyDelete(paths: List<String>) {
         if (paths.isEmpty() || deleteProgress != null) return
+        // Permanent, unrecoverable deletion (empty bin + delete-forever both route here) - the single
+        // most destructive action in the app, so it's the clearest thing to put behind the optional
+        // delete password. No-op prompt when the protection is off.
+        ctx.withDeletePasswordCheck {
         scope.launch {
             deleteProgress = 0 to paths.size
             if (org.fossify.commons.helpers.isRPlus() && !org.fossify.commons.extensions.isExternalStorageManager()) {
@@ -120,6 +125,7 @@ fun RecycleBinScreen(onBack: () -> Unit) {
             } else {
                 ctx.toast(ctx.resources.getQuantityString(R.plurals.deleted_forever_count, paths.size, paths.size))
             }
+        }
         }
     }
 

@@ -110,6 +110,7 @@ import androidx.compose.ui.res.stringResource
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.helpers.UndoAction
 import org.fossify.gallery.helpers.UndoManager
+import org.fossify.gallery.helpers.withDeletePasswordCheck
 import org.fossify.gallery.helpers.UndoType
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import androidx.compose.material.icons.filled.ContentCopy
@@ -492,9 +493,11 @@ fun ExplorerScreen(
                     IconButton(onClick = {
                         if (context.config.skipDeleteConfirmation) {
                             val d = selectedFilePaths
-                            scope.launch(Dispatchers.IO) { repo.moveToRecycleBinBatch(d) }
-                            UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE))
-                            selectedFilePaths = emptySet()
+                            context.withDeletePasswordCheck {
+                                scope.launch(Dispatchers.IO) { repo.moveToRecycleBinBatch(d) }
+                                UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE))
+                                selectedFilePaths = emptySet()
+                            }
                         } else {
                             showFileDeleteConfirm = true
                         }
@@ -899,9 +902,11 @@ fun ExplorerScreen(
             onConfirm = {
                 showFileDeleteConfirm = false
                 val d = selectedFilePaths
-                scope.launch(Dispatchers.IO) { repo.moveToRecycleBinBatch(d) }
-                UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE))
-                selectedFilePaths = emptySet()
+                context.withDeletePasswordCheck {
+                    scope.launch(Dispatchers.IO) { repo.moveToRecycleBinBatch(d) }
+                    UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE))
+                    selectedFilePaths = emptySet()
+                }
             },
             onDismiss = { showFileDeleteConfirm = false },
         )
@@ -923,12 +928,14 @@ fun ExplorerScreen(
             onConfirm = {
                 showDeleteFoldersConfirm = false
                 val folders = selectedFolderPaths
-                selectedFolderPaths = emptySet()
-                scope.launch {
-                    val paths = withContext(Dispatchers.IO) { repo.mediaPathsUnderFolders(folders) }
-                    if (paths.isNotEmpty()) {
-                        repo.moveToRecycleBinBatch(paths)
-                        UndoManager.push(UndoAction(paths = paths.toSet(), type = UndoType.DELETE))
+                context.withDeletePasswordCheck {
+                    selectedFolderPaths = emptySet()
+                    scope.launch {
+                        val paths = withContext(Dispatchers.IO) { repo.mediaPathsUnderFolders(folders) }
+                        if (paths.isNotEmpty()) {
+                            repo.moveToRecycleBinBatch(paths)
+                            UndoManager.push(UndoAction(paths = paths.toSet(), type = UndoType.DELETE))
+                        }
                     }
                 }
             },

@@ -74,6 +74,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.dialogs.PropertiesDialog
+import org.fossify.commons.dialogs.SecurityDialog
+import org.fossify.commons.dialogs.FolderLockingNoticeDialog
+import org.fossify.commons.helpers.SHOW_ALL_TABS
 import org.fossify.gallery.compose.components.ConfirmDestructive
 import org.fossify.gallery.compose.components.FolderRenameDialog
 import org.fossify.gallery.compose.components.FolderTile
@@ -87,6 +90,8 @@ import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.R
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
@@ -95,6 +100,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.helpers.UndoAction
 import org.fossify.gallery.helpers.UndoManager
+import org.fossify.gallery.helpers.withDeletePasswordCheck
 import org.fossify.gallery.helpers.UndoType
 import org.fossify.gallery.models.Directory
 import org.fossify.gallery.viewmodels.AlbumsViewModel
@@ -269,12 +275,56 @@ fun AlbumsScreen(
                     var folderMenuOpen by remember { mutableStateOf(false) }
                     Box {
                         IconButton(onClick = { folderMenuOpen = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions)) }
+                        val activity = ctx as? android.app.Activity
                         DropdownMenu(expanded = folderMenuOpen, onDismissRequest = { folderMenuOpen = false }) {
                             if (isSingle) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.action_rename)) },
                                     leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, null) },
                                     onClick = { folderMenuOpen = false; renameFolderPath = selectedPaths.first() },
+                                )
+                            }
+                            // Password-lock a folder so opening it needs the PIN/pattern/fingerprint -
+                            // the only way to *set* per-folder protection from the Compose UI (it lived
+                            // solely in the legacy folder grid before). Shown when any selected folder
+                            // isn't already locked; Unlock when any is.
+                            if (activity != null && selectedPaths.any { !ctx.config.isFolderProtected(it) }) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(org.fossify.commons.R.string.lock_folder)) },
+                                    leadingIcon = { Icon(Icons.Default.Lock, null) },
+                                    onClick = {
+                                        folderMenuOpen = false
+                                        val targets = selectedPaths.filter { !ctx.config.isFolderProtected(it) }
+                                        val doLock = {
+                                            SecurityDialog(activity, "", SHOW_ALL_TABS) { hash, type, success ->
+                                                if (success) { targets.forEach { ctx.config.addFolderProtection(it, hash, type) }; selectedPaths = emptySet() }
+                                            }
+                                        }
+                                        // One-time notice that the lock only hides from THIS app.
+                                        if (ctx.config.wasFolderLockingNoticeShown) doLock()
+                                        else FolderLockingNoticeDialog(activity) { doLock() }
+                                    },
+                                )
+                            }
+                            if (activity != null && selectedPaths.any { ctx.config.isFolderProtected(it) }) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(org.fossify.commons.R.string.unlock_folder)) },
+                                    leadingIcon = { Icon(Icons.Default.LockOpen, null) },
+                                    onClick = {
+                                        folderMenuOpen = false
+                                        val protectedPaths = selectedPaths.filter { ctx.config.isFolderProtected(it) }
+                                        protectedPaths.firstOrNull()?.let { first ->
+                                            val tab = ctx.config.getFolderProtectionType(first)
+                                            val hash = ctx.config.getFolderProtectionHash(first)
+                                            SecurityDialog(activity, hash, tab) { _, _, success ->
+                                                if (success) {
+                                                    protectedPaths.filter { ctx.config.getFolderProtectionType(it) == tab && ctx.config.getFolderProtectionHash(it) == hash }
+                                                        .forEach { ctx.config.removeFolderProtection(it) }
+                                                    selectedPaths = emptySet()
+                                                }
+                                            }
+                                        }
+                                    },
                                 )
                             }
                             DropdownMenuItem(
@@ -305,12 +355,14 @@ fun AlbumsScreen(
             onConfirm = {
                 showDeleteFoldersConfirm = false
                 val folders = selectedPaths
-                selectedPaths = emptySet()
-                scope.launch {
-                    val paths = withContext(Dispatchers.IO) { repo.mediaPathsUnderFolders(folders) }
-                    if (paths.isNotEmpty()) {
-                        repo.moveToRecycleBinBatch(paths)
-                        UndoManager.push(UndoAction(paths = paths.toSet(), type = UndoType.DELETE))
+                ctx.withDeletePasswordCheck {
+                    selectedPaths = emptySet()
+                    scope.launch {
+                        val paths = withContext(Dispatchers.IO) { repo.mediaPathsUnderFolders(folders) }
+                        if (paths.isNotEmpty()) {
+                            repo.moveToRecycleBinBatch(paths)
+                            UndoManager.push(UndoAction(paths = paths.toSet(), type = UndoType.DELETE))
+                        }
                     }
                 }
             },
