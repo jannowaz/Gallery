@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.BurstMode
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -216,6 +217,7 @@ fun ViewerScreen(
     var currentRating by remember { mutableIntStateOf(0) }
     var videoScalingMode by remember { mutableIntStateOf(0) }
     var showVideoSettings by remember { mutableStateOf(false) }
+    var showFrameGrabber by remember { mutableStateOf(false) }
     // Inside the tiny PiP window every overlay is noise - chrome is forced hidden and the
     // persistent overlays below gate on !inPip.
     val inPip = org.fossify.gallery.compose.util.PipState.inPip
@@ -702,7 +704,7 @@ fun ViewerScreen(
                 SheetSectionLabel(stringResource(R.string.video_actions))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Share, stringResource(R.string.action_share)) { val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath)); ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, ctx.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); showActionSheet = false }; ActionChip(Icons.Default.Edit, stringResource(R.string.edit)) { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }; ActionChip(Icons.Default.DriveFileRenameOutline, stringResource(R.string.action_rename)) { showRenameDialog = true; showActionSheet = false }; ActionChip(Icons.Default.ContentCopy, stringResource(R.string.action_copy)) { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }; ActionChip(Icons.AutoMirrored.Filled.DriveFileMove, stringResource(R.string.action_move)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false } }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Info, stringResource(R.string.action_info)) { try { (ctx as? android.app.Activity)?.let { org.fossify.commons.dialogs.PropertiesDialog(it, currentPath, false) } } catch (e: Exception) { ctx.toast(ctx.getString(R.string.info_error, e.message), android.widget.Toast.LENGTH_SHORT) }; showActionSheet = false }; ActionChip(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), MaterialTheme.colorScheme.error) { showActionSheet = false; deleteCurrent() }; ActionChip(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), if (isFavorite) FavoriteColor else MaterialTheme.colorScheme.onSurfaceVariant) { val path = currentPath; val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { val ok = repo.toggleFavorite(path, f); if (!ok) withContext(Dispatchers.Main) { if (currentPath == path) isFavorite = !f } }; showActionSheet = false }; ActionChip(Icons.Default.Star, stringResource(R.string.action_rate), if (showRatingOverlay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) { showRatingOverlay = !showRatingOverlay; ctx.config.viewerShowRatingBar = showRatingOverlay; showActionSheet = false } }
-                if (currentIsVideo) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.AspectRatio, stringResource(R.string.video_display)) { showVideoSettings = true; showActionSheet = false }; ActionChip(Icons.Default.PhotoCamera, stringResource(R.string.action_save_frame)) { scope.launch(Dispatchers.IO) { val r = android.media.MediaMetadataRetriever(); try { r.setDataSource(currentPath); val bmp = r.frameAtTime ?: return@launch; val parentDir = File(currentPath).parentFile ?: ctx.cacheDir; val outFile = File(parentDir, "frame_${System.currentTimeMillis()}.jpg"); outFile.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }; bmp.recycle(); runCatching { android.media.MediaScannerConnection.scanFile(ctx, arrayOf(outFile.absolutePath), null, null) }; org.fossify.gallery.helpers.RefreshBus.trigger(); withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.frame_saved, outFile.name), android.widget.Toast.LENGTH_SHORT) } } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.error_generic, e.message), android.widget.Toast.LENGTH_SHORT) } } finally { runCatching { r.release() } } }; showActionSheet = false } } }
+                if (currentIsVideo) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.AspectRatio, stringResource(R.string.video_display)) { showVideoSettings = true; showActionSheet = false }; ActionChip(Icons.Default.PhotoCamera, stringResource(R.string.action_save_frame)) { scope.launch(Dispatchers.IO) { val r = android.media.MediaMetadataRetriever(); try { r.setDataSource(currentPath); val bmp = r.frameAtTime ?: return@launch; val parentDir = File(currentPath).parentFile ?: ctx.cacheDir; val outFile = File(parentDir, "frame_${System.currentTimeMillis()}.jpg"); outFile.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }; bmp.recycle(); runCatching { android.media.MediaScannerConnection.scanFile(ctx, arrayOf(outFile.absolutePath), null, null) }; org.fossify.gallery.helpers.RefreshBus.trigger(); withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.frame_saved, outFile.name), android.widget.Toast.LENGTH_SHORT) } } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.error_generic, e.message), android.widget.Toast.LENGTH_SHORT) } } finally { runCatching { r.release() } } }; showActionSheet = false }; ActionChip(Icons.Default.BurstMode, stringResource(R.string.grab_frames)) { showFrameGrabber = true; showActionSheet = false } } }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 SheetSectionLabel(stringResource(R.string.action_tags))
                 if (currentTags.isNotEmpty()) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { currentTags.forEach { tag -> InputChip(selected = true, onClick = {}, label = { Text(tag, style = MaterialTheme.typography.labelSmall) }, trailingIcon = { Icon(Icons.Default.Close, stringResource(R.string.action_remove), Modifier.size(14.dp).clickable { removeTag(tag) }) }, shape = RoundedCornerShape(Radius.sm), colors = InputChipDefaults.inputChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer, labelColor = MaterialTheme.colorScheme.onPrimaryContainer)) } }; Spacer(Modifier.height(8.dp)) }
@@ -711,6 +713,21 @@ fun ViewerScreen(
                 if (tagInput.isNotBlank() && filteredSuggestions.none { it.first.equals(tagInput, ignoreCase = true) }) { Spacer(Modifier.height(6.dp)); TextButton(onClick = { addTag(tagInput) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.add_new_tag, tagInput.trim())) } }
                 if (quickTags.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { quickTags.forEach { tag -> val hasTag = currentTags.contains(tag); Surface(onClick = { if (hasTag) removeTag(tag) else addTag(tag) }, shape = RoundedCornerShape(Radius.lg), color = if (hasTag) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, color = if (hasTag) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
                 Spacer(Modifier.height(16.dp))
+            }
+        }
+    }
+
+    if (showFrameGrabber) {
+        org.fossify.gallery.compose.screens.framegrabber.FrameGrabberScreen(currentPath) { deletedOriginal ->
+            showFrameGrabber = false
+            if (deletedOriginal) {
+                // The source video was moved to the recycle bin - drop it from the pager exactly like
+                // an in-viewer delete so we don't keep showing a now-binned item.
+                val idx = pagerState.currentPage
+                if (items.size <= 1) onClose() else {
+                    items.removeAt(idx)
+                    if (idx >= items.size) scope.launch { pagerState.scrollToPage(items.size - 1) }
+                }
             }
         }
     }

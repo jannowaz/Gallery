@@ -935,4 +935,16 @@
     <string name="pick_unsupported_type">Dieses Element kann hier nicht ausgewählt werden</string>
     <string name="pick_confirm_count">Auswählen (%1$d)</string>
     <string name="trim_invalid_range">Endpunkt nach dem Start setzen</string>
+    <string name="grab_frames">Frames extrahieren</string>
+    <string name="grab_frames_only_sharp">Nur scharfe</string>
+    <string name="grab_frames_delete_video">Video danach löschen</string>
+    <string name="grab_frames_save_count">Speichern (%1$d)</string>
+    <string name="grab_frames_analyzing">Frames analysieren… %1$d/%2$d</string>
+    <string name="grab_frames_saving">Speichern… %1$d/%2$d</string>
+    <string name="grab_frames_none">Keine Frames extrahierbar</string>
+    <string name="grab_frames_saved_with_failures">%1$d gespeichert, %2$d fehlgeschlagen</string>
+    <plurals name="grab_frames_saved">
+        <item quantity="one">%d Frame gespeichert</item>
+        <item quantity="other">%d Frames gespeichert</item>
+    </plurals>
 </resources>

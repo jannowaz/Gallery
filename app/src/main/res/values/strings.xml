@@ -973,4 +973,16 @@
     <string name="pick_unsupported_type">This item can\'t be selected here</string>
     <string name="pick_confirm_count">Select (%1$d)</string>
     <string name="trim_invalid_range">Set the end point after the start</string>
+    <string name="grab_frames">Grab frames</string>
+    <string name="grab_frames_only_sharp">Only sharp</string>
+    <string name="grab_frames_delete_video">Delete video afterwards</string>
+    <string name="grab_frames_save_count">Save (%1$d)</string>
+    <string name="grab_frames_analyzing">Analysing frames… %1$d/%2$d</string>
+    <string name="grab_frames_saving">Saving… %1$d/%2$d</string>
+    <string name="grab_frames_none">No frames could be extracted</string>
+    <string name="grab_frames_saved_with_failures">%1$d saved, %2$d failed</string>
+    <plurals name="grab_frames_saved">
+        <item quantity="one">%d frame saved</item>
+        <item quantity="other">%d frames saved</item>
+    </plurals>
 </resources>
