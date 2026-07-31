@@ -31,6 +31,7 @@ import kotlinx.coroutines.withContext
 import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.util.BlurState
 import org.fossify.gallery.compose.util.privacyBlur
+import org.fossify.gallery.extensions.config
 import java.io.File
 
 @Composable
@@ -49,6 +50,10 @@ fun GalleryImage(
     val ctx = LocalContext.current
     val file = File(path)
     var imageState by remember(path) { mutableStateOf<AsyncImagePainter.State?>(null) }
+    // Honor "Play animated GIFs" for grid thumbnails too: the app's Coil ImageLoader animates GIF/WebP
+    // globally, so without this every animated thumbnail in a folder ran at once (needless battery/CPU)
+    // regardless of the setting. When it's off, force a static first-frame decode for these formats.
+    val forceStaticFrame = remember(path) { path.substringAfterLast('.', "").lowercase() in setOf("gif", "webp") } && !ctx.config.animateGifs
 
     var fileExists by remember(path) { mutableStateOf(true) }
     LaunchedEffect(path) {
@@ -61,6 +66,7 @@ fun GalleryImage(
                 .data(if (fileExists) Uri.fromFile(file) else null)
                 .crossfade(true)
                 .apply { if (thumbnailSize != null) size(thumbnailSize, thumbnailSize) }
+                .apply { if (forceStaticFrame) decoderFactory(coil.decode.BitmapFactoryDecoder.Factory()) }
                 .build(),
             contentDescription = contentDescription,
             modifier = Modifier.fillMaxSize().privacyBlur(BlurRadius.thumbnail, BlurState.enabled),
