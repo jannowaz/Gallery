@@ -2,6 +2,7 @@ package org.fossify.gallery.helpers
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -168,6 +169,25 @@ class XmpWriterTest {
             File(tmp.root, "photo.xmp").readText().contains("Places/Germany/Munich"))
         // ...and the read-back hierarchy reflects the new parent, not the old one.
         assertEquals("Bavaria", XmpWriter.read(file.absolutePath).hierarchy["Munich"])
+    }
+
+    @Test
+    fun `readOrNull returns empty data (not null) when a readable file has no metadata`() {
+        val file = mediaFile("plain.png")
+        val data = XmpWriter.readOrNull(file.absolutePath)
+        assertNotNull("a successful read with no XMP must be empty data, not a read-failure null", data)
+        assertTrue(data!!.tags.isEmpty())
+        assertEquals(0, data.rating)
+    }
+
+    @Test
+    fun `readOrNull returns the same tags and rating as read for a tagged file`() {
+        val file = mediaFile("tagged.png")
+        assertTrue(XmpWriter.write(file.absolutePath, listOf("beach", "sunset"), 4))
+        val viaNull = XmpWriter.readOrNull(file.absolutePath)
+        assertNotNull(viaNull)
+        assertEquals(XmpWriter.read(file.absolutePath).tags, viaNull!!.tags)
+        assertEquals(4, viaNull.rating)
     }
 
     @Test

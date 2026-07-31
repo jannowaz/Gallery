@@ -24,8 +24,33 @@ object XmpWriter {
         if (path.isBlank()) return XmpData()
         val file = File(path)
         if (!file.exists()) return XmpData()
-        val isJpeg = file.extension.lowercase() in setOf("jpg", "jpeg")
-        val raw: String = if (isJpeg) readXmpFromJpeg(file) else readXmpFromSidecar(file)
+        // A read failure (null from rawXmp) is treated as "no metadata" here, preserving the historical
+        // behaviour of every existing caller. Callers that must NOT overwrite a file's tags/rating
+        // based on a possibly-failed read use readOrNull() instead (see below).
+        return parseFile(file, rawXmp(file) ?: "")
+    }
+
+    /**
+     * Like [read], but returns null when the file's XMP could not actually be read (an IO error while
+     * scanning the JPEG header / reading the sidecar) - as opposed to a successful read that simply
+     * found no metadata (which still returns an empty [XmpData]). This distinction matters for
+     * read-modify-write callers (rating/tag edits): treating a failed read as "empty" would make the
+     * subsequent write persist empty tags/rating and silently wipe whatever the file actually held.
+     */
+    fun readOrNull(path: String): XmpData? {
+        if (path.isBlank()) return XmpData()
+        val file = File(path)
+        if (!file.exists()) return XmpData()
+        val raw = rawXmp(file) ?: return null
+        return parseFile(file, raw)
+    }
+
+    /** The file's raw XMP text: content when present, "" when the file was read fine but holds no XMP,
+     * null when the read itself failed (IO error). */
+    private fun rawXmp(file: File): String? =
+        if (file.extension.lowercase() in setOf("jpg", "jpeg")) readXmpFromJpeg(file) else readXmpFromSidecar(file)
+
+    private fun parseFile(file: File, raw: String): XmpData {
         var data = when {
             raw.isBlank() -> tryMigrateOldFormat(file)
             // Old-format sidecar (bare rating number / comma-separated tag list, no XML): before
@@ -117,7 +142,10 @@ object XmpWriter {
         // fields this app knows nothing about (GPS, captions, copyright, another app's own
         // hierarchicalSubject/TagsList) - only the fields we actually own below are touched, so
         // everything else round-trips untouched instead of being silently dropped.
-        val existingRaw = if (isJpeg) readXmpFromJpeg(file) else readXmpFromSidecar(file)
+        // null (not "") means the existing packet couldn't be read - abort rather than overwrite with a
+        // fresh one, which would silently drop the file's foreign fields (GPS, captions, ...). "" (no
+        // XMP present) is fine and proceeds with a new packet.
+        val existingRaw = (if (isJpeg) readXmpFromJpeg(file) else readXmpFromSidecar(file)) ?: return false
         val xmpBytes = buildXmpPacket(existingRaw, tags, rating, hierarchy)
         return if (isJpeg) writeXmpToJpeg(file, xmpBytes) else writeXmpSidecar(file, xmpBytes)
     }
@@ -296,7 +324,9 @@ $ownedDescription
 
     // --- JPEG embedding with streaming (no full-file read) ---
 
-    private fun readXmpFromJpeg(file: File): String {
+    /** Returns the embedded XMP packet text, "" if the file was read fine but has none, or null if the
+     * read itself failed (so read-modify-write callers can abort instead of wiping metadata). */
+    private fun readXmpFromJpeg(file: File): String? {
         try {
             RandomAccessFile(file, "r").use { raf ->
                 val readLen = minOf(raf.length(), MAX_SCAN_BYTES).toInt()
@@ -309,7 +339,7 @@ $ownedDescription
                     if (end > start) return String(buffer, start, end - start, Charsets.UTF_8)
                 }
             }
-        } catch (_: Exception) { }
+        } catch (_: Exception) { return null }
         return ""
     }
 
@@ -328,7 +358,9 @@ $ownedDescription
         return if (hasSiblingCollision) File("${file.absolutePath}.xmp") else File(file.parentFile, "$base.xmp")
     }
 
-    private fun readXmpFromSidecar(file: File): String {
+    /** Returns the sidecar XMP text, "" if no sidecar exists, or null if a sidecar exists but reading
+     * it failed (so read-modify-write callers can abort instead of wiping metadata). */
+    private fun readXmpFromSidecar(file: File): String? {
         val preferred = sidecarPath(file)
         val replaceStyle = File(file.parentFile, "${file.nameWithoutExtension}.xmp")
         val appendStyle = File("${file.absolutePath}.xmp")
@@ -338,7 +370,7 @@ $ownedDescription
             fallback.exists() -> fallback
             else -> return ""
         }
-        return try { target.readText() } catch (_: Exception) { "" }
+        return try { target.readText() } catch (_: Exception) { null }
     }
 
     private fun writeXmpSidecar(file: File, xmpData: ByteArray): Boolean {

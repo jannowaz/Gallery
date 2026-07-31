@@ -119,13 +119,22 @@ class MetadataSyncWorker(
                     if (cached.tags.isNotBlank()) foundTags++
                     if (cached.rating > 0) foundRatings++
                 } else {
-                    val xmp = XmpWriter.read(p)
-                    if (xmp.tags.isNotEmpty()) foundTags++
-                    if (xmp.rating > 0) { foundRatings++; try { applicationContext.mediaDB.updateRating(p, xmp.rating) } catch (_: Exception) { } }
-                    if (xmp.hierarchy.isNotEmpty()) hierarchyAccum.putAll(xmp.hierarchy)
-                    batch.add(MediaCache(fullPath = p, tags = xmp.tags.joinToString(","), rating = xmp.rating, lastScanned = now))
-                    if (xmp.tags.isNotEmpty()) syncMediaTags(p, xmp.tags)
-                    if (batch.size >= 200) { applicationContext.mediaCacheDB.upsertAll(batch.toList()); batch.clear() }
+                    // readOrNull: skip a file whose XMP couldn't be read rather than caching it as
+                    // empty (which would blank its tag cache) or leaving its rating stale.
+                    val xmp = XmpWriter.readOrNull(p)
+                    if (xmp != null) {
+                        if (xmp.tags.isNotEmpty()) foundTags++
+                        if (xmp.rating > 0) foundRatings++
+                        // Write the rating (including a cleared 0) only when it actually differs from the
+                        // last-scanned value - a cleared rating now propagates to media.rating (which used
+                        // to stay stale, gated on rating > 0), without firing a per-file UPDATE for every
+                        // unchanged file on a full scan.
+                        if (cached?.rating != xmp.rating) try { applicationContext.mediaDB.updateRating(p, xmp.rating) } catch (_: Exception) { }
+                        if (xmp.hierarchy.isNotEmpty()) hierarchyAccum.putAll(xmp.hierarchy)
+                        batch.add(MediaCache(fullPath = p, tags = xmp.tags.joinToString(","), rating = xmp.rating, lastScanned = now))
+                        if (xmp.tags.isNotEmpty()) syncMediaTags(p, xmp.tags)
+                        if (batch.size >= 200) { applicationContext.mediaCacheDB.upsertAll(batch.toList()); batch.clear() }
+                    }
                 }
             } catch (_: Exception) { }
             processed++
@@ -179,10 +188,13 @@ class MetadataSyncWorker(
                 if (!fullScan && folderPath == null && cached != null && cached.lastScanned > staleThreshold) continue
                 if (!fullScan && folderPath == null && cached == null) continue
 
-                val xmp = XmpWriter.read(m.path)
+                // readOrNull: a file whose XMP read failed is skipped, not cached as empty/stale.
+                val xmp = XmpWriter.readOrNull(m.path) ?: continue
                 val hasData = xmp.tags.isNotEmpty() || xmp.rating > 0
                 if (hasData) tagged++
-                if (xmp.rating > 0) { try { applicationContext.mediaDB.updateRating(m.path, xmp.rating) } catch (_: Exception) { } }
+                // Only on an actual change (incl. a cleared 0): propagates a removed rating instead of
+                // leaving media.rating stale, without a per-file UPDATE for every unchanged file.
+                if (cached?.rating != xmp.rating) try { applicationContext.mediaDB.updateRating(m.path, xmp.rating) } catch (_: Exception) { }
 
                 if (!fullScan && folderPath == null && !hasData) continue
 

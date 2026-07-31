@@ -185,7 +185,9 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     }
 
     override fun updateRating(path: String, rating: Int): Boolean {
-        val current = XmpWriter.read(path)
+        // readOrNull (not read): a failed XMP read must abort the whole edit, not fall through as an
+        // empty result - writing that back would wipe the file's existing tags/rating.
+        val current = XmpWriter.readOrNull(path) ?: return false
         // The XMP file is the source of truth for tags/rating - if the write to disk fails, the DB
         // must not move ahead of it, or the two disagree forever with no way for the UI to notice
         // (a rating shown as applied that a re-read of the file would silently undo).
@@ -207,7 +209,9 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     }
 
     override fun addTag(path: String, tag: String): Boolean {
-        val current = XmpWriter.read(path)
+        // readOrNull (not read): a failed XMP read must abort the whole edit, not fall through as an
+        // empty result - writing that back would wipe the file's existing tags/rating.
+        val current = XmpWriter.readOrNull(path) ?: return false
         val tags = if (tag in current.tags) current.tags else current.tags + tag
         if (!XmpWriter.write(path, tags, current.rating, context.config.tagHierarchy)) return false
         // Background sync
@@ -218,7 +222,9 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     }
 
     override fun removeTag(path: String, tag: String): Boolean {
-        val current = XmpWriter.read(path)
+        // readOrNull (not read): a failed XMP read must abort the whole edit, not fall through as an
+        // empty result - writing that back would wipe the file's existing tags/rating.
+        val current = XmpWriter.readOrNull(path) ?: return false
         val tags = current.tags.filter { it != tag }
         if (!XmpWriter.write(path, tags, current.rating, context.config.tagHierarchy)) return false
         // Background sync
@@ -565,7 +571,9 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
      * fire Room's InvalidationTracker (and reload any active PagingSource) once per file instead of once
      * per batch. */
     fun writeRatingXmp(path: String, rating: Int): Boolean {
-        val current = XmpWriter.read(path)
+        // readOrNull (not read): a failed XMP read must abort the whole edit, not fall through as an
+        // empty result - writing that back would wipe the file's existing tags/rating.
+        val current = XmpWriter.readOrNull(path) ?: return false
         val success = XmpWriter.write(path, current.tags, rating)
         repositoryScope.launch { syncCache(path, current.tags, rating) }
         return success
