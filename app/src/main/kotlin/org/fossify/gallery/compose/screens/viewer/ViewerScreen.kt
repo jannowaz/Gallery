@@ -177,6 +177,20 @@ fun ViewerScreen(
     val ctx = LocalContext.current
     val haptic = rememberGalleryHaptics()
     val scope = rememberCoroutineScope()
+    // The video brightness-drag writes screenBrightness onto the Activity window - and this is a
+    // single-Activity app, so that window backs the whole UI (grid, albums, settings, ...). Without
+    // restoring it on the way out, dimming one video left the ENTIRE app stuck at that brightness
+    // until the process was recreated. Reset to the system default when the Viewer leaves composition,
+    // making the override viewer-scoped.
+    DisposableEffect(Unit) {
+        onDispose {
+            (ctx as? android.app.Activity)?.window?.let { w ->
+                val attrs = w.attributes
+                attrs.screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                w.attributes = attrs
+            }
+        }
+    }
     val items = remember { paths.toMutableStateList() }
     val pagerState = rememberPagerState(initialPage = startIndex.coerceIn(0, (paths.size - 1).coerceAtLeast(0)), pageCount = { items.size })
     // Always starts visible, videos included - a video used to open with no chrome at all (no
