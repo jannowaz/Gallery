@@ -607,8 +607,9 @@ fun MediaScreen(
     val scope = rememberCoroutineScope()
     val repo = LocalMediaRepository.current
     var showSaveCollection by remember { mutableStateOf(false) }
-    // Offer "save as collection" only for an ad-hoc filter, not when already inside a collection.
-    val onSaveAsCollection: (() -> Unit)? = if (activeCollectionName == null) ({ showSaveCollection = true }) else null
+    var showUpdateCollection by remember { mutableStateOf(false) }
+    // Inside a collection this "updates" its filter; otherwise it "saves" the ad-hoc filter as new.
+    val onSaveAsCollection: (() -> Unit)? = { if (activeCollectionName != null) showUpdateCollection = true else showSaveCollection = true }
     val snackbarHostState = remember { SnackbarHostState() }
     val pendingUndo by UndoManager.actions.collectAsState()
     val taggedPaths = state.taggedPaths
@@ -1191,6 +1192,41 @@ fun MediaScreen(
             dismissButton = { androidx.compose.material3.TextButton(onClick = { showSaveCollection = false }) { Text(stringResource(org.fossify.commons.R.string.cancel)) } },
         )
     }
+
+    if (showUpdateCollection && activeCollectionName != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showUpdateCollection = false },
+            title = { Text(stringResource(R.string.update_collection)) },
+            text = { Text(stringResource(R.string.update_collection_confirm, activeCollectionName)) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    val target = activeCollectionName
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            val existing = repo.getCollections().find { it.name == target }
+                            if (existing != null) {
+                                // Keep id/name/searchQuery/sortOrder; overwrite only the filter dimensions
+                                // with the current (possibly refined) filter.
+                                repo.insertCollection(existing.copy(
+                                    includedPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(pathFilter?.toList() ?: emptyList()),
+                                    excludedPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(excludePathFilter?.toList() ?: emptyList()),
+                                    tagFilter = activeTagName ?: "",
+                                    ratingFilter = ratingFilter,
+                                    minSize = minSizeFilter,
+                                    dateRange = dateRangeFilter,
+                                    typeFilter = typeFilter,
+                                ))
+                                repo.refreshCollectionsCache()
+                            }
+                        }
+                        ctx.toast(ctx.getString(R.string.collection_updated, target))
+                    }
+                    showUpdateCollection = false
+                }) { Text(stringResource(org.fossify.commons.R.string.ok)) }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { showUpdateCollection = false }) { Text(stringResource(org.fossify.commons.R.string.cancel)) } },
+        )
+    }
 }
 
 @Composable
@@ -1203,6 +1239,9 @@ private fun FilterBreadcrumbs(
     onSaveAsCollection: (() -> Unit)? = null,
 ) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Save/update as collection first, so it stays visible instead of being pushed off the end of
+        // the scrollable row by a long chain of filter chips.
+        if (onSaveAsCollection != null) androidx.compose.material3.AssistChip(onClick = onSaveAsCollection, label = { Text(stringResource(if (activeCollectionName != null) R.string.update_collection else R.string.save_as_collection)) }, leadingIcon = { Icon(Icons.Default.BookmarkAdd, null, Modifier.size(18.dp)) })
         if (activeCollectionName != null) ActiveFilterChip(stringResource(R.string.filter_collection, activeCollectionName)) { onClearPath() }
         if (activeFolderFilterName != null) ActiveFilterChip(stringResource(R.string.filter_path, activeFolderFilterName)) { onClearPath() }
         if (activePathName != null) ActiveFilterChip(stringResource(R.string.filter_search_query, activePathName)) { onClearPath() }
@@ -1219,9 +1258,6 @@ private fun FilterBreadcrumbs(
         ) { onClearType() }
         Text(stringResource(R.string.result_count, resultCount), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         androidx.compose.material3.AssistChip(onClick = onClearAll, label = { Text(stringResource(R.string.clear_all_filters)) }, leadingIcon = { Icon(Icons.Default.Close, null, Modifier.size(18.dp)) })
-        // Turn the live filter into a saved, auto-updating collection (only offered for an ad-hoc
-        // filter, not when already viewing a collection).
-        if (onSaveAsCollection != null) androidx.compose.material3.AssistChip(onClick = onSaveAsCollection, label = { Text(stringResource(R.string.save_as_collection)) }, leadingIcon = { Icon(Icons.Default.BookmarkAdd, null, Modifier.size(18.dp)) })
     }
 }
 @Composable

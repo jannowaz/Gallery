@@ -3,7 +3,9 @@ package org.fossify.gallery.compose.screens.framegrabber
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -71,7 +73,7 @@ import org.fossify.gallery.helpers.VideoFrameExtractor
  * user pick which to keep, and saves them as full-resolution JPEGs. Optionally moves the source
  * video into the recycle bin afterwards. Rendered as a full-screen overlay from the Viewer.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) -> Unit) {
     val ctx = LocalContext.current
@@ -84,6 +86,8 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
     var extractProgress by remember(videoPath) { mutableStateOf<Pair<Int, Int>?>(0 to 1) }
     var saveProgress by remember(videoPath) { mutableStateOf<Pair<Int, Int>?>(null) }
     var onlySharp by remember(videoPath) { mutableStateOf(false) }
+    var sortBySharp by remember(videoPath) { mutableStateOf(false) }
+    var peekFrame by remember(videoPath) { mutableStateOf<VideoFrameExtractor.FrameCandidate?>(null) }
     var deleteOriginal by remember(videoPath) { mutableStateOf(false) }
 
     LaunchedEffect(videoPath) {
@@ -103,8 +107,9 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
 
     BackHandler { if (saveProgress == null) onDismiss(false) }
 
-    val shown = remember(candidates, onlySharp, recommended) {
-        if (onlySharp) candidates.filter { it.timeMs in recommended } else candidates
+    val shown = remember(candidates, onlySharp, recommended, sortBySharp) {
+        val filtered = if (onlySharp) candidates.filter { it.timeMs in recommended } else candidates
+        if (sortBySharp) filtered.sortedByDescending { it.sharpness } else filtered
     }
     val saving = saveProgress != null
 
@@ -122,6 +127,8 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
                         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 FilterChip(selected = onlySharp, onClick = { onlySharp = !onlySharp }, label = { Text(stringResource(R.string.grab_frames_only_sharp)) })
+                                androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
+                                FilterChip(selected = sortBySharp, onClick = { sortBySharp = !sortBySharp }, label = { Text(stringResource(R.string.grab_frames_sort_sharp)) })
                                 Row(Modifier.weight(1f).clickable { deleteOriginal = !deleteOriginal }.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Checkbox(checked = deleteOriginal, onCheckedChange = { deleteOriginal = it })
                                     Text(stringResource(R.string.grab_frames_delete_video), style = MaterialTheme.typography.bodySmall)
@@ -173,7 +180,10 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
                             val isRec = c.timeMs in recommended
                             Box(
                                 Modifier.padding(4.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp))
-                                    .clickable { selected = if (isSel) selected - c.timeMs else selected + c.timeMs },
+                                    .combinedClickable(
+                                        onClick = { selected = if (isSel) selected - c.timeMs else selected + c.timeMs },
+                                        onLongClick = { peekFrame = c },
+                                    ),
                             ) {
                                 Image(c.preview.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                                 // Selection tick
@@ -204,6 +214,18 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
                                 LinearProgressIndicator(progress = { if (t > 0) d / t.toFloat() else 0f }, modifier = Modifier.fillMaxWidth())
                                 Text(stringResource(R.string.grab_frames_saving, d, t), Modifier.padding(top = 10.dp), style = MaterialTheme.typography.labelMedium)
                             }
+                        }
+                    }
+                }
+                // Long-press a frame to peek it large; tap anywhere to dismiss, top-right toggles select.
+                peekFrame?.let { pf ->
+                    val isSel = pf.timeMs in selected
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.92f)).clickable { peekFrame = null }, contentAlignment = Alignment.Center) {
+                        Image(pf.preview.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f), contentScale = ContentScale.Fit)
+                        val secs = pf.timeMs / 1000
+                        Text("%d:%02d".format(secs / 60, secs % 60), color = Color.White, style = MaterialTheme.typography.titleMedium, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp))
+                        IconButton(onClick = { selected = if (isSel) selected - pf.timeMs else selected + pf.timeMs }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)) {
+                            Icon(if (isSel) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, contentDescription = null, tint = if (isSel) MaterialTheme.colorScheme.primary else Color.White, modifier = Modifier.size(32.dp))
                         }
                     }
                 }

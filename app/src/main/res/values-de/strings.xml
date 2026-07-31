@@ -950,4 +950,8 @@
     <string name="save_as_collection">Als Sammlung speichern</string>
     <string name="collection_saved">Sammlung „%1$s“ gespeichert</string>
     <string name="name">Name</string>
+    <string name="grab_frames_sort_sharp">Nach Schärfe sortieren</string>
+    <string name="update_collection">Sammlung aktualisieren</string>
+    <string name="update_collection_confirm">„%1$s“ mit dem aktuellen Filter überschreiben?</string>
+    <string name="collection_updated">Sammlung „%1$s“ aktualisiert</string>
 </resources>

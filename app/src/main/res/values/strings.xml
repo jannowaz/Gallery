@@ -988,4 +988,8 @@
     <string name="save_as_collection">Save as collection</string>
     <string name="collection_saved">Collection “%1$s” saved</string>
     <string name="name">Name</string>
+    <string name="grab_frames_sort_sharp">Sort by sharpness</string>
+    <string name="update_collection">Update collection</string>
+    <string name="update_collection_confirm">Overwrite “%1$s” with the current filter?</string>
+    <string name="collection_updated">Collection “%1$s” updated</string>
 </resources>
