@@ -32,14 +32,28 @@ object VideoFrameExtractor {
      * near-identical frames (static scene) are skipped so the picker isn't flooded with duplicates.
      * Returns previews in timeline order; the caller ranks by [FrameCandidate.sharpness].
      */
-    suspend fun sampleCandidates(path: String, count: Int = 36, onProgress: (Int, Int) -> Unit): List<FrameCandidate> =
+    /**
+     * How many frames to sample for a clip of [durationMs]. Roughly one every ~400 ms, floored at 12
+     * (so even a very short clip gives a real choice) and capped at [max] (so a long clip doesn't
+     * decode hundreds of frames for a picker). Frame decode is the whole cost here, so fewer samples
+     * = proportionally faster; a fixed 36 was hugely over-sampled for short videos.
+     *
+     * Measured (emulator, 4K 6 s clip): parallelising the decode across 4 workers only shaved ~16 %
+     * (1 worker 7.8 s → 4 workers 6.6 s - the decoder serialises, and it costs 4x the decode memory),
+     * so the win comes from sampling fewer frames, not from more threads.
+     */
+    private fun sampleCount(durationMs: Long, max: Int): Int =
+        (durationMs / 400L).toInt().coerceIn(12, max)
+
+    suspend fun sampleCandidates(path: String, maxCount: Int = 36, onProgress: (Int, Int) -> Unit): List<FrameCandidate> =
         withContext(Dispatchers.IO) {
+            val started = System.currentTimeMillis()
             val r = MediaMetadataRetriever()
             try {
                 r.setDataSource(path)
                 val dur = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: return@withContext emptyList()
                 if (dur <= 0L) return@withContext emptyList()
-                val steps = count.coerceAtLeast(2)
+                val steps = sampleCount(dur, maxCount)
                 val out = ArrayList<FrameCandidate>(steps)
                 var lastHash = 0L
                 var haveLast = false
@@ -57,6 +71,7 @@ object VideoFrameExtractor {
                     lastHash = hash; haveLast = true
                     out.add(FrameCandidate(t, bmp, sharpness(bmp)))
                 }
+                android.util.Log.d("FrameExtractor", "sampled ${out.size}/$steps frames in ${System.currentTimeMillis() - started}ms")
                 out
             } catch (_: Exception) {
                 emptyList()
