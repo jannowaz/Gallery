@@ -86,6 +86,11 @@ val SCALING_FIT = 0
 val SCALING_ZOOM = 2
 val SCALING_FILL_WIDTH = 3
 
+// Durable IO scope for releasing MediaMetadataRetriever off the main thread and under the page's
+// frame mutex. Process-lived (never cancelled with a composition) so a release enqueued as the Viewer
+// closes still runs; each job is short-lived.
+private val mmrReleaseScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+
 @Composable
 fun VideoPage(
     path: String,
@@ -177,7 +182,13 @@ fun VideoPage(
         frameCache = frames
     }
     DisposableEffect(path) {
-        onDispose { try { retriever.release() } catch (_: Exception) { } }
+        onDispose {
+            // MediaMetadataRetriever isn't thread-safe and the frame extraction above holds frameMutex
+            // while decoding on an IO thread. Release under that same mutex (on a durable IO scope, so
+            // the main thread never blocks) so it can't race a mid-flight getScaledFrameAtTime - an
+            // unsynchronised release there could crash natively rather than throw a catchable exception.
+            mmrReleaseScope.launch { frameMutex.withLock { try { retriever.release() } catch (_: Exception) { } } }
+        }
     }
 
     val player = remember(path) {

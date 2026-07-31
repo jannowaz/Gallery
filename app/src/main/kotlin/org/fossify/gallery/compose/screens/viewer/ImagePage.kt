@@ -39,6 +39,7 @@ import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.util.BlurState
 import org.fossify.gallery.compose.util.privacyBlur
 import org.fossify.gallery.compose.util.sharedElementKey
+import org.fossify.gallery.extensions.config
 import java.io.File
 
 @Composable
@@ -70,6 +71,13 @@ fun ImagePage(
     // only applies to the Coil AsyncImage) isn't reproduced when re-entering the un-zoomed state from
     // a zoom-out - acceptable since that transition only ever plays once, on initial entry anyway.
     var useNativeZoom by remember(path) { mutableStateOf(false) }
+
+    // The app's Coil ImageLoader (App.kt) registers the GIF/animated decoders globally, so animated
+    // GIFs/WebPs played in the Viewer regardless of the "Play animated GIFs" setting - the toggle was
+    // dead here. When it's off, force a plain BitmapFactory decode of these formats, which yields the
+    // first frame as a static image (matches the legacy PhotoFragment's "decode as bitmap" path).
+    val ext = remember(path) { path.substringAfterLast('.', "").lowercase() }
+    val forceStaticFrame = (ext == "gif" || ext == "webp") && !ctx.config.animateGifs
 
     LaunchedEffect(isCurrentPage) { if (!isCurrentPage) { zoom.reset(); useNativeZoom = false } }
     LaunchedEffect(zoom.isZoomed, useNativeZoom, isCurrentPage) { if (isCurrentPage) onZoomChange(zoom.isZoomed || useNativeZoom) }
@@ -128,7 +136,9 @@ fun ImagePage(
             )
         } else {
             AsyncImage(
-                model = ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(file)).size(2560).crossfade(true).build(),
+                model = ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(file)).size(2560).crossfade(true)
+                    .apply { if (forceStaticFrame) decoderFactory(coil.decode.BitmapFactoryDecoder.Factory()) }
+                    .build(),
                 contentDescription = file.name,
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
