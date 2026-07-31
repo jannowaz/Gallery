@@ -190,7 +190,7 @@ fun GalleryNavHost(
                             FolderMediaScreen(
                                 folderPath = route.folderPath,
                                 onBack = { navController.popBackStack() },
-                                onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) },
+                                onNavigateToViewer = { paths, startIndex -> org.fossify.gallery.helpers.PickIntent.handleMediaTap(ctx as? android.app.Activity, paths, startIndex) { ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) } },
                             )
                         }
                     }
@@ -261,7 +261,7 @@ fun GalleryNavHost(
                         DuplicateFinderScreen(
                             initialFolder = route.folderPath,
                             onBack = { navController.popBackStack() },
-                            onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex.coerceAtLeast(0))) },
+                            onNavigateToViewer = { paths, startIndex -> org.fossify.gallery.helpers.PickIntent.handleMediaTap(ctx as? android.app.Activity, paths, startIndex) { ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex.coerceAtLeast(0))) } },
                         )
                         }
                     }

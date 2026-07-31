@@ -1133,7 +1133,7 @@ private fun MainTabContent(
             onClearSizeFilter = { mainVM.setMinSizeFilter(0L) },
             onClearDateFilter = { mainVM.setDateRangeFilter(0) },
             onClearTypeFilter = { mainVM.setTypeFilter(0) },
-            onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) },
+            onNavigateToViewer = { paths, startIndex -> org.fossify.gallery.helpers.PickIntent.handleMediaTap(ctx as? android.app.Activity, paths, startIndex) { ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) } },
             scrollToPath = state.lastViewedPath,
             onClearScrollToPath = { mainVM.clearLastViewedPath() },
             onSelectionActiveChanged = onMediaSelectionChanged,
@@ -1155,7 +1155,7 @@ private fun MainTabContent(
             onPathChange = { mainVM.setExplorerPath(it) },
             onSelectionActiveChanged = onMediaSelectionChanged,
             onCanGoUpChanged = onExplorerCanGoUpChanged,
-            onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) },
+            onNavigateToViewer = { paths, startIndex -> org.fossify.gallery.helpers.PickIntent.handleMediaTap(ctx as? android.app.Activity, paths, startIndex) { ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) } },
             // "In Medien öffnen" on one or more selected folders - pathFilter's directory branch
             // already matches recursively (full_path LIKE 'folder/%' in MediaRepository), so passing
             // the selected folder paths straight through already covers every subfolder for free.
@@ -1178,7 +1178,7 @@ private fun MainTabContent(
             viewSettings = tabSettings.collections,
             onCollectionClick = { coll -> applyCollection(coll, mainVM, ctx) },
         )
-        4 -> FavoritesScreen(viewSettings = tabSettings.favorites, onNavigateToViewer = { paths, startIndex -> ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) }, onFolderClick = { path -> openFolderChecked(ctx, path) { navController.navigate(Folder(path)) } }, tabIndex = 4)
+        4 -> FavoritesScreen(viewSettings = tabSettings.favorites, onNavigateToViewer = { paths, startIndex -> org.fossify.gallery.helpers.PickIntent.handleMediaTap(ctx as? android.app.Activity, paths, startIndex) { ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) } }, onFolderClick = { path -> openFolderChecked(ctx, path) { navController.navigate(Folder(path)) } }, tabIndex = 4)
         5 -> TagBrowserScreen(
             onBack = {},
             onTagFilterApplied = { tagNames, tagName ->
