@@ -35,9 +35,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PlaylistAddCheck
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FolderOpen
@@ -46,6 +50,8 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -57,6 +63,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -106,6 +113,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
     // Folder breakdown of the results: how many groups touch each folder. Drives the filter row
     // so a device-wide scan can be worked through folder by folder. Sorted by count so the busiest
     // folders come first.
+    var substringQuery by remember { mutableStateOf("") }
     val folderCounts = remember(state.groups) {
         val m = LinkedHashMap<String, Int>()
         state.groups.forEach { g ->
@@ -381,6 +389,44 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                             onClick = { vm.setFolderFilter(if (state.folderFilter == folder) null else folder) },
                             leadingIcon = { Icon(Icons.Default.FolderOpen, null, Modifier.size(16.dp)) },
                             label = { Text("${folder.substringAfterLast('/')} · $count", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        )
+                    }
+                }
+            }
+
+            // Select copies to delete by name or location: mark every shown file whose path (which
+            // includes the filename) contains - or explicitly does NOT contain - the query. Handy for
+            // "delete every copy under /WhatsApp/" or "keep only the ones named IMG_*". A group is
+            // never fully marked (the VM always spares one copy), so this can't wipe a whole group.
+            if (state.groups.isNotEmpty()) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
+                    OutlinedTextField(
+                        value = substringQuery,
+                        onValueChange = { substringQuery = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        placeholder = { Text(stringResource(R.string.dup_select_by_name_hint), style = MaterialTheme.typography.bodyMedium) },
+                        leadingIcon = { Icon(Icons.Default.Search, null, Modifier.size(20.dp)) },
+                        trailingIcon = {
+                            if (substringQuery.isNotEmpty()) {
+                                IconButton(onClick = { substringQuery = "" }) { Icon(Icons.Default.Close, stringResource(R.string.action_empty), Modifier.size(20.dp)) }
+                            }
+                        },
+                    )
+                    val q = substringQuery.trim()
+                    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AssistChip(
+                            enabled = q.isNotEmpty(),
+                            onClick = { vm.selectBySubstring(q, contains = true); cautionIfSimilar() },
+                            leadingIcon = { Icon(Icons.Default.PlaylistAddCheck, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                            label = { Text(stringResource(R.string.dup_select_matching)) },
+                        )
+                        AssistChip(
+                            enabled = q.isNotEmpty(),
+                            onClick = { vm.selectBySubstring(q, contains = false); cautionIfSimilar() },
+                            leadingIcon = { Icon(Icons.Default.Block, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                            label = { Text(stringResource(R.string.dup_select_not_matching)) },
                         )
                     }
                 }

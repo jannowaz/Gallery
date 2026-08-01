@@ -196,6 +196,38 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Marks every file across the shown groups whose full path [contains] (or, when [contains] is
+     * false, does NOT contain) [substring], case-insensitive. Since a file's name is part of its
+     * path this covers both "in the path" and "in the filename" - a query like "/WhatsApp/" or
+     * "IMG_" lets the user target copies to delete by location or naming instead of group by group.
+     *
+     * Safety mirrors [applyKeepStrategy]: a group is never fully marked. If the predicate would hit
+     * every copy in a group, the favorite / highest-rated / newest one is spared so a copy always
+     * survives. Under a folder filter only the shown groups are recomputed (scoped replace over
+     * their files); marks in hidden groups stay untouched - WYSIWYG. */
+    fun selectBySubstring(substring: String, contains: Boolean) {
+        val q = substring.trim()
+        if (q.isEmpty()) return
+        _state.update { s ->
+            val f = s.folderFilter
+            val visible = if (f == null) s.groups else s.groups.filter { g -> g.files.any { File(it.path).parent == f } }
+            val toDelete = visible.flatMap { g ->
+                val hit = g.files.filter { it.path.contains(q, ignoreCase = true) == contains }
+                if (hit.size >= g.files.size) {
+                    val keeper = g.files.maxWithOrNull(compareBy({ if (it.isFavorite) 1 else 0 }, { it.rating }, { it.modified }, { it.size }))
+                    hit.filter { it.path != keeper?.path }
+                } else hit
+            }.map { it.path }.toSet()
+            val newSelection = if (f == null) {
+                toDelete
+            } else {
+                val scopePaths = visible.flatMap { it.files }.map { it.path }.toSet()
+                (s.selectedForDeletion - scopePaths) + toDelete
+            }
+            s.copy(selectedForDeletion = newSelection)
+        }
+    }
+
     /** Adds every other duplicate-group file that lives in the same folder as [path] to the
      * selection (on top of whatever's already selected, and marking [path] itself too if it
      * wasn't already) - a folder holding one file the user wants gone usually holds the whole
