@@ -567,6 +567,7 @@
     <string name="dup_folder_filter_hint">Nach Ordner filtern</string>
     <string name="dup_select_all_shown">Alle angezeigten markieren</string>
     <string name="dup_select_by_name_hint">Name oder Pfad enthält…</string>
+    <string name="dup_select_in_filtered_folder">Alle Kopien in „%1$s“ markieren</string>
     <string name="dup_select_matching">Passende markieren</string>
     <string name="dup_select_not_matching">Andere markieren</string>
     <string name="internal_storage">Interner Speicher</string>

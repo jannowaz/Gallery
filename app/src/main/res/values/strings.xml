@@ -610,6 +610,7 @@
     <string name="dup_folder_filter_hint">Filter by folder</string>
     <string name="dup_select_all_shown">Mark all shown</string>
     <string name="dup_select_by_name_hint">Name or path contains…</string>
+    <string name="dup_select_in_filtered_folder">Mark all copies in “%1$s”</string>
     <string name="dup_select_matching">Mark matching</string>
     <string name="dup_select_not_matching">Mark others</string>
     <string name="internal_storage">Internal storage</string>

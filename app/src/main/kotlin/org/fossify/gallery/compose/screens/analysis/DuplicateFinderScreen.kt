@@ -400,6 +400,19 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
             // never fully marked (the VM always spares one copy), so this can't wipe a whole group.
             if (state.groups.isNotEmpty()) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
+                    // One-tap for the active folder chip: mark, across every shown pair, the copy that
+                    // sits in this filtered folder - so a whole "area" of junk copies goes in one tap
+                    // while the originals in other folders stay as keepers. Scoped to the filter (the VM
+                    // only reaches shown groups), EXACT only (same reason as the per-file folder chip).
+                    if (state.folderFilter != null && state.mode == DuplicateMode.EXACT) {
+                        val folderName = state.folderFilter!!.substringAfterLast('/')
+                        AssistChip(
+                            onClick = { vm.selectFolder(state.folderFilter!!); cautionIfSimilar() },
+                            leadingIcon = { Icon(Icons.Default.FolderOpen, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                            label = { Text(stringResource(R.string.dup_select_in_filtered_folder, folderName), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            modifier = Modifier.padding(bottom = 4.dp),
+                        )
+                    }
                     OutlinedTextField(
                         value = substringQuery,
                         onValueChange = { substringQuery = it },

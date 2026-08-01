@@ -242,7 +242,11 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
     /** Adds every duplicate-group file living directly in [folder] to the selection. Backs both
      * the per-row "Mark folder" chip and the "Mark all shown" action when a folder filter is
      * active - a folder full of junk copies is cleared in one tap, while the matching originals
-     * in other folders stay untouched as keepers. */
+     * in other folders stay untouched as keepers.
+     *
+     * Confined to the currently shown groups: with a folder-filter chip active it only reaches
+     * into pairs touching that chip, never groups the filter is hiding - every selection action
+     * stays inside the folder the user is working, not the whole result set. */
     fun selectFolder(folder: String) {
         _state.update { s ->
             // Same EXACT-only guard as the size strategies' folder variant, enforced here too (not
@@ -250,7 +254,9 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
             // files - those are only perceptually similar, not verified identical, regardless of
             // which UI ends up calling this.
             if (s.mode != DuplicateMode.EXACT) return@update s
-            val sameFolderPaths = s.groups.asSequence().flatMap { it.files }.filter { File(it.path).parent == folder }.map { it.path }
+            val f = s.folderFilter
+            val visible = if (f == null) s.groups else s.groups.filter { g -> g.files.any { File(it.path).parent == f } }
+            val sameFolderPaths = visible.asSequence().flatMap { it.files }.filter { File(it.path).parent == folder }.map { it.path }
             s.copy(selectedForDeletion = s.selectedForDeletion + sameFolderPaths)
         }
     }
