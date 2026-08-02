@@ -365,7 +365,8 @@ fun VideoPage(
                 val nextSpeed = speeds[(speedIdx + 1) % speeds.size]
                 Column(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) {
                     TextButton(onClick = { playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed); onInteract() }, modifier = Modifier.size(48.dp)) {
-                        Text("${playbackSpeed}x", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                        val speedLabel = if (playbackSpeed % 1f == 0f) "${playbackSpeed.toInt()}x" else "${playbackSpeed}x"
+                        Text(speedLabel, color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                     }
                     IconButton(onClick = {
                         val activity = ctx as? android.app.Activity ?: return@IconButton
@@ -383,7 +384,9 @@ fun VideoPage(
 
                 if (player.duration > 0) {
                     var seekPos by remember { mutableFloatStateOf(-1f) }
-                    Row(
+                    // The normal position seek bar - hidden in trim mode, where a two-handle range
+                    // slider takes its place so the cut region is visible directly on the timeline.
+                    if (!trimMode) Row(
                         Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Scrim.a60).padding(horizontal = 12.dp, vertical = 8.dp).navigationBarsPadding(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -420,24 +423,39 @@ fun VideoPage(
                             }
                         }
                     }
-                    // Trim bar - sits just above the seek bar (which is BottomCenter-aligned). Without an
-                    // explicit align it defaulted to the parent Box's TopStart, rendering the trim
-                    // controls at the very top of the screen under the status bar - visually detached
-                    // from the seek bar they belong to, and awkward to reach.
+                    // Trim controls: a two-handle range slider makes the [start, end] cut window
+                    // visible and draggable directly on the timeline (dragging a handle scrubs the
+                    // player to it for a live preview), replacing the old blind "seek + set start /
+                    // set end" flow. Anchored where the seek bar it replaces sits.
                     if (trimMode) {
-                        Row(Modifier.fillMaxWidth().align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 56.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { trimStartMs = player.currentPosition.toFloat(); onInteract() }) {
-                                Text(stringResource(R.string.trim_start).format((trimStartMs / 1000).toInt() / 60, (trimStartMs / 1000).toInt() % 60), color = TrimStartColor, style = MaterialTheme.typography.labelSmall)
-                            }
-                            Spacer(Modifier.weight(1f))
-                            TextButton(onClick = { trimEndMs = player.currentPosition.toFloat(); onInteract() }) {
-                                Text(stringResource(R.string.trim_end).format((trimEndMs / 1000).toInt() / 60, (trimEndMs / 1000).toInt() % 60), color = TrimEndColor, style = MaterialTheme.typography.labelSmall)
-                            }
-                            Spacer(Modifier.weight(1f))
-                            TextButton(onClick = {
-                                onInteract()
-                                val start = trimStartMs.toLong() * 1000; val end = trimEndMs.toLong() * 1000
-                                scope.launch(Dispatchers.IO) {
+                        val durF = player.duration.coerceAtLeast(1L).toFloat()
+                        val endMs = if (trimEndMs < 0f) durF else trimEndMs
+                        val startF = (trimStartMs / durF).coerceIn(0f, 1f)
+                        val endF = (endMs / durF).coerceIn(startF, 1f)
+                        val validRange = trimEndMs > trimStartMs
+                        Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Scrim.a60).navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                            androidx.compose.material3.RangeSlider(
+                                value = startF..endF,
+                                onValueChange = { r ->
+                                    val ns = r.start * durF; val ne = r.endInclusive * durF
+                                    // Scrub to whichever handle actually moved, for a live preview of that edge.
+                                    val seekMs = (if (kotlin.math.abs(ns - trimStartMs) >= kotlin.math.abs(ne - endMs)) ns else ne).toLong()
+                                    trimStartMs = ns; trimEndMs = ne
+                                    player.seekTo(seekMs); positionMs = seekMs
+                                    onInteract()
+                                },
+                                valueRange = 0f..1f,
+                                colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = MaterialTheme.colorScheme.primary, inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
+                            )
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("%02d:%02d".format((trimStartMs / 1000).toInt() / 60, (trimStartMs / 1000).toInt() % 60), color = TrimStartColor, style = MaterialTheme.typography.labelSmall)
+                                Text(" – ", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                                Text("%02d:%02d".format((endMs / 1000).toInt() / 60, (endMs / 1000).toInt() % 60), color = TrimEndColor, style = MaterialTheme.typography.labelSmall)
+                                Spacer(Modifier.weight(1f))
+                                TextButton(enabled = validRange, onClick = {
+                                    onInteract()
+                                    val start = trimStartMs.toLong() * 1000; val end = trimEndMs.toLong() * 1000
+                                    scope.launch(Dispatchers.IO) {
                                     try {
                                         // Empty/inverted range would mux zero samples and make muxer.stop() throw.
                                         if (end <= start) { withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.trim_invalid_range), android.widget.Toast.LENGTH_SHORT) }; return@launch }
@@ -477,7 +495,8 @@ fun VideoPage(
                                         withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.saved_as, outFile.name), android.widget.Toast.LENGTH_SHORT) }
                                     } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.error_generic, e.message), android.widget.Toast.LENGTH_SHORT) } }
                                 }
-                            }) { Text(stringResource(R.string.trim_save), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold) }
+                                }) { Text(stringResource(R.string.trim_save), color = if (validRange) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.4f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold) }
+                            }
                         }
                     }
                 }
