@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -47,6 +48,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -94,6 +96,10 @@ import java.io.File
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+/** How the result groups are ordered. SAVINGS (default) leads with the groups that reclaim the most
+ * space; SIZE by total group size; COUNT by how many copies a group holds. */
+private enum class DuplicateSort { SAVINGS, SIZE, COUNT }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavigateToViewer: (List<String>, Int) -> Unit = { _, _ -> }) {
@@ -122,10 +128,18 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
         m.entries.sortedByDescending { it.value }.map { it.key to it.value }
     }
 
-    // Groups actually shown: all of them, or only those touching the active folder filter.
-    val filteredGroups = remember(state.groups, state.folderFilter) {
+    // Groups actually shown: all of them, or only those touching the active folder filter, then
+    // ordered so the most rewarding cleanups come first. Default is "biggest savings" - the point of
+    // the tool is reclaiming space, so the groups that free the most bytes lead.
+    var sortMode by remember { mutableStateOf(DuplicateSort.SAVINGS) }
+    val filteredGroups = remember(state.groups, state.folderFilter, sortMode) {
         val f = state.folderFilter
-        if (f == null) state.groups else state.groups.filter { g -> g.files.any { File(it.path).parent == f } }
+        val shown = if (f == null) state.groups else state.groups.filter { g -> g.files.any { File(it.path).parent == f } }
+        when (sortMode) {
+            DuplicateSort.SAVINGS -> shown.sortedByDescending { it.wastedBytes }
+            DuplicateSort.SIZE -> shown.sortedByDescending { it.files.sumOf { f2 -> f2.size } }
+            DuplicateSort.COUNT -> shown.sortedByDescending { it.files.size }
+        }
     }
 
     // A filter can go stale after a delete empties its folder - fall back to "all" so the user
@@ -192,6 +206,8 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                                 cautionIfSimilar()
                             },
                             onSelectShownFolder = { state.folderFilter?.let { vm.selectFolder(it) } },
+                            onInvert = { vm.invertSelection(); cautionIfSimilar() },
+                            hasSelection = state.selectedForDeletion.isNotEmpty(),
                             onClear = { vm.clearSelection() },
                         )
                     }
@@ -203,10 +219,24 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
             // Anchored at the bottom instead of stacked into the scrolling column, so marking files
             // never shrinks the list you're working - the whole screen stays available for review.
             if (state.selectedForDeletion.isNotEmpty()) {
-                val selSize = state.groups.flatMap { it.files }.filter { it.path in state.selectedForDeletion }.sumOf { it.size }
+                val sel = state.selectedForDeletion
+                val selSize = state.groups.flatMap { it.files }.filter { it.path in sel }.sumOf { it.size }
+                // Live survivor accounting, before the confirm dialog: how many groups still keep a
+                // copy, and a loud red count for any group where every copy is marked (nothing would
+                // survive). Turns "will I lose something?" into a glance at the bar.
+                val affected = remember(state.groups, sel) { state.groups.filter { g -> g.files.any { it.path in sel } } }
+                val fullyMarked = remember(affected, sel) { affected.count { g -> g.files.all { it.path in sel } } }
+                val keepingCopy = affected.size - fullyMarked
                 Surface(color = MaterialTheme.colorScheme.secondaryContainer, tonalElevation = 3.dp, shadowElevation = 8.dp) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.duplicate_marked_count, state.selectedForDeletion.size, formatBytes(selSize)), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.duplicate_marked_count, sel.size, formatBytes(selSize)), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
+                            if (fullyMarked > 0) {
+                                Text(stringResource(R.string.dup_confirm_all_deleted, fullyMarked), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Medium)
+                            } else if (keepingCopy > 0) {
+                                Text(stringResource(R.string.dup_confirm_keeps_copies, keepingCopy), style = MaterialTheme.typography.labelSmall, color = Color(0xFF43A047))
+                            }
+                        }
                         TextButton(onClick = { vm.clearSelection() }) { Text(stringResource(R.string.action_empty)) }
                         Spacer(Modifier.width(4.dp))
                         Button(
@@ -240,6 +270,25 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
+                            }
+                        }
+                        Box {
+                            var sortMenu by remember { mutableStateOf(false) }
+                            IconButton(onClick = { sortMenu = true }) {
+                                Icon(Icons.AutoMirrored.Filled.Sort, stringResource(R.string.dup_sort), tint = MaterialTheme.colorScheme.primary)
+                            }
+                            androidx.compose.material3.DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                                @Composable
+                                fun sortItem(mode: DuplicateSort, labelRes: Int) {
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text(stringResource(labelRes)) },
+                                        leadingIcon = { if (sortMode == mode) Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary) },
+                                        onClick = { sortMode = mode; sortMenu = false },
+                                    )
+                                }
+                                sortItem(DuplicateSort.SAVINGS, R.string.dup_sort_savings)
+                                sortItem(DuplicateSort.SIZE, R.string.dup_sort_size)
+                                sortItem(DuplicateSort.COUNT, R.string.dup_sort_count)
                             }
                         }
                         IconButton(onClick = { configExpanded = !configExpanded }) {
@@ -371,6 +420,19 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
 
             // Folder filter: work a device-wide scan area by area instead of one mixed list.
             if (state.groups.isNotEmpty() && folderCounts.size > 1) {
+                // How many marked files sit in each folder, so a chip shows at a glance where the
+                // current selection lives - useful when working folder by folder.
+                val markedByFolder = remember(state.groups, state.selectedForDeletion) {
+                    state.selectedForDeletion.groupingBy { File(it).parent ?: "" }.eachCount()
+                }
+                @Composable
+                fun MarkedBadge(n: Int) {
+                    if (n > 0) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF43A047), modifier = Modifier.size(13.dp))
+                        Text("$n", style = MaterialTheme.typography.labelMedium, color = Color(0xFF43A047), fontWeight = FontWeight.SemiBold)
+                    }
+                }
                 LazyRow(
                     Modifier.fillMaxWidth(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 4.dp),
@@ -380,7 +442,12 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                         FilterChip(
                             selected = state.folderFilter == null,
                             onClick = { vm.setFolderFilter(null) },
-                            label = { Text("${stringResource(R.string.dup_folder_all)} · ${state.groups.size}") },
+                            label = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("${stringResource(R.string.dup_folder_all)} · ${state.groups.size}")
+                                    MarkedBadge(state.selectedForDeletion.size)
+                                }
+                            },
                         )
                     }
                     items(folderCounts, key = { it.first }) { (folder, count) ->
@@ -388,7 +455,12 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                             selected = state.folderFilter == folder,
                             onClick = { vm.setFolderFilter(if (state.folderFilter == folder) null else folder) },
                             leadingIcon = { Icon(Icons.Default.FolderOpen, null, Modifier.size(16.dp)) },
-                            label = { Text("${folder.substringAfterLast('/')} · $count", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            label = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("${folder.substringAfterLast('/')} · $count", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    MarkedBadge(markedByFolder[folder] ?: 0)
+                                }
+                            },
                         )
                     }
                 }
@@ -447,7 +519,11 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
 
             if (state.groups.isNotEmpty()) {
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp)) {
-                    items(filteredGroups, key = { it.hash }) { group ->
+                    // Key by the group's first file path, not its hash: a file lives in exactly one
+                    // group so this is always unique, whereas two groups can share a hash (SIMILAR
+                    // clustering, or a partial-hash collision) - a duplicate LazyColumn key makes
+                    // Compose reuse one card's composition (incl. checkbox state) for the other.
+                    items(filteredGroups, key = { it.files.firstOrNull()?.path ?: it.hash }) { group ->
                         DuplicateGroupCard(
                             group = group,
                             similar = state.mode == DuplicateMode.SIMILAR,
@@ -557,6 +633,8 @@ private fun AutoSelectAction(
     onApplyAll: (KeepStrategy) -> Unit,
     onApplyNext: (KeepStrategy, Int) -> Unit,
     onSelectShownFolder: () -> Unit,
+    onInvert: () -> Unit,
+    hasSelection: Boolean,
     onClear: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -612,6 +690,13 @@ private fun AutoSelectAction(
                     onClick = { onSelectShownFolder(); expanded = false },
                 )
             }
+            if (hasSelection) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(stringResource(R.string.dup_invert_selection)) },
+                    leadingIcon = { Icon(Icons.Default.SwapHoriz, null) },
+                    onClick = { onInvert(); expanded = false },
+                )
+            }
             androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.selection_clear)) }, onClick = { onClear(); expanded = false })
         }
     }
@@ -636,7 +721,7 @@ private fun DuplicateGroupCard(
     // Groups start collapsed: an overview (count + summed total size + savings) plus a swipeable
     // thumbnail strip is all most reviews need - especially after an auto-select, where the strip's
     // check badges show at a glance what will be deleted. Expand only to fine-tune per-file marks.
-    var expanded by remember(group.hash) { mutableStateOf(false) }
+    var expanded by remember(group.files.firstOrNull()?.path ?: group.hash) { mutableStateOf(false) }
     val totalSize = remember(group.files) { group.files.sumOf { it.size } }
     val markedInGroup = group.files.count { it.path in selected }
     // Every copy in the group is marked = nothing would survive. The recycle bin still makes it

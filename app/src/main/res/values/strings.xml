@@ -611,6 +611,11 @@
     <string name="dup_select_all_shown">Mark all shown</string>
     <string name="dup_select_by_name_hint">Name or path contains…</string>
     <string name="dup_select_in_filtered_folder">Mark all copies in “%1$s”</string>
+    <string name="dup_invert_selection">Invert selection</string>
+    <string name="dup_sort">Sort groups</string>
+    <string name="dup_sort_savings">Biggest savings</string>
+    <string name="dup_sort_size">Largest total size</string>
+    <string name="dup_sort_count">Most copies</string>
     <string name="dup_select_matching">Mark matching</string>
     <string name="dup_select_not_matching">Mark others</string>
     <string name="internal_storage">Internal storage</string>
