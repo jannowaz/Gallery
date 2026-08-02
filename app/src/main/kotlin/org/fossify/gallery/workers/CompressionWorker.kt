@@ -82,9 +82,18 @@ class CompressionWorker(
                 val result = try {
                     withContext(Dispatchers.IO) {
                         val analysis = AnalysisCriteria.analyze(item.originalPath) ?: error("Analyze failed")
+                        val ext = item.originalPath.substringAfterLast('.', "").lowercase()
                         val outFile = if (item.mediaType == 2) {
                             val (w, h, kbps) = AnalysisCriteria.suggestedVideoTarget(analysis) ?: error("Already optimal")
                             engine.compressVideo(item.originalPath, w, h, kbps)
+                        } else if (ext == "gif") {
+                            // GIF: never route through compressImage - that decodes only the first frame
+                            // and would flatten an animation to a still JPEG. GifOptimizer re-encodes an
+                            // animated GIF to MP4 and a static one to WebP (throws on failure, so the
+                            // original is left untouched instead of being silently flattened).
+                            org.fossify.gallery.compose.screens.analysis.GifOptimizer.optimize(
+                                applicationContext, item.originalPath, org.fossify.gallery.compose.screens.analysis.CompressionEngine.cacheDir(applicationContext),
+                            )
                         } else {
                             val (edge, quality) = AnalysisCriteria.suggestedImageTarget(analysis) ?: error("Already optimal")
                             engine.compressImage(item.originalPath, edge, quality)

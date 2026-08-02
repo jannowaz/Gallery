@@ -27,7 +27,7 @@ import org.fossify.gallery.helpers.XmpWriter
 import org.fossify.gallery.models.Medium
 import java.io.File
 
-enum class FilterMode { ALL, IMAGES, VIDEOS }
+enum class FilterMode { ALL, IMAGES, VIDEOS, GIFS }
 enum class AnalysisSortMode { WASTED, SIZE, NAME }
 
 data class AnalysisState(

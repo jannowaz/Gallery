@@ -128,6 +128,7 @@ fun StorageAnalysisScreen(
             FilterMode.ALL -> state.results
             FilterMode.IMAGES -> state.results.filter { it.mediaType == 1 }
             FilterMode.VIDEOS -> state.results.filter { it.mediaType == 2 }
+            FilterMode.GIFS -> state.results.filter { it.imageFormat == "gif" }
         }
     }
     val folderCounts = remember(byType) {
@@ -285,6 +286,11 @@ fun StorageAnalysisScreen(
                     FilterChip(selected = state.filterMode == FilterMode.ALL, onClick = { vm.setFilterMode(FilterMode.ALL) }, label = { Text(stringResource(R.string.filter_all)) })
                     FilterChip(selected = state.filterMode == FilterMode.IMAGES, onClick = { vm.setFilterMode(FilterMode.IMAGES) }, label = { Text(stringResource(R.string.images)) })
                     FilterChip(selected = state.filterMode == FilterMode.VIDEOS, onClick = { vm.setFilterMode(FilterMode.VIDEOS) }, label = { Text(stringResource(R.string.videos)) })
+                    // Only offered once the scan actually turned up GIFs - keeps the row uncluttered
+                    // for the common case, and gives a one-tap "just the GIFs" view when they exist.
+                    if (state.results.any { it.imageFormat == "gif" }) {
+                        FilterChip(selected = state.filterMode == FilterMode.GIFS, onClick = { vm.setFilterMode(FilterMode.GIFS) }, label = { Text("GIF") })
+                    }
                     Spacer(Modifier.weight(1f))
                     Box {
                         IconButton(onClick = { showSortMenu = true }, modifier = Modifier.size(36.dp)) {

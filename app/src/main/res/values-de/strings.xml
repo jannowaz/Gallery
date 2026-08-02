@@ -797,6 +797,7 @@
     <string name="reason_img_png_photo">PNG: %s BPP – vermutlich Foto, nicht Grafik. JPEG Q85 = kaum sichtbarer Unterschied, ~85%% kleiner</string>
     <string name="reason_img_png_webp">PNG: %s BPP – WebP-lossless = pixel-identisch, ~30%% kleiner</string>
     <string name="reason_img_tiff">TIFF: unkomprimiertes Druckformat – PNG = gleiche Qualität, ~95%% kleiner</string>
+    <string name="reason_img_gif">GIF %s MB: keine Video-Kompression – animiert → MP4, statisch → WebP, ~80–95%% kleiner</string>
     <string name="reason_img_jpeg_high">JPEG: %1$s BPP – Qualität zu hoch (Q~100). Q85 = %2$s BPP, visuell identisch, ~60%% kleiner</string>
     <string name="reason_img_jpeg_webp">JPEG: %s BPP – WebP 80%% = gleiche Qualität, ~30%% kleiner</string>
     <string name="reason_img_megapixels">Auflösung %1$d MP (%2$d×%3$d) – überdimensioniert für Handy. 12 MP = schon Retina auf 6.7\"</string>

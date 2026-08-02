@@ -102,8 +102,11 @@ object AnalysisCriteria {
 
         // <5MB estimated savings = not worth it - gates score along with wastedBytes/reasons so a
         // file whose only fired reason nets negligible savings doesn't still slip into the results
-        // list (via score>0) as a ghost entry with no visible reason or savings estimate.
-        val passesSavingsThreshold = wastedBytes > 5_000_000
+        // list (via score>0) as a ghost entry with no visible reason or savings estimate. GIFs use a
+        // far lower gate: a 1-2MB animated GIF (~800KB-1.6MB recoverable) is exactly the "why is this
+        // so big" file the user wants surfaced, and re-encoding it is cheap and high-ratio.
+        val savingsGate = if (ext == "gif") 400_000L else 5_000_000L
+        val passesSavingsThreshold = wastedBytes > savingsGate
         return AnalysisResult(
             path = path, name = name, fileSize = size,
             mediaType = if (isVideo) 2 else 1,
@@ -161,6 +164,11 @@ object AnalysisCriteria {
                 if (bpp > t.imageJpegBpp) reasons.add(context.getString(R.string.reason_img_jpeg_high, "%.2f".format(bpp), "%.2f".format(0.2f)))
                 else if (bpp > 0.3f) reasons.add(context.getString(R.string.reason_img_jpeg_webp, "%.2f".format(bpp)))
             }
+            // GIF has no inter-frame compression and only a 256-colour palette per frame, so an
+            // animated GIF stores dozens of near-full frames - re-encoding (animated → MP4, static →
+            // WebP) is typically 80-95% smaller. We don't decode here (a GIF can be many MB); flag by
+            // size and let the optimizer pick the right target per file.
+            "gif" -> if (size > 512_000) reasons.add(context.getString(R.string.reason_img_gif, "%.1f".format(size / 1_000_000.0)))
         }
         if (mp > t.maxMegapixels) reasons.add(context.getString(R.string.reason_img_megapixels, mp, width, height))
         if (width > 7680) reasons.add(context.getString(R.string.reason_img_width, width))
@@ -223,6 +231,10 @@ object AnalysisCriteria {
     }
 
     private fun estimateImageWaste(size: Long, format: String, width: Int, height: Int, bpp: Float): Long {
+        // GIF doesn't fit the bpp model (its bytes-per-pixel is inflated by frame count, not per-pixel
+        // detail). Re-encoding conservatively recovers ~80% (animated → MP4 saves far more; static →
+        // WebP a bit less) - a single figure the optimizer refines per file at execution time.
+        if (format == "gif") return if (size > 512_000) (size * 8 / 10) else 0
         if (bpp <= 0f || width * height <= 0) return 0
         val pixels = width.toLong() * height
         // Same downscale target as suggestedImageTarget: >12MP sources get scaled to the megapixel
