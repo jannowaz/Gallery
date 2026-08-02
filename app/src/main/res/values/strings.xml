@@ -722,6 +722,8 @@
     <string name="scanning_folders">Scanning your folders…</string>
     <string name="albums">Albums</string>
     <string name="settings_mode_folder_content">Folder content</string>
+    <string name="settings_version">Version %1$s</string>
+    <string name="settings_installed_on">Installed %1$s</string>
     <string name="set_general">General</string>
     <string name="set_video">Video</string>
     <string name="set_fullscreen">Fullscreen &amp; display</string>
