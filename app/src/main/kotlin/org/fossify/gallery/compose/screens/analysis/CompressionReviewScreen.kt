@@ -206,6 +206,9 @@ private fun CompareViewerPager(
     onDismiss: () -> Unit,
 ) {
     if (doneItems.isEmpty()) { onDismiss(); return }
+    // System back closes only this compare overlay (back to the still-pending review list) instead of
+    // propagating out of the whole review screen and stranding the results.
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(
         initialPage = initialIndex.coerceIn(0, doneItems.lastIndex),
     ) { doneItems.size }

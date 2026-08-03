@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.ui.draw.clip
+import org.fossify.gallery.extensions.compressionReviewDB
 import org.fossify.gallery.helpers.formatBytes
 import org.fossify.gallery.compose.theme.Radius
 
@@ -38,8 +39,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
@@ -119,6 +122,11 @@ fun StorageAnalysisScreen(
     )
 
     val listState = rememberLazyListState()
+
+    // Pending compression results live in the DB (7-day retention), independent of this screen - so a
+    // "Compress all" batch survives leaving the review. Surface a resume entry whenever any remain, so
+    // the only way back isn't re-compressing everything from scratch.
+    val reviewItems by ctx.compressionReviewDB.getAllLive().collectAsState(initial = emptyList())
 
     // Media-type filter first (drives the folder breakdown), then the folder filter, then sort -
     // this is the exact set the list shows, and the same set every "mark" action operates on so
@@ -215,6 +223,27 @@ fun StorageAnalysisScreen(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            // Resume a compression review left unfinished: its results persist in the DB, so offer a
+            // one-tap way back instead of forcing a re-compress just to see them again.
+            if (reviewItems.isNotEmpty()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.fillMaxWidth().clickable { onNavigateToCompressionReview() },
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Compress, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            stringResource(R.string.compression_review_resume, reviewItems.size),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                    }
+                }
+            }
             // Compact results header with a collapse toggle for the scan form below.
             if (state.results.isNotEmpty()) {
                 val visibleWasted = remember(sortedVisible) { sortedVisible.sumOf { it.wastedBytes } }

@@ -10,6 +10,7 @@ import android.graphics.Movie
 import android.graphics.drawable.AnimatedImageDrawable
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
+import android.media.MediaMetadataRetriever
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.os.Build
@@ -29,8 +30,17 @@ import java.nio.ByteBuffer
  */
 object GifOptimizer {
 
-    /** True if [path] is an animated GIF (more than one frame). */
+    /** True if [path] is an animated GIF (more than one frame). Parses the GIF block structure for a
+     * definitive frame count first (the reliable signal - an animated source must never be mistaken
+     * for static and flattened); only if that can't be determined does it fall back to the platform
+     * decoders. A false negative here would silently drop the animation, so anything uncertain that a
+     * decoder flags as animated is treated as animated. */
     fun isAnimated(context: Context, path: String): Boolean {
+        when (GifInspect.frameCount(path)) {
+            in 2..Int.MAX_VALUE -> return true   // definitively animated
+            1 -> return false                    // definitively static
+            // else (-1): couldn't parse - fall through to the decoders
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             runCatching {
                 val src = ImageDecoder.createSource(File(path))
@@ -163,6 +173,17 @@ object GifOptimizer {
             frameBmp.recycle()
         }
         if (!out.exists() || out.length() == 0L) { out.delete(); error("GIF→MP4 produced no output") }
+        // Guard against silently flattening an animation: the source was detected as animated, so the
+        // result must be a real, playable video. If it has no duration/track, fail instead of keeping
+        // a broken or single-frame output - the caller then leaves the original GIF untouched.
+        val durationOk = runCatching {
+            val r = MediaMetadataRetriever()
+            try {
+                r.setDataSource(out.absolutePath)
+                (r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L) > 0L
+            } finally { r.release() }
+        }.getOrDefault(false)
+        if (!durationOk) { out.delete(); error("GIF animation could not be preserved") }
         return out
     }
 

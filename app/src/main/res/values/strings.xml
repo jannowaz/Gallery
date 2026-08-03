@@ -428,6 +428,7 @@
     <string name="compare_previous">Previous</string>
     <string name="compare_next">Next</string>
     <string name="compression_review_empty">No compression jobs</string>
+    <string name="compression_review_resume">%1$d compression results to review</string>
     <string name="swipe_review_title">Swipe review</string>
     <string name="back_again_to_exit">Press back again to leave</string>
     <string name="undo_compress_replaced">Original replaced</string>

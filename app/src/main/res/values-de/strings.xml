@@ -385,6 +385,7 @@
     <string name="compare_previous">Zurück</string>
     <string name="compare_next">Weiter</string>
     <string name="compression_review_empty">Keine Kompressions-Jobs</string>
+    <string name="compression_review_resume">%1$d Komprimier-Ergebnisse zum Prüfen</string>
     <string name="swipe_review_title">Swipe-Review</string>
     <string name="back_again_to_exit">Erneut zurück drücken zum Verlassen</string>
     <string name="undo_compress_replaced">Original ersetzt</string>
