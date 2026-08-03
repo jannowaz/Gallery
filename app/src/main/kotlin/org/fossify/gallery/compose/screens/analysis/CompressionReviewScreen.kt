@@ -327,18 +327,19 @@ internal fun GifToVideoSplit(beforeGifPath: String, afterVideoPath: String, modi
         }
         Box(Modifier.width(1.dp).fillMaxHeight().background(Color.White.copy(alpha = 0.5f)))
         Box(Modifier.weight(1f).fillMaxHeight()) {
-            val player = remember {
-                ExoPlayer.Builder(ctx).build().apply {
-                    setMediaItem(MediaItem.fromUri(Uri.fromFile(File(afterVideoPath))))
-                    repeatMode = Player.REPEAT_MODE_ONE
-                    volume = 0f
-                    prepare(); playWhenReady = true
-                }
-            }
+            // One player whose media item is swapped in a LaunchedEffect keyed on the path (not a
+            // path-less remember): the review pager reuses the same composition slot for the next
+            // item after a keep decision, so a remember-without-key would leave this "after" stuck on
+            // the previous item's video while the left GIF already advanced - the two sides desync.
+            val player = remember { ExoPlayer.Builder(ctx).build().apply { repeatMode = Player.REPEAT_MODE_ONE; volume = 0f } }
             val playerView = remember {
                 (LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView).apply { useController = false }
             }
             LaunchedEffect(player) { playerView.player = player }
+            LaunchedEffect(afterVideoPath) {
+                player.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(afterVideoPath))))
+                player.prepare(); player.playWhenReady = true
+            }
             DisposableEffect(Unit) { onDispose { player.release() } }
             AndroidView(factory = { playerView }, modifier = Modifier.fillMaxSize())
             SplitLabel(stringResource(R.string.compare_after), Modifier.align(Alignment.TopEnd))
@@ -361,18 +362,17 @@ internal fun GifToVideoCompare(beforeGifPath: String, afterVideoPath: String, sh
     val ctx = LocalContext.current
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         if (showAfter) {
-            val player = remember {
-                ExoPlayer.Builder(ctx).build().apply {
-                    setMediaItem(MediaItem.fromUri(Uri.fromFile(File(afterVideoPath))))
-                    repeatMode = Player.REPEAT_MODE_ONE
-                    volume = 0f
-                    prepare(); playWhenReady = true
-                }
-            }
+            // Media item swapped via LaunchedEffect(path) so a reused composition slot (pager) follows
+            // the current item instead of replaying the previous one - see GifToVideoSplit.
+            val player = remember { ExoPlayer.Builder(ctx).build().apply { repeatMode = Player.REPEAT_MODE_ONE; volume = 0f } }
             val playerView = remember {
                 (LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView).apply { useController = false }
             }
             LaunchedEffect(player) { playerView.player = player }
+            LaunchedEffect(afterVideoPath) {
+                player.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(afterVideoPath))))
+                player.prepare(); player.playWhenReady = true
+            }
             DisposableEffect(Unit) { onDispose { player.release() } }
             AndroidView(factory = { playerView }, modifier = Modifier.fillMaxSize())
         } else {
