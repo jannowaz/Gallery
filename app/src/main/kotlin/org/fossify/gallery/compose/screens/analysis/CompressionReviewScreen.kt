@@ -56,7 +56,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import org.fossify.gallery.compose.screens.viewer.rememberZoomState
+import org.fossify.gallery.compose.screens.viewer.zoomable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -315,18 +319,26 @@ private fun CompareItemContent(item: CompressionReviewItem) {
 @Composable
 internal fun GifToVideoSplit(beforeGifPath: String, afterVideoPath: String, modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
-    Row(modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f).fillMaxHeight()) {
-            AsyncImage(
-                model = ImageRequest.Builder(ctx).data(File(beforeGifPath)).build(),
-                contentDescription = stringResource(R.string.compare_before),
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
-            )
-            SplitLabel(stringResource(R.string.compare_before), Modifier.align(Alignment.TopStart))
-        }
-        Box(Modifier.width(1.dp).fillMaxHeight().background(Color.White.copy(alpha = 0.5f)))
-        Box(Modifier.weight(1f).fillMaxHeight()) {
+    // One shared zoom state drives both halves, so pinch/pan/double-tap zooms the GIF and the video
+    // into the exact same region at once - the point of the split is comparing detail side by side.
+    val zoom = rememberZoomState()
+    val zoomLayer = Modifier.graphicsLayer {
+        scaleX = zoom.scale; scaleY = zoom.scale
+        translationX = zoom.offset.x; translationY = zoom.offset.y
+    }
+    Box(modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(ctx).data(File(beforeGifPath)).build(),
+                    contentDescription = stringResource(R.string.compare_before),
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize().then(zoomLayer),
+                )
+                SplitLabel(stringResource(R.string.compare_before), Modifier.align(Alignment.TopStart))
+            }
+            Box(Modifier.width(1.dp).fillMaxHeight().background(Color.White.copy(alpha = 0.5f)))
+            Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
             // One player whose media item is swapped in a LaunchedEffect keyed on the path (not a
             // path-less remember): the review pager reuses the same composition slot for the next
             // item after a keep decision, so a remember-without-key would leave this "after" stuck on
@@ -341,9 +353,12 @@ internal fun GifToVideoSplit(beforeGifPath: String, afterVideoPath: String, modi
                 player.prepare(); player.playWhenReady = true
             }
             DisposableEffect(Unit) { onDispose { player.release() } }
-            AndroidView(factory = { playerView }, modifier = Modifier.fillMaxSize())
+            AndroidView(factory = { playerView }, modifier = Modifier.fillMaxSize().then(zoomLayer))
             SplitLabel(stringResource(R.string.compare_after), Modifier.align(Alignment.TopEnd))
+            }
         }
+        // Full-area gesture layer feeding the shared zoom - one pinch/pan drives both halves at once.
+        Box(Modifier.fillMaxSize().zoomable(zoom, onSingleTap = {}))
     }
 }
 
