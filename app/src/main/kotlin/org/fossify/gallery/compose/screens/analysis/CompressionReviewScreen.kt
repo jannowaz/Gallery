@@ -282,8 +282,9 @@ private fun CompareItemContent(item: CompressionReviewItem) {
     // is actually visible.
     val afterIsVideo = item.tempResultPath.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS
     val gifToVideo = !isVideo && afterIsVideo
-    // For GIF→video, also offer a side-by-side split (both animations at once), not just the toggle.
-    var splitMode by remember(item.id) { mutableStateOf(false) }
+    // For GIF→video, default to the side-by-side split (both animations at once); the before/after
+    // toggle stays available.
+    var splitMode by remember(item.id) { mutableStateOf(true) }
     Column(Modifier.fillMaxSize()) {
         if (isVideo || gifToVideo) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

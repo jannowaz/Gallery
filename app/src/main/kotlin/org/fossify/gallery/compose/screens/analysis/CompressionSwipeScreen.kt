@@ -321,8 +321,8 @@ private fun CompareContent(compare: SwipePhase.Compare, onKeepOriginal: () -> Un
     val afterIsVideo = compare.tempPath.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS
     val gifToVideo = !isVideo && afterIsVideo
     var showAfter by remember { mutableStateOf(true) }
-    // GIF→video also gets a side-by-side split option (both animations at once).
-    var splitMode by remember { mutableStateOf(false) }
+    // GIF→video defaults to the side-by-side split (both animations at once); toggle stays available.
+    var splitMode by remember { mutableStateOf(true) }
 
     Column(Modifier.fillMaxSize()) {
         if (isVideo || gifToVideo) {
