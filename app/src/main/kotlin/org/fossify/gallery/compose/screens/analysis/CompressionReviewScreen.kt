@@ -65,6 +65,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.launch
 import org.fossify.gallery.compose.components.GalleryImage
@@ -271,19 +274,58 @@ private fun CompareViewerPager(
 private fun CompareItemContent(item: CompressionReviewItem) {
     var showAfter by remember(item.id) { mutableStateOf(false) }
     val isVideo = item.mediaType == 2
+    // A GIF (mediaType image) can be optimized into a *video* (animated GIF → MP4). The wipe-compare
+    // renders both sides as still images, so the animated "after" MP4 looked frozen even though the
+    // file is a real video - use a before/after toggle that plays it instead, so the preserved motion
+    // is actually visible.
+    val afterIsVideo = item.tempResultPath.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS
+    val gifToVideo = !isVideo && afterIsVideo
     Column(Modifier.fillMaxSize()) {
-        if (isVideo) {
+        if (isVideo || gifToVideo) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = !showAfter, onClick = { showAfter = false }, label = { Text(stringResource(R.string.compare_before)) })
                 FilterChip(selected = showAfter, onClick = { showAfter = true }, label = { Text(stringResource(R.string.compare_after)) })
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (isVideo) {
-                ComparePlayer(pathA = item.originalPath, pathB = item.tempResultPath, showB = showAfter, modifier = Modifier.fillMaxSize())
-            } else {
-                WipeCompareImage(beforePath = item.originalPath, afterPath = item.tempResultPath, modifier = Modifier.fillMaxSize())
+            when {
+                isVideo -> ComparePlayer(pathA = item.originalPath, pathB = item.tempResultPath, showB = showAfter, modifier = Modifier.fillMaxSize())
+                gifToVideo -> GifToVideoCompare(beforeGifPath = item.originalPath, afterVideoPath = item.tempResultPath, showAfter = showAfter, modifier = Modifier.fillMaxSize())
+                else -> WipeCompareImage(beforePath = item.originalPath, afterPath = item.tempResultPath, modifier = Modifier.fillMaxSize())
             }
+        }
+    }
+}
+
+/** Compare for an animated GIF that was optimized to a video: the "before" is the animated GIF
+ * (Coil animates it), the "after" is the resulting MP4 played on a loop (muted, auto-playing) - so
+ * the user can confirm the motion survived the conversion rather than seeing a frozen still. */
+@Composable
+internal fun GifToVideoCompare(beforeGifPath: String, afterVideoPath: String, showAfter: Boolean, modifier: Modifier = Modifier) {
+    val ctx = LocalContext.current
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        if (showAfter) {
+            val player = remember {
+                ExoPlayer.Builder(ctx).build().apply {
+                    setMediaItem(MediaItem.fromUri(Uri.fromFile(File(afterVideoPath))))
+                    repeatMode = Player.REPEAT_MODE_ONE
+                    volume = 0f
+                    prepare(); playWhenReady = true
+                }
+            }
+            val playerView = remember {
+                (LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView).apply { useController = false }
+            }
+            LaunchedEffect(player) { playerView.player = player }
+            DisposableEffect(Unit) { onDispose { player.release() } }
+            AndroidView(factory = { playerView }, modifier = Modifier.fillMaxSize())
+        } else {
+            AsyncImage(
+                model = ImageRequest.Builder(ctx).data(File(beforeGifPath)).build(),
+                contentDescription = stringResource(R.string.compare_before),
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }

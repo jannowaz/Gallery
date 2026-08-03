@@ -315,12 +315,15 @@ private fun ConvertingContent(item: AnalysisResult, progress: Int?) {
 @Composable
 private fun CompareContent(compare: SwipePhase.Compare, onKeepOriginal: () -> Unit, onKeepNew: () -> Unit) {
     val isVideo = compare.item.mediaType == 2
-    // Videos keep the position-synced before/after toggle; images use the wipe slider instead
-    // (both versions visible at once in the same zoom - see WipeCompareImage).
+    // A GIF (image) can be optimized to a *video* (animated GIF → MP4); play the "after" so its motion
+    // is visible instead of frozen (see GifToVideoCompare). Videos keep the position-synced before/
+    // after toggle; other images use the wipe slider (both versions at once - see WipeCompareImage).
+    val afterIsVideo = compare.tempPath.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS
+    val gifToVideo = !isVideo && afterIsVideo
     var showAfter by remember { mutableStateOf(true) }
 
     Column(Modifier.fillMaxSize()) {
-        if (isVideo) {
+        if (isVideo || gifToVideo) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -331,10 +334,10 @@ private fun CompareContent(compare: SwipePhase.Compare, onKeepOriginal: () -> Un
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (isVideo) {
-                ComparePlayer(pathA = compare.item.path, pathB = compare.tempPath, showB = showAfter, modifier = Modifier.fillMaxSize())
-            } else {
-                WipeCompareImage(beforePath = compare.item.path, afterPath = compare.tempPath, modifier = Modifier.fillMaxSize())
+            when {
+                isVideo -> ComparePlayer(pathA = compare.item.path, pathB = compare.tempPath, showB = showAfter, modifier = Modifier.fillMaxSize())
+                gifToVideo -> GifToVideoCompare(beforeGifPath = compare.item.path, afterVideoPath = compare.tempPath, showAfter = showAfter, modifier = Modifier.fillMaxSize())
+                else -> WipeCompareImage(beforePath = compare.item.path, afterPath = compare.tempPath, modifier = Modifier.fillMaxSize())
             }
         }
         val percent = if (compare.item.fileSize > 0) (100 - (compare.newSize * 100 / compare.item.fileSize)).toInt() else 0
