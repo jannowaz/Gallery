@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -55,6 +56,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -280,20 +282,73 @@ private fun CompareItemContent(item: CompressionReviewItem) {
     // is actually visible.
     val afterIsVideo = item.tempResultPath.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS
     val gifToVideo = !isVideo && afterIsVideo
+    // For GIF→video, also offer a side-by-side split (both animations at once), not just the toggle.
+    var splitMode by remember(item.id) { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         if (isVideo || gifToVideo) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = !showAfter, onClick = { showAfter = false }, label = { Text(stringResource(R.string.compare_before)) })
-                FilterChip(selected = showAfter, onClick = { showAfter = true }, label = { Text(stringResource(R.string.compare_after)) })
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (!(gifToVideo && splitMode)) {
+                    FilterChip(selected = !showAfter, onClick = { showAfter = false }, label = { Text(stringResource(R.string.compare_before)) })
+                    FilterChip(selected = showAfter, onClick = { showAfter = true }, label = { Text(stringResource(R.string.compare_after)) })
+                }
+                if (gifToVideo) {
+                    Spacer(Modifier.weight(1f))
+                    FilterChip(selected = splitMode, onClick = { splitMode = !splitMode }, label = { Text(stringResource(R.string.compare_split)) })
+                }
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
                 isVideo -> ComparePlayer(pathA = item.originalPath, pathB = item.tempResultPath, showB = showAfter, modifier = Modifier.fillMaxSize())
+                gifToVideo && splitMode -> GifToVideoSplit(beforeGifPath = item.originalPath, afterVideoPath = item.tempResultPath, modifier = Modifier.fillMaxSize())
                 gifToVideo -> GifToVideoCompare(beforeGifPath = item.originalPath, afterVideoPath = item.tempResultPath, showAfter = showAfter, modifier = Modifier.fillMaxSize())
                 else -> WipeCompareImage(beforePath = item.originalPath, afterPath = item.tempResultPath, modifier = Modifier.fillMaxSize())
             }
         }
+    }
+}
+
+/** Side-by-side split for a GIF optimized to a video: the animated GIF and the looping MP4 play at
+ * once, so both animations are visible together (a wipe overlay can't clip the video's Surface the
+ * way it clips two Compose-drawn images, so the two versions sit next to each other instead). */
+@Composable
+internal fun GifToVideoSplit(beforeGifPath: String, afterVideoPath: String, modifier: Modifier = Modifier) {
+    val ctx = LocalContext.current
+    Row(modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f).fillMaxHeight()) {
+            AsyncImage(
+                model = ImageRequest.Builder(ctx).data(File(beforeGifPath)).build(),
+                contentDescription = stringResource(R.string.compare_before),
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+            SplitLabel(stringResource(R.string.compare_before), Modifier.align(Alignment.TopStart))
+        }
+        Box(Modifier.width(1.dp).fillMaxHeight().background(Color.White.copy(alpha = 0.5f)))
+        Box(Modifier.weight(1f).fillMaxHeight()) {
+            val player = remember {
+                ExoPlayer.Builder(ctx).build().apply {
+                    setMediaItem(MediaItem.fromUri(Uri.fromFile(File(afterVideoPath))))
+                    repeatMode = Player.REPEAT_MODE_ONE
+                    volume = 0f
+                    prepare(); playWhenReady = true
+                }
+            }
+            val playerView = remember {
+                (LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView).apply { useController = false }
+            }
+            LaunchedEffect(player) { playerView.player = player }
+            DisposableEffect(Unit) { onDispose { player.release() } }
+            AndroidView(factory = { playerView }, modifier = Modifier.fillMaxSize())
+            SplitLabel(stringResource(R.string.compare_after), Modifier.align(Alignment.TopEnd))
+        }
+    }
+}
+
+@Composable
+private fun SplitLabel(text: String, modifier: Modifier = Modifier) {
+    androidx.compose.material3.Surface(modifier = modifier.padding(6.dp), color = Color.Black.copy(alpha = 0.55f), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)) {
+        Text(text, color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
     }
 }
 

@@ -321,6 +321,8 @@ private fun CompareContent(compare: SwipePhase.Compare, onKeepOriginal: () -> Un
     val afterIsVideo = compare.tempPath.substringAfterLast('.', "").lowercase() in org.fossify.gallery.helpers.VIDEO_EXTENSIONS
     val gifToVideo = !isVideo && afterIsVideo
     var showAfter by remember { mutableStateOf(true) }
+    // GIF→video also gets a side-by-side split option (both animations at once).
+    var splitMode by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
         if (isVideo || gifToVideo) {
@@ -329,13 +331,20 @@ private fun CompareContent(compare: SwipePhase.Compare, onKeepOriginal: () -> Un
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                FilterChip(selected = !showAfter, onClick = { showAfter = false }, label = { Text(stringResource(R.string.compare_before) + "  " + formatBytes(compare.item.fileSize)) })
-                FilterChip(selected = showAfter, onClick = { showAfter = true }, label = { Text(stringResource(R.string.compare_after) + "  " + formatBytes(compare.newSize)) })
+                if (!(gifToVideo && splitMode)) {
+                    FilterChip(selected = !showAfter, onClick = { showAfter = false }, label = { Text(stringResource(R.string.compare_before) + "  " + formatBytes(compare.item.fileSize)) })
+                    FilterChip(selected = showAfter, onClick = { showAfter = true }, label = { Text(stringResource(R.string.compare_after) + "  " + formatBytes(compare.newSize)) })
+                }
+                if (gifToVideo) {
+                    Spacer(Modifier.weight(1f))
+                    FilterChip(selected = splitMode, onClick = { splitMode = !splitMode }, label = { Text(stringResource(R.string.compare_split)) })
+                }
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
                 isVideo -> ComparePlayer(pathA = compare.item.path, pathB = compare.tempPath, showB = showAfter, modifier = Modifier.fillMaxSize())
+                gifToVideo && splitMode -> GifToVideoSplit(beforeGifPath = compare.item.path, afterVideoPath = compare.tempPath, modifier = Modifier.fillMaxSize())
                 gifToVideo -> GifToVideoCompare(beforeGifPath = compare.item.path, afterVideoPath = compare.tempPath, showAfter = showAfter, modifier = Modifier.fillMaxSize())
                 else -> WipeCompareImage(beforePath = compare.item.path, afterPath = compare.tempPath, modifier = Modifier.fillMaxSize())
             }

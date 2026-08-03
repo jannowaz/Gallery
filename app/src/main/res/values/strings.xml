@@ -423,6 +423,7 @@
     <string name="action_keep_all_original">Keep all originals</string>
     <string name="compare_before">Before</string>
     <string name="compare_after">After</string>
+    <string name="compare_split">Side by side</string>
     <string name="compare_position">%1$d / %2$d</string>
     <string name="compare_previous">Previous</string>
     <string name="compare_next">Next</string>

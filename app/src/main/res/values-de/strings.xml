@@ -380,6 +380,7 @@
     <string name="action_keep_all_original">Alle Originale behalten</string>
     <string name="compare_before">Vorher</string>
     <string name="compare_after">Nachher</string>
+    <string name="compare_split">Nebeneinander</string>
     <string name="compare_position">%1$d / %2$d</string>
     <string name="compare_previous">Zurück</string>
     <string name="compare_next">Weiter</string>
