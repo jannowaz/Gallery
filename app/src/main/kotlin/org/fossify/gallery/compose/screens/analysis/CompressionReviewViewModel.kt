@@ -33,32 +33,38 @@ class CompressionReviewViewModel(app: Application) : AndroidViewModel(app) {
     /** Accepts the compressed version via [CompressionKeeper] (move next to original, soft-delete
      * original into the recycle bin, carry tags/rating over). */
     fun keepNew(item: CompressionReviewItem) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val newPath = runCatching { CompressionKeeper.keepNew(getApplication(), item.originalPath, item.tempResultPath) }.getOrNull()
-            if (newPath != null) {
-                getApplication<Application>().config.totalCompressionSavedBytes += (item.originalSize - item.resultSize).coerceAtLeast(0)
-                org.fossify.gallery.helpers.UndoManager.push(
-                    org.fossify.gallery.helpers.UndoAction(
-                        paths = setOf(item.originalPath),
-                        type = org.fossify.gallery.helpers.UndoType.COMPRESS_REPLACE,
-                        extra = mapOf("newPath" to newPath),
-                    )
+        viewModelScope.launch(Dispatchers.IO) { keepNewInternal(item) }
+    }
+
+    private suspend fun keepNewInternal(item: CompressionReviewItem) {
+        val newPath = runCatching { CompressionKeeper.keepNew(getApplication(), item.originalPath, item.tempResultPath) }.getOrNull()
+        if (newPath != null) {
+            getApplication<Application>().config.totalCompressionSavedBytes += (item.originalSize - item.resultSize).coerceAtLeast(0)
+            org.fossify.gallery.helpers.UndoManager.push(
+                org.fossify.gallery.helpers.UndoAction(
+                    paths = setOf(item.originalPath),
+                    type = org.fossify.gallery.helpers.UndoType.COMPRESS_REPLACE,
+                    extra = mapOf("newPath" to newPath),
                 )
-                item.id?.let { getApplication<Application>().compressionReviewDB.deleteItem(it) }
-            } else {
-                // keepNew did nothing (missing/empty temp, or the move failed) - crucially the original
-                // was NOT trashed. Don't silently drop the item: mark it failed so it stays visible in
-                // the review (dismissable) instead of vanishing with neither a kept new file nor a note.
-                getApplication<Application>().compressionReviewDB.update(
-                    item.copy(status = CompressionReviewItem.STATUS_FAILED, errorMessage = getApplication<Application>().getString(R.string.compression_keep_failed))
-                )
-            }
+            )
+            item.id?.let { getApplication<Application>().compressionReviewDB.deleteItem(it) }
+        } else {
+            // keepNew did nothing (missing/empty temp, or the move failed) - crucially the original
+            // was NOT trashed. Don't silently drop the item: mark it failed so it stays visible in
+            // the review (dismissable) instead of vanishing with neither a kept new file nor a note.
+            getApplication<Application>().compressionReviewDB.update(
+                item.copy(status = CompressionReviewItem.STATUS_FAILED, errorMessage = getApplication<Application>().getString(R.string.compression_keep_failed))
+            )
         }
     }
 
+    // Sequential, not one launch per item: keeping runs one-at-a-time so a unique target name picked
+    // for one file is already on disk before the next is computed - no concurrent race could ever pick
+    // the same "_compressed" name for two files, and MediaStore isn't hit with N trashes at once.
     fun keepAllNew() {
-        val done = items.value.filter { it.status == CompressionReviewItem.STATUS_DONE }
-        done.forEach { keepNew(it) }
+        viewModelScope.launch(Dispatchers.IO) {
+            items.value.filter { it.status == CompressionReviewItem.STATUS_DONE }.forEach { keepNewInternal(it) }
+        }
     }
 
     fun keepAllOriginal() {
