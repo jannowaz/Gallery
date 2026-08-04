@@ -77,15 +77,18 @@ class CompressionReviewViewModel(app: Application) : AndroidViewModel(app) {
     // Sequential, not one launch per item: keeping runs one-at-a-time so a unique target name picked
     // for one file is already on disk before the next is computed - no concurrent race could ever pick
     // the same "_compressed" name for two files, and MediaStore isn't hit with N trashes at once.
-    fun keepAllNew() {
+    /** Keeps every done item, optionally only those in [folder] - so a batch compressed across the
+     * whole device can be accepted folder by folder instead of all at once or one file at a time. */
+    fun keepAllNew(folder: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
-            items.value.filter { it.status == CompressionReviewItem.STATUS_DONE }.forEach { keepNewInternal(it) }
+            items.value.filter { it.status == CompressionReviewItem.STATUS_DONE && (folder == null || File(it.originalPath).parent == folder) }
+                .forEach { keepNewInternal(it) }
         }
     }
 
-    fun keepAllOriginal() {
-        val done = items.value.filter { it.status == CompressionReviewItem.STATUS_DONE }
-        done.forEach { keepOriginal(it) }
+    fun keepAllOriginal(folder: String? = null) {
+        items.value.filter { it.status == CompressionReviewItem.STATUS_DONE && (folder == null || File(it.originalPath).parent == folder) }
+            .forEach { keepOriginal(it) }
     }
 
     fun dismissFailed(item: CompressionReviewItem) {

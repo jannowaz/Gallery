@@ -313,10 +313,12 @@ class TransformationEngine(private val context: android.content.Context) {
                 return@withContext TransformResult(false, s.originalPath, "", 0, context.getString(R.string.opt_err_inplace_disabled))
             } else {
                 if (finalFile.exists()) { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, context.getString(R.string.opt_err_target_exists)) }
+                val expectedSize = tmpFile.length()
                 val moved = tmpFile.renameTo(finalFile) || runCatching { tmpFile.copyTo(finalFile, overwrite = false); tmpFile.delete() }.isSuccess
                 // Same data-safety invariant as the compress path: only trash the original once a
-                // genuine, decodable optimized file is in place (see CompressionSafety).
-                if (moved && CompressionSafety.isValidReplacement(finalFile)) {
+                // genuine, decodable optimized file at the FULL expected size is in place - the exact-size
+                // check catches a short/partial copy that still decodes from its header (see CompressionSafety).
+                if (moved && CompressionSafety.isValidReplacement(finalFile) && finalFile.length() == expectedSize) {
                     saved = (s.originalSize - finalFile.length()).coerceAtLeast(0)
                     // Give the new file the original's timeline slot BEFORE the MediaStore scan below
                     // triggers a sync: the sync inserts with insertAllKeepingExisting (IGNORE), so this
@@ -327,7 +329,14 @@ class TransformationEngine(private val context: android.content.Context) {
                     // Keep the resulting bin path so undo can restore the actual (possibly trashed) row.
                     backupPath = softDeleteOriginal(original)
                 }
-                else { tmpFile.delete(); return@withContext TransformResult(false, s.originalPath, "", 0, "Rename failed") }
+                else {
+                    // Move failed / produced an invalid or short file: clean up BOTH the temp and any
+                    // partial that a broken copy left at the target, so no unusable file survives, and
+                    // crucially leave the original untouched.
+                    tmpFile.delete()
+                    runCatching { if (finalFile.exists()) finalFile.delete() }
+                    return@withContext TransformResult(false, s.originalPath, "", 0, "Rename failed")
+                }
             }
 
             // Carry app tags/rating onto the new file and keep DB/MediaStore consistent

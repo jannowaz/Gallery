@@ -618,6 +618,7 @@
     <string name="dup_batch_next">Next %1$d</string>
     <string name="dup_config_toggle">Scan settings</string>
     <string name="dup_folder_all">All folders</string>
+    <string name="review_all">All</string>
     <string name="dup_folder_filter_hint">Filter by folder</string>
     <string name="dup_select_all_shown">Mark all shown</string>
     <string name="dup_select_by_name_hint">Name or path contains…</string>

@@ -575,6 +575,7 @@
     <string name="dup_batch_next">Nächste %1$d</string>
     <string name="dup_config_toggle">Scan-Einstellungen</string>
     <string name="dup_folder_all">Alle Ordner</string>
+    <string name="review_all">Alle</string>
     <string name="dup_folder_filter_hint">Nach Ordner filtern</string>
     <string name="dup_select_all_shown">Alle angezeigten markieren</string>
     <string name="dup_select_by_name_hint">Name oder Pfad enthält…</string>

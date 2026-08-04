@@ -36,6 +36,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -99,6 +100,15 @@ fun CompressionReviewScreen(onBack: () -> Unit) {
     val pending = items.filter { it.status == CompressionReviewItem.STATUS_PENDING }
     val failed = items.filter { it.status == CompressionReviewItem.STATUS_FAILED }
 
+    // Per-folder review: compress everything in one batch, but check the results folder by folder.
+    // The chips show how many results are still open per folder ("Ordner · 3"); picking one narrows
+    // the list, the compare pager and the keep-all actions to that folder so nothing spills over.
+    var folderFilter by remember { mutableStateOf<String?>(null) }
+    val doneByFolder = done.groupBy { File(it.originalPath).parent ?: "" }
+    val folderKeys = doneByFolder.keys.sorted()
+    LaunchedEffect(folderKeys) { if (folderFilter != null && folderFilter !in doneByFolder) folderFilter = null }
+    val visibleDone = folderFilter?.let { f -> done.filter { (File(it.originalPath).parent ?: "") == f } } ?: done
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -115,16 +125,38 @@ fun CompressionReviewScreen(onBack: () -> Unit) {
             }
         } else {
             Column(Modifier.fillMaxSize()) {
-                if (done.size > 1) {
+                if (doneByFolder.size > 1) {
+                    LazyRow(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        item {
+                            FilterChip(
+                                selected = folderFilter == null,
+                                onClick = { folderFilter = null },
+                                label = { Text("${stringResource(R.string.review_all)} · ${done.size}") },
+                            )
+                        }
+                        items(folderKeys, key = { it }) { folder ->
+                            FilterChip(
+                                selected = folderFilter == folder,
+                                onClick = { folderFilter = folder },
+                                label = { Text("${File(folder).name} · ${doneByFolder[folder]?.size ?: 0}") },
+                            )
+                        }
+                    }
+                }
+                if (visibleDone.size > 1) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { vm.keepAllNew() }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_all_new)) }
-                        OutlinedButton(onClick = { vm.keepAllOriginal() }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_all_original)) }
+                        OutlinedButton(onClick = { vm.keepAllNew(folderFilter) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_all_new)) }
+                        OutlinedButton(onClick = { vm.keepAllOriginal(folderFilter) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_all_original)) }
                     }
                 }
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(8.dp)) {
                     items(pending, key = { "p${it.id}" }) { item -> PendingCard(item) }
                     items(failed, key = { "f${it.id}" }) { item -> FailedCard(item, onDismiss = { vm.dismissFailed(item) }) }
-                    itemsIndexed(done, key = { _, it -> "d${it.id}" }) { index, item -> DoneCard(item, onClick = { openedIndex = index }) }
+                    itemsIndexed(visibleDone, key = { _, it -> "d${it.id}" }) { index, item -> DoneCard(item, onClick = { openedIndex = index }) }
                     item { Spacer(Modifier.height(80.dp)) }
                 }
             }
@@ -135,7 +167,7 @@ fun CompressionReviewScreen(onBack: () -> Unit) {
 
     openedIndex?.let { idx ->
         CompareViewerPager(
-            doneItems = done,
+            doneItems = visibleDone,
             initialIndex = idx,
             onKeepOriginal = { vm.keepOriginal(it) },
             onKeepNew = { vm.keepNew(it) },
