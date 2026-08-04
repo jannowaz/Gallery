@@ -61,8 +61,14 @@ class CompressionEngine(private val context: Context) {
         } else decoded
 
         val outFile = File(outputDir, "img_${System.nanoTime()}.jpg")
-        outFile.outputStream().use { scaled.compress(Bitmap.CompressFormat.JPEG, quality, it) }
+        val encoded = outFile.outputStream().use { scaled.compress(Bitmap.CompressFormat.JPEG, quality, it) }
         scaled.recycle()
+        // A failed encode (compress() returned false, or wrote nothing) must NOT become a "done" review
+        // item: keeping it would replace the original with an empty/corrupt file. Fail loudly instead.
+        if (!encoded || !outFile.exists() || outFile.length() == 0L) {
+            runCatching { outFile.delete() }
+            error("Image encode produced no output")
+        }
 
         try {
             ExifInterface(path).copyNonDimensionAttributesTo(ExifInterface(outFile.absolutePath))
