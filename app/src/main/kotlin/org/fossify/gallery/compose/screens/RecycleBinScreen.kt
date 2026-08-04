@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -137,7 +138,27 @@ fun RecycleBinScreen(onBack: () -> Unit) {
                 title = { Text(stringResource(R.string.nav_recycle_bin), fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 actions = {
-                    if (items.isNotEmpty()) TextButton(onClick = { showEmptyConfirm = true }, enabled = deleteProgress == null) { Text(stringResource(R.string.action_empty), color = MaterialTheme.colorScheme.error) }
+                    // Refresh: pull the *shared* MediaStore trash (other apps trash into the same bin)
+                    // and re-read, so this view reflects what's actually trashed on the device now.
+                    IconButton(onClick = {
+                        scope.launch {
+                            val added = withContext(Dispatchers.IO) { repo.syncTrashFromMediaStore() }
+                            refresh++
+                            ctx.toast(if (added > 0) ctx.getString(R.string.recycle_bin_refreshed_added, added) else ctx.getString(R.string.recycle_bin_refreshed))
+                        }
+                    }, enabled = deleteProgress == null) { Icon(Icons.Default.Refresh, stringResource(R.string.action_refresh)) }
+                    if (items.isNotEmpty()) {
+                        // Restore all - safe/non-destructive (just un-trashes), so no confirm.
+                        TextButton(onClick = {
+                            scope.launch {
+                                val paths = items.map { it.path }
+                                withContext(Dispatchers.IO) { repo.restoreFromRecycleBinBatch(paths) }
+                                refresh++
+                                ctx.toast(ctx.resources.getQuantityString(R.plurals.restored_count, paths.size, paths.size))
+                            }
+                        }, enabled = deleteProgress == null) { Text(stringResource(R.string.action_restore_all)) }
+                        TextButton(onClick = { showEmptyConfirm = true }, enabled = deleteProgress == null) { Text(stringResource(R.string.action_empty), color = MaterialTheme.colorScheme.error) }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
             )

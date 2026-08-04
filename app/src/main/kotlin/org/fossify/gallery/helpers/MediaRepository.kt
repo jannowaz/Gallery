@@ -544,6 +544,66 @@ class MediaRepository(private val context: Context) : MediaRepositoryInterface {
     fun getDeletedMedia(): List<Medium> =
         try { context.mediaDB.getDeletedMedia() } catch (_: Exception) { emptyList() }
 
+    /** Pulls the *shared* MediaStore trash (Android 11+) into the app's recycle-bin view, so files
+     * trashed by other apps - or by us but not yet in the DB - show up here too. Additive: every
+     * currently-trashed image/video is ensured to have a soft-deleted row. Returns how many rows were
+     * newly added, so the screen can tell the user what a refresh pulled in. */
+    fun syncTrashFromMediaStore(): Int {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) return 0
+        return try {
+            val uri = android.provider.MediaStore.Files.getContentUri("external")
+            val projection = arrayOf(
+                android.provider.MediaStore.MediaColumns.DATA,
+                android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
+                android.provider.MediaStore.MediaColumns.SIZE,
+                android.provider.MediaStore.MediaColumns.DATE_MODIFIED,
+                android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE,
+            )
+            val args = android.os.Bundle().apply {
+                putInt(android.provider.MediaStore.QUERY_ARG_MATCH_TRASHED, android.provider.MediaStore.MATCH_ONLY)
+                putString(
+                    android.content.ContentResolver.QUERY_ARG_SQL_SELECTION,
+                    "${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE} = ?",
+                )
+                putStringArray(
+                    android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
+                    arrayOf(
+                        android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
+                        android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
+                    ),
+                )
+            }
+            val existing = try { context.mediaDB.getDeletedMedia().map { it.path }.toSet() } catch (_: Exception) { emptySet() }
+            val found = ArrayList<Medium>()
+            context.contentResolver.query(uri, projection, args, null)?.use { c ->
+                val dataIdx = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
+                val nameIdx = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                val sizeIdx = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.SIZE)
+                val dateIdx = c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATE_MODIFIED)
+                val typeIdx = c.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE)
+                val now = System.currentTimeMillis()
+                while (c.moveToNext()) {
+                    val path = c.getString(dataIdx) ?: continue
+                    if (path in existing) continue
+                    val rawName = c.getString(nameIdx) ?: File(path).name
+                    // Show the original filename, not the ".trashed-<expiry>-name" the OS renamed it to.
+                    val displayName = rawName.replaceFirst(Regex("^\\.trashed-\\d+-"), "")
+                    val size = c.getLong(sizeIdx)
+                    val modified = c.getLong(dateIdx) * 1000L
+                    val isVideo = c.getInt(typeIdx) == android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO
+                    found.add(Medium(null, displayName, path, File(path).parent ?: "", modified, modified, size, if (isVideo) 2 else 1, 0, false, now, 0L, 0))
+                }
+            }
+            if (found.isNotEmpty()) {
+                context.mediaDB.insertAllKeepingExisting(found)
+                found.forEach { runCatching { context.mediaDB.softDelete(it.path, it.deletedTS) } }
+            }
+            found.size
+        } catch (e: Exception) {
+            android.util.Log.e("MediaRepository", "syncTrashFromMediaStore failed", e); 0
+        }
+    }
+
     suspend fun getTagsInFolder(folder: String): Map<String, Int> =
         try {
             val pattern = if (folder.endsWith("/")) "$folder%" else "$folder/%"

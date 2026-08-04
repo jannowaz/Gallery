@@ -485,6 +485,10 @@
     <string name="cd_back">Back</string>
     <string name="action_empty">Empty</string>
     <string name="action_restore">Restore</string>
+    <string name="action_restore_all">Restore all</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="recycle_bin_refreshed">Recycle bin up to date</string>
+    <string name="recycle_bin_refreshed_added">%1$d more found in the shared trash</string>
     <string name="action_delete_forever">Delete permanently</string>
     <string name="recycle_bin_empty">Recycle bin is empty</string>
     <string name="empty_recycle_bin_title">Empty recycle bin</string>
@@ -602,6 +606,10 @@
     <plurals name="deleted_forever_count">
         <item quantity="one">%d file permanently deleted</item>
         <item quantity="other">%d files permanently deleted</item>
+    </plurals>
+    <plurals name="restored_count">
+        <item quantity="one">%d file restored</item>
+        <item quantity="other">%d files restored</item>
     </plurals>
     <string name="select_folder_duplicates">Mark all found duplicates from this folder</string>
     <string name="select_folder_duplicates_short">Mark folder</string>
