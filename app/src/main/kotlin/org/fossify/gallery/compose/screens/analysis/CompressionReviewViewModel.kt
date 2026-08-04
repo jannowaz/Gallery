@@ -21,6 +21,22 @@ class CompressionReviewViewModel(app: Application) : AndroidViewModel(app) {
         .getAllLive()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    init {
+        // Housekeeping: drop any temp file in the compression cache that no review item references
+        // anymore (leftovers from crashes, old sessions, or already-decided items), so nothing but
+        // pending, referenced results ever lingers. Age-gated so a temp a worker just wrote - but
+        // whose DB row isn't in yet - is never swept out from under an in-flight compression.
+        viewModelScope.launch(Dispatchers.IO) { sweepOrphanTemps() }
+    }
+
+    private suspend fun sweepOrphanTemps() {
+        val referenced = runCatching { getApplication<Application>().compressionReviewDB.getAllTempPaths().toSet() }.getOrDefault(emptySet())
+        val minAge = System.currentTimeMillis() - 2 * 60 * 1000L
+        CompressionEngine.cacheDir(getApplication()).listFiles()?.forEach { f ->
+            if (f.absolutePath !in referenced && f.lastModified() < minAge) runCatching { f.delete() }
+        }
+    }
+
     /** Discards the probe-compressed temp file - the original is untouched, so this is a pure no-op
      * on real media, just cache cleanup. */
     fun keepOriginal(item: CompressionReviewItem) {

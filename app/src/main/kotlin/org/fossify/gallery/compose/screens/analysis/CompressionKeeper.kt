@@ -27,11 +27,13 @@ object CompressionKeeper {
         val origModified = original.lastModified()
         val origMedium = runCatching { context.mediaDB.getMediaByPaths(listOf(originalPath)).firstOrNull() }.getOrNull()
 
+        val expectedSize = temp.length()
         val moved = temp.renameTo(target) || runCatching { temp.copyTo(target, overwrite = false); temp.delete() }.isSuccess
         // The data-safety invariant: never trash the original unless a genuine, decodable replacement
-        // actually landed. A move that reported success but left nothing / a 0-byte / a corrupt file
-        // must abort here (and clean up the partial) - that was the "original gone, no new file" loss.
-        if (!moved || !CompressionSafety.isValidReplacement(target)) {
+        // actually landed at the expected size. A move that reported success but left nothing / a
+        // 0-byte / a truncated / a corrupt file must abort here (and clean up the partial) - that was
+        // the "original gone, no new file" loss. The exact-size check catches a partial/short copy.
+        if (!moved || !CompressionSafety.isValidReplacement(target) || target.length() != expectedSize) {
             runCatching { if (target.exists()) target.delete() }
             return null
         }
