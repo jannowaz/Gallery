@@ -28,10 +28,10 @@ object CompressionKeeper {
         val origMedium = runCatching { context.mediaDB.getMediaByPaths(listOf(originalPath)).firstOrNull() }.getOrNull()
 
         val moved = temp.renameTo(target) || runCatching { temp.copyTo(target, overwrite = false); temp.delete() }.isSuccess
-        // Only proceed if a real, non-empty new file actually landed. A move that reported success but
-        // left nothing (or a 0-byte/partial file from a failed copy) must NOT lead to trashing the
-        // original - that would be the "original gone, no new file" data loss. Clean up any partial.
-        if (!moved || !target.exists() || target.length() == 0L) {
+        // The data-safety invariant: never trash the original unless a genuine, decodable replacement
+        // actually landed. A move that reported success but left nothing / a 0-byte / a corrupt file
+        // must abort here (and clean up the partial) - that was the "original gone, no new file" loss.
+        if (!moved || !CompressionSafety.isValidReplacement(target)) {
             runCatching { if (target.exists()) target.delete() }
             return null
         }
