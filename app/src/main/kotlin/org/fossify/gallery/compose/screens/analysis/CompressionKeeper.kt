@@ -28,7 +28,13 @@ object CompressionKeeper {
         val origMedium = runCatching { context.mediaDB.getMediaByPaths(listOf(originalPath)).firstOrNull() }.getOrNull()
 
         val moved = temp.renameTo(target) || runCatching { temp.copyTo(target, overwrite = false); temp.delete() }.isSuccess
-        if (!moved || !target.exists()) return null
+        // Only proceed if a real, non-empty new file actually landed. A move that reported success but
+        // left nothing (or a 0-byte/partial file from a failed copy) must NOT lead to trashing the
+        // original - that would be the "original gone, no new file" data loss. Clean up any partial.
+        if (!moved || !target.exists() || target.length() == 0L) {
+            runCatching { if (target.exists()) target.delete() }
+            return null
+        }
 
         val engine = TransformationEngine(context)
         // Pre-register the timeline row before the scan below (sync IGNOREs existing paths), then

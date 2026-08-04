@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.fossify.gallery.R
 import org.fossify.gallery.extensions.compressionReviewDB
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.models.CompressionReviewItem
@@ -33,20 +34,24 @@ class CompressionReviewViewModel(app: Application) : AndroidViewModel(app) {
      * original into the recycle bin, carry tags/rating over). */
     fun keepNew(item: CompressionReviewItem) {
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val newPath = CompressionKeeper.keepNew(getApplication(), item.originalPath, item.tempResultPath)
-                if (newPath != null) {
-                    getApplication<Application>().config.totalCompressionSavedBytes += (item.originalSize - item.resultSize).coerceAtLeast(0)
-                    org.fossify.gallery.helpers.UndoManager.push(
-                        org.fossify.gallery.helpers.UndoAction(
-                            paths = setOf(item.originalPath),
-                            type = org.fossify.gallery.helpers.UndoType.COMPRESS_REPLACE,
-                            extra = mapOf("newPath" to newPath),
-                        )
+            val newPath = runCatching { CompressionKeeper.keepNew(getApplication(), item.originalPath, item.tempResultPath) }.getOrNull()
+            if (newPath != null) {
+                getApplication<Application>().config.totalCompressionSavedBytes += (item.originalSize - item.resultSize).coerceAtLeast(0)
+                org.fossify.gallery.helpers.UndoManager.push(
+                    org.fossify.gallery.helpers.UndoAction(
+                        paths = setOf(item.originalPath),
+                        type = org.fossify.gallery.helpers.UndoType.COMPRESS_REPLACE,
+                        extra = mapOf("newPath" to newPath),
                     )
-                }
-            } finally {
+                )
                 item.id?.let { getApplication<Application>().compressionReviewDB.deleteItem(it) }
+            } else {
+                // keepNew did nothing (missing/empty temp, or the move failed) - crucially the original
+                // was NOT trashed. Don't silently drop the item: mark it failed so it stays visible in
+                // the review (dismissable) instead of vanishing with neither a kept new file nor a note.
+                getApplication<Application>().compressionReviewDB.update(
+                    item.copy(status = CompressionReviewItem.STATUS_FAILED, errorMessage = getApplication<Application>().getString(R.string.compression_keep_failed))
+                )
             }
         }
     }

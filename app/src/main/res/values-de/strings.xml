@@ -406,6 +406,7 @@
     <string name="swipe_no_savings">Keine Einsparung erzielbar</string>
     <string name="swipe_already_optimal">Bereits auf Zielqualität</string>
     <string name="swipe_keep_failed">Original konnte nicht ersetzt werden</string>
+    <string name="compression_keep_failed">Neue Version konnte nicht übernommen werden — Original unangetastet</string>
     <string name="swipe_savings_estimate">≈ %s sparen</string>
     <string name="swipe_tap_to_compare">Tippen wechselt Vorher/Nachher</string>
     <string name="swipe_original_recoverable">Original wandert in den Papierkorb</string>

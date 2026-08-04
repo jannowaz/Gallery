@@ -449,6 +449,7 @@
     <string name="swipe_no_savings">No savings achievable</string>
     <string name="swipe_already_optimal">Already at target quality</string>
     <string name="swipe_keep_failed">Could not replace the original</string>
+    <string name="compression_keep_failed">Couldn\'t keep the new version — original left untouched</string>
     <string name="swipe_savings_estimate">Save ≈ %s</string>
     <string name="swipe_tap_to_compare">Tap to toggle before/after</string>
     <string name="swipe_original_recoverable">Original goes to the recycle bin</string>
