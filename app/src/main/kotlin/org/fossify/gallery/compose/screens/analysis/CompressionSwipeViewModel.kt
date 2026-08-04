@@ -94,6 +94,11 @@ class CompressionSwipeViewModel(app: Application) : AndroidViewModel(app) {
                             val current = _phase.value
                             if (current is SwipePhase.Converting) _phase.value = current.copy(progress = percent)
                         }
+                    } else if (item.path.substringAfterLast('.', "").lowercase() == "gif") {
+                        // Never flatten a GIF through compressImage (that keeps only the first frame as
+                        // a still JPEG). GifOptimizer re-encodes animated → MP4, static → WebP, and
+                        // throws rather than silently dropping the animation.
+                        GifOptimizer.optimize(getApplication(), item.path, CompressionEngine.cacheDir(getApplication()))
                     } else {
                         val (edge, quality) = AnalysisCriteria.suggestedImageTarget(item)
                             ?: error(getApplication<Application>().getString(R.string.swipe_already_optimal))

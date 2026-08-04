@@ -70,10 +70,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.Image
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.launch
 import org.fossify.gallery.compose.components.GalleryImage
@@ -329,39 +337,80 @@ internal fun GifToVideoSplit(beforeGifPath: String, afterVideoPath: String, modi
         scaleX = zoom.scale; scaleY = zoom.scale
         translationX = zoom.offset.x; translationY = zoom.offset.y
     }
+    // Play/pause both at once, frozen on the same moment: pausing captures the video's position and
+    // renders the GIF's frame at that exact time, so both sides show the same instant for a fair
+    // still-frame quality comparison (they otherwise animate independently and never line up).
+    var playing by remember { mutableStateOf(true) }
+    var freezeMs by remember { mutableStateOf(0L) }
+
+    // One player whose media item is swapped in a LaunchedEffect keyed on the path (not a path-less
+    // remember): the review pager reuses the same composition slot for the next item after a keep
+    // decision, so a remember-without-key would leave this "after" stuck on the previous item's video.
+    val player = remember { ExoPlayer.Builder(ctx).build().apply { repeatMode = Player.REPEAT_MODE_ONE; volume = 0f } }
+    val playerView = remember {
+        (LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView).apply { useController = false }
+    }
+    LaunchedEffect(player) { playerView.player = player }
+    LaunchedEffect(afterVideoPath) { player.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(afterVideoPath)))); player.prepare() }
+    LaunchedEffect(playing) { player.playWhenReady = playing }
+    DisposableEffect(Unit) { onDispose { player.release() } }
+
     Box(modifier.fillMaxSize()) {
         Row(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
-                AsyncImage(
-                    model = ImageRequest.Builder(ctx).data(File(beforeGifPath)).build(),
-                    contentDescription = stringResource(R.string.compare_before),
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize().then(zoomLayer),
-                )
+                GifSide(beforeGifPath, playing, freezeMs, Modifier.fillMaxSize().then(zoomLayer))
                 SplitLabel(stringResource(R.string.compare_before), Modifier.align(Alignment.TopStart))
             }
             Box(Modifier.width(1.dp).fillMaxHeight().background(Color.White.copy(alpha = 0.5f)))
             Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
-            // One player whose media item is swapped in a LaunchedEffect keyed on the path (not a
-            // path-less remember): the review pager reuses the same composition slot for the next
-            // item after a keep decision, so a remember-without-key would leave this "after" stuck on
-            // the previous item's video while the left GIF already advanced - the two sides desync.
-            val player = remember { ExoPlayer.Builder(ctx).build().apply { repeatMode = Player.REPEAT_MODE_ONE; volume = 0f } }
-            val playerView = remember {
-                (LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView).apply { useController = false }
-            }
-            LaunchedEffect(player) { playerView.player = player }
-            LaunchedEffect(afterVideoPath) {
-                player.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(afterVideoPath))))
-                player.prepare(); player.playWhenReady = true
-            }
-            DisposableEffect(Unit) { onDispose { player.release() } }
-            AndroidView(factory = { playerView }, modifier = Modifier.fillMaxSize().then(zoomLayer))
-            SplitLabel(stringResource(R.string.compare_after), Modifier.align(Alignment.TopEnd))
+                AndroidView(factory = { playerView }, modifier = Modifier.fillMaxSize().then(zoomLayer))
+                SplitLabel(stringResource(R.string.compare_after), Modifier.align(Alignment.TopEnd))
             }
         }
         // Full-area gesture layer feeding the shared zoom - one pinch/pan drives both halves at once.
         Box(Modifier.fillMaxSize().zoomable(zoom, onSingleTap = {}))
+        PlayPauseButton(
+            playing = playing,
+            onToggle = { if (playing) { freezeMs = player.currentPosition.coerceAtLeast(0L); playing = false } else playing = true },
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
+        )
+    }
+}
+
+/** The "before" GIF side: animates live while [playing]; when paused, shows the GIF's frame at
+ * [freezeMs] (the moment the "after" video was paused at) so both sides freeze on the same instant. */
+@Composable
+private fun GifSide(path: String, playing: Boolean, freezeMs: Long, modifier: Modifier) {
+    val ctx = LocalContext.current
+    if (playing) {
+        AsyncImage(model = ImageRequest.Builder(ctx).data(File(path)).build(), contentDescription = stringResource(R.string.compare_before), contentScale = ContentScale.Fit, modifier = modifier)
+    } else {
+        val frame by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, path, freezeMs) {
+            value = withContext(Dispatchers.IO) { extractGifFrame(path, freezeMs)?.asImageBitmap() }
+        }
+        val f = frame
+        if (f != null) Image(bitmap = f, contentDescription = stringResource(R.string.compare_before), contentScale = ContentScale.Fit, modifier = modifier)
+        else AsyncImage(model = ImageRequest.Builder(ctx).data(File(path)).build(), contentDescription = stringResource(R.string.compare_before), contentScale = ContentScale.Fit, modifier = modifier)
+    }
+}
+
+@Suppress("DEPRECATION")
+private fun extractGifFrame(path: String, timeMs: Long): android.graphics.Bitmap? {
+    val movie = android.graphics.Movie.decodeFile(path) ?: return null
+    val w = movie.width().coerceAtLeast(1); val h = movie.height().coerceAtLeast(1)
+    val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bmp)
+    canvas.drawColor(android.graphics.Color.BLACK)
+    val dur = movie.duration()
+    movie.setTime(if (dur > 0) (timeMs % dur).toInt() else 0)
+    movie.draw(canvas, 0f, 0f)
+    return bmp
+}
+
+@Composable
+private fun PlayPauseButton(playing: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    FilledIconButton(onClick = onToggle, modifier = modifier) {
+        Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(R.string.cd_play_pause))
     }
 }
 
@@ -378,29 +427,31 @@ private fun SplitLabel(text: String, modifier: Modifier = Modifier) {
 @Composable
 internal fun GifToVideoCompare(beforeGifPath: String, afterVideoPath: String, showAfter: Boolean, modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
+    // Player kept alive across the before/after toggle (not created inside the branch) so pausing on
+    // "after" captures a position that the "before" GIF can then be frozen to - flip to before and it
+    // shows the same instant. Media item swapped via LaunchedEffect(path) so a reused pager slot
+    // follows the current item instead of replaying the previous one (see GifToVideoSplit).
+    var playing by remember { mutableStateOf(true) }
+    var freezeMs by remember { mutableStateOf(0L) }
+    val player = remember { ExoPlayer.Builder(ctx).build().apply { repeatMode = Player.REPEAT_MODE_ONE; volume = 0f } }
+    val playerView = remember {
+        (LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView).apply { useController = false }
+    }
+    LaunchedEffect(player) { playerView.player = player }
+    LaunchedEffect(afterVideoPath) { player.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(afterVideoPath)))); player.prepare() }
+    LaunchedEffect(playing) { player.playWhenReady = playing }
+    DisposableEffect(Unit) { onDispose { player.release() } }
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         if (showAfter) {
-            // Media item swapped via LaunchedEffect(path) so a reused composition slot (pager) follows
-            // the current item instead of replaying the previous one - see GifToVideoSplit.
-            val player = remember { ExoPlayer.Builder(ctx).build().apply { repeatMode = Player.REPEAT_MODE_ONE; volume = 0f } }
-            val playerView = remember {
-                (LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView).apply { useController = false }
-            }
-            LaunchedEffect(player) { playerView.player = player }
-            LaunchedEffect(afterVideoPath) {
-                player.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(afterVideoPath))))
-                player.prepare(); player.playWhenReady = true
-            }
-            DisposableEffect(Unit) { onDispose { player.release() } }
             AndroidView(factory = { playerView }, modifier = Modifier.fillMaxSize())
         } else {
-            AsyncImage(
-                model = ImageRequest.Builder(ctx).data(File(beforeGifPath)).build(),
-                contentDescription = stringResource(R.string.compare_before),
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
-            )
+            GifSide(beforeGifPath, playing, freezeMs, Modifier.fillMaxSize())
         }
+        PlayPauseButton(
+            playing = playing,
+            onToggle = { if (playing) { freezeMs = player.currentPosition.coerceAtLeast(0L); playing = false } else playing = true },
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
+        )
     }
 }
 
