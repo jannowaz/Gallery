@@ -4,7 +4,6 @@
   <CurrentIssues>
     <ID>ComplexCondition:Activity.kt$(hide &amp;&amp; filename.startsWith('.')) || (!hide &amp;&amp; !filename.startsWith('.'))</ID>
     <ID>ComplexCondition:DuplicateScanner.kt$DuplicateScanner$i == 0 || percent == 100 || (percent != lastPublishedPercent &amp;&amp; now - lastPublishedAt &gt;= 120L)</ID>
-    <ID>ComplexCondition:ExplorerScreen.kt$(isNameFiltering || filterState.isActive) &amp;&amp; visibleFolderItems.isEmpty() &amp;&amp; visibleFileItems.isEmpty()</ID>
     <ID>ComplexCondition:FolderPathPickerSheet.kt$folderName.isNotBlank() &amp;&amp; folderName != "." &amp;&amp; folderName != ".." &amp;&amp; !folderName.contains('/') &amp;&amp; !folderName.contains('\\')</ID>
     <ID>ComplexCondition:FolderPickerSheet.kt$folderName.isNotBlank() &amp;&amp; folderName != "." &amp;&amp; folderName != ".." &amp;&amp; !folderName.contains('/') &amp;&amp; !folderName.contains('\\')</ID>
     <ID>ComplexCondition:MediaAnalyzer.kt$MediaAnalyzer$i == 0 || progress == 100 || (progress != lastPublishedPercent &amp;&amp; now - lastPublishedAt &gt;= 120L)</ID>
@@ -79,9 +78,6 @@
     <ID>CyclomaticComplexMethod:DuplicateFinderScreen.kt$@OptIn(ExperimentalFoundationApi::class) @Composable private fun DuplicateGroupCard( group: DuplicateGroup, similar: Boolean, selected: Set&lt;String&gt;, groupSelected: Boolean, onToggleGroup: () -&gt; Unit, onToggle: (String) -&gt; Unit, onView: (List&lt;String&gt;, Int) -&gt; Unit, onSelectFolder: (String) -&gt; Unit, )</ID>
     <ID>CyclomaticComplexMethod:DuplicateFinderScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun DuplicateFinderScreen(onBack: () -&gt; Unit, initialFolder: String = "", onNavigateToViewer: (List&lt;String&gt;, Int) -&gt; Unit = { _, _ -&gt; })</ID>
     <ID>CyclomaticComplexMethod:DuplicateSelection.kt$DuplicateSelection$fun applyKeepStrategy( groups: List&lt;DuplicateGroup&gt;, selected: Set&lt;String&gt;, strategy: KeepStrategy, targetGroupKeys: Set&lt;String&gt;? = null, additive: Boolean = targetGroupKeys != null, restrictToFolder: String? = null, ): Set&lt;String&gt;</ID>
-    <ID>CyclomaticComplexMethod:EditActivity.kt$EditActivity$private fun initEditActivity()</ID>
-    <ID>CyclomaticComplexMethod:EditActivity.kt$EditActivity$private fun saveBitmapOverwriteSafely(bitmap: Bitmap, path: String, showSavingToast: Boolean)</ID>
-    <ID>CyclomaticComplexMethod:EditActivity.kt$EditActivity$private fun updatePrimaryActionButtons()</ID>
     <ID>CyclomaticComplexMethod:ExplorerModelsAndCache.kt$internal fun ExplorerItem.matchesLibraryFilter( filter: LibraryFilterState, tags: Set&lt;String&gt;, reviewStatus: MediaReviewStatus?, ): Boolean</ID>
     <ID>CyclomaticComplexMethod:ExplorerModelsAndCache.kt$internal suspend fun loadExplorerFolderContents( context: Context, repo: MediaRepository, path: String, storageRoot: String, allEntries: List&lt;MediaStoreOps.MediaEntry&gt;?, folderSettings: ViewSettings, mediaSettings: ViewSettings, needsTags: Boolean, ): ExplorerContent</ID>
     <ID>CyclomaticComplexMethod:ExplorerScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, FlowPreview::class) @Composable fun ExplorerScreen( internalStoragePath: String, nameFilter: String = "", onClearNameFilter: () -&gt; Unit = {}, filterState: LibraryFilterState = LibraryFilterState(), filterActions: LibraryFilterActions = LibraryFilterActions(), modifier: Modifier = Modifier, folderSettings: ViewSettings = ViewSettings(), mediaSettings: ViewSettings = ViewSettings(), onPathChange: (String) -&gt; Unit = {}, onSelectionActiveChanged: (Boolean) -&gt; Unit = {}, onCanGoUpChanged: (Boolean) -&gt; Unit = {}, externalBackHandlerActive: Boolean = false, onNavigateToViewer: (List&lt;String&gt;, Int) -&gt; Unit = { _, _ -&gt; }, initialScrollIndex: Int = 0, initialScrollOffset: Int = 0, onScrollPositionChanged: (Int, Int) -&gt; Unit = { _, _ -&gt; }, // "In Medien öffnen" - opens the Media tab filtered (recursively, via MediaRepository's // directory-prefix LIKE match) to everything under the given folder(s). onOpenInMedia: (Set&lt;String&gt;) -&gt; Unit = {}, onRescan: () -&gt; Unit = {}, onScanMetadata: () -&gt; Unit = {}, onOpenSwipeMode: (String, String?) -&gt; Unit = { _, _ -&gt; }, onOpenPersonReview: (String) -&gt; Unit = {}, onOpenViewSettings: (() -&gt; Unit)? = null, onTagClick: (String) -&gt; Unit = {}, tabIndex: Int? = null, onMediaColumnCountChange: ((Int) -&gt; Unit)? = null, onFolderColumnCountChange: ((Int) -&gt; Unit)? = null, )</ID>
@@ -197,7 +193,6 @@
     <ID>LambdaParameterInRestartableEffect:VideoPage.kt$onCaptureFrame</ID>
     <ID>LambdaParameterInRestartableEffect:VideoPage.kt$onZoomChange</ID>
     <ID>LargeClass:Config.kt$Config : BaseConfig</ID>
-    <ID>LargeClass:EditActivity.kt$EditActivity : BaseCropActivity</ID>
     <ID>LargeClass:MediaFetcher.kt$MediaFetcher</ID>
     <ID>LargeClass:MediaRepository.kt$MediaRepository : MediaRepositoryInterface</ID>
     <ID>LargeClass:MediaViewModel.kt$MediaViewModel : AndroidViewModel</ID>
@@ -360,24 +355,6 @@
     <ID>MagicNumber:DuplicateScanner.kt$DuplicateScanner$9</ID>
     <ID>MagicNumber:DuplicateScanner.kt$DuplicateScanner$900</ID>
     <ID>MagicNumber:DuplicateScanner.kt$DuplicateScanner.HashCache$900</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$0.03f</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$0.1f</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$0.5f</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$100</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$100f</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$12</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$150</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$16f</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$180</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$200</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$24</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$3f</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$4</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$4f</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$50</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$90</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$95</ID>
-    <ID>MagicNumber:EditActivity.kt$EditActivity$9f</ID>
     <ID>MagicNumber:EditorDrawCanvas.kt$EditorDrawCanvas$100f</ID>
     <ID>MagicNumber:EditorDrawCanvas.kt$EditorDrawCanvas$40f</ID>
     <ID>MagicNumber:ExplorerModelsAndCache.kt$3</ID>
@@ -582,12 +559,6 @@
     <ID>MagicNumber:Motion.kt$AppMotion$120</ID>
     <ID>MagicNumber:Motion.kt$AppMotion$240</ID>
     <ID>MagicNumber:Motion.kt$AppMotion$320</ID>
-    <ID>MagicNumber:OtherAspectRatioDialog.kt$OtherAspectRatioDialog$16f</ID>
-    <ID>MagicNumber:OtherAspectRatioDialog.kt$OtherAspectRatioDialog$19f</ID>
-    <ID>MagicNumber:OtherAspectRatioDialog.kt$OtherAspectRatioDialog$3f</ID>
-    <ID>MagicNumber:OtherAspectRatioDialog.kt$OtherAspectRatioDialog$4f</ID>
-    <ID>MagicNumber:OtherAspectRatioDialog.kt$OtherAspectRatioDialog$5f</ID>
-    <ID>MagicNumber:OtherAspectRatioDialog.kt$OtherAspectRatioDialog$9f</ID>
     <ID>MagicNumber:PersonPresenceDetector.kt$PersonPresenceDetector$180</ID>
     <ID>MagicNumber:PersonPresenceDetector.kt$PersonPresenceDetector$270</ID>
     <ID>MagicNumber:PersonPresenceDetector.kt$PersonPresenceDetector$4</ID>
@@ -686,7 +657,6 @@
     <ID>MaxLineLength:Activity.kt$try { File(source).delete() } catch (e: Exception) { android.util.Log.e("RecycleBin", "Failed to delete recycle-bin copy after restore: $source", e) }</ID>
     <ID>MaxLineLength:AlbumsScreen.kt$EmptyState(Icons.Default.SearchOff, stringResource(R.string.no_results), subtitle = stringResource(R.string.no_results_hint), actionLabel = stringResource(R.string.clear_filter), onAction = onClearExternalSearch)</ID>
     <ID>MaxLineLength:AlbumsScreen.kt$IconButton(onClick = { folderMenuOpen = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions)) }</ID>
-    <ID>MaxLineLength:AlbumsScreen.kt$IconButton(onClick = { selectedPaths.firstOrNull()?.let { (ctx as? android.app.Activity)?.let { a -&gt; PropertiesDialog(a, it, true) } } }) { Icon(Icons.Default.Info, stringResource(R.string.action_info)) }</ID>
     <ID>MaxLineLength:AlbumsScreen.kt$IconButton(onClick = { selectedPaths.firstOrNull()?.let { p -&gt; visibleDirs.find { it.path == p }?.let { d -&gt; onFolderClick(d) } }; selectedPaths = emptySet() }) { Icon(Icons.Default.Folder, stringResource(R.string.action_open)) }</ID>
     <ID>MaxLineLength:AlbumsScreen.kt$SortField.COUNT -&gt; if (viewSettings.sortDesc) state.directories.sortedWith(compareByDescending&lt;Directory&gt; { it.mediaCnt }.thenBy { it.path.lowercase() }) else state.directories.sortedWith(compareBy&lt;Directory&gt; { it.mediaCnt }.thenBy { it.path.lowercase() })</ID>
     <ID>MaxLineLength:AlbumsScreen.kt$SortField.DATE -&gt; if (viewSettings.sortDesc) state.directories.sortedWith(compareByDescending&lt;Directory&gt; { it.modified }.thenBy { it.path.lowercase() }) else state.directories.sortedWith(compareBy&lt;Directory&gt; { it.modified }.thenBy { it.path.lowercase() })</ID>
@@ -905,7 +875,6 @@
     <ID>MaxLineLength:Constants.kt$const val DEFAULT_BOTTOM_ACTIONS = BOTTOM_ACTION_TOGGLE_FAVORITE or BOTTOM_ACTION_EDIT or BOTTOM_ACTION_SHARE or BOTTOM_ACTION_DELETE or BOTTOM_ACTION_RATING</ID>
     <ID>MaxLineLength:Context.kt$// but /storage/emulated/0/Pictures is empty, still Pictures with the first folders thumbnails and proper other info</ID>
     <ID>MaxLineLength:Context.kt$val Context.mediaTagDB: org.fossify.gallery.interfaces.MediaTagDao get() = GalleryDatabase.getInstance(applicationContext).MediaTagDao()</ID>
-    <ID>MaxLineLength:CustomAspectRatioDialog.kt$CustomAspectRatioDialog$val activity: BaseSimpleActivity</ID>
     <ID>MaxLineLength:DateTakensDao.kt$DateTakensDao$@Query("SELECT full_path, filename, parent_path, date_taken, last_fixed, last_modified FROM date_takens WHERE parent_path = :path COLLATE NOCASE")</ID>
     <ID>MaxLineLength:DateTakensDao.kt$DateTakensDao$@Query("UPDATE OR IGNORE date_takens SET full_path = :newPath, filename = :newFilename, parent_path = :newParentPath WHERE full_path = :oldPath COLLATE NOCASE")</ID>
     <ID>MaxLineLength:DirectoryDao.kt$DirectoryDao$@Query("SELECT path, thumbnail, filename, media_count, last_modified, date_taken, size, location, media_types, sort_value FROM directories")</ID>
@@ -1018,18 +987,6 @@
     <ID>MaxLineLength:DuplicateSelectionTest.kt$DuplicateSelectionTest$val cameraCopies = setOf("/DCIM/DupTest/Camera/c1.jpg", "/DCIM/DupTest/Camera/c2.jpg", "/DCIM/DupTest/Camera/c3.jpg")</ID>
     <ID>MaxLineLength:DuplicateSelectionTest.kt$DuplicateSelectionTest$val g = DuplicateGroup("h", listOf(file("/a/x.jpg", size = 100, modified = 1), file("/a/y.jpg", size = 200, modified = 2)))</ID>
     <ID>MaxLineLength:DuplicateSelectionTest.kt$DuplicateSelectionTest$val marked = DuplicateSelection.bySubstring(groups, emptySet(), folderFilter = null, query = "Camera", contains = true)</ID>
-    <ID>MaxLineLength:EditActivity.kt$EditActivity$binding.bottomEditorDrawActions.bottomDrawWidth.setColors(getProperTextColor(), getProperPrimaryColor(), getProperBackgroundColor())</ID>
-    <ID>MaxLineLength:EditActivity.kt$EditActivity$if</ID>
-    <ID>MaxLineLength:EditActivity.kt$EditActivity$if (!tmp.exists() || tmp.length() == 0L) { runCatching { tmp.delete() }; toast(R.string.image_editing_failed); return }</ID>
-    <ID>MaxLineLength:EditActivity.kt$EditActivity$if (raw.config == Bitmap.Config.ARGB_8888 &amp;&amp; raw.isMutable) raw else raw.copy(Bitmap.Config.ARGB_8888, true)</ID>
-    <ID>MaxLineLength:EditActivity.kt$EditActivity$if (raw.isMutable &amp;&amp; raw.config == Bitmap.Config.ARGB_8888) raw else raw.copy(Bitmap.Config.ARGB_8888, true)</ID>
-    <ID>MaxLineLength:EditActivity.kt$EditActivity$mediaDB.insertAllKeepingExisting(listOf(Medium(null, file.name, path, file.parent ?: "", m.modified, m.taken, file.length(), m.type, m.videoDuration, m.isFavorite, 0L, 0L, m.rating, dateAdded = m.dateAdded)))</ID>
-    <ID>MaxLineLength:EditActivity.kt$EditActivity$return if (raw.isMutable &amp;&amp; raw.config == Bitmap.Config.ARGB_8888) raw else raw.copy(Bitmap.Config.ARGB_8888, true)</ID>
-    <ID>MaxLineLength:EditActivity.kt$EditActivity$val bitmap = if (raw.config == Bitmap.Config.ARGB_8888) raw else raw.copy(Bitmap.Config.ARGB_8888, false)</ID>
-    <ID>MaxLineLength:EditActivity.kt$EditActivity$val bmp = if (resizeWidth &gt; 0 &amp;&amp; resizeHeight &gt; 0) bitmap.scale(resizeWidth, resizeHeight, false) else bitmap</ID>
-    <ID>MaxLineLength:EditActivity.kt$EditActivity$val isOverwrite = originalFilePath != null &amp;&amp; File(path).absolutePath == File(originalFilePath).absolutePath</ID>
-    <ID>MaxLineLength:EditActivity.kt$EditActivity$val layoutManager = binding.bottomEditorFilterActions.bottomActionsFilterList.layoutManager as LinearLayoutManager</ID>
-    <ID>MaxLineLength:EditActivity.kt$EditActivity$}</ID>
     <ID>MaxLineLength:ExplorerModelsAndCache.kt$(</ID>
     <ID>MaxLineLength:ExplorerModelsAndCache.kt$(filter.excludePathFilter == null || filter.excludePathFilter.none { path.equals(it, ignoreCase = true) || path.startsWith("${it.trimEnd('/')}/", ignoreCase = true) })</ID>
     <ID>MaxLineLength:ExplorerModelsAndCache.kt$(filter.pathFilter == null || filter.pathFilter.any { path.equals(it, ignoreCase = true) || path.startsWith("${it.trimEnd('/')}/", ignoreCase = true) })</ID>
@@ -1040,81 +997,32 @@
     <ID>MaxLineLength:ExplorerModelsAndCache.kt$if (e.type == 2 || e.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS) agg.videoCount++ else agg.imageCount++</ID>
     <ID>MaxLineLength:ExplorerNameFilterTest.kt$ExplorerNameFilterTest$val item = ExplorerItem(name = "photo.jpg", path = "/sdcard/DCIM/photo.jpg", isDirectory = false, type = TYPE_IMAGES)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$"$path|${folderSettings.sortBy}|${folderSettings.sortDesc}|${mediaSettings.sortBy}|${mediaSettings.sortDesc}|${mediaSettings.groupBy}|${if (needsTags) "tags" else "no-tags"}"</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Box</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$Crossfade</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$ExplorerContentCache.get("$seedPath|${folderSettings.sortBy}|${folderSettings.sortDesc}|${mediaSettings.sortBy}|${mediaSettings.sortDesc}|${mediaSettings.groupBy}|${if (needsTags) "tags" else "no-tags"}")</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$ExplorerScrollCache.put(currentPath, ExplorerScrollPosition(index, offset, anchorPath.orEmpty()))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = Color.White, modifier = Modifier.size(20.dp))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$IconButton</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$IconButton(onClick = { folderMenuOpen = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions)) }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$LaunchedEffect</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$LaunchedEffect(currentPath) { onPathChange(currentPath); selectedFolderPaths = emptySet(); selectedFilePaths = emptySet(); fileRangeAnchorPath = null }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$LaunchedEffect(hasFolderSelection, hasFileSelection) { onSelectionActiveChanged(hasFolderSelection || hasFileSelection) }</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$NavigationBackHandler(state = peekBackState, isBackEnabled = true, onBackCompleted = { peekState.hide() })</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Row</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = org.fossify.gallery.helpers.toggleGroupKey(collapsedGroupKeys, row.key) }, ratingValue = row.ratingValue, accentColor = row.rootKey?.let { org.fossify.gallery.compose.components.tagAccentColor(it) })</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = org.fossify.gallery.helpers.toggleGroupKey(collapsedGroupKeys, row.key) }, ratingValue = row.ratingValue, accentColor = row.rootKey?.let { org.fossify.gallery.compose.components.tagAccentColor(it) }, showGuideLine = true)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$Surface</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Text</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$ViewType.MOSAIC</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.refreshEntriesFromDb(context, storageRoot) }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$androidx.compose.animation</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$color = if (breadcrumbPath == currentPath) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$coverPath = item.thumbnailPath.ifEmpty { item.previewPaths.firstOrNull() ?: "" }</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$fileMedia.forEach { m -&gt; g.getOrPut(org.fossify.gallery.viewmodels.MediaViewModel.monthLabelFor(m)) { mutableListOf() }.add(m) }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$fileTagsByPath[item.path].orEmpty().any { tag -&gt; explorerNameMatchesFilter(tag, normalizedNameFilter) }</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$fontWeight = if (breadcrumbPath == currentPath) FontWeight.Medium else FontWeight.Normal</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$if</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$if (successful.isNotEmpty()) UndoManager.push(UndoAction(successful, UndoType.TAG_REMOVE, extra = mapOf("tag" to tag)))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$if (successful.isNotEmpty()) UndoManager.push(UndoAction(successful.toSet(), UndoType.RATING_CHANGE, ratingSnapshots = oldRatings.filterKeys { it in successful }))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$is org.fossify.gallery.helpers.GroupRow.SectionHeader</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$isBackEnabled = hasFileSelection || hasFolderSelection || isNameFiltering || (canGoUp &amp;&amp; !externalBackHandlerActive)</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$item</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$listOf(org.fossify.gallery.helpers.GroupRow.SectionHeader(key, label, 0, items.size, items.size, false, true), org.fossify.gallery.helpers.GroupRow.Items(key, items))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$modifier</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp).semantics { liveRegion = LiveRegionMode.Polite }</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$onClick = { folderMenuOpen = false; onOpenInMedia(selectedFolderPaths); selectedFolderPaths = emptySet() }</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$onClick = { folderMenuOpen = false; renameFolderPath = selectedFolderPaths.first() }</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$onClick = { folderMenuOpen = false; selectedFolderPaths = selectionForAll(selectedFolderPaths, visibleFolderItems.map { it.path }, invert = false) }</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$onClick = { folderMenuOpen = false; selectedFolderPaths = selectionForAll(selectedFolderPaths, visibleFolderItems.map { it.path }, invert = true) }</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$onClick = { if (hasFileSelection) Unit else if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); navigateToPath(item.path) } }</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$onLongClick = { if (!hasFileSelection) { selectedFilePaths = emptySet(); selectedFolderPaths = selectedFolderPaths + item.path } }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$onNavigateToViewer(visibleFileItems.map { it.path }, visibleFileItems.indexOfFirst { it.path == item.path }.coerceAtLeast(0))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$org.fossify.gallery.compose.util.XmpBatch</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$org.fossify.gallery.compose.util.XmpBatch.run(context, batch.distinct(), onSuccess = { successful += it }) { repo.addTag(it, tag) }</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$org.fossify.gallery.compose.util.XmpBatch.run(context, batch.distinct(), onSuccess = { successful += it }) { repo.removeTag(it, tag) }</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$org.fossify.gallery.helpers.GroupBy.ALPHABET -&gt; org.fossify.gallery.helpers.buildAlphabetGroupRows(fileMedia, mediaSettings.sortDesc)</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$org.fossify.gallery.helpers.GroupBy.NONE -&gt; if (fileMedia.isEmpty()) emptyList() else listOf(org.fossify.gallery.helpers.GroupRow.Items("all", fileMedia))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$org.fossify.gallery.helpers.GroupBy.RATING -&gt; org.fossify.gallery.helpers.buildRatingGroupRows(fileMedia, mediaSettings.groupOrder, unratedLabel)</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$org.fossify.gallery.helpers.GroupBy.SIZE -&gt; org.fossify.gallery.helpers.buildSizeGroupRows(fileMedia, mediaSettings.sortDesc)</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$org.fossify.gallery.helpers.GroupBy.TAG -&gt; org.fossify.gallery.helpers.buildTagGroupRows(fileMedia, fileTagsByPath, context.config.tagHierarchy, mediaSettings.groupOrder, mediaSettings.onlyTopLevelTags, emptySet(), untaggedLabel)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$selectedFilePaths = selectionForAll(selectedFilePaths, visibleFileItems.map { it.path }, invert = false)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$selectedFilePaths = selectionForAll(selectedFilePaths, visibleFileItems.map { it.path }, invert = true)</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$showGroupToggle = mediaSettings.groupBy in setOf(org.fossify.gallery.helpers.GroupBy.TAG, org.fossify.gallery.helpers.GroupBy.RATING) &amp;&amp; collapsibleFileGroupKeys.isNotEmpty()</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$stringResource(if (allAlreadyMoverSources) R.string.mover_source_marker else R.string.action_use_as_mover_source)</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$style = if (breadcrumbPath == currentPath) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelLarge</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$subtitle = androidx.compose.ui.res.pluralStringResource(R.plurals.media_count_plural, item.mediaCount, item.mediaCount)</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$subtitle = if (isNameFiltering) stringResource(R.string.explorer_name_filter_no_results, normalizedNameFilter) else stringResource(R.string.no_items_hint)</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$subtitle = if (item.mediaCount &gt; 0) androidx.compose.ui.res.pluralStringResource(R.plurals.media_count_plural, item.mediaCount, item.mediaCount) else null</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$subtitle = stringResource(if (isStorageRoot) R.string.explorer_empty_root_hint else R.string.no_items_hint)</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$tint = if (allAlreadyMoverSources) MaterialTheme.colorScheme.error else LocalContentColor.current</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$val allAlreadyMoverSources = selectedFolderPaths.isNotEmpty() &amp;&amp; selectedFolderPaths.all { it in moverSourcePaths }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val allFileGroupsExpanded = collapsibleFileGroupKeys.isNotEmpty() &amp;&amp; collapsibleFileGroupKeys.none { it in collapsedGroupKeys }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val canPredictivelyGoUp = canGoUp &amp;&amp; !externalBackHandlerActive &amp;&amp; !hasFolderSelection &amp;&amp; !hasFileSelection &amp;&amp; !isNameFiltering</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val collapsibleFileGroupKeys = remember(fileGroupRows) { org.fossify.gallery.helpers.collapsibleGroupKeys(fileGroupRows) }</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$val cornerShape = if (mediaSettings.roundedCorners) RoundedCornerShape(Radius.sm) else RoundedCornerShape(0.dp)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val folderGridColumns = org.fossify.gallery.compose.util.rememberEffectiveColumnCount(folderSettings.columnCount)</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$val isVideo = item.type == 2 || item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$val label = if (breadcrumbPath == storageRoot) stringResource(R.string.internal_storage) else File(breadcrumbPath).name</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val mediaGridColumns = org.fossify.gallery.compose.util.rememberEffectiveColumnCount(mediaSettings.columnCount)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val moverSourcePaths = remember(hasFolderSelection) { org.fossify.gallery.helpers.loadMoverPairs(context).map { it.source }.toSet() }</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$val msg = if (sources.size == 1) addedFormat.format(File(sources[0]).name, File(destination).name) else addedCountFormat.format(sources.size, File(destination).name)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val needsTags = isNameFiltering || filterState.tagNames != null || mediaSettings.groupBy == org.fossify.gallery.helpers.GroupBy.TAG</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val position = ExplorerScrollPosition(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$val question = res.getString(if (context.config.useRecycleBin) org.fossify.commons.R.string.move_to_recycle_bin_confirmation else org.fossify.commons.R.string.deletion_confirmation, itemsText)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val targetIndex = restored.anchorPath.takeIf { it.isNotBlank() }?.let(scrollIndexByPath::get) ?: restored.index</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$var allEntries by remember { mutableStateOf(org.fossify.gallery.helpers.MediaStoreOps.cachedEntriesUnder(storageRoot)) }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$var unfilteredScrollBeforeNameFilter by remember(currentPath) { mutableStateOf&lt;ExplorerScrollPosition?&gt;(null) }</ID>
@@ -1935,40 +1843,10 @@
     <ID>MaxLineLength:SettingsDialogs.kt$withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(R.string.favorites_exported, paths.size), Toast.LENGTH_SHORT).show() }</ID>
     <ID>MaxLineLength:SettingsDialogs.kt$withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(R.string.favorites_imported, imported), Toast.LENGTH_SHORT).show() }</ID>
     <ID>MaxLineLength:SettingsDialogs.kt$withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(org.fossify.commons.R.string.unknown_error_occurred), Toast.LENGTH_SHORT).show() }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SecurityDialog</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SecurityNav</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsCategory(stringResource(R.string.nav_recycle_bin), settingsQuery, "bin" in expandedSections) { toggleSection("bin") }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsCategory(stringResource(R.string.set_extended_details), settingsQuery, "details" in expandedSections) { toggleSection("details") }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsCategory(stringResource(R.string.set_files), settingsQuery, "files" in expandedSections) { toggleSection("files") }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsCategory(stringResource(R.string.set_fullscreen), settingsQuery, "fullscreen" in expandedSections) { toggleSection("fullscreen") }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsCategory(stringResource(R.string.set_general), settingsQuery, "general" in expandedSections) { toggleSection("general") }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsCategory(stringResource(R.string.set_information), settingsQuery, "information" in expandedSections) { toggleSection("information") }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsCategory(stringResource(R.string.set_manage_data), settingsQuery, "data" in expandedSections) { toggleSection("data") }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsCategory(stringResource(R.string.set_security), settingsQuery, "security" in expandedSections) { toggleSection("security") }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsCategory(stringResource(R.string.set_tags_ratings), settingsQuery, "metadata" in expandedSections) { toggleSection("metadata") }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsCategory(stringResource(R.string.set_thumbnails), settingsQuery, "thumbnails" in expandedSections) { toggleSection("thumbnails") }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsCategory(stringResource(R.string.set_video), settingsQuery, "video" in expandedSections) { toggleSection("video") }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsNav(stringResource(R.string.advanced_metadata_scan), stringResource(R.string.advanced_metadata_scan_subtitle)) { showAdvancedScan = true }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsNav(stringResource(R.string.set_folder_type), getViewTypeLabel(ctx, conf.viewTypeFolders)) { showFolderTypeDialog = true }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsNav(stringResource(R.string.set_manage_details), getExtendedDetailsSummary(ctx, conf.extendedDetails)) { showExtendedDialog = true }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.render_ultra_hdr_photos), conf.ultraHdrRendering) { conf.ultraHdrRendering = it }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.set_amoled_background), conf.useAmoledBackground) { conf.useAmoledBackground = it; org.fossify.gallery.compose.theme.ThemePrefsBus.invalidate() }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.set_crop_thumbnails), conf.cropThumbnails) { conf.cropThumbnails = it }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.set_dynamic_colors), conf.useDynamicColors) { conf.useDynamicColors = it; org.fossify.gallery.compose.theme.ThemePrefsBus.invalidate() }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.set_hide_details), conf.hideExtendedDetails, enabled = conf.showExtendedDetails) { conf.hideExtendedDetails = it }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.set_mark_favorites), conf.markFavoriteItems) { conf.markFavoriteItems = it }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.set_pull_refresh), conf.enablePullToRefresh) { conf.enablePullToRefresh = it }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.set_remember_position), conf.rememberLastVideoPosition) { conf.rememberLastVideoPosition = it }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.set_show_details), conf.showExtendedDetails) { conf.showExtendedDetails = it }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.set_show_file_type), conf.showThumbnailFileTypes) { conf.showThumbnailFileTypes = it }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.set_skip_delete_confirm), conf.skipDeleteConfirmation) { conf.skipDeleteConfirmation = it }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.set_swipe_close), conf.allowDownGesture) { conf.allowDownGesture = it }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.set_video_gestures), conf.allowVideoGestures) { conf.allowVideoGestures = it }</ID>
     <ID>MaxLineLength:SettingsScreen.kt$Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))</ID>
     <ID>MaxLineLength:SettingsScreen.kt$color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)</ID>
     <ID>MaxLineLength:SettingsScreen.kt$color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface</ID>
     <ID>MaxLineLength:SettingsScreen.kt$confirmButton = { TextButton(onClick = { showThemeModeDialog = false }) { Text(stringResource(R.string.cancel)) } }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } }</ID>
     <ID>MaxLineLength:SettingsScreen.kt$val matches = query.isBlank() || label.contains(query, ignoreCase = true) || subtitle.contains(query, ignoreCase = true)</ID>
     <ID>MaxLineLength:ShimmerEffect.kt$Icon(Icons.Default.Videocam, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))</ID>
     <ID>MaxLineLength:ShimmerEffect.kt$fun</ID>
@@ -2309,7 +2187,6 @@
     <ID>MutableStateAutoboxing:PersonReviewScreen.kt$mutableStateOf(0L)</ID>
     <ID>MutableStateAutoboxing:SelectableModifier.kt$SelectionDragState$mutableStateOf(0f)</ID>
     <ID>MutableStateAutoboxing:SettingsDialogs.kt$mutableStateOf(current)</ID>
-    <ID>MutableStateAutoboxing:SettingsScreen.kt$mutableStateOf(0)</ID>
     <ID>MutableStateParam:MediaScreenPagedContent.kt$collapsedPagedRatingKeysState</ID>
     <ID>MutableStateParam:MediaScreenPagedContent.kt$rangeAnchorIndexState</ID>
     <ID>MutableStateParam:MediaScreenPagedContent.kt$rangeAnchorPathState</ID>
@@ -2391,7 +2268,6 @@
     <ID>ParameterNaming:VideoTrimmerSheet.kt$onTrimSaved</ID>
     <ID>ReturnCount:AnalysisCriteria.kt$AnalysisCriteria$fun analyze(path: String, context: Context? = null): AnalysisResult?</ID>
     <ID>ReturnCount:Context.kt$fun Context.getDirectorySortingValue( media: ArrayList&lt;Medium&gt;, path: String, name: String, size: Long, count: Int ): String</ID>
-    <ID>ReturnCount:EditActivity.kt$EditActivity$private fun saveBitmapOverwriteSafely(bitmap: Bitmap, path: String, showSavingToast: Boolean)</ID>
     <ID>ReturnCount:MediaBatchWorker.kt$MediaBatchWorker$override suspend fun doWork(): Result</ID>
     <ID>ReturnCount:MediaStoreOps.kt$MediaStoreOps$fun copy(context: Context, sourceUri: Uri, displayName: String, targetRelativePath: String, isVideo: Boolean): Uri?</ID>
     <ID>ReturnCount:MediaStoreOps.kt$MediaStoreOps$fun moveToPath(context: Context, sourcePath: String, targetPath: String): Boolean</ID>
@@ -2404,8 +2280,6 @@
     <ID>SwallowedException:Activity.kt$e: Exception</ID>
     <ID>SwallowedException:Activity.kt$e: OutOfMemoryError</ID>
     <ID>SwallowedException:Context.kt$e: Exception</ID>
-    <ID>SwallowedException:EditActivity.kt$EditActivity$e: Exception</ID>
-    <ID>SwallowedException:EditActivity.kt$EditActivity$e: OutOfMemoryError</ID>
     <ID>SwallowedException:HotThreadSampler.kt$HotThreadSampler$e: Throwable</ID>
     <ID>SwallowedException:IsoTypeReader.kt$IsoTypeReader$e: UnsupportedEncodingException</ID>
     <ID>SwallowedException:MediaFetcher.kt$MediaFetcher$e: Exception</ID>
@@ -2429,7 +2303,6 @@
     <ID>TooGenericExceptionCaught:DuplicateFinderViewModel.kt$DuplicateFinderViewModel$e: Exception</ID>
     <ID>TooGenericExceptionCaught:DuplicateScanner.kt$DuplicateScanner$e: Exception</ID>
     <ID>TooGenericExceptionCaught:DuplicateScanner.kt$DuplicateScanner.HashCache$e: Exception</ID>
-    <ID>TooGenericExceptionCaught:EditActivity.kt$EditActivity$e: Exception</ID>
     <ID>TooGenericExceptionCaught:ExplorerScreen.kt$e: Exception</ID>
     <ID>TooGenericExceptionCaught:ExplorerViewModel.kt$ExplorerViewModel$e: Exception</ID>
     <ID>TooGenericExceptionCaught:FavoritesScreen.kt$e: Exception</ID>
@@ -2475,7 +2348,6 @@
     <ID>TooManyFunctions:Config.kt$Config : BaseConfig</ID>
     <ID>TooManyFunctions:Context.kt$org.fossify.gallery.extensions.Context.kt</ID>
     <ID>TooManyFunctions:DuplicateFinderViewModel.kt$DuplicateFinderViewModel : AndroidViewModel</ID>
-    <ID>TooManyFunctions:EditActivity.kt$EditActivity : BaseCropActivity</ID>
     <ID>TooManyFunctions:EditorDrawCanvas.kt$EditorDrawCanvas : View</ID>
     <ID>TooManyFunctions:ExplorerViewModel.kt$ExplorerViewModel : AndroidViewModel</ID>
     <ID>TooManyFunctions:GalleryDatabase.kt$GalleryDatabase : RoomDatabase</ID>
@@ -2567,6 +2439,5 @@
     <ID>WildcardImport:Medium.kt$import org.fossify.commons.helpers.*</ID>
     <ID>WildcardImport:Medium.kt$import org.fossify.gallery.helpers.*</ID>
     <ID>WildcardImport:MediumDao.kt$import androidx.room.*</ID>
-    <ID>WildcardImport:ResizeDialog.kt$import org.fossify.commons.extensions.*</ID>
   </CurrentIssues>
 </SmellBaseline>
