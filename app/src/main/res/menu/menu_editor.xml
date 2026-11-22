@@ -12,6 +12,10 @@
         android:title="@string/overwrite_original"
         app:showAsAction="never" />
     <item
+        android:id="@+id/adjust_colors"
+        android:title="@string/adjust_colors"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/edit"
         android:icon="@drawable/ic_edit_vector"
         android:title="@string/edit_with"

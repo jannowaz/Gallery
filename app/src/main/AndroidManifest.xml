@@ -43,6 +43,10 @@
         android:name="android.hardware.faketouch"
         android:required="false" />
 
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+
     <application
         android:name="org.fossify.gallery.App"
         android:allowBackup="true"
@@ -92,42 +96,51 @@
 
         <activity
             android:name=".activities.ComposeSettingsActivity"
-            android:exported="false"
-            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+            android:exported="true"
+            android:label="@string/settings"
+            android:parentActivityName=".activities.ComposeExplorerActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.APPLICATION_PREFERENCES" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <activity
             android:name=".activities.ComposeAboutActivity"
-            android:exported="false"
-            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+            android:exported="false" />
 
         <activity
-            android:name=".activities.MediaActivity"
-            android:configChanges="orientation"
-            android:exported="false"
-            android:parentActivityName=".activities.ComposeExplorerActivity" />
-
-        <activity
-            android:name=".activities.ViewPagerActivity"
-            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:name=".activities.ComposeExternalViewerActivity"
+            android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|screenLayout"
             android:exported="true"
-            android:parentActivityName=".activities.MediaActivity"
-            android:theme="@style/TranslucentTheme">
-
+            android:resizeableActivity="true"
+            android:supportsPictureInPicture="true">
             <intent-filter>
-                <action android:name="com.android.camera.action.REVIEW" />
-
+                <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <category android:name="android.intent.category.DEFAULT" />
-
                 <data android:mimeType="image/*" />
                 <data android:mimeType="video/*" />
             </intent-filter>
-
             <intent-filter>
-                <action android:name="android.provider.action.REVIEW" />
-
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:host="*" />
+                <data android:pathPattern=".*\\.jxl" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.android.camera.action.REVIEW" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <category android:name="android.intent.category.DEFAULT" />
-
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.provider.action.REVIEW" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
                 <data android:mimeType="video/*" />
             </intent-filter>
@@ -145,94 +158,7 @@
             android:configChanges="orientation"
             android:exported="false"
             android:label="@string/customize_colors"
-            android:parentActivityName=".activities.SettingsActivity" />
-
-        <activity
-            android:name=".activities.SettingsActivity"
-            android:configChanges="orientation"
-            android:exported="true"
-            android:label="@string/settings"
-            android:parentActivityName=".activities.ComposeExplorerActivity">
-
-            <intent-filter>
-                <action android:name="android.intent.action.APPLICATION_PREFERENCES" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
-
-        <activity
-            android:name=".activities.PhotoVideoActivity"
-            android:configChanges="orientation|keyboardHidden|screenSize"
-            android:exported="false"
-            android:theme="@style/TranslucentTheme" />
-
-        <activity
-            android:name=".activities.VideoPlayerActivity"
-            android:configChanges="orientation|keyboardHidden|screenSize"
-            android:exported="false"
-            android:parentActivityName=".activities.MediaActivity"
-            android:theme="@style/TranslucentTheme" />
-
-        <activity
-            android:name=".activities.IncludedFoldersActivity"
-            android:configChanges="orientation"
-            android:exported="false"
-            android:label="@string/include_folders"
-            android:parentActivityName=".activities.SettingsActivity" />
-
-        <activity
-            android:name=".activities.ExcludedFoldersActivity"
-            android:configChanges="orientation"
-            android:exported="false"
-            android:label="@string/excluded_folders"
-            android:parentActivityName=".activities.SettingsActivity" />
-
-        <activity
-            android:name=".activities.HiddenFoldersActivity"
-            android:configChanges="orientation"
-            android:exported="false"
-            android:label="@string/hidden_folders"
-            android:parentActivityName=".activities.SettingsActivity" />
-
-        <activity
-            android:name=".activities.PhotoActivity"
-            android:configChanges="orientation|keyboardHidden|screenSize"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.BROWSABLE" />
-                <category android:name="android.intent.category.DEFAULT" />
-
-                <data android:mimeType="image/*" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data android:scheme="content" />
-                <data android:host="*" />
-                <data android:pathPattern=".*\\.jxl" />
-                <data android:mimeType="application/octet-stream" />
-            </intent-filter>
-        </activity>
-
-        <activity
-            android:name=".activities.VideoActivity"
-            android:configChanges="orientation|keyboardHidden|screenSize"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.BROWSABLE" />
-                <category android:name="android.intent.category.DEFAULT" />
-
-                <data android:mimeType="video/*" />
-            </intent-filter>
-        </activity>
+            android:parentActivityName=".activities.ComposeSettingsActivity" />
 
         <activity
             android:name="org.fossify.gallery.activities.EditActivity"
@@ -284,9 +210,7 @@
 
         <activity
             android:name=".activities.WidgetConfigureActivity"
-            android:exported="true"
-            android:screenOrientation="portrait"
-            android:theme="@style/MyWidgetConfigTheme">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
             </intent-filter>
@@ -327,15 +251,16 @@
         </receiver>
 
         <receiver
+            android:name=".receivers.WidgetActionReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".helpers.MyWidgetProvider"
             android:exported="true"
             android:icon="@drawable/img_widget_preview"
             android:label="@string/folder">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="org.fossify.gallery.RENAME_LAST_MEDIA" />
             </intent-filter>
 
             <meta-data
@@ -350,9 +275,6 @@
             android:label="@string/mover_widget_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="org.fossify.gallery.MOVER_WIDGET_MOVE_NOW" />
             </intent-filter>
 
             <meta-data

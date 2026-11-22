@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 12+ (API 31+): back up settings (shared prefs incl. pinned items),
-     the Room databases (collections, favorites, media cache) and files so they
-     survive a reinstall / device transfer. -->
+<!-- Android 12+ (API 31+): exclude local media cache database and password/security preferences
+     from cloud backup, while still allowing local device-to-device transfer. -->
 <data-extraction-rules>
     <cloud-backup>
-        <include domain="sharedpref" path="." />
-        <include domain="database" path="." />
-        <include domain="file" path="." />
+        <exclude domain="database" path="gallery.db" />
+        <exclude domain="database" path="gallery.db-wal" />
+        <exclude domain="database" path="gallery.db-shm" />
+        <exclude domain="sharedpref" path="Prefs.xml" />
     </cloud-backup>
     <device-transfer>
         <include domain="sharedpref" path="." />
