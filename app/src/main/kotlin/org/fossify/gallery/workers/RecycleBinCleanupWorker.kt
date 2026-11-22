@@ -44,7 +44,7 @@ class RecycleBinCleanupWorker(
                         applicationContext.mediaDB.deleteMediumPath(medium.path)
                         try { applicationContext.favoritesDB.deleteFavoritePath(medium.path) } catch (e: Exception) { android.util.Log.e("RecycleBinCleanup", "Failed to delete favorite path", e) }
                         try { applicationContext.mediaCacheDB.deleteByPathSync(medium.path) } catch (e: Exception) { android.util.Log.e("RecycleBinCleanup", "Failed to delete cache path", e) }
-                        try { File("${file.path}.xmp").delete() } catch (e: Exception) { android.util.Log.e("RecycleBinCleanup", "Failed to delete XMP sidecar", e) }
+                        org.fossify.gallery.helpers.XmpWriter.deleteSidecars(file.path)
                         deletedCount++
                     }
                 } catch (e: Exception) {

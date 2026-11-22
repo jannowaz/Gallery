@@ -1,10 +1,28 @@
 package org.fossify.gallery.extensions
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import java.io.File
 import java.io.InputStream
+
+/**
+ * Returns the dimensions encoded in the actual image stream.
+ *
+ * A number of camera/exporter JPEGs do not contain EXIF ImageWidth/ImageLength even though the
+ * JPEG SOF header is perfectly valid. Reading only those EXIF fields therefore produced a false
+ * 0 x 0 in the viewer for healthy images. Bounds decoding is cheap (no pixel buffer is allocated)
+ * and is the authoritative fallback for the UI.
+ */
+fun String.getDecodedImageDimensions(): Pair<Int, Int>? {
+    if (isBlank()) return null
+    return runCatching {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(this, options)
+        if (options.outWidth > 0 && options.outHeight > 0) options.outWidth to options.outHeight else null
+    }.getOrNull()
+}
 
 /**
  * A non-exhaustive list of all Exif attributes *excluding* dimension related attributes.

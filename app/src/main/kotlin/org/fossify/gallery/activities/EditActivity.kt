@@ -3,24 +3,33 @@ package org.fossify.gallery.activities
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Point
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.provider.MediaStore
+import android.widget.LinearLayout
+import android.widget.SeekBar
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.scale
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.bumptech.glide.Glide
-import com.bumptech.glide.load.DataSource
-import com.bumptech.glide.load.DecodeFormat
-import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.load.engine.GlideException
-import com.bumptech.glide.request.RequestListener
-import com.bumptech.glide.request.RequestOptions
-import com.bumptech.glide.request.target.Target
+import android.graphics.drawable.BitmapDrawable
+import coil.Coil
+import coil.request.CachePolicy
+import coil.request.ErrorResult
+import coil.request.ImageRequest
+import coil.request.SuccessResult
+import coil.size.Scale
+import coil.size.Size
+import coil.size.ViewSizeResolver
+import kotlinx.coroutines.runBlocking
 import com.canhub.cropper.CropImageView
 import com.zomato.photofilters.FilterPack
 import com.zomato.photofilters.imageprocessors.Filter
@@ -63,7 +72,6 @@ import org.fossify.gallery.dialogs.SaveAsDialog
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.ensureWritablePath
 import org.fossify.gallery.extensions.fixDateTaken
-import org.fossify.gallery.extensions.getCompressionFormatFromUri
 import org.fossify.gallery.extensions.openEditor
 import org.fossify.gallery.extensions.proposeNewFilePath
 import org.fossify.gallery.extensions.readExif
@@ -76,15 +84,18 @@ import org.fossify.gallery.helpers.ASPECT_RATIO_FREE
 import org.fossify.gallery.helpers.ASPECT_RATIO_ONE_ONE
 import org.fossify.gallery.helpers.ASPECT_RATIO_OTHER
 import org.fossify.gallery.helpers.ASPECT_RATIO_SIXTEEN_NINE
+import org.fossify.gallery.helpers.ColorAdjustmentParams
 import org.fossify.gallery.helpers.ColorModeHelper
 import org.fossify.gallery.helpers.FilterThumbnailsManager
 import org.fossify.gallery.helpers.MoveConflicts
 import org.fossify.gallery.helpers.getPermissionToRequest
 import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.extensions.mediaTagDB
 import org.fossify.gallery.models.FilterItem
 import org.fossify.gallery.models.Medium
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.io.OutputStream
 import kotlin.math.max
 
@@ -121,8 +132,10 @@ class EditActivity : BaseCropActivity() {
     private var isEditingWithThirdParty = false
     private var isSharingBitmap = false
     private var wasDrawCanvasPositioned = false
+    @Volatile
     private var oldExif: ExifInterface? = null
     private var filterInitialBitmap: Bitmap? = null
+    private var colorAdjustments = ColorAdjustmentParams()
     private var originalUri: Uri? = null
     private val binding by viewBinding(ActivityEditBinding::inflate)
 
@@ -178,6 +191,7 @@ class EditActivity : BaseCropActivity() {
             when (menuItem.itemId) {
                 R.id.save_as -> startSaveFlow(overwrite = false)
                 R.id.overwrite_original -> confirmOverwriteOriginal()
+                R.id.adjust_colors -> showColorAdjustmentsDialog()
                 R.id.edit -> editWith()
                 R.id.share -> shareImage()
                 else -> return@setOnMenuItemClickListener false
@@ -231,6 +245,7 @@ class EditActivity : BaseCropActivity() {
             }
 
             binding.editorToolbar.menu.findItem(R.id.overwrite_original).isVisible = false
+            binding.editorToolbar.menu.findItem(R.id.adjust_colors)?.isVisible = false
         }
 
         loadDefaultImageView()
@@ -262,33 +277,28 @@ class EditActivity : BaseCropActivity() {
         binding.cropImageView.beGone()
         binding.editorDrawCanvas.beGone()
 
-        val options = RequestOptions()
-            .skipMemoryCache(true)
-            .diskCacheStrategy(DiskCacheStrategy.NONE)
-
-        Glide.with(this)
-            .asBitmap()
-            .load(uri)
-            .apply(options)
-            .listener(object : RequestListener<Bitmap> {
-                override fun onLoadFailed(e: GlideException?, model: Any?, target: Target<Bitmap>, isFirstResource: Boolean): Boolean {
+        val request = ImageRequest.Builder(this)
+            .data(uri)
+            .size(ViewSizeResolver(binding.defaultImageView))
+            .allowHardware(false)
+            .bitmapConfig(Bitmap.Config.ARGB_8888)
+            .memoryCachePolicy(CachePolicy.DISABLED)
+            .diskCachePolicy(CachePolicy.DISABLED)
+            .target(
+                onError = {
                     ColorModeHelper.resetColorMode(this@EditActivity)
                     if (uri != originalUri) {
                         uri = originalUri
-                        Handler().post {
+                        Handler(mainLooper).post {
                             loadDefaultImageView()
                         }
                     }
-                    return false
-                }
-
-                override fun onResourceReady(
-                    bitmap: Bitmap,
-                    model: Any,
-                    target: Target<Bitmap>,
-                    dataSource: DataSource,
-                    isFirstResource: Boolean
-                ): Boolean {
+                },
+                onSuccess = { drawable ->
+                    val raw = (drawable as? BitmapDrawable)?.bitmap ?: drawable.toBitmap()
+                    val bitmap = if (raw.config == Bitmap.Config.ARGB_8888) raw else raw.copy(Bitmap.Config.ARGB_8888, false)
+                    binding.defaultImageView.setImageBitmap(bitmap)
+                    applyColorAdjustmentsPreview()
                     ColorModeHelper.setColorModeForImage(this@EditActivity, bitmap, config.ultraHdrRendering)
                     val currentFilter = getFiltersAdapter()?.getCurrentFilter()
                     if (filterInitialBitmap == null) {
@@ -308,10 +318,10 @@ class EditActivity : BaseCropActivity() {
                         binding.bottomEditorPrimaryActions.bottomPrimaryFilter.beGone()
                         binding.bottomEditorPrimaryActions.bottomPrimaryDraw.beGone()
                     }
-
-                    return false
                 }
-            }).into(binding.defaultImageView)
+            )
+            .build()
+        Coil.imageLoader(applicationContext).enqueue(request)
     }
 
     private fun loadCropImageView() {
@@ -346,22 +356,26 @@ class EditActivity : BaseCropActivity() {
     }
 
     private fun fillCanvasBackground() {
-        val size = Point()
-        windowManager.defaultDisplay.getSize(size)
-        val options = RequestOptions()
-            .format(DecodeFormat.PREFER_ARGB_8888)
-            .skipMemoryCache(true)
-            .diskCacheStrategy(DiskCacheStrategy.NONE)
-            .fitCenter()
-
+        val targetW = binding.editorDrawCanvas.width.coerceAtLeast(1)
+        val targetH = binding.editorDrawCanvas.height.coerceAtLeast(1)
         try {
-            val builder = Glide.with(applicationContext)
-                .asBitmap()
-                .load(uri)
-                .apply(options)
-                .into(binding.editorDrawCanvas.width, binding.editorDrawCanvas.height)
-
-            val bitmap = builder.get()
+            val request = ImageRequest.Builder(applicationContext)
+                .data(uri)
+                .size(targetW, targetH)
+                .scale(Scale.FIT)
+                .allowHardware(false)
+                .bitmapConfig(Bitmap.Config.ARGB_8888)
+                .memoryCachePolicy(CachePolicy.DISABLED)
+                .diskCachePolicy(CachePolicy.DISABLED)
+                .build()
+            val result = runBlocking { Coil.imageLoader(applicationContext).execute(request) }
+            val bitmap = when (result) {
+                is SuccessResult -> {
+                    val raw = (result.drawable as? BitmapDrawable)?.bitmap ?: result.drawable.toBitmap()
+                    if (raw.config == Bitmap.Config.ARGB_8888 && raw.isMutable) raw else raw.copy(Bitmap.Config.ARGB_8888, true)
+                }
+                is ErrorResult -> throw result.throwable
+            }
             runOnUiThread {
                 binding.editorDrawCanvas.apply {
                     updateBackgroundBitmap(bitmap)
@@ -376,8 +390,10 @@ class EditActivity : BaseCropActivity() {
         }
     }
 
-    private fun setOldExif() {
-        oldExif = readExif(uri!!)
+    private fun ensureOldExifLoaded() {
+        if (oldExif == null) {
+            oldExif = uri?.let { readExif(it) }
+        }
     }
 
     // Overwriting the original is the one irreversible-feeling action here, so confirm it - and make
@@ -391,7 +407,6 @@ class EditActivity : BaseCropActivity() {
 
     private fun startSaveFlow(overwrite: Boolean) {
         overwriteRequested = overwrite
-        setOldExif()
         when {
             binding.cropImageView.isVisible() -> cropImage()
             binding.editorDrawCanvas.isVisible() -> saveDrawnImage()
@@ -413,8 +428,6 @@ class EditActivity : BaseCropActivity() {
             return
         }
 
-        setOldExif()
-
         if (isSharingBitmap) {
             isSharingBitmap = false
             shareBitmap(bitmap)
@@ -426,7 +439,7 @@ class EditActivity : BaseCropActivity() {
                 uri = saveUri,
                 onPath = { saveBitmapToPath(bitmap, it, true) },
                 onContentUri = {
-                    saveBitmapToContentUri(bitmap, it, showSavingToast = true, isCropCommit = true)
+                    saveBitmapToContentUri(bitmap, it, showSavingToast = true)
                 }
             )
             return
@@ -436,21 +449,134 @@ class EditActivity : BaseCropActivity() {
     }
 
     private fun getOriginalBitmap(): Bitmap {
-        return Glide.with(applicationContext)
-            .asBitmap()
-            .load(uri)
-            .submit(Target.SIZE_ORIGINAL, Target.SIZE_ORIGINAL)
-            .get()
+        val request = ImageRequest.Builder(applicationContext)
+            .data(uri)
+            .size(Size.ORIGINAL)
+            .allowHardware(false)
+            .bitmapConfig(Bitmap.Config.ARGB_8888)
+            .memoryCachePolicy(CachePolicy.DISABLED)
+            .diskCachePolicy(CachePolicy.DISABLED)
+            .build()
+        val result = runBlocking { Coil.imageLoader(applicationContext).execute(request) }
+        val raw = when (result) {
+            is SuccessResult -> (result.drawable as? BitmapDrawable)?.bitmap ?: result.drawable.toBitmap()
+            is ErrorResult -> throw result.throwable
+        }
+        return if (raw.isMutable && raw.config == Bitmap.Config.ARGB_8888) raw else raw.copy(Bitmap.Config.ARGB_8888, true)
+    }
+
+    private fun applyColorAdjustmentsPreview() {
+        binding.defaultImageView.colorFilter = if (colorAdjustments.isIdentity) {
+            null
+        } else {
+            ColorMatrixColorFilter(colorAdjustments.toColorMatrix())
+        }
+    }
+
+    private fun showColorAdjustmentsDialog() {
+        if (binding.defaultImageView.isGone()) {
+            currPrimaryAction = PRIMARY_ACTION_FILTER
+            updatePrimaryActionButtons()
+        }
+        val previous = colorAdjustments
+        val padH = (24 * resources.displayMetrics.density).toInt()
+        val padV = (12 * resources.displayMetrics.density).toInt()
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(padH, padV, padH, padV)
+        }
+
+        fun addSlider(
+            labelRes: Int,
+            maxProgress: Int,
+            initialProgress: Int,
+            formatValue: (Int) -> String,
+            onProgress: (Int) -> Unit,
+        ): SeekBar {
+            val label = TextView(this).apply {
+                text = "${getString(labelRes)}: ${formatValue(initialProgress)}"
+                setPadding(0, padV / 2, 0, padV / 4)
+            }
+            val bar = SeekBar(this).apply {
+                max = maxProgress
+                progress = initialProgress
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                        label.text = "${getString(labelRes)}: ${formatValue(progress)}"
+                        onProgress(progress)
+                        applyColorAdjustmentsPreview()
+                    }
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+                })
+            }
+            container.addView(label)
+            container.addView(bar)
+            return bar
+        }
+
+        val brightnessBar = addSlider(
+            labelRes = R.string.adjust_brightness,
+            maxProgress = 200,
+            initialProgress = (colorAdjustments.brightness + 100f).toInt().coerceIn(0, 200),
+            formatValue = { "${it - 100}" },
+            onProgress = { colorAdjustments = colorAdjustments.copy(brightness = it - 100f) },
+        )
+        val contrastBar = addSlider(
+            labelRes = R.string.adjust_contrast,
+            maxProgress = 150,
+            initialProgress = ((colorAdjustments.contrast - 0.5f) * 100f).toInt().coerceIn(0, 150),
+            formatValue = { String.format(java.util.Locale.getDefault(), "%.2fx", 0.5f + it / 100f) },
+            onProgress = { colorAdjustments = colorAdjustments.copy(contrast = 0.5f + it / 100f) },
+        )
+        val saturationBar = addSlider(
+            labelRes = R.string.adjust_saturation,
+            maxProgress = 200,
+            initialProgress = (colorAdjustments.saturation * 100f).toInt().coerceIn(0, 200),
+            formatValue = { "${it}%" },
+            onProgress = { colorAdjustments = colorAdjustments.copy(saturation = it / 100f) },
+        )
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.adjust_colors)
+            .setView(container)
+            .setPositiveButton(org.fossify.commons.R.string.ok, null)
+            .setNeutralButton(R.string.adjust_reset, null)
+            .setNegativeButton(org.fossify.commons.R.string.cancel) { _, _ ->
+                colorAdjustments = previous
+                applyColorAdjustmentsPreview()
+            }
+            .setOnCancelListener {
+                colorAdjustments = previous
+                applyColorAdjustmentsPreview()
+            }
+            .create()
+
+        dialog.window?.apply {
+            setGravity(android.view.Gravity.BOTTOM)
+            setDimAmount(0.1f)
+        }
+        dialog.show()
+
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+            colorAdjustments = ColorAdjustmentParams()
+            brightnessBar.progress = 100
+            contrastBar.progress = 50
+            saturationBar.progress = 100
+            applyColorAdjustmentsPreview()
+        }
     }
 
     private fun withFilteredImage(callback: (Bitmap) -> Unit) {
-        val currentFilter = getFiltersAdapter()?.getCurrentFilter()?.filter ?: return
+        val currentFilter = getFiltersAdapter()?.getCurrentFilter()?.filter
         freeMemory()
         ensureBackgroundThread {
             try {
                 val original = getOriginalBitmap()
-                currentFilter.processFilter(original)
-                callback(original)
+                currentFilter?.processFilter(original)
+                val adjusted = colorAdjustments.applyToBitmap(original)
+                if (adjusted !== original) original.recycle()
+                callback(adjusted)
             } catch (_: OutOfMemoryError) {
                 toast(org.fossify.commons.R.string.out_of_memory_error)
             }
@@ -472,28 +598,31 @@ class EditActivity : BaseCropActivity() {
     }
 
     private fun shareImage() {
-        ensureBackgroundThread {
-            when {
-                binding.defaultImageView.isVisible() -> {
-                    val currentFilter = getFiltersAdapter()?.getCurrentFilter()
-                    if (currentFilter == null) {
-                        toast(org.fossify.commons.R.string.unknown_error_occurred)
-                        return@ensureBackgroundThread
-                    }
-
+        // Snapshot View visibility, active filter, and drawn canvas on the main thread before
+        // hopping to a background thread so we never touch Views or View.draw() off-main.
+        when {
+            binding.defaultImageView.isVisible() -> {
+                val currentFilter = getFiltersAdapter()?.getCurrentFilter()?.filter
+                val adjustments = colorAdjustments
+                ensureBackgroundThread {
                     val originalBitmap = getOriginalBitmap()
-                    currentFilter.filter.processFilter(originalBitmap)
-                    shareBitmap(originalBitmap)
+                    currentFilter?.processFilter(originalBitmap)
+                    val adjusted = adjustments.applyToBitmap(originalBitmap)
+                    if (adjusted !== originalBitmap) originalBitmap.recycle()
+                    shareBitmap(adjusted)
                 }
+            }
 
-                binding.cropImageView.isVisible() -> {
-                    isSharingBitmap = true
-                    runOnUiThread {
-                        cropImage()
-                    }
+            binding.cropImageView.isVisible() -> {
+                isSharingBitmap = true
+                cropImage()
+            }
+
+            binding.editorDrawCanvas.isVisible() -> {
+                val drawnBitmap = binding.editorDrawCanvas.getBitmap()
+                ensureBackgroundThread {
+                    shareBitmap(drawnBitmap)
                 }
-
-                binding.editorDrawCanvas.isVisible() -> shareBitmap(binding.editorDrawCanvas.getBitmap())
             }
         }
     }
@@ -702,25 +831,20 @@ class EditActivity : BaseCropActivity() {
                 val thumbnailSize = resources.getDimension(R.dimen.bottom_filters_thumbnail_size).toInt()
 
                 val bitmap = try {
-                    Glide.with(this)
-                        .asBitmap()
-                        .load(uri).listener(object : RequestListener<Bitmap> {
-                            override fun onLoadFailed(e: GlideException?, model: Any?, target: Target<Bitmap>, isFirstResource: Boolean): Boolean {
-                                showErrorToast(e.toString())
-                                return false
-                            }
-
-                            override fun onResourceReady(
-                                resource: Bitmap,
-                                model: Any,
-                                target: Target<Bitmap>,
-                                dataSource: DataSource,
-                                isFirstResource: Boolean
-                            ) = false
-                        })
-                        .submit(thumbnailSize, thumbnailSize)
-                        .get()
-                } catch (e: GlideException) {
+                    val request = ImageRequest.Builder(applicationContext)
+                        .data(uri)
+                        .size(thumbnailSize, thumbnailSize)
+                        .scale(Scale.FILL)
+                        .allowHardware(false)
+                        .bitmapConfig(Bitmap.Config.ARGB_8888)
+                        .build()
+                    val result = runBlocking { Coil.imageLoader(applicationContext).execute(request) }
+                    val raw = when (result) {
+                        is SuccessResult -> (result.drawable as? BitmapDrawable)?.bitmap ?: result.drawable.toBitmap()
+                        is ErrorResult -> throw result.throwable
+                    }
+                    if (raw.isMutable && raw.config == Bitmap.Config.ARGB_8888) raw else raw.copy(Bitmap.Config.ARGB_8888, true)
+                } catch (e: Exception) {
                     showErrorToast(e)
                     finish()
                     return@ensureBackgroundThread
@@ -764,7 +888,7 @@ class EditActivity : BaseCropActivity() {
     }
 
     private fun applyFilter(filterItem: FilterItem) {
-        val newBitmap = Bitmap.createBitmap(filterInitialBitmap!!)
+        val newBitmap = filterInitialBitmap!!.copy(Bitmap.Config.ARGB_8888, true)
         binding.defaultImageView.setImageBitmap(filterItem.filter.processFilter(newBitmap))
     }
 
@@ -890,7 +1014,7 @@ class EditActivity : BaseCropActivity() {
                     }
                 },
                 onContentUri = { contentUri ->
-                    saveBitmapToContentUri(bitmap, contentUri, showSavingToast, isCropCommit = false)
+                    saveBitmapToContentUri(bitmap, contentUri, showSavingToast)
                 }
             )
         } else {
@@ -900,13 +1024,20 @@ class EditActivity : BaseCropActivity() {
         }
     }
 
-    private fun finishCropResultForContent(uri: Uri) {
+    /** Return only the newly written URI, never the caller-controlled edit Intent and its extras. */
+    private fun setSafeEditResult(uri: Uri) {
         val result = Intent().apply {
             data = uri
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         setResult(RESULT_OK, result)
-        finish()
+    }
+
+    private fun setSafeEditResult(path: String) {
+        val resultUri = runCatching {
+            FileProvider.getUriForFile(this, "${packageName}.provider", File(path))
+        }.getOrNull()
+        if (resultUri != null) setSafeEditResult(resultUri) else setResult(RESULT_OK)
     }
 
     private fun freeMemory() {
@@ -920,12 +1051,22 @@ class EditActivity : BaseCropActivity() {
     private fun saveBitmapToPath(bitmap: Bitmap, path: String, showSavingToast: Boolean) {
         try {
             ensureBackgroundThread {
+                // Read source EXIF off the main thread before any in-place backup/overwrite moves
+                // or replaces the original file.
+                ensureOldExifLoaded()
                 // Overwriting the SOURCE file in place used to open it with FileOutputStream (which
                 // truncates it to 0 bytes) and then stream the re-encoded bytes in - so a failed or
                 // interrupted encode (OOM on a large image, crash, full storage) left the original
                 // permanently corrupted, with no backup. Detect that case (target == the loaded
                 // source) and route it through the safe, recoverable path instead.
-                val originalFilePath = uri?.takeIf { it.scheme == "file" }?.path
+                // `uri` is usually normalized to file:// during initialization, but SAF and
+                // third-party providers can keep it as content://. Resolve both forms before
+                // deciding whether this is an in-place edit; otherwise a content-backed source
+                // could still take the direct FileOutputStream path and truncate its target.
+                val originalFilePath = uri?.let { sourceUri ->
+                    if (sourceUri.scheme == "file") sourceUri.path
+                    else runCatching { getRealPathFromURI(sourceUri) }.getOrNull()
+                }
                 val isOverwrite = originalFilePath != null && File(path).absolutePath == File(originalFilePath).absolutePath
                 if (isOverwrite) {
                     saveBitmapOverwriteSafely(bitmap, path, showSavingToast)
@@ -967,7 +1108,9 @@ class EditActivity : BaseCropActivity() {
         try {
             FileOutputStream(tmp).use { out ->
                 val bmp = if (resizeWidth > 0 && resizeHeight > 0) bitmap.scale(resizeWidth, resizeHeight, false) else bitmap
-                bmp.compress(path.getCompressionFormat(), 95, out)
+                if (!bmp.compress(path.getCompressionFormat(), 95, out)) {
+                    throw IOException("Bitmap encoder rejected edit")
+                }
             }
         } catch (e: OutOfMemoryError) {
             runCatching { tmp.delete() }; toast(org.fossify.commons.R.string.out_of_memory_error); return
@@ -978,21 +1121,55 @@ class EditActivity : BaseCropActivity() {
 
         val origMedium = runCatching { mediaDB.getMediaByPaths(listOf(path)).firstOrNull() }.getOrNull()
         val origModified = file.lastModified()
-        val backedUp = runCatching { MoveConflicts.backupToRecycleBin(this, path) }.getOrNull() != null
+        val originalXmp = runCatching { org.fossify.gallery.helpers.XmpWriter.readOrNull(path) }.getOrNull()
+        val backupPath = runCatching { MoveConflicts.backupToRecycleBin(this, path) }.getOrNull()
+        if (backupPath == null) {
+            // Never fall back to an in-place overwrite. The original is still the only recoverable
+            // copy when MediaStore/SAF cannot put it into the recycle bin.
+            runCatching { tmp.delete() }
+            toast(R.string.image_editing_failed)
+            return
+        }
 
-        val placed = tmp.renameTo(file) || runCatching { tmp.copyTo(file, overwrite = true); tmp.delete() }.isSuccess
-        if (!placed) { runCatching { tmp.delete() }; toast(R.string.image_editing_failed); return }
+        val placed = tmp.renameTo(file) || runCatching { tmp.copyTo(file, overwrite = false); tmp.delete() }.isSuccess
+        if (!placed) {
+            runCatching { tmp.delete() }
+            runCatching { file.delete() }
+            // The old bytes remain recoverable even when the destination filesystem refuses the
+            // replacement. Restore immediately when possible; otherwise the recycle-bin copy is
+            // intentionally retained for the user to recover.
+            runCatching { org.fossify.gallery.helpers.MediaRepository(this).restoreFromRecycleBin(backupPath) }
+            toast(R.string.image_editing_failed)
+            return
+        }
 
         writeExif(oldExif, file.toUri())
+        originalXmp?.let { xmp ->
+            if (xmp.tags.isNotEmpty() || xmp.rating > 0) {
+                runCatching { org.fossify.gallery.helpers.XmpWriter.write(path, xmp.tags, xmp.rating, xmp.hierarchy) }
+            }
+        }
         if (origModified > 0) runCatching { file.setLastModified(origModified) }
         origMedium?.let { m ->
             runCatching {
-                mediaDB.insertAllKeepingExisting(listOf(Medium(null, file.name, path, file.parent ?: "", m.modified, m.taken, file.length(), m.type, m.videoDuration, false, 0L, 0L, m.rating, dateAdded = m.dateAdded)))
+                // The backup row owns the old path now; register the replacement as a live row and
+                // preserve favorite state/rating/timeline instead of resetting it during an edit.
+                mediaDB.insertAllKeepingExisting(listOf(Medium(null, file.name, path, file.parent ?: "", m.modified, m.taken, file.length(), m.type, m.videoDuration, m.isFavorite, 0L, 0L, m.rating, dateAdded = m.dateAdded)))
             }
         }
-        setResult(RESULT_OK, intent)
+        // If MediaStore returned no DATA path after trashing, MoveConflicts keeps the Room row at
+        // the logical path and marks it deleted. The replacement is now complete, so revive that
+        // row instead of leaving the freshly edited image invisible until a later full sync.
+        if (backupPath == path) {
+            runCatching { mediaDB.restoreDeleted(path) }
+        }
+        // Keep the recycle-bin copy's tags intact while copying them onto the replacement. This is
+        // needed for sidecar-tagged formats where EXIF/XMP is not embedded in the bitmap itself.
+        if (backupPath != path) {
+            runCatching { mediaTagDB.copyPath(backupPath, path) }
+        }
         scanFinalPath(path)
-        if (backedUp) toast(R.string.edit_original_backed_up)
+        toast(R.string.edit_original_backed_up)
     }
 
     private fun saveBitmapToFile(file: File, bitmap: Bitmap, out: OutputStream, showSavingToast: Boolean) {
@@ -1010,53 +1187,40 @@ class EditActivity : BaseCropActivity() {
         }
 
         writeExif(oldExif, file.toUri())
-        setResult(RESULT_OK, intent)
         scanFinalPath(file.absolutePath)
     }
 
     private fun saveBitmapToContentUri(
         bitmap: Bitmap,
         uri: Uri,
-        showSavingToast: Boolean,
-        isCropCommit: Boolean
+        showSavingToast: Boolean
     ) {
         if (showSavingToast) {
             toast(org.fossify.commons.R.string.saving)
         }
 
         ensureBackgroundThread {
-            var out: OutputStream? = null
-            try {
-                out = contentResolver.openOutputStream(uri, "wt")
-                    ?: contentResolver.openOutputStream(uri)
-                if (out == null) {
-                    val (path, append) = proposeNewFilePath(uri)
-                    runOnUiThread {
-                        SaveAsDialog(this, path, append) { path ->
-                            saveBitmapToPath(bitmap, path, showSavingToast)
-                        }
-                    }
-                    return@ensureBackgroundThread
-                }
+            // Prefer the same verified temp -> backup -> replace path when the provider exposes a
+            // real filesystem location. Directly opening a content URI with "wt" truncates the live
+            // document before the new bytes are complete.
+            val realPath = runCatching { getRealPathFromURI(uri) }
+                .getOrNull()
+                ?.takeIf { it.isNotBlank() && File(it).exists() }
+            if (realPath != null) {
+                saveBitmapToPath(bitmap, realPath, showSavingToast)
+                return@ensureBackgroundThread
+            }
 
-                val quality = if (isCropCommit) 100 else 90
-                bitmap.compress(getCompressionFormatFromUri(uri), quality, out)
-                out.flush()
-                writeExif(oldExif, uri)
-
-                runOnUiThread {
-                    if (isCropCommit) {
-                        finishCropResultForContent(uri)
-                    } else {
-                        setResult(RESULT_OK, intent)
-                        toast(org.fossify.commons.R.string.file_saved)
-                        finish()
-                    }
+            // A generic content provider has no portable atomic replace/transaction API. Even
+            // after encoding succeeds, opening it with "wt" can truncate the user's only copy if
+            // the provider, storage, or process fails during the write. Route unknown providers to
+            // Save As instead; MediaStore/file-backed sources already used the verified replacement
+            // path above.
+            val (path, append) = proposeNewFilePath(uri)
+            runOnUiThread {
+                SaveAsDialog(this, path, append) { targetPath ->
+                    saveBitmapToPath(bitmap, targetPath, showSavingToast)
                 }
-            } catch (e: Exception) {
-                showErrorToast(e)
-            } finally {
-                try { out?.close() } catch (_: Exception) {}
             }
         }
     }
@@ -1066,11 +1230,23 @@ class EditActivity : BaseCropActivity() {
         isEditingWithThirdParty = true
     }
 
+    @OptIn(coil.annotation.ExperimentalCoilApi::class)
     private fun scanFinalPath(path: String) {
+        // Evict stale cached thumbnails for in-place overwrites (since Coil's FileKeyer does not
+        // stat File.lastModified() on the main thread).
+        runCatching {
+            val loader = Coil.imageLoader(applicationContext)
+            org.fossify.gallery.compose.components.GalleryThumbnailKeyRegistry.get(path)?.let { key ->
+                loader.memoryCache?.remove(key)
+            }
+            loader.memoryCache?.remove(coil.memory.MemoryCache.Key(path))
+            loader.memoryCache?.remove(coil.memory.MemoryCache.Key("viewer:$path:0"))
+            loader.diskCache?.remove(path)
+        }
         val paths = arrayListOf(path)
         rescanPaths(paths) {
             fixDateTaken(paths, false)
-            setResult(RESULT_OK, intent)
+            setSafeEditResult(path)
             toast(org.fossify.commons.R.string.file_saved)
             finish()
         }

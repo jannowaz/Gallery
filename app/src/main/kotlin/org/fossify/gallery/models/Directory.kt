@@ -3,7 +3,6 @@ package org.fossify.gallery.models
 import android.content.Context
 import androidx.compose.runtime.Stable
 import androidx.room.*
-import com.bumptech.glide.signature.ObjectKey
 import org.fossify.commons.extensions.formatDate
 import org.fossify.commons.extensions.formatSize
 import org.fossify.commons.helpers.*
@@ -27,10 +26,15 @@ data class Directory(
     // used with "Group direct subfolders" enabled
     @Ignore var subfoldersCount: Int = 0,
     @Ignore var subfoldersMediaCount: Int = 0,
-    @Ignore var containsMediaFilesDirectly: Boolean = true
+    @Ignore var containsMediaFilesDirectly: Boolean = true,
+    // Live media-type totals are derived from the indexed media table. They are intentionally
+    // ignored by Room so this remains a backward-compatible cache schema: the aggregate query
+    // refreshes them in one pass without adding a migration or an extra column per directory.
+    @Ignore var imageCount: Int = 0,
+    @Ignore var videoCount: Int = 0,
 ) {
 
-    constructor() : this(null, "", "", "", 0, 0L, 0L, 0L, 0, 0, "", 0, 0)
+    constructor() : this(null, "", "", "", 0, 0L, 0L, 0L, 0, 0, "", 0, 0, true, 0, 0)
 
     fun getBubbleText(sorting: Int, context: Context, dateFormat: String? = null, timeFormat: String? = null) = when {
         sorting and SORT_BY_NAME != 0 -> name
@@ -44,6 +48,4 @@ data class Directory(
     fun areFavorites() = path == FAVORITES
 
     fun isRecycleBin() = path == RECYCLE_BIN
-
-    fun getKey() = ObjectKey("$path-$modified")
 }

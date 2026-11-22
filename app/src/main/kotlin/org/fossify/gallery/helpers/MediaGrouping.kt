@@ -37,9 +37,63 @@ sealed interface GroupRow {
         // 1..5 for a GroupBy.RATING header, null everywhere else - lets the UI render real star
         // icons instead of parsing/re-rendering the [label] string.
         val ratingValue: Int? = null,
+        // All media belonging to this group, including descendants of a collapsed tag group. A
+        // long-press on the header can therefore select hidden child rows as well.
+        val mediaPaths: Set<String> = emptySet(),
     ) : GroupRow
 
     data class Items(val sectionKey: String, val media: List<Medium>) : GroupRow
+}
+
+/** Stable set of headers that can actually be expanded or collapsed. */
+fun collapsibleGroupKeys(rows: List<GroupRow>): Set<String> =
+    rows.asSequence()
+        .filterIsInstance<GroupRow.SectionHeader>()
+        .filter { it.hasChildren }
+        .map { it.key }
+        .toSet()
+
+fun toggleGroupKey(collapsedKeys: Set<String>, key: String): Set<String> =
+    if (key in collapsedKeys) collapsedKeys - key else collapsedKeys + key
+
+/** Applies the same expand/collapse-all semantics to every grouped media surface. */
+fun setGroupsExpanded(collapsedKeys: Set<String>, rows: List<GroupRow>, expanded: Boolean): Set<String> {
+    val keys = collapsibleGroupKeys(rows)
+    return if (expanded) collapsedKeys - keys else collapsedKeys + keys
+}
+
+/**
+ * Applies a collapsed state to an already-built, fully expanded row model.
+ *
+ * Building tag rows is the expensive part for large libraries because it walks the hierarchy and
+ * creates path sets. A header tap changes only which rows are visible, so it should not repeat
+ * that work. The depth stack skips items and descendants below a collapsed header while preserving
+ * the header itself and all of its counts.
+ */
+fun applyCollapsedGroups(rows: List<GroupRow>, collapsedKeys: Set<String>): List<GroupRow> {
+    if (rows.isEmpty() || collapsedKeys.isEmpty()) return rows
+
+    val result = ArrayList<GroupRow>(rows.size)
+    val collapsedDepths = ArrayDeque<Int>()
+    rows.forEach { row ->
+        when (row) {
+            is GroupRow.SectionHeader -> {
+                while (collapsedDepths.lastOrNull()?.let { it >= row.depth } == true) {
+                    collapsedDepths.removeLast()
+                }
+                if (collapsedDepths.isNotEmpty()) return@forEach
+
+                val expanded = row.key !in collapsedKeys
+                result += row.copy(isExpanded = expanded)
+                if (!expanded && row.hasChildren) collapsedDepths.addLast(row.depth)
+            }
+
+            is GroupRow.Items -> {
+                if (collapsedDepths.isEmpty()) result += row
+            }
+        }
+    }
+    return result
 }
 
 /** Walks backward from [firstVisibleIndex] collecting the nearest header at each shallower depth,
@@ -70,16 +124,20 @@ fun buildRatingGroupRows(media: List<Medium>, order: GroupOrder, unratedLabel: S
     if (media.isEmpty()) return emptyList()
     val buckets = LinkedHashMap<Int, MutableList<Medium>>()
     media.forEach { m -> buckets.getOrPut(m.rating) { mutableListOf() }.add(m) }
+    // Ratings communicate quality, not a user-defined name/count ordering: a five-star group is
+    // always the first one to inspect and the unrated backlog always belongs at the end.
+    // Keep [order] in the public signature for persisted settings/call-site compatibility; it is
+    // deliberately not applied to rating groups.
     val ratingsPresent = buckets.keys.sortedDescending()
-    val ordered = if (order == GroupOrder.COUNT) ratingsPresent.sortedByDescending { buckets.getValue(it).size } else ratingsPresent
-    return ordered.flatMap { rating ->
+    return ratingsPresent.flatMap { rating ->
         val items = buckets.getValue(rating)
         val label = ratingLabelFor(rating, unratedLabel)
         val key = "rating:$rating"
         listOf(
             GroupRow.SectionHeader(
-                key = key, label = label, depth = 0, exactCount = items.size, totalCount = items.size, hasChildren = false, isExpanded = true,
+                key = key, label = label, depth = 0, exactCount = items.size, totalCount = items.size, hasChildren = items.isNotEmpty(), isExpanded = true,
                 ratingValue = rating.takeIf { it > 0 },
+                mediaPaths = items.mapTo(linkedSetOf()) { it.path },
             ),
             GroupRow.Items(sectionKey = key, media = items),
         )
@@ -114,7 +172,7 @@ fun buildSizeGroupRows(media: List<Medium>, desc: Boolean): List<GroupRow> {
         val items = buckets.getValue(label)
         val key = "size:$label"
         listOf(
-            GroupRow.SectionHeader(key = key, label = label, depth = 0, exactCount = items.size, totalCount = items.size, hasChildren = false, isExpanded = true),
+            GroupRow.SectionHeader(key = key, label = label, depth = 0, exactCount = items.size, totalCount = items.size, hasChildren = false, isExpanded = true, mediaPaths = items.mapTo(linkedSetOf()) { it.path }),
             GroupRow.Items(sectionKey = key, media = items),
         )
     }
@@ -131,7 +189,7 @@ fun buildAlphabetGroupRows(media: List<Medium>, desc: Boolean): List<GroupRow> {
         val items = buckets.getValue(label)
         val key = "alpha:$label"
         listOf(
-            GroupRow.SectionHeader(key = key, label = label, depth = 0, exactCount = items.size, totalCount = items.size, hasChildren = false, isExpanded = true),
+            GroupRow.SectionHeader(key = key, label = label, depth = 0, exactCount = items.size, totalCount = items.size, hasChildren = false, isExpanded = true, mediaPaths = items.mapTo(linkedSetOf()) { it.path }),
             GroupRow.Items(sectionKey = key, media = items),
         )
     }
@@ -164,16 +222,19 @@ fun buildTagGroupRows(
     if (onlyTopLevelTags) {
         val rootByTag = HashMap<String, String>()
         val pooled = LinkedHashMap<String, MutableList<Medium>>()
+        val pooledPaths = HashMap<String, MutableSet<String>>()
         exactByTag.forEach { (tag, items) ->
             val root = rootByTag.getOrPut(tag) { rootOf(tag, hierarchy) }
             val bucket = pooled.getOrPut(root) { mutableListOf() }
-            items.forEach { m -> if (bucket.none { it.path == m.path }) bucket.add(m) }
+            val paths = pooledPaths.getOrPut(root) { HashSet() }
+            items.forEach { m -> if (paths.add(m.path)) bucket.add(m) }
         }
         orderKeys(pooled.keys, order) { pooled.getValue(it).size }.forEach { root ->
             val items = pooled.getValue(root)
             val key = "tag:$root"
-            rows += GroupRow.SectionHeader(key, root, 0, items.size, items.size, false, true, rootKey = root)
-            rows += GroupRow.Items(key, items)
+            val expanded = key !in collapsedKeys
+            rows += GroupRow.SectionHeader(key, root, 0, items.size, items.size, items.isNotEmpty(), expanded, rootKey = root, mediaPaths = items.mapTo(linkedSetOf()) { it.path })
+            if (expanded) rows += GroupRow.Items(key, items)
         }
     } else {
         val childrenByParent = childrenByParentMap(hierarchy)
@@ -186,39 +247,71 @@ fun buildTagGroupRows(
                 cur = hierarchy[cur]
             }
         }
+        // Group headers need both descendant counts and the complete path set for selection. The
+        // previous implementation walked the same subtree once for every header and again for
+        // every count-based sort comparison. Memoizing both projections turns repeated hierarchy
+        // work into one traversal per reachable tag, which matters for large libraries and deep
+        // tag trees.
+        val visibleChildrenByParent = childrenByParent.mapValues { (_, children) ->
+            children.filter { it in tagsWithContent }
+        }
+        val totalCountCache = HashMap<String, Int>()
+        val groupPathsCache = HashMap<String, Set<String>>()
+
+        fun totalCountFor(tag: String, visiting: MutableSet<String> = HashSet()): Int {
+            totalCountCache[tag]?.let { return it }
+            if (!visiting.add(tag)) return 0
+            var total = exactByTag[tag]?.size ?: 0
+            visibleChildrenByParent[tag].orEmpty().forEach { child ->
+                total += totalCountFor(child, visiting)
+            }
+            visiting.remove(tag)
+            totalCountCache[tag] = total
+            return total
+        }
+
+        fun groupPathsFor(tag: String, visiting: MutableSet<String> = HashSet()): Set<String> {
+            groupPathsCache[tag]?.let { return it }
+            if (!visiting.add(tag)) return emptySet()
+            val paths = linkedSetOf<String>()
+            exactByTag[tag].orEmpty().forEach { paths += it.path }
+            visibleChildrenByParent[tag].orEmpty().forEach { child ->
+                paths += groupPathsFor(child, visiting)
+            }
+            visiting.remove(tag)
+            val result = paths.toSet()
+            groupPathsCache[tag] = result
+            return result
+        }
+
         // A tag counts as a rendering root if walking its parent chain leads back to itself -
         // true both for a plain top-level tag (no parent) and, defensively, for a member of a
         // corrupted/cyclic hierarchy entry (rootOf resolves each cycle member to itself rather
         // than looping forever), so a bad Config.tagHierarchy entry can't hide media from view.
-        val roots = orderKeys(tagsWithContent.filter { rootOf(it, hierarchy) == it }.toSet(), order) { totalCountOf(it, exactByTag, childrenByParent) }
+        val roots = orderKeys(tagsWithContent.filter { rootOf(it, hierarchy) == it }.toSet(), order) { totalCountFor(it) }
 
         fun emit(tag: String, depth: Int, ancestors: Set<String>, rootLabel: String) {
             if (tag in ancestors) return
             val exact = exactByTag[tag].orEmpty()
-            val children = childrenByParent[tag].orEmpty().filter { it in tagsWithContent }
-            val total = exact.size + children.sumOf { totalCountOf(it, exactByTag, childrenByParent) }
+            val children = visibleChildrenByParent[tag].orEmpty()
+            val total = totalCountFor(tag)
             val key = "tag:$tag"
             val expanded = key !in collapsedKeys
-            rows += GroupRow.SectionHeader(key, tag, depth, exact.size, total, children.isNotEmpty(), expanded, rootKey = rootLabel)
+            rows += GroupRow.SectionHeader(key, tag, depth, exact.size, total, exact.isNotEmpty() || children.isNotEmpty(), expanded, rootKey = rootLabel, mediaPaths = groupPathsFor(tag))
             if (!expanded) return
             if (exact.isNotEmpty()) rows += GroupRow.Items(key, exact)
-            orderKeys(children.toSet(), order) { totalCountOf(it, exactByTag, childrenByParent) }.forEach { emit(it, depth + 1, ancestors + tag, rootLabel) }
+            orderKeys(children.toSet(), order) { totalCountFor(it) }.forEach { emit(it, depth + 1, ancestors + tag, rootLabel) }
         }
         roots.forEach { emit(it, 0, emptySet(), rootLabel = it) }
     }
 
     if (untagged.isNotEmpty()) {
-        rows += GroupRow.SectionHeader("untagged", untaggedLabel, 0, untagged.size, untagged.size, false, true)
-        rows += GroupRow.Items("untagged", untagged)
+        val key = "untagged"
+        val expanded = key !in collapsedKeys
+        rows += GroupRow.SectionHeader(key, untaggedLabel, 0, untagged.size, untagged.size, true, expanded, mediaPaths = untagged.mapTo(linkedSetOf()) { it.path })
+        if (expanded) rows += GroupRow.Items(key, untagged)
     }
     return rows
-}
-
-private fun totalCountOf(tag: String, exactByTag: Map<String, List<Medium>>, childrenByParent: Map<String, List<String>>, visited: MutableSet<String> = HashSet()): Int {
-    if (!visited.add(tag)) return 0
-    var total = exactByTag[tag]?.size ?: 0
-    childrenByParent[tag]?.forEach { total += totalCountOf(it, exactByTag, childrenByParent, visited) }
-    return total
 }
 
 private fun orderKeys(keys: Set<String>, order: GroupOrder, countOf: (String) -> Int): List<String> = when (order) {

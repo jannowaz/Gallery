@@ -8,24 +8,12 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.RemoteViews
-import android.widget.Toast
-import com.bumptech.glide.Glide
-import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.request.RequestOptions
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.fossify.commons.extensions.getFileSignature
 import org.fossify.commons.extensions.setVisibleIf
 import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.gallery.R
 import org.fossify.gallery.activities.ComposeExplorerActivity
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.mediaDB
-import org.fossify.gallery.models.BatchJobItem
-import org.fossify.gallery.workers.BatchOperation
-import org.fossify.gallery.workers.MediaBatchWorker
 
 /**
  * Home-screen "Quick Mover" widget: shows the last few media items across the whole library (not
@@ -62,32 +50,6 @@ class MoverWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == ACTION_MOVE_NOW) {
-            val pending = goAsync()
-            // MediaBatchWorker.enqueue is a suspend fun and this is a plain background thread, not
-            // a coroutine scope - GlobalScope is deliberate here (mirrors the same headless-warm-up
-            // pattern App.kt already uses), the receiver's own goAsync() lease is what actually keeps
-            // the process alive long enough, not structured concurrency.
-            GlobalScope.launch(Dispatchers.IO) {
-                try {
-                    val moves = flattenMoverPairs(loadMoverPairs(context))
-                    if (moves.isEmpty()) {
-                        showToast(context, context.getString(R.string.no_files_found))
-                    } else {
-                        val items = moves.map { (src, dst) -> BatchJobItem(jobId = "", sourcePath = src, targetPath = dst) }
-                        MediaBatchWorker.enqueue(context, BatchOperation.MOVE_COPY_DELETE, items)
-                        showToast(context, context.getString(R.string.mover_widget_move_started, moves.size))
-                    }
-                } catch (_: Exception) {
-                } finally {
-                    pending.finish()
-                }
-            }
-        }
-    }
-
-    private suspend fun showToast(context: Context, text: String) {
-        withContext(Dispatchers.Main) { Toast.makeText(context, text, Toast.LENGTH_SHORT).show() }
     }
 
     private fun openAppIntent(context: Context, requestCode: Int, navigateTo: String? = null): PendingIntent {
@@ -113,24 +75,15 @@ class MoverWidgetProvider : AppWidgetProvider() {
                     val medium = recent.getOrNull(i)
                     views.setVisibleIf(viewId, medium != null)
                     if (medium != null) {
-                        try {
-                            var bitmap = Glide.with(context)
-                                .asBitmap()
-                                .load(medium.path)
-                                .apply(
-                                    RequestOptions()
-                                        .centerCrop()
-                                        .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
-                                        .signature(medium.path.getFileSignature())
-                                )
-                                .submit(200, 200)
-                                .get()
-                            // Same privacy scrim as the folder widget - a home-screen surface can't
-                            // apply a live blur, so "blur all media" is honored by baking it into
-                            // the bitmap instead of leaving these thumbnails unprotected.
-                            if (config.blurAllMedia) bitmap = bitmap.withPrivacyScrim()
+                        val bitmap = loadWidgetBitmap(
+                            context = context,
+                            path = medium.path,
+                            sizePx = 200,
+                            centerCrop = true,
+                            blur = config.blurAllMedia,
+                        )
+                        if (bitmap != null) {
                             views.setImageViewBitmap(viewId, bitmap)
-                        } catch (_: Exception) {
                         }
                     }
                 }
@@ -143,7 +96,7 @@ class MoverWidgetProvider : AppWidgetProvider() {
                         val movePendingIntent = PendingIntent.getBroadcast(
                             context,
                             widgetId + 3000,
-                            Intent(context, MoverWidgetProvider::class.java).setAction(ACTION_MOVE_NOW),
+                            Intent(context, org.fossify.gallery.receivers.WidgetActionReceiver::class.java).setAction(ACTION_MOVE_NOW),
                             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                         )
                         views.setOnClickPendingIntent(R.id.mover_move_btn, movePendingIntent)

@@ -30,15 +30,36 @@ class Config(context: Context) : BaseConfig(context) {
         private const val TAGS_SORT_DESC = "tags_sort_desc"
         private const val PINNED_FAV_FOLDERS = "pinned_fav_folders"
         private const val PINNED_COLLECTIONS = "pinned_collections"
+        private const val PINNED_TAGS = "pinned_tags"
+        private const val PINNED_RATINGS = "pinned_ratings"
+        private const val RECENT_SEARCHES = "recent_searches"
         private const val LAST_SYNC_TIMESTAMP = "last_sync_timestamp"
+        private const val NEW_MEDIA_SEEN_AT = "new_media_seen_at"
+        private const val LAST_SELECTED_TAB = "last_selected_tab"
         private const val LAST_BOOT_SCAN_TIMESTAMP = "last_boot_scan_timestamp"
         private const val SYNC_GAP_REPAIR_DONE = "sync_gap_repair_done"
+        private const val TAG_CACHE_SANITIZE_VERSION = "tag_cache_sanitize_version"
+        private const val RECENT_TAGS = "recent_tags"
+        private const val VIEWER_RATING_BAR_USER_CHOICE = "viewer_rating_bar_user_choice"
         fun newInstance(context: Context) = Config(context)
     }
 
     var lastSyncTimestamp: Long
         get() = prefs.getLong(LAST_SYNC_TIMESTAMP, 0L)
         set(value) = prefs.edit().putLong(LAST_SYNC_TIMESTAMP, value).apply()
+
+    /**
+     * Watermark for the small "new media" inbox in the Media tab. It is deliberately separate
+     * from the sync watermark: a background sync may discover files while the user is away, but
+     * those files should remain discoverable until the user explicitly opens the inbox.
+     */
+    var newMediaSeenAt: Long
+        get() = prefs.getLong(NEW_MEDIA_SEEN_AT, 0L)
+        set(value) = prefs.edit().putLong(NEW_MEDIA_SEEN_AT, value).apply()
+
+    var lastSelectedTab: Int
+        get() = prefs.getInt(LAST_SELECTED_TAB, 1)
+        set(value) = prefs.edit().putInt(LAST_SELECTED_TAB, value).apply()
 
     /**
      * Whether the one-shot repair rescan has already run. Existing installs carry a media table that
@@ -54,6 +75,11 @@ class Config(context: Context) : BaseConfig(context) {
     var lastBootScanTimestamp: Long
         get() = prefs.getLong(LAST_BOOT_SCAN_TIMESTAMP, 0L)
         set(value) = prefs.edit().putLong(LAST_BOOT_SCAN_TIMESTAMP, value).apply()
+
+    /** Versioned marker for one-time normalization of legacy UTF-16 tag cache rows. */
+    var tagCacheSanitizeVersion: Int
+        get() = prefs.getInt(TAG_CACHE_SANITIZE_VERSION, 0)
+        set(value) = prefs.edit().putInt(TAG_CACHE_SANITIZE_VERSION, value).apply()
 
     var lastMissingMediaSweep: Long
         get() = prefs.getLong("last_missing_media_sweep", 0L)
@@ -78,6 +104,46 @@ class Config(context: Context) : BaseConfig(context) {
     var pinnedCollections: Set<String>
         get() = prefs.getStringSet(PINNED_COLLECTIONS, emptySet()) ?: emptySet()
         set(value) = prefs.edit().putStringSet(PINNED_COLLECTIONS, value).apply()
+
+    /** Tags and star ratings promoted to the drawer's compact quick-access section. */
+    var pinnedTags: Set<String>
+        get() = prefs.getStringSet(PINNED_TAGS, emptySet()) ?: emptySet()
+        set(value) = prefs.edit().putStringSet(PINNED_TAGS, value).apply()
+
+    var pinnedRatings: Set<Int>
+        get() = prefs.getStringSet(PINNED_RATINGS, emptySet())
+            ?.mapNotNull(String::toIntOrNull)
+            ?.filter { it in 1..5 }
+            ?.toSet()
+            ?: emptySet()
+        set(value) = prefs.edit().putStringSet(PINNED_RATINGS, value.filter { it in 1..5 }.map(Int::toString).toSet()).apply()
+
+    /**
+     * The last few explicit searches, newest first. A NUL-delimited string keeps the order (unlike
+     * SharedPreferences' StringSet) while still avoiding a new database table for a tiny piece of
+     * UI convenience state. NUL cannot occur in Android text input, so it is a safe separator here.
+     */
+    var recentSearches: List<String>
+        get() = prefs.getString(RECENT_SEARCHES, "")
+            ?.split('\u0000')
+            ?.map(String::trim)
+            ?.filter { it.isNotEmpty() }
+            ?.distinctBy { it.lowercase(Locale.getDefault()) }
+            ?.take(8)
+            ?: emptyList()
+        private set(value) {
+            prefs.edit().putString(RECENT_SEARCHES, value.take(8).joinToString("\u0000")).apply()
+        }
+
+    fun rememberSearch(query: String) {
+        val value = query.trim()
+        if (value.length < 2) return
+        recentSearches = listOf(value) + recentSearches.filterNot { it.equals(value, ignoreCase = true) }
+    }
+
+    fun clearRecentSearches() {
+        prefs.edit().remove(RECENT_SEARCHES).apply()
+    }
 
     var collectionsViewType: Int
         get() = prefs.getInt(COLLECTIONS_VIEW_TYPE, 0)
@@ -219,7 +285,10 @@ class Config(context: Context) : BaseConfig(context) {
 
     var quickTags: Set<String>
         get() = prefs.getStringSet(QUICK_TAGS, HashSet()) ?: HashSet()
-        set(tags) = prefs.edit().putStringSet(QUICK_TAGS, tags).apply()
+        set(tags) {
+            prefs.edit().putStringSet(QUICK_TAGS, tags).apply()
+            QuickTagsBus.notifyChanged()
+        }
 
     fun addQuickTag(tag: String) {
         val curr = HashSet(quickTags)
@@ -231,6 +300,30 @@ class Config(context: Context) : BaseConfig(context) {
         val curr = HashSet(quickTags)
         curr.remove(tag)
         quickTags = curr
+    }
+
+    /**
+     * The twenty-five tags used most recently in a tag assignment flow, newest first. Unlike
+     * quickTags, this list is learned automatically and stays ordered; the viewer and batch sheet
+     * expose it as a horizontally scrollable quick-access list.
+     */
+    var recentTags: List<String>
+        get() = prefs.getString(RECENT_TAGS, "")
+            ?.split('\u0000')
+            ?.map(String::trim)
+            ?.filter { it.isNotEmpty() }
+            ?.distinctBy { it.lowercase(Locale.getDefault()) }
+            ?.take(MAX_RECENT_TAGS)
+            ?: emptyList()
+        private set(value) = prefs.edit().putString(RECENT_TAGS, value.take(MAX_RECENT_TAGS).joinToString("\u0000")).apply()
+
+    fun rememberRecentTag(tag: String) {
+        val value = tag.trim()
+        if (value.isBlank()) return
+        recentTags = listOf(value) + recentTags.filterNot { it.equals(value, ignoreCase = true) }
+        // The same lightweight process-local signal already invalidates the preference-backed
+        // quick-tag row. Reusing it keeps viewer and multi-selection rows in sync immediately.
+        QuickTagsBus.notifyChanged()
     }
 
     var explorer2HiddenFolders: Set<String>
@@ -765,6 +858,10 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(LIMIT_FOLDER_TITLE, false)
         set(limitFolderTitle) = prefs.edit().putBoolean(LIMIT_FOLDER_TITLE, limitFolderTitle).apply()
 
+    var swipeArchiveFolderName: String
+        get() = prefs.getString("swipe_archive_folder_name", "") ?: ""
+        set(value) = prefs.edit().putString("swipe_archive_folder_name", value).apply()
+
     var thumbnailSpacing: Int
         get() = prefs.getInt(THUMBNAIL_SPACING, 1)
         set(thumbnailSpacing) = prefs.edit().putInt(THUMBNAIL_SPACING, thumbnailSpacing).apply()
@@ -798,7 +895,7 @@ class Config(context: Context) : BaseConfig(context) {
         set(value) = prefs.edit().putInt(FOLDER_DISPLAY_MODE, value).apply()
 
     var mediaShowFileNames: Boolean
-        get() = prefs.getBoolean(MEDIA_SHOW_FILE_NAMES, true)
+        get() = prefs.getBoolean(MEDIA_SHOW_FILE_NAMES, false)
         set(value) = prefs.edit().putBoolean(MEDIA_SHOW_FILE_NAMES, value).apply()
 
     var folderMediaViewType: Int
@@ -900,6 +997,12 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(SHOW_VIDEO_DURATION_ON_THUMBNAILS, true)
         set(v) = prefs.edit().putBoolean(SHOW_VIDEO_DURATION_ON_THUMBNAILS, v).apply()
 
+    // One-time guard: older syncs stored video_duration = 0 for every video, so existing rows need a
+    // single backfill pass from MediaStore (see MediaRepository.backfillVideoDurations). Set once done.
+    var videoDurationsBackfilled: Boolean
+        get() = prefs.getBoolean(VIDEO_DURATIONS_BACKFILLED, false)
+        set(v) = prefs.edit().putBoolean(VIDEO_DURATIONS_BACKFILLED, v).apply()
+
     // Heavily blurs every thumbnail/full-screen image and video surface app-wide - a privacy toggle
     // for screen-sharing/screenshots, and doubles as a safe way to verify UI changes visually
     // without the real media content ever being legible.
@@ -908,8 +1011,22 @@ class Config(context: Context) : BaseConfig(context) {
         set(v) = prefs.edit().putBoolean(BLUR_ALL_MEDIA, v).apply()
 
     var viewerShowRatingBar: Boolean
-        get() = prefs.getBoolean(VIEWER_SHOW_RATING_BAR, false)
-        set(v) = prefs.edit().putBoolean(VIEWER_SHOW_RATING_BAR, v).apply()
+        // Direct rating is a primary viewer action. Older builds stored the default false in the
+        // same key, so only a new explicit user choice may hide it; otherwise existing installs
+        // also get the restored direct-rating control after upgrading.
+        get() = if (prefs.getBoolean(VIEWER_RATING_BAR_USER_CHOICE, false)) {
+            prefs.getBoolean(VIEWER_SHOW_RATING_BAR, true)
+        } else {
+            true
+        }
+        set(v) = prefs.edit()
+            .putBoolean(VIEWER_SHOW_RATING_BAR, v)
+            .putBoolean(VIEWER_RATING_BAR_USER_CHOICE, true)
+            .apply()
+
+    var viewerShowTagBar: Boolean
+        get() = prefs.getBoolean(VIEWER_SHOW_TAG_BAR, false)
+        set(v) = prefs.edit().putBoolean(VIEWER_SHOW_TAG_BAR, v).apply()
 
     var lastViewedPath: String
         get() = prefs.getString("last_viewed_path", "") ?: ""

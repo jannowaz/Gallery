@@ -2,6 +2,7 @@ package org.fossify.gallery.activities
 
 import android.database.ContentObserver
 import android.net.Uri
+import android.os.Bundle
 import android.provider.MediaStore.Images
 import android.provider.MediaStore.Video
 import android.view.WindowManager
@@ -21,6 +22,24 @@ import org.fossify.gallery.helpers.getPermissionsToRequest
 open class SimpleActivity : BaseSimpleActivity() {
 
     private var dialog: AlertDialog? = null
+
+    private fun updateSecureWindowFlag() {
+        if (config.isAppPasswordProtectionOn || config.blurAllMedia) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        updateSecureWindowFlag()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateSecureWindowFlag()
+    }
 
     // Unlike ComposeExplorerActivity's own MediaStore observer (which has the same 1500ms guard),
     // this one had none - a bulk file operation (import from another app, batch download, ...) can

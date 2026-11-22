@@ -6,6 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,8 +51,13 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
     private var fullDirList = ArrayList<Directory>()
 
     /** Whether a directory pass has run in this process yet - see fetchAndApplyDirectories. Guarded
-     * by [dirListLock] because load() and silentReload() can both be in flight at once. */
+     * by [dirListLock] because the directory snapshot is shared with the background recheck. */
     private var didFirstDirectoryPass = false
+    // Directory aggregation is a full-library pass. Keep only the newest request alive so a burst
+    // of MediaStore events cannot make multiple syncDirectoriesFromMedia()/aggregate passes compete
+    // for Room, CPU and heap.
+    private var directoryRefreshJob: Job? = null
+    private val refreshGeneration = RefreshGenerationGate()
 
     init {
         _searchQuery
@@ -67,15 +74,50 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
         // other data-driven screen in the app (Collections/Favorites/TagBrowser/Explorer/filtered
         // Media) already subscribes to RefreshBus for exactly this reason.
         viewModelScope.launch {
-            RefreshBus.events.collect { silentReload() }
+            // Album rows contain folder structure/counts, not favorite/rating/tag metadata. Only a
+            // path change can invalidate the directory aggregate, so keep metadata interactions
+            // from re-reading and rechecking every folder in the library.
+            RefreshBus.pathEvents.collect { silentReload() }
         }
     }
 
     fun load() {
-        viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
-            fetchAndApplyDirectories()
-            _state.update { it.copy(isLoading = false) }
+        startDirectoryRefresh(showLoading = true)
+    }
+
+    private fun startDirectoryRefresh(showLoading: Boolean) {
+        val generation = refreshGeneration.begin()
+        directoryRefreshJob?.cancel()
+        _state.update { current ->
+            current.copy(
+                // A silent refresh can replace the initial load. Keep the initial skeleton visible
+                // until the replacement finishes, but never hide already loaded directories.
+                isLoading = if (current.directories.isEmpty()) current.isLoading || showLoading else false,
+                isRefreshing = current.directories.isNotEmpty(),
+                error = if (showLoading) null else current.error,
+            )
+        }
+        directoryRefreshJob = viewModelScope.launch {
+            try {
+                fetchAndApplyDirectories(generation)
+                if (isActive && refreshGeneration.isCurrent(generation)) {
+                    _state.update { it.copy(error = null) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (isActive && refreshGeneration.isCurrent(generation)) {
+                    _state.update { it.copy(error = e.message ?: "Unknown error") }
+                }
+            } finally {
+                // A cancelled, obsolete load must not hide or finish the state belonging to its
+                // replacement request. This also covers a silent refresh replacing the first load.
+                if (isActive && refreshGeneration.isCurrent(generation)) {
+                    _state.update { it.copy(isLoading = false, isRefreshing = false) }
+                }
+            }
+        }.also { job ->
+            job.invokeOnCompletion { if (directoryRefreshJob === job) directoryRefreshJob = null }
         }
     }
 
@@ -83,24 +125,33 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
     // refresh should update the grid in place, not flash the skeleton loader over content the user
     // is already looking at (same pattern as MediaScreen's silentRefresh()/TagBrowserScreen's fix).
     private fun silentReload() {
-        viewModelScope.launch { fetchAndApplyDirectories() }
+        startDirectoryRefresh(showLoading = false)
     }
 
-    private suspend fun fetchAndApplyDirectories() {
+    private suspend fun fetchAndApplyDirectories(generation: Long) {
         withContext(Dispatchers.IO) {
             val ctx = getApplication<Application>().applicationContext
             // Self-heal the directory cache from the media table before reading it: deletes/moves/
             // bin-empties change media rows without running a store sync, and without this rebuild
             // their folders lingered here as ghost albums with stale counts (and brand-new folders
             // were missing entirely).
-            org.fossify.gallery.helpers.MediaRepository(ctx).syncDirectoriesFromMedia()
+            val mediaRepo = org.fossify.gallery.helpers.MediaRepository(ctx)
+            mediaRepo.syncDirectoriesFromMedia()
+            // The directory cache table intentionally stores only the legacy aggregate columns.
+            // Fetch the two new type totals once for the complete result and attach them in memory;
+            // never turn this into one query per album.
+            val typeCounts = mediaRepo.getDirectoryAggregatesForUi().associateBy { it.parentPath }
             // Snapshot before this refresh's rebuild overwrites fullDirList, so recheckDirectories
             // can tell which folders' aggregates actually moved since the last pass (see its own
             // comment for why that matters).
             val previous = synchronized(dirListLock) { fullDirList.associateBy { it.path } }
             ctx.getCachedDirectories(false, false) { dirs ->
-                val processed = ctx.addTempFolderIfNeeded(ArrayList(dirs))
-                val sorted = ctx.getSortedDirectories(processed)
+                val processed = ctx.addTempFolderIfNeeded(ArrayList(dirs)).map { directory ->
+                    typeCounts[directory.path]?.let { aggregate ->
+                        directory.copy(imageCount = aggregate.imageCount, videoCount = aggregate.videoCount)
+                    } ?: directory
+                }
+                val sorted = ctx.getSortedDirectories(ArrayList(processed))
                 // First pass of this process: take what the DB says as the baseline instead of
                 // treating every folder as changed. fullDirList is in-memory, so on a cold start
                 // `previous` is empty and the comparison below marked all of them - measured on a
@@ -133,12 +184,15 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
                     sorted.filter { dir ->
                         val old = previous[dir.path]
                         old == null || old.mediaCnt != dir.mediaCnt || old.modified != dir.modified ||
-                            old.taken != dir.taken || old.size != dir.size || old.tmb != dir.tmb
+                            old.taken != dir.taken || old.size != dir.size || old.tmb != dir.tmb ||
+                            old.imageCount != dir.imageCount || old.videoCount != dir.videoCount
                     }.mapTo(HashSet()) { it.path }
                 }
                 synchronized(dirListLock) { fullDirList = ArrayList(sorted) }
-                updateDirectories(sorted)
-                recheckDirectories(ArrayList(sorted), changedPaths)
+                if (refreshGeneration.isCurrent(generation)) {
+                    updateDirectories(sorted)
+                    recheckDirectories(ArrayList(sorted), changedPaths, generation)
+                }
             }
         }
     }
@@ -159,7 +213,7 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
     // (WorkManager/JobScheduler relaunching the interrupted background work that triggered the
     // refresh, straight back into the same full rescan).
     private var recheckJob: kotlinx.coroutines.Job? = null
-    private fun recheckDirectories(dirs: ArrayList<Directory>, changedPaths: Set<String>) {
+    private fun recheckDirectories(dirs: ArrayList<Directory>, changedPaths: Set<String>, generation: Long) {
         recheckJob?.cancel()
         if (changedPaths.isEmpty()) return
         recheckJob = viewModelScope.launch(Dispatchers.IO) {
@@ -202,7 +256,7 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
             var changed = false
 
             for ((index, directory) in dirs.withIndex()) {
-                if (!isActive) return@launch
+                if (!isActive || !refreshGeneration.isCurrent(generation)) return@launch
                 if (directory.path !in changedPaths) continue
                 val (getProperDateTaken, getProperLastModified) = folderFlags.getValue(directory.path)
 
@@ -248,7 +302,7 @@ class AlbumsViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
 
-            if (changed) {
+            if (changed && refreshGeneration.isCurrent(generation)) {
                 val sorted = ctx.getSortedDirectories(dirs)
                 synchronized(dirListLock) { fullDirList = ArrayList(sorted) }
                 updateDirectories(sorted)

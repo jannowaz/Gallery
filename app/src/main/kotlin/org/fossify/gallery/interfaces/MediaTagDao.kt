@@ -20,6 +20,15 @@ interface MediaTagDao {
     @Query("DELETE FROM media_tags WHERE media_path IN (:paths)")
     fun deleteAllForPathsBatch(paths: List<String>)
 
+    /** Replaces one file's tags without exposing the delete/insert gap to another DB reader. */
+    @Transaction
+    suspend fun replaceTagsForPath(path: String, tags: List<String>) {
+        deleteAllForPath(path)
+        tags.filter { it.isNotBlank() }.distinct().forEach { tag ->
+            insert(MediaTag(mediaPath = path, tag = tag))
+        }
+    }
+
     @Query("DELETE FROM media_tags WHERE tag = :tag")
     suspend fun deleteTagEverywhere(tag: String)
 
@@ -46,4 +55,26 @@ interface MediaTagDao {
 
     @Query("SELECT tag, media_path FROM media_tags WHERE media_path IN (:paths)")
     suspend fun getTagsForPaths(paths: List<String>): List<TagPathRow>
+
+    /** Moves tag rows without allowing a destination collision to delete either side. */
+    @Query("SELECT tag FROM media_tags WHERE media_path = :path")
+    fun getTagsForPathSync(path: String): List<String>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    fun insertSync(tag: MediaTag)
+
+    @Query("DELETE FROM media_tags WHERE media_path = :path")
+    fun deleteAllForPathSync(path: String)
+
+    @Transaction
+    fun migratePath(oldPath: String, newPath: String) {
+        if (oldPath.equals(newPath, ignoreCase = true)) return
+        getTagsForPathSync(oldPath).forEach { insertSync(MediaTag(newPath, it)) }
+        deleteAllForPathSync(oldPath)
+    }
+
+    @Transaction
+    fun copyPath(sourcePath: String, targetPath: String) {
+        getTagsForPathSync(sourcePath).forEach { insertSync(MediaTag(targetPath, it)) }
+    }
 }

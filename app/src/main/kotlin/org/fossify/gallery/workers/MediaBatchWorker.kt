@@ -18,7 +18,9 @@ import kotlinx.coroutines.withContext
 import org.fossify.gallery.extensions.batchJobItemDB
 import org.fossify.gallery.extensions.mediaCacheDB
 import org.fossify.gallery.extensions.mediaDB
+import org.fossify.gallery.extensions.mediaTagDB
 import org.fossify.gallery.helpers.MediaStoreOps
+import org.fossify.gallery.helpers.XmpWriter
 import org.fossify.gallery.helpers.RefreshBus
 import org.fossify.gallery.helpers.UndoAction
 import org.fossify.gallery.helpers.UndoManager
@@ -83,14 +85,16 @@ class MediaBatchWorker(
         // Ensures this actually runs as a promoted foreground service (not just a look-alike
         // notification) - a batch of large media files is exactly the long-running, screen-off case
         // that needs real FGS protection from Doze/background execution limits.
+        var foregroundActive = true
         try {
             setForeground(createForegroundInfo(0, 0))
         } catch (e: Exception) {
+            foregroundActive = false
             // On Android 12+ a dataSync foreground service cannot be started while the app is in the
             // background (ForegroundServiceStartNotAllowedException). If the user taps "move all" and
             // then leaves the app before WorkManager actually starts this worker, setForeground()
             // throws here - which, when swallowed, looked exactly like "the whole batch failed with
-            // nothing moved". Log it loudly; the retry below runs without the FGS promotion.
+            // nothing moved". Log it loudly; the work continues without FGS promotion.
             android.util.Log.e(TAG, "setForeground failed (app likely backgrounded at worker start)", e)
         }
 
@@ -113,8 +117,10 @@ class MediaBatchWorker(
             val total = items.size
             var done = 0
             var failed = 0
+            var needsAllFilesAccess = false
             var lastNotify = 0L
             val succeededPaths = mutableListOf<String>()
+            val affectedPaths = linkedSetOf<String>()
             // sourcePath -> targetPath for every item that actually succeeded - the only thing that
             // makes Move undoable (RENAME/DELETE/etc don't need this, so it's built only when
             // relevant below). A flat Set<String> alone can't drive an undo: by the time Undo is
@@ -130,19 +136,40 @@ class MediaBatchWorker(
                 if (success) {
                     withContext(Dispatchers.IO) { applicationContext.batchJobItemDB.deleteItem(item.id ?: 0L) }
                     succeededPaths.add(item.sourcePath)
+                    affectedPaths += item.sourcePath
+                    affectedPaths += item.targetPath
                     if (operation == BatchOperation.MOVE_FAST || operation == BatchOperation.MOVE_COPY_DELETE) {
                         movedPairs[item.targetPath] = item.sourcePath
                     }
                     done++
                 } else {
                     failed++
+                    if (!MediaStoreOps.hasAllFilesAccess(applicationContext) &&
+                        MediaStoreOps.requiresAllFilesAccessForTarget(
+                            File(item.targetPath).parent ?: "",
+                            MediaStoreOps.isVideoPath(item.sourcePath),
+                        )
+                    ) {
+                        needsAllFilesAccess = true
+                    }
                 }
                 val now = System.currentTimeMillis()
                 if (now - lastNotify > 500) {
                     lastNotify = now
-                    setForeground(createForegroundInfo(done + failed, total))
+                    if (foregroundActive) {
+                        runCatching { setForeground(createForegroundInfo(done + failed, total)) }
+                            .onFailure { foregroundActive = false }
+                    }
                     setProgress(androidx.work.workDataOf("done" to (done + failed), "total" to total))
                 }
+            }
+            if (isStopped) {
+                // A notification cancel or REPLACE stops this worker between items. Do not report a
+                // successful batch and do not leave the unprocessed rows to be mistaken for a later
+                // failure. Completed items were already removed one by one above.
+                withContext(Dispatchers.IO) { applicationContext.batchJobItemDB.deleteJob(jobId) }
+                showResultNotification(operation, done, failed, cancelled = true)
+                return Result.failure(androidx.work.workDataOf("done" to done, "failed" to failed, "total" to total, "cancelled" to true))
             }
             setProgress(androidx.work.workDataOf("done" to (done + failed), "total" to total))
 
@@ -152,7 +179,7 @@ class MediaBatchWorker(
                 // what the UndoType.MOVE handler (see GalleryNavHost) needs to move them back.
                 UndoManager.push(UndoAction(paths = movedPairs.keys, type = UndoType.MOVE, extra = movedPairs))
             }
-            RefreshBus.trigger()
+            if (affectedPaths.isNotEmpty()) RefreshBus.trigger(affectedPaths = affectedPaths)
             // A move/rename here can change what either home-screen widget should be showing (a
             // folder's thumbnail/count for MyWidgetProvider, the "recent media"/pending-move-count
             // for MoverWidgetProvider) - both otherwise only redraw on the OS's own schedule.
@@ -163,7 +190,14 @@ class MediaBatchWorker(
             // RUNNING - WorkManager clears it back to Data.EMPTY once the worker reaches a terminal
             // state, so callers observing WorkInfo after completion (see FoldersMoverScreen) must read
             // the final counts from outputData instead, not progress.
-            Result.success(androidx.work.workDataOf("done" to done, "failed" to failed, "total" to total))
+            Result.success(
+                androidx.work.workDataOf(
+                    "done" to done,
+                    "failed" to failed,
+                    "total" to total,
+                    KEY_NEEDS_ALL_FILES_ACCESS to needsAllFilesAccess,
+                ),
+            )
         } catch (e: Exception) {
             android.util.Log.e(TAG, "Job $jobId failed", e)
             Result.failure()
@@ -173,86 +207,101 @@ class MediaBatchWorker(
     private fun processItem(operation: BatchOperation, item: BatchJobItem): Boolean = try {
         when (operation) {
             BatchOperation.RENAME -> {
-                val uri = MediaStoreOps.uriForPath(applicationContext, item.sourcePath) ?: return false
-                val newName = File(item.targetPath).name
-                if (!MediaStoreOps.rename(applicationContext, uri, newName)) return false
-                val parent = File(item.targetPath).parent ?: ""
-                applicationContext.mediaDB.updateMedium(item.sourcePath, parent, newName, item.targetPath)
-                applicationContext.mediaCacheDB.deleteByPathSync(item.sourcePath)
-                true
+                if (!MediaStoreOps.renameToPath(applicationContext, item.sourcePath, item.targetPath)) return false
+                val targetFile = File(item.targetPath)
+                updatePathAfterMove(item.sourcePath, item.targetPath, targetFile.parent ?: "", targetFile.name)
             }
-            BatchOperation.MOVE_FAST -> {
-                val uri = MediaStoreOps.uriForPath(applicationContext, item.sourcePath) ?: return false
-                val targetRel = MediaStoreOps.relativePathFor(File(item.targetPath).parent ?: "")
-                if (!MediaStoreOps.move(applicationContext, uri, targetRel, File(item.targetPath).name)) return false
-                // Repoint the existing Room row's path columns in place (exactly what RENAME already
-                // does below) instead of deleting it and waiting for a MediaStore rescan to reinsert
-                // it - that rescan only knows MediaStore's own date_modified/date_taken, and Android's
-                // MediaProvider resets date_modified to "now" on any write regardless of what's asked
-                // for (confirmed live: an explicit ContentValues override for it is silently ignored),
-                // which was the actual bug behind a moved file jumping to the top of the date-sorted
-                // grid as if newly added. Updating in place keeps last_modified/date_taken/rating/
-                // is_favorite exactly as they were.
-                applicationContext.mediaDB.updateMedium(item.sourcePath, File(item.targetPath).parent ?: "", File(item.targetPath).name, item.targetPath)
-                applicationContext.mediaCacheDB.deleteByPathSync(item.sourcePath)
-                true
-            }
-            BatchOperation.MOVE_COPY_DELETE -> {
-                val uri = MediaStoreOps.uriForPath(applicationContext, item.sourcePath)
-                if (uri == null) {
-                    // No MediaStore row for this path. The usual cause in a "move all pairs" run is a
-                    // stale pair: the source folder was listed (flattenMoverPairs) before the batch
-                    // started, but MediaStore never indexed some of those files (or indexed them
-                    // under a different DATA path), so uriForPath finds nothing.
-                    android.util.Log.w(TAG, "MOVE fail: no MediaStore uri for ${item.sourcePath}")
+            BatchOperation.MOVE_FAST, BatchOperation.MOVE_COPY_DELETE -> {
+                if (!MediaStoreOps.moveToPath(applicationContext, item.sourcePath, item.targetPath)) {
+                    android.util.Log.w(TAG, "MOVE fail: ${item.sourcePath} -> ${item.targetPath}")
                     return false
                 }
-                val targetRel = MediaStoreOps.relativePathFor(File(item.targetPath).parent ?: "")
-                // Same-volume moves (the common case - the Mover feature/widget used to always
-                // byte-copy here even within internal storage, which was the actual cause of "why
-                // is moving so slow") are just a RELATIVE_PATH update, exactly like MOVE_FAST above -
-                // MediaProvider performs a real, near-instant filesystem rename for these instead of
-                // the full read+write copy below. Only a genuine cross-volume move (e.g. internal
-                // storage -> SD card) still needs the manual copy, since there's no single rename
-                // syscall that can relocate bytes across two different filesystems.
-                if (MediaStoreOps.sameVolume(item.sourcePath, item.targetPath)) {
-                    if (!MediaStoreOps.move(applicationContext, uri, targetRel, File(item.targetPath).name)) {
-                        // update() returned 0 or threw. Most likely a name collision (target already
-                        // has a file of that name) or MediaProvider rejecting the RELATIVE_PATH write.
-                        android.util.Log.w(TAG, "MOVE fail: move() false for ${item.sourcePath} -> $targetRel")
-                        return false
-                    }
-                } else {
-                    val newUri = MediaStoreOps.copy(applicationContext, uri, File(item.targetPath).name, targetRel, MediaStoreOps.isVideoPath(item.sourcePath))
-                    if (newUri == null) {
-                        android.util.Log.w(TAG, "MOVE fail: copy() null for ${item.sourcePath} -> $targetRel")
-                        return false
-                    }
-                    applicationContext.contentResolver.delete(uri, null, null)
-                }
-                // Same reasoning as MOVE_FAST above - this op additionally goes through a fresh
-                // MediaStore insert() (see MediaStoreOps.copy()), whose own date_taken/date_modified
-                // are best-effort at most (also confirmed live: MediaProvider's scanner can null out
-                // date_taken again on a file with no real EXIF, which is the common case for e.g.
-                // downloaded social-media images the Mover feature usually moves) - the local DB row
-                // carrying the correct dates over directly is what actually matters for sort order.
-                applicationContext.mediaDB.updateMedium(item.sourcePath, File(item.targetPath).parent ?: "", File(item.targetPath).name, item.targetPath)
-                applicationContext.mediaCacheDB.deleteByPathSync(item.sourcePath)
-                true
+                // Repoint the existing Room row's path columns in place instead of deleting it and
+                // waiting for a MediaStore rescan to reinsert it, keeping last_modified/date_taken/
+                // rating/is_favorite intact regardless of what MediaProvider does to timestamps.
+                val targetFile = File(item.targetPath)
+                updatePathAfterMove(item.sourcePath, item.targetPath, targetFile.parent ?: "", targetFile.name)
             }
             BatchOperation.COPY -> {
-                val uri = MediaStoreOps.uriForPath(applicationContext, item.sourcePath) ?: return false
-                val targetRel = MediaStoreOps.relativePathFor(File(item.targetPath).parent ?: "")
-                MediaStoreOps.copy(applicationContext, uri, File(item.targetPath).name, targetRel, MediaStoreOps.isVideoPath(item.sourcePath)) != null
+                val copied = MediaStoreOps.copyToPath(applicationContext, item.sourcePath, item.targetPath)
+                if (copied) copyPathMetadata(item.sourcePath, item.targetPath)
+                copied
             }
         }
     } catch (e: Exception) {
-        // Previously swallowed silently, which is why a batch could report "N failed" with no way
-        // to tell why. A MediaProvider write throwing here (e.g. RecoverableSecurityException, or a
-        // transient failure once the process has been hammering it for hundreds of moves) is a prime
-        // suspect for "the later half of a big move-all run fails".
         android.util.Log.w(TAG, "processItem threw for ${item.sourcePath} -> ${item.targetPath}", e)
         false
+    }
+
+    private fun updatePathAfterMove(sourcePath: String, targetPath: String, parent: String, filename: String): Boolean {
+        // The file has already been moved onto targetPath without overwriting any live file, so any
+        // existing Room row at targetPath (e.g. a soft-deleted recycle-bin ghost or stale index row)
+        // would trigger a UNIQUE(full_path) violation on UPDATE. Clear that stale row first.
+        if (!sourcePath.equals(targetPath, ignoreCase = true)) {
+            runCatching { applicationContext.mediaDB.deleteMediumPath(targetPath) }
+        }
+        val updated = applicationContext.mediaDB.updateMedium(sourcePath, parent, filename, targetPath)
+        org.fossify.gallery.helpers.MediaRepository(applicationContext).migratePathMetadata(sourcePath, targetPath)
+        if (updated <= 0) {
+            // The physical move succeeded, but the source wasn't indexed in Room yet (e.g. Explorer
+            // move of a fresh file). Insert a fresh row for targetPath so the DB matches disk and
+            // never misreport an already-moved file as failed.
+            android.util.Log.w(TAG, "Move succeeded on disk with no prior Room row; inserting target row: $targetPath")
+            runCatching {
+                val f = File(targetPath)
+                if (f.isFile) {
+                    val modified = f.lastModified()
+                    val type = if (MediaStoreOps.isVideoPath(targetPath)) 2 else 1
+                    applicationContext.mediaDB.insertAllKeepingExisting(
+                        listOf(
+                            org.fossify.gallery.models.Medium(
+                                id = null,
+                                name = filename,
+                                path = targetPath,
+                                parentPath = parent,
+                                modified = modified,
+                                taken = modified,
+                                size = f.length(),
+                                type = type,
+                                videoDuration = 0,
+                                isFavorite = false,
+                                deletedTS = 0L,
+                                mediaStoreId = 0L,
+                                rating = 0,
+                                dateAdded = modified,
+                                dateSortKey = modified,
+                            ),
+                        ),
+                    )
+                }
+            }
+        }
+        return true
+    }
+
+    /** Copies embedded/sidecar XMP and app-level tag/rating state without touching the source. */
+    private fun copyPathMetadata(sourcePath: String, targetPath: String) {
+        runCatching {
+            val data = XmpWriter.readOrNull(sourcePath)
+            if (data != null && (data.tags.isNotEmpty() || data.rating > 0)) {
+                XmpWriter.write(targetPath, data.tags, data.rating, data.hierarchy)
+            }
+        }.onFailure { android.util.Log.w(TAG, "XMP copy failed: $sourcePath -> $targetPath", it) }
+        runCatching { applicationContext.mediaTagDB.copyPath(sourcePath, targetPath) }
+            .onFailure { android.util.Log.w(TAG, "tag copy failed: $sourcePath -> $targetPath", it) }
+        runCatching {
+            val source = applicationContext.mediaDB.getMediaByPaths(listOf(sourcePath)).firstOrNull() ?: return@runCatching
+            val target = source.copy(
+                id = null,
+                name = File(targetPath).name,
+                path = targetPath,
+                parentPath = File(targetPath).parent ?: "",
+                size = File(targetPath).length().takeIf { it > 0 } ?: source.size,
+                mediaStoreId = 0L,
+                deletedTS = 0L,
+            )
+            applicationContext.mediaDB.insertAllKeepingExisting(listOf(target))
+        }.onFailure { android.util.Log.w(TAG, "Room copy metadata failed: $sourcePath -> $targetPath", it) }
     }
 
     private fun showResultNotification(operation: BatchOperation, done: Int, failed: Int, cancelled: Boolean) {
@@ -278,6 +327,7 @@ class MediaBatchWorker(
         private const val TAG = "MediaBatchWorker"
         const val KEY_JOB_ID = "job_id"
         const val KEY_OPERATION = "operation"
+        const val KEY_NEEDS_ALL_FILES_ACCESS = "needs_all_files_access"
 
         /** Fixed unique-work name for ALL batch ops. This is the fix for the stacking bug: it used to
          * be the random per-call jobId, so enqueueUniqueWork treated every "move all" tap as a
@@ -287,6 +337,8 @@ class MediaBatchWorker(
          * previous batch and runs exactly one at a time. Batch media ops touching MediaStore are
          * better serialized than run in parallel anyway (fewer provider write conflicts). */
         private const val UNIQUE_WORK_NAME = "media_batch_op"
+        /** Stable tag used by screens that are recreated while a batch keeps running. */
+        const val UNIQUE_WORK_TAG = "media_batch_op"
 
         /** How many times WorkManager may retry after the worker's process is killed mid-run (a big
          * move on a memory-pressured device) before giving up. Without a cap the default 30s-backoff
@@ -306,7 +358,7 @@ class MediaBatchWorker(
             val request = OneTimeWorkRequestBuilder<MediaBatchWorker>()
                 .setInputData(Data.Builder().putString(KEY_JOB_ID, jobId).putString(KEY_OPERATION, operation.name).build())
                 .addTag(jobId)
-                .addTag(UNIQUE_WORK_NAME)
+                .addTag(UNIQUE_WORK_TAG)
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_WORK_NAME, ExistingWorkPolicy.REPLACE, request)
             return jobId

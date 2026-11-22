@@ -8,9 +8,6 @@ import android.graphics.Bitmap
 import android.graphics.Bitmap.CompressFormat
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import android.graphics.Point
-import android.graphics.drawable.Drawable
-import android.graphics.drawable.LayerDrawable
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
@@ -19,11 +16,8 @@ import android.provider.MediaStore.Images
 import android.provider.Settings
 import androidx.appcompat.app.AppCompatActivity
 import androidx.exifinterface.media.ExifInterface
-import com.bumptech.glide.Glide
-import com.bumptech.glide.load.DecodeFormat
-import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.request.RequestOptions
-import com.squareup.picasso.Picasso
+import coil.Coil
+import coil.annotation.ExperimentalCoilApi
 import org.fossify.commons.activities.BaseSimpleActivity
 import org.fossify.commons.dialogs.ConfirmationDialog
 import org.fossify.commons.dialogs.SecurityDialog
@@ -31,19 +25,10 @@ import org.fossify.commons.extensions.*
 import org.fossify.commons.extensions.getCurrentFormattedDateTime
 import org.fossify.commons.extensions.internalStoragePath
 import org.fossify.commons.helpers.*
-import org.fossify.commons.models.FAQItem
 import org.fossify.commons.models.FileDirItem
 import org.fossify.gallery.BuildConfig
 import org.fossify.gallery.R
-import org.fossify.gallery.activities.ComposeSettingsActivity
-import org.fossify.gallery.activities.SimpleActivity
-import org.fossify.gallery.activities.VideoPlayerActivity
-import org.fossify.gallery.dialogs.AllFilesPermissionDialog
-import org.fossify.gallery.dialogs.PickDirectoryDialog
-import org.fossify.gallery.dialogs.ResizeMultipleImagesDialog
-import org.fossify.gallery.dialogs.ResizeWithPathDialog
-import org.fossify.gallery.activities.MediaActivity
-import org.fossify.gallery.helpers.DIRECTORY
+import org.fossify.gallery.helpers.MoveConflicts
 import org.fossify.gallery.helpers.RECYCLE_BIN
 import org.fossify.gallery.helpers.TEMP_FOLDER_NAME
 import org.fossify.gallery.models.DateTaken
@@ -76,25 +61,6 @@ fun Activity.openPath(path: String, forceChooser: Boolean, extras: HashMap<Strin
     openPathIntent(path, forceChooser, BuildConfig.APPLICATION_ID, extras = extras)
 }
 
-fun Activity.launchGesturePlayer(path: String, extras: HashMap<String, Boolean> = HashMap()) {
-    ensureBackgroundThread {
-        val newUri = getFinalUriFromPath(path, BuildConfig.APPLICATION_ID)
-        if (newUri == null) {
-            toast(org.fossify.commons.R.string.unknown_error_occurred)
-            return@ensureBackgroundThread
-        }
-
-        val mimeType = getUriMimeType(path, newUri)
-        runOnUiThread {
-            Intent(applicationContext, VideoPlayerActivity::class.java).apply {
-                setDataAndType(newUri, mimeType)
-                for ((key, value) in extras) putExtra(key, value)
-                startActivity(this)
-            }
-        }
-    }
-}
-
 fun Activity.openEditor(path: String, forceChooser: Boolean = false) {
     val newPath = path.removePrefix("file://")
     openEditorIntent(newPath, forceChooser, BuildConfig.APPLICATION_ID)
@@ -103,84 +69,6 @@ fun Activity.openEditor(path: String, forceChooser: Boolean = false) {
 fun Activity.launchCamera() {
     val intent = Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)
     launchActivityIntent(intent)
-}
-
-fun SimpleActivity.launchSettings() {
-    hideKeyboard()
-    startActivity(Intent(applicationContext, ComposeSettingsActivity::class.java))
-}
-
-fun SimpleActivity.launchAbout() {
-    val licenses = LICENSE_GLIDE or LICENSE_CROPPER or LICENSE_RTL or LICENSE_SUBSAMPLING or LICENSE_PATTERN or LICENSE_REPRINT or LICENSE_GIF_DRAWABLE or
-        LICENSE_PICASSO or LICENSE_EXOPLAYER or LICENSE_SANSELAN or LICENSE_FILTERS or LICENSE_GESTURE_VIEWS or LICENSE_APNG
-
-    val faqItems = arrayListOf(
-        FAQItem(R.string.faq_3_title, R.string.faq_3_text),
-        FAQItem(R.string.faq_12_title, R.string.faq_12_text),
-        FAQItem(R.string.faq_7_title, R.string.faq_7_text),
-        FAQItem(R.string.faq_14_title, R.string.faq_14_text),
-        FAQItem(R.string.faq_1_title, R.string.faq_1_text),
-        FAQItem(org.fossify.commons.R.string.faq_5_title_commons, org.fossify.commons.R.string.faq_5_text_commons),
-        FAQItem(R.string.faq_5_title, R.string.faq_5_text),
-        FAQItem(R.string.faq_4_title, R.string.faq_4_text),
-        FAQItem(R.string.faq_6_title, R.string.faq_6_text),
-        FAQItem(R.string.faq_8_title, R.string.faq_8_text),
-        FAQItem(R.string.faq_10_title, R.string.faq_10_text),
-        FAQItem(R.string.faq_11_title, R.string.faq_11_text),
-        FAQItem(R.string.faq_13_title, R.string.faq_13_text),
-        FAQItem(R.string.faq_15_title, R.string.faq_15_text),
-        FAQItem(R.string.faq_2_title, R.string.faq_2_text),
-        FAQItem(R.string.faq_18_title, R.string.faq_18_text),
-        FAQItem(org.fossify.commons.R.string.faq_9_title_commons, org.fossify.commons.R.string.faq_9_text_commons),
-    )
-
-    if (!resources.getBoolean(org.fossify.commons.R.bool.hide_google_relations)) {
-        faqItems.add(FAQItem(org.fossify.commons.R.string.faq_2_title_commons, org.fossify.commons.R.string.faq_2_text_commons))
-        faqItems.add(FAQItem(org.fossify.commons.R.string.faq_6_title_commons, org.fossify.commons.R.string.faq_6_text_commons))
-        faqItems.add(FAQItem(org.fossify.commons.R.string.faq_7_title_commons, org.fossify.commons.R.string.faq_7_text_commons))
-        faqItems.add(FAQItem(org.fossify.commons.R.string.faq_10_title_commons, org.fossify.commons.R.string.faq_10_text_commons))
-    }
-
-    if (isRPlus() && !isExternalStorageManager()) {
-        faqItems.add(0, FAQItem(R.string.faq_16_title, "${getString(R.string.faq_16_text)} ${getString(R.string.faq_16_text_extra)}"))
-        faqItems.add(1, FAQItem(R.string.faq_17_title, R.string.faq_17_text))
-        faqItems.removeIf { it.text == R.string.faq_7_text }
-        faqItems.removeIf { it.text == R.string.faq_14_text }
-        faqItems.removeIf { it.text == R.string.faq_8_text }
-    }
-
-    startAboutActivity(R.string.app_name, licenses, BuildConfig.VERSION_NAME, faqItems, true)
-}
-
-fun BaseSimpleActivity.handleMediaManagementPrompt(callback: () -> Unit) {
-    if (canManageMedia() || isExternalStorageManager()) {
-        callback()
-    } else if (isRPlus() && resources.getBoolean(R.bool.require_all_files_access) && !config.avoidShowingAllFilesPrompt) {
-        if (Environment.isExternalStorageManager()) {
-            callback()
-        } else {
-            var messagePrompt = getString(org.fossify.commons.R.string.access_storage_prompt)
-            messagePrompt += if (isSPlus()) {
-                "\n\n${getString(R.string.media_management_alternative)}"
-            } else {
-                "\n\n${getString(R.string.alternative_media_access)}"
-            }
-
-            AllFilesPermissionDialog(this, messagePrompt, callback = { success ->
-                if (success) {
-                    launchGrantAllFilesIntent()
-                }
-            }, neutralPressed = {
-                if (isSPlus()) {
-                    launchMediaManagementIntent(callback)
-                } else {
-                    config.avoidShowingAllFilesPrompt = true
-                }
-            })
-        }
-    } else {
-        callback()
-    }
 }
 
 fun BaseSimpleActivity.launchGrantAllFilesIntent() {
@@ -249,6 +137,18 @@ fun BaseSimpleActivity.addNoMedia(path: String, callback: () -> Unit) {
 
 fun BaseSimpleActivity.addNoMediaIntoMediaStore(path: String) {
     try {
+        // Hiding the same folder more than once can race the MediaScanner or repeat after a
+        // restored preference. MediaProvider enforces DATA as unique and otherwise logs a noisy
+        // SQLiteConstraintException even though the desired state already exists. Make this
+        // legacy helper idempotent before attempting the insert.
+        val alreadyIndexed = contentResolver.query(
+            Files.getContentUri("external"),
+            arrayOf(MediaStore.MediaColumns._ID),
+            "${MediaStore.MediaColumns.DATA} = ?",
+            arrayOf(path),
+            null,
+        )?.use { it.moveToFirst() } == true
+        if (alreadyIndexed) return
         val content = ContentValues().apply {
             put(Files.FileColumns.TITLE, NOMEDIA)
             put(Files.FileColumns.DATA, path)
@@ -307,23 +207,6 @@ fun BaseSimpleActivity.toggleFileVisibility(oldPath: String, hide: Boolean, call
     }
 }
 
-fun BaseSimpleActivity.tryCopyMoveFilesTo(fileDirItems: ArrayList<FileDirItem>, isCopyOperation: Boolean, callback: (destinationPath: String) -> Unit) {
-    if (fileDirItems.isEmpty()) {
-        toast(org.fossify.commons.R.string.unknown_error_occurred)
-        return
-    }
-
-    val source = fileDirItems[0].getParentPath()
-    PickDirectoryDialog(this, source, true, false, true, false) {
-        val destination = it
-        handleSAFDialog(source) {
-            if (it) {
-                copyMoveFilesTo(fileDirItems, source.trimEnd('/'), destination, isCopyOperation, true, config.shouldShowHidden, callback)
-            }
-        }
-    }
-}
-
 fun BaseSimpleActivity.tryDeleteFileDirItem(
     fileDirItem: FileDirItem, allowDeleteFolder: Boolean = false, deleteFromDatabase: Boolean,
     callback: ((wasSuccess: Boolean) -> Unit)? = null
@@ -369,8 +252,9 @@ fun BaseSimpleActivity.movePathsInRecycleBin(paths: ArrayList<String>, callback:
                     out?.flush()
 
                     if (fileDocument.getItemSize(true) == copiedSize && getDoesFilePathExist(destination)) {
-                        mediaDB.updateDeleted("$RECYCLE_BIN$source", System.currentTimeMillis(), source)
-                        pathsCnt--
+                        if (mediaDB.updateDeleted("$RECYCLE_BIN$source", System.currentTimeMillis(), source) > 0) {
+                            pathsCnt--
+                        }
                     }
                 } catch (e: Exception) {
                     showErrorToast(e)
@@ -385,8 +269,9 @@ fun BaseSimpleActivity.movePathsInRecycleBin(paths: ArrayList<String>, callback:
                 val lastModified = file.lastModified()
                 try {
                     if (file.copyRecursively(internalFile, true)) {
-                        mediaDB.updateDeleted("$RECYCLE_BIN$source", System.currentTimeMillis(), source)
-                        pathsCnt--
+                        if (mediaDB.updateDeleted("$RECYCLE_BIN$source", System.currentTimeMillis(), source) > 0) {
+                            pathsCnt--
+                        }
 
                         if (config.keepLastModified && lastModified != 0L) {
                             internalFile.setLastModified(lastModified)
@@ -493,7 +378,12 @@ fun BaseSimpleActivity.restoreRecycleBinPaths(paths: ArrayList<String>, callback
 fun BaseSimpleActivity.emptyTheRecycleBin(callback: (() -> Unit)? = null) {
     ensureBackgroundThread {
         try {
-            recycleBin.deleteRecursively()
+            val removed = recycleBin.deleteRecursively()
+            if (!removed && recycleBin.exists()) {
+                // Do not clear the database while some bytes remain. Otherwise the remaining files
+                // become untracked and cannot be restored through the app anymore.
+                throw IOException("Recycle bin could not be emptied completely")
+            }
             mediaDB.clearRecycleBin()
             directoryDB.deleteRecycleBin()
             toast(org.fossify.commons.R.string.recycle_bin_emptied)
@@ -678,20 +568,38 @@ fun BaseSimpleActivity.saveRotatedImageToFile(oldPath: String, newPath: String, 
 
             val oldLastModified = File(oldPath).lastModified()
             if (oldPath.isJpg()) {
-                copyFile(oldPath, tmpPath)
+                if (!copyFileVerified(oldPath, tmpPath)) throw IOException("Could not prepare rotation source")
                 saveExifRotation(ExifInterface(tmpPath), newDegrees)
             } else {
                 val inputstream = getFileInputStreamSync(oldPath)
-                val bitmap = BitmapFactory.decodeStream(inputstream)
+                val bitmap = inputstream?.use { BitmapFactory.decodeStream(it) }
+                    ?: throw IOException("Could not decode rotation source")
                 saveFile(tmpPath, bitmap, it as FileOutputStream, newDegrees)
             }
 
-            copyFile(tmpPath, newPath)
-            rescanPaths(arrayListOf(newPath))
-            fileRotatedSuccessfully(newPath, oldLastModified)
-
+            // Close the encoder stream before replacing the destination. The old implementation
+            // copied into the live file while the temporary output stream was still open and then
+            // ignored copy errors, so a killed/failed copy could leave a truncated original.
             it.flush()
             it.close()
+
+            val existingTarget = getDoesFilePathExist(newPath)
+            val backupPath = if (existingTarget) {
+                // Even an explicit overwrite must remain recoverable. Refuse to touch the target
+                // when it cannot be backed up first (for example a missing MediaStore row).
+                MoveConflicts.backupToRecycleBin(this, newPath)
+                    ?: throw IOException("Unable to back up rotation target: $newPath")
+            } else null
+            if (!copyFileVerified(tmpPath, newPath)) {
+                android.util.Log.e("Gallery", "Rotation copy verification failed: $tmpPath -> $newPath")
+                // Keep the old version in the recycle bin if the replacement failed; it is safer
+                // than attempting another overwrite while the storage/provider is unhealthy.
+                runCatching { File(newPath).delete() }
+                backupPath?.let { org.fossify.gallery.helpers.MediaRepository(this).restoreFromRecycleBin(it) }
+                throw IOException("Rotation replacement verification failed")
+            }
+            rescanPaths(arrayListOf(newPath))
+            fileRotatedSuccessfully(newPath, oldLastModified)
             callback.invoke()
         }
     } catch (e: OutOfMemoryError) {
@@ -730,19 +638,16 @@ fun Activity.tryRotateByExif(path: String, degrees: Int, showToasts: Boolean, ca
     }
 }
 
+@OptIn(ExperimentalCoilApi::class)
 fun Activity.fileRotatedSuccessfully(path: String, lastModified: Long) {
     if (config.keepLastModified && lastModified != 0L) {
         File(path).setLastModified(lastModified)
         updateLastModified(path, lastModified)
     }
 
-    Picasso.get().invalidate(path.getFileKey(lastModified))
-    // we cannot refresh a specific image in Glide Cache, so just clear it all
-    val glide = Glide.get(applicationContext)
-    glide.clearDiskCache()
-    runOnUiThread {
-        glide.clearMemory()
-    }
+    val imageLoader = Coil.imageLoader(applicationContext)
+    imageLoader.diskCache?.clear()
+    imageLoader.memoryCache?.clear()
 }
 
 fun BaseSimpleActivity.copyFile(source: String, destination: String) {
@@ -757,6 +662,32 @@ fun BaseSimpleActivity.copyFile(source: String, destination: String) {
     } finally {
         inputStream?.close()
         out?.close()
+    }
+}
+
+/** Copies a media file and verifies that the destination contains every source byte. */
+fun BaseSimpleActivity.copyFileVerified(source: String, destination: String): Boolean {
+    if (source == destination) return false
+    val expectedSize = File(source).length()
+    if (expectedSize <= 0L) return false
+    return try {
+        var copied = 0L
+        getFileInputStreamSync(source)!!.use { input ->
+            val output = getFileOutputStreamSync(destination, source.getMimeType()) ?: return false
+            output.use {
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var read: Int
+                while (input.read(buffer).also { read = it } > 0) {
+                    it.write(buffer, 0, read)
+                    copied += read
+                }
+                it.flush()
+            }
+        }
+        copied == expectedSize && getDoesFilePathExist(destination)
+    } catch (e: Exception) {
+        android.util.Log.e("Gallery", "Verified copy failed: $source -> $destination", e)
+        false
     }
 }
 
@@ -795,84 +726,6 @@ fun BaseSimpleActivity.ensureWriteAccess(path: String, callback: () -> Unit) {
     }
 }
 
-fun BaseSimpleActivity.launchResizeMultipleImagesDialog(paths: List<String>, callback: (() -> Unit)? = null) {
-    ensureBackgroundThread {
-        val imagePaths = mutableListOf<String>()
-        val imageSizes = mutableListOf<Point>()
-        for (path in paths) {
-            val size = path.getImageResolution(this)
-            if (size != null) {
-                imagePaths.add(path)
-                imageSizes.add(size)
-            }
-        }
-
-        runOnUiThread {
-            ResizeMultipleImagesDialog(this, imagePaths, imageSizes) {
-                callback?.invoke()
-            }
-        }
-    }
-}
-
-fun BaseSimpleActivity.launchResizeImageDialog(path: String, callback: (() -> Unit)? = null) {
-    val originalSize = path.getImageResolution(this) ?: return
-    ResizeWithPathDialog(this, originalSize, path) { newSize, newPath ->
-        ensureBackgroundThread {
-            val file = File(newPath)
-            val pathLastModifiedMap = mapOf(file.absolutePath to file.lastModified())
-            try {
-                resizeImage(path, newPath, newSize) { success ->
-                    if (success) {
-                        toast(org.fossify.commons.R.string.file_saved)
-
-                        val paths = arrayListOf(file.absolutePath)
-                        rescanPathsAndUpdateLastModified(paths, pathLastModifiedMap) {
-                            runOnUiThread {
-                                callback?.invoke()
-                            }
-                        }
-                    } else {
-                        toast(R.string.image_editing_failed)
-                    }
-                }
-            } catch (e: OutOfMemoryError) {
-                toast(org.fossify.commons.R.string.out_of_memory_error)
-            } catch (e: Exception) {
-                showErrorToast(e)
-            }
-        }
-    }
-}
-
-fun BaseSimpleActivity.resizeImage(oldPath: String, newPath: String, size: Point, callback: (success: Boolean) -> Unit) {
-    var oldExif: ExifInterface?
-    val inputStream = contentResolver.openInputStream(Uri.fromFile(File(oldPath)))
-    oldExif = ExifInterface(inputStream!!)
-
-    val newBitmap = Glide.with(applicationContext).asBitmap().load(oldPath).submit(size.x, size.y).get()
-
-    val newFile = File(newPath)
-    val newFileDirItem = FileDirItem(newPath, newPath.getFilenameFromPath())
-    getFileOutputStream(newFileDirItem, true) { out ->
-        if (out != null) {
-            out.use {
-                try {
-                    newBitmap.compress(newFile.absolutePath.getCompressionFormat(), 90, out)
-
-                    val newExif = ExifInterface(newFile.absolutePath)
-                    oldExif.copyNonDimensionAttributesTo(newExif)
-                } catch (ignored: Exception) {
-                }
-
-                callback(true)
-            }
-        } else {
-            callback(false)
-        }
-    }
-}
-
 fun BaseSimpleActivity.rescanPathsAndUpdateLastModified(paths: ArrayList<String>, pathLastModifiedMap: Map<String, Long>, callback: () -> Unit) {
     fixDateTaken(paths, false)
     for (path in paths) {
@@ -891,33 +744,6 @@ fun saveFile(path: String, bitmap: Bitmap, out: FileOutputStream, degrees: Int) 
     matrix.postRotate(degrees.toFloat())
     val bmp = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     bmp.compress(path.getCompressionFormat(), 90, out)
-}
-
-fun Activity.getShortcutImage(tmb: String, drawable: Drawable, callback: () -> Unit) {
-    ensureBackgroundThread {
-        val options = RequestOptions()
-            .format(DecodeFormat.PREFER_ARGB_8888)
-            .skipMemoryCache(true)
-            .diskCacheStrategy(DiskCacheStrategy.NONE)
-            .fitCenter()
-
-        val size = resources.getDimension(org.fossify.commons.R.dimen.shortcut_size).toInt()
-        val builder = Glide.with(this)
-            .asDrawable()
-            .load(tmb)
-            .apply(options)
-            .centerCrop()
-            .into(size, size)
-
-        try {
-            (drawable as LayerDrawable).setDrawableByLayerId(R.id.shortcut_image, builder.get())
-        } catch (e: Exception) {
-        }
-
-        runOnUiThread {
-            callback()
-        }
-    }
 }
 
 fun Activity.showFileOnMap(path: String) {
@@ -949,13 +775,6 @@ fun Activity.handleExcludedFolderPasswordProtection(callback: () -> Unit) {
         }
     } else {
         callback()
-    }
-}
-
-fun Activity.openRecycleBin() {
-    Intent(this, MediaActivity::class.java).apply {
-        putExtra(DIRECTORY, RECYCLE_BIN)
-        startActivity(this)
     }
 }
 

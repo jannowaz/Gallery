@@ -14,6 +14,8 @@ data class DirectoryAggregate(
     @ColumnInfo(name = "total_size") val totalSize: Long,
     @ColumnInfo(name = "has_images") val hasImages: Int,
     @ColumnInfo(name = "has_videos") val hasVideos: Int,
+    @ColumnInfo(name = "image_count") val imageCount: Int,
+    @ColumnInfo(name = "video_count") val videoCount: Int,
     @ColumnInfo(name = "thumbnail") val thumbnail: String?,
 )
 
@@ -23,8 +25,48 @@ data class PathSize(
     @ColumnInfo(name = "size") val size: Long,
 )
 
+/** The small subset needed to repair rows whose MediaStore metadata was observed as zero. */
+data class MetadataRepairRow(
+    @ColumnInfo(name = "full_path") val path: String,
+    @ColumnInfo(name = "last_modified") val modified: Long,
+    @ColumnInfo(name = "date_taken") val taken: Long,
+    @ColumnInfo(name = "size") val size: Long,
+    @ColumnInfo(name = "date_added") val added: Long,
+    @ColumnInfo(name = "type") val type: Int,
+)
+
+/** Small, rowid-paged projection used by metadata scans instead of materialising full Medium rows. */
+data class MetadataScanRow(
+    @ColumnInfo(name = "row_id") val rowId: Long,
+    @ColumnInfo(name = "full_path") val path: String,
+    @ColumnInfo(name = "last_modified") val modified: Long,
+    @ColumnInfo(name = "date_taken") val taken: Long,
+    @ColumnInfo(name = "rating") val rating: Int,
+)
+
+/** Bounded, ID-paged input for the local person-presence worker. */
+data class PersonScanRow(
+    @ColumnInfo(name = "row_id") val rowId: Long,
+    @ColumnInfo(name = "full_path") val path: String,
+    @ColumnInfo(name = "parent_path") val parentPath: String,
+    @ColumnInfo(name = "last_modified") val modified: Long,
+    @ColumnInfo(name = "size") val size: Long,
+)
+
 @Dao
 interface MediumDao {
+
+    @Query("SELECT id AS row_id, full_path, parent_path, last_modified, size FROM media WHERE deleted_ts = 0 AND parent_path = :folderPath COLLATE NOCASE AND type = 1 AND id > :afterRowId ORDER BY id LIMIT :limit")
+    fun getPersonScanRowsForFolderAfter(folderPath: String, afterRowId: Long, limit: Int): List<PersonScanRow>
+
+    @Query("SELECT COUNT(*) FROM media WHERE deleted_ts = 0 AND parent_path = :folderPath COLLATE NOCASE AND type = 1")
+    fun getPersonScanRowCountForFolder(folderPath: String): Int
+
+    @Query("SELECT id AS row_id, full_path, parent_path, last_modified, size FROM media WHERE deleted_ts = 0 AND (parent_path = :folderPath COLLATE NOCASE OR parent_path LIKE :subfolderPattern ESCAPE '\\') AND type = 1 AND id > :afterRowId ORDER BY id LIMIT :limit")
+    fun getPersonScanRowsForFolderTreeAfter(folderPath: String, subfolderPattern: String, afterRowId: Long, limit: Int): List<PersonScanRow>
+
+    @Query("SELECT COUNT(*) FROM media WHERE deleted_ts = 0 AND (parent_path = :folderPath COLLATE NOCASE OR parent_path LIKE :subfolderPattern ESCAPE '\\') AND type = 1")
+    fun getPersonScanRowCountForFolderTree(folderPath: String, subfolderPattern: String): Int
 
     /** Media added or modified since [since] - the probes of the recent-vs-library duplicate scan. */
     @Query("SELECT full_path, size FROM media WHERE deleted_ts = 0 AND (date_added >= :since OR last_modified >= :since)")
@@ -58,17 +100,32 @@ interface MediumDao {
     @Query("SELECT COUNT(filename) FROM media WHERE deleted_ts = 0 AND is_favorite = 1")
     fun getFavoritesCount(): Long
 
-    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts != 0")
+    /** Bounded projection for the permanent, automatically maintained rating collections. */
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 AND rating = :rating ORDER BY date_sort_key DESC, full_path COLLATE NOCASE ASC")
+    fun getPathsWithExactRating(rating: Int): List<String>
+
+    // Recycle bin is a chronological inbox: the most recently deleted items must be first. Keeping
+    // this ordering in SQLite (rather than only in the composable) also makes every caller agree.
+    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts != 0 ORDER BY deleted_ts DESC, id DESC")
     fun getDeletedMedia(): List<Medium>
 
     /** Live (non-recycle-bin) row count, for the library health check in Settings. */
     @Query("SELECT COUNT(filename) FROM media WHERE deleted_ts = 0")
     fun getLiveMediaCount(): Int
 
+    /** Count media whose stable date-sort key is newer than the user's inbox watermark. */
+    @Query("SELECT COUNT(filename) FROM media WHERE deleted_ts = 0 AND date_sort_key > :since")
+    fun getNewMediaCountSince(since: Long): Int
+
     /** All live paths + the fields the Explorer's folder-tree reconstruction needs, straight from
      * the indexed media table instead of a full-device MediaStore cursor. See MediaStoreOps.MediaEntry. */
-    @Query("SELECT full_path AS path, filename AS name, last_modified AS modified, size, date_added AS dateAdded FROM media WHERE deleted_ts = 0")
+    @Query("SELECT full_path AS path, filename AS name, last_modified AS modified, size, date_added AS dateAdded, type FROM media WHERE deleted_ts = 0")
     fun getAllLiveEntriesForExplorer(): List<org.fossify.gallery.helpers.MediaStoreOps.MediaEntry>
+
+    /** Targeted Explorer cache patch after a sync/move/delete. Keeps the common one/few-file path
+     * change off the full-library SELECT used only for an unknown/bulk invalidation. */
+    @Query("SELECT full_path AS path, filename AS name, last_modified AS modified, size, date_added AS dateAdded, type FROM media WHERE deleted_ts = 0 AND full_path IN (:paths)")
+    fun getLiveEntriesForExplorerPaths(paths: List<String>): List<org.fossify.gallery.helpers.MediaStoreOps.MediaEntry>
 
     @Query("SELECT COUNT(filename) FROM media WHERE deleted_ts != 0")
     fun getDeletedMediaCount(): Long
@@ -87,6 +144,16 @@ interface MediumDao {
 
     @Query("SELECT full_path FROM media")
     fun getAllPaths(): List<String>
+
+    /** Rows with incomplete provider metadata. Kept deliberately narrow so the repair pass never
+     * materializes the complete library just to find a handful of zero-valued rows. */
+    @Query("SELECT full_path, last_modified, date_taken, size, date_added, type FROM media WHERE deleted_ts = 0 AND (last_modified <= 0 OR date_taken <= 0 OR date_added <= 0 OR (size <= 0 AND type = 1))")
+    fun getMetadataRepairRows(): List<MetadataRepairRow>
+
+    /** Updates only fields that are safe to derive from the existing on-disk file. Tags, ratings,
+     * favorites and the stable MediaStore id remain untouched. */
+    @Query("UPDATE media SET last_modified = :modified, date_taken = :taken, size = :size, date_added = :added WHERE full_path = :path COLLATE NOCASE AND deleted_ts = 0")
+    fun repairMetadata(path: String, modified: Long, taken: Long, size: Long, added: Long)
 
     // Used to dedup a bounded candidate batch (e.g. a MediaStore incremental-sync page) against the
     // DB without materializing every path in the library - see MediaRepository.syncNewMediaFromStore().
@@ -129,14 +196,16 @@ interface MediumDao {
     @Query("DELETE FROM media WHERE full_path = :path COLLATE NOCASE")
     fun deleteMediumPath(path: String)
 
-    @Query("UPDATE OR REPLACE media SET filename = :newFilename, full_path = :newFullPath, parent_path = :newParentPath WHERE full_path = :oldPath COLLATE NOCASE")
-    fun updateMedium(oldPath: String, newParentPath: String, newFilename: String, newFullPath: String)
+    // Never replace a row at the destination path implicitly. A path collision must fail and be
+    // resolved by the move operation; UPDATE OR REPLACE could silently drop the existing medium.
+    @Query("UPDATE media SET filename = :newFilename, full_path = :newFullPath, parent_path = :newParentPath WHERE full_path = :oldPath COLLATE NOCASE")
+    fun updateMedium(oldPath: String, newParentPath: String, newFilename: String, newFullPath: String): Int
 
-    @Query("UPDATE OR REPLACE media SET full_path = :newPath, deleted_ts = :deletedTS WHERE full_path = :oldPath COLLATE NOCASE")
-    fun updateDeleted(newPath: String, deletedTS: Long, oldPath: String)
+    @Query("UPDATE media SET full_path = :newPath, deleted_ts = :deletedTS WHERE full_path = :oldPath COLLATE NOCASE")
+    fun updateDeleted(newPath: String, deletedTS: Long, oldPath: String): Int
 
     @Query("UPDATE media SET deleted_ts = :deletedTS WHERE full_path = :path COLLATE NOCASE")
-    fun softDelete(path: String, deletedTS: Long)
+    fun softDelete(path: String, deletedTS: Long): Int
 
     @Query("UPDATE media SET deleted_ts = :deletedTS WHERE full_path IN (:paths)")
     fun softDeleteBatch(paths: Collection<String>, deletedTS: Long)
@@ -162,6 +231,18 @@ interface MediumDao {
     @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 ORDER BY date_taken DESC, last_modified DESC LIMIT :limit")
     fun getNewestMedia(limit: Int): List<Medium>
 
+    /** Rowid-keyset pages keep metadata scans bounded even when the library has six figures of media. */
+    @Query("SELECT rowid AS row_id, full_path, last_modified, date_taken, rating FROM media WHERE deleted_ts = 0 AND rowid > :afterRowId ORDER BY rowid LIMIT :limit")
+    fun getMetadataScanRowsAfter(afterRowId: Long, limit: Int): List<MetadataScanRow>
+
+    /** Bounded automatic-scan page, retaining the previous newest-first selection semantics. */
+    @Query("SELECT rowid AS row_id, full_path, last_modified, date_taken, rating FROM media WHERE deleted_ts = 0 ORDER BY date_taken DESC, last_modified DESC LIMIT :limit OFFSET :offset")
+    fun getNewestMetadataScanRows(limit: Int, offset: Int): List<MetadataScanRow>
+
+    /** Folder variant; the prefix includes the slash so similarly named sibling folders are excluded. */
+    @Query("SELECT rowid AS row_id, full_path, last_modified, date_taken, rating FROM media WHERE deleted_ts = 0 AND (full_path = :folderPath OR full_path LIKE :folderPrefix) AND rowid > :afterRowId ORDER BY rowid LIMIT :limit")
+    fun getMetadataScanRowsForFolderAfter(folderPath: String, folderPrefix: String, afterRowId: Long, limit: Int): List<MetadataScanRow>
+
     /** Includes recycle-bin rows - the "is this database empty?" bootstrap check must count them,
      * see ExplorerViewModel.initializeDatabase. */
     @Query("SELECT COUNT(filename) FROM media")
@@ -178,13 +259,25 @@ interface MediumDao {
     @Query("DELETE FROM media WHERE full_path IN (:paths)")
     fun deleteByPathsBatch(paths: List<String>)
 
-    /** Thumbnail subselect mirrors the newest-first key the grids use (date_sort_key, then
-     * date_added, then last_modified), so a folder's cover is its newest visible medium. */
-    @Query("SELECT parent_path, COUNT(filename) AS cnt, MAX(last_modified) AS max_modified, MAX(date_taken) AS max_taken, SUM(size) AS total_size, MAX(CASE WHEN type = 2 THEN 0 ELSE 1 END) AS has_images, MAX(CASE WHEN type = 2 THEN 1 ELSE 0 END) AS has_videos, (SELECT m2.full_path FROM media m2 WHERE m2.parent_path = media.parent_path AND m2.deleted_ts = 0 ORDER BY CASE WHEN m2.date_sort_key > 0 THEN m2.date_sort_key WHEN m2.date_added > 0 THEN m2.date_added ELSE m2.last_modified END DESC LIMIT 1) AS thumbnail FROM media WHERE deleted_ts = 0 GROUP BY parent_path")
+    /** Thumbnail subselect mirrors the newest-first key the grids use (auto-maintained
+     * date_sort_key via triggers), using the composite (deleted_ts, parent_path, date_sort_key)
+     * index directly instead of evaluating a CASE expression per row. */
+    @Query("SELECT parent_path, COUNT(filename) AS cnt, MAX(last_modified) AS max_modified, MAX(date_taken) AS max_taken, SUM(size) AS total_size, MAX(CASE WHEN type = 2 THEN 0 ELSE 1 END) AS has_images, MAX(CASE WHEN type = 2 THEN 1 ELSE 0 END) AS has_videos, SUM(CASE WHEN type = 1 THEN 1 ELSE 0 END) AS image_count, SUM(CASE WHEN type = 2 THEN 1 ELSE 0 END) AS video_count, (SELECT m2.full_path FROM media m2 WHERE m2.deleted_ts = 0 AND m2.parent_path = media.parent_path ORDER BY m2.date_sort_key DESC LIMIT 1) AS thumbnail FROM media WHERE deleted_ts = 0 GROUP BY parent_path")
     fun getDirectoryAggregates(): List<DirectoryAggregate>
 
     @Query("UPDATE media SET rating = :rating WHERE full_path = :path COLLATE NOCASE")
     fun updateRating(path: String, rating: Int)
+
+    @Query("UPDATE media SET video_duration = :duration WHERE full_path = :path COLLATE NOCASE AND video_duration != :duration")
+    fun updateVideoDuration(path: String, duration: Int)
+
+    /** One-time backfill of legacy video rows that were stored with video_duration = 0. In a single
+     * transaction so Room's InvalidationTracker fires once (one paged-grid reload) instead of once
+     * per updated row. */
+    @Transaction
+    fun updateVideoDurations(durations: Map<String, Int>) {
+        durations.forEach { (path, dur) -> updateVideoDuration(path, dur) }
+    }
 
     @Query("UPDATE media SET rating = :rating WHERE full_path IN (:paths)")
     fun updateRatingBatch(paths: Collection<String>, rating: Int)
@@ -221,7 +314,7 @@ interface MediumDao {
         """
         SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added
         FROM media WHERE deleted_ts = 0
-        ORDER BY date_sort_key ASC
+        ORDER BY date_sort_key ASC, full_path COLLATE NOCASE ASC
         """
     )
     fun getMediaPagedByDateAsc(): PagingSource<Int, Medium>
@@ -230,7 +323,7 @@ interface MediumDao {
         """
         SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added
         FROM media WHERE deleted_ts = 0
-        ORDER BY date_sort_key DESC
+        ORDER BY date_sort_key DESC, full_path COLLATE NOCASE ASC
         """
     )
     fun getMediaPagedByDateDesc(): PagingSource<Int, Medium>
@@ -241,7 +334,7 @@ interface MediumDao {
         """
         SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added
         FROM media WHERE deleted_ts = 0
-        ORDER BY size ASC
+        ORDER BY size ASC, full_path COLLATE NOCASE ASC
         """
     )
     fun getMediaPagedBySizeAsc(): PagingSource<Int, Medium>
@@ -250,18 +343,22 @@ interface MediumDao {
         """
         SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added
         FROM media WHERE deleted_ts = 0
-        ORDER BY size DESC
+        ORDER BY size DESC, full_path COLLATE NOCASE ASC
         """
     )
     fun getMediaPagedBySizeDesc(): PagingSource<Int, Medium>
 
     fun getMediaPagedBySize(desc: Boolean): PagingSource<Int, Medium> = if (desc) getMediaPagedBySizeDesc() else getMediaPagedBySizeAsc()
 
+    // Within each rating bucket the secondary sort is ALWAYS last_modified DESC (newest-changed
+    // first), regardless of the rating direction - so `rating ASC` intentionally pairs with
+    // `last_modified DESC`, not ASC. Mirrored in getActivePathsByRatingAsc, the filtered query in
+    // MediaRepository.buildFilteredMediaQuery, and MediaViewModel.applySort.
     @Query(
         """
         SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added
         FROM media WHERE deleted_ts = 0
-        ORDER BY rating ASC, last_modified ASC
+        ORDER BY rating ASC, last_modified DESC, full_path COLLATE NOCASE ASC
         """
     )
     fun getMediaPagedByRatingAsc(): PagingSource<Int, Medium>
@@ -270,49 +367,49 @@ interface MediumDao {
         """
         SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added
         FROM media WHERE deleted_ts = 0
-        ORDER BY rating DESC, last_modified DESC
+        ORDER BY rating DESC, last_modified DESC, full_path COLLATE NOCASE ASC
         """
     )
     fun getMediaPagedByRatingDesc(): PagingSource<Int, Medium>
 
     fun getMediaPagedByRating(desc: Boolean): PagingSource<Int, Medium> = if (desc) getMediaPagedByRatingDesc() else getMediaPagedByRatingAsc()
 
-    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE ASC")
+    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE ASC, full_path COLLATE NOCASE ASC")
     fun getMediaPagedByNameAsc(): PagingSource<Int, Medium>
 
-    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE DESC")
+    @Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE DESC, full_path COLLATE NOCASE ASC")
     fun getMediaPagedByNameDesc(): PagingSource<Int, Medium>
 
     // Paths-only mirrors of the getMediaPagedBy* queries above (same ordering, no LIMIT/OFFSET) -
     // used to hand the Viewer the full sorted path list on demand so swipe-through isn't limited to
     // whatever the grid has paged in so far. Same ASC/DESC split rationale as above.
-    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY date_sort_key ASC")
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY date_sort_key ASC, full_path COLLATE NOCASE ASC")
     suspend fun getActivePathsByDateAsc(): List<String>
 
-    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY date_sort_key DESC")
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY date_sort_key DESC, full_path COLLATE NOCASE ASC")
     suspend fun getActivePathsByDateDesc(): List<String>
 
     suspend fun getActivePathsByDate(desc: Boolean): List<String> = if (desc) getActivePathsByDateDesc() else getActivePathsByDateAsc()
 
-    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY size ASC")
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY size ASC, full_path COLLATE NOCASE ASC")
     suspend fun getActivePathsBySizeAsc(): List<String>
 
-    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY size DESC")
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY size DESC, full_path COLLATE NOCASE ASC")
     suspend fun getActivePathsBySizeDesc(): List<String>
 
     suspend fun getActivePathsBySize(desc: Boolean): List<String> = if (desc) getActivePathsBySizeDesc() else getActivePathsBySizeAsc()
 
-    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY rating ASC, last_modified ASC")
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY rating ASC, last_modified DESC, full_path COLLATE NOCASE ASC")
     suspend fun getActivePathsByRatingAsc(): List<String>
 
-    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY rating DESC, last_modified DESC")
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY rating DESC, last_modified DESC, full_path COLLATE NOCASE ASC")
     suspend fun getActivePathsByRatingDesc(): List<String>
 
     suspend fun getActivePathsByRating(desc: Boolean): List<String> = if (desc) getActivePathsByRatingDesc() else getActivePathsByRatingAsc()
 
-    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE ASC")
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE ASC, full_path COLLATE NOCASE ASC")
     suspend fun getActivePathsByNameAsc(): List<String>
 
-    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE DESC")
+    @Query("SELECT full_path FROM media WHERE deleted_ts = 0 ORDER BY filename COLLATE NOCASE DESC, full_path COLLATE NOCASE ASC")
     suspend fun getActivePathsByNameDesc(): List<String>
 }

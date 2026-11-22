@@ -16,26 +16,6 @@ import android.os.Environment
 import android.os.Process
 import android.provider.MediaStore.Files
 import android.provider.MediaStore.Images
-import android.widget.ImageView
-import com.bumptech.glide.Glide
-import com.bumptech.glide.Priority
-import com.bumptech.glide.integration.webp.WebpBitmapFactory
-import com.bumptech.glide.integration.webp.decoder.WebpDownsampler
-import com.bumptech.glide.integration.webp.decoder.WebpDrawable
-import com.bumptech.glide.integration.webp.decoder.WebpDrawableTransformation
-import com.bumptech.glide.load.DataSource
-import com.bumptech.glide.load.DecodeFormat
-import com.bumptech.glide.load.MultiTransformation
-import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.load.engine.GlideException
-import com.bumptech.glide.load.resource.bitmap.CenterCrop
-import com.bumptech.glide.load.resource.bitmap.FitCenter
-import com.bumptech.glide.load.resource.bitmap.RoundedCorners
-import com.bumptech.glide.request.RequestListener
-import com.bumptech.glide.request.RequestOptions
-import com.bumptech.glide.request.target.Target
-import com.bumptech.glide.signature.ObjectKey
-import com.squareup.picasso.Picasso
 import org.fossify.commons.extensions.doesThisOrParentHaveNoMedia
 import org.fossify.commons.extensions.getDocumentFile
 import org.fossify.commons.extensions.getDoesFilePathExist
@@ -77,9 +57,7 @@ import org.fossify.commons.helpers.SORT_DESCENDING
 import org.fossify.commons.helpers.SORT_USE_NUMERIC_VALUE
 import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.commons.helpers.sumByLong
-import org.fossify.commons.views.MySquareImageView
 import org.fossify.gallery.R
-import org.fossify.gallery.asynctasks.GetMediaAsynctask
 import org.fossify.gallery.databases.GalleryDatabase
 import org.fossify.gallery.helpers.Config
 import org.fossify.gallery.helpers.GROUP_BY_DATE_TAKEN_DAILY
@@ -91,9 +69,8 @@ import org.fossify.gallery.helpers.LOCATION_INTERNAL
 import org.fossify.gallery.helpers.LOCATION_OTG
 import org.fossify.gallery.helpers.LOCATION_SD
 import org.fossify.gallery.helpers.MediaFetcher
-import org.fossify.gallery.helpers.XmpWriter
+import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.helpers.MyWidgetProvider
-import org.fossify.gallery.helpers.PicassoRoundedCornersTransformation
 import org.fossify.gallery.helpers.RECYCLE_BIN
 import org.fossify.gallery.helpers.ROUNDED_CORNERS_NONE
 import org.fossify.gallery.helpers.ROUNDED_CORNERS_SMALL
@@ -118,7 +95,6 @@ import org.fossify.gallery.models.Directory
 import org.fossify.gallery.models.Favorite
 import org.fossify.gallery.models.Medium
 import org.fossify.gallery.models.ThumbnailItem
-import org.fossify.gallery.svg.SvgSoftwareLayerSetter
 import java.io.File
 import java.io.FileInputStream
 import java.nio.ByteBuffer
@@ -165,6 +141,9 @@ val Context.compressionReviewDB: org.fossify.gallery.interfaces.CompressionRevie
 
 val Context.fileHashDB: org.fossify.gallery.interfaces.FileHashDao
     get() = GalleryDatabase.getInstance(applicationContext).FileHashDao()
+
+val Context.mediaPersonScanDB: org.fossify.gallery.interfaces.MediaPersonScanDao
+    get() = GalleryDatabase.getInstance(applicationContext).MediaPersonScanDao()
 
 val Context.recycleBin: File get() = filesDir
 
@@ -581,30 +560,34 @@ fun Context.rescanFolderMedia(path: String) {
 
 fun Context.rescanFolderMediaSync(path: String) {
     getCachedMedia(path) { cached ->
-        GetMediaAsynctask(
-            context = applicationContext,
-            mPath = path,
-            isPickImage = false,
-            isPickVideo = false,
-            showAll = false
-        ) { newMedia ->
-            ensureBackgroundThread {
-                val media = newMedia.filterIsInstance<Medium>() as ArrayList<Medium>
-                try {
-                    mediaDB.insertAll(media)
+        ensureBackgroundThread {
+            try {
+                val fetcher = MediaFetcher(applicationContext)
+                val newMedia = fetcher.getFilesFrom(
+                    curPath = path,
+                    isPickImage = false,
+                    isPickVideo = false,
+                    getProperDateTaken = config.getFolderSorting(path) and SORT_BY_DATE_TAKEN != 0,
+                    getProperLastModified = config.getFolderSorting(path) and SORT_BY_DATE_MODIFIED != 0,
+                    getProperFileSize = config.getFolderSorting(path) and SORT_BY_SIZE != 0,
+                    favoritePaths = ArrayList(),
+                    getVideoDurations = false,
+                    lastModifieds = HashMap(),
+                    dateTakens = HashMap(),
+                    android11Files = null
+                )
+                mediaDB.insertAll(newMedia)
 
-                    cached.forEach { thumbnailItem ->
-                        if (!newMedia.contains(thumbnailItem)) {
-                            val mediumPath = (thumbnailItem as? Medium)?.path
-                            if (mediumPath != null) {
-                                deleteDBPath(mediumPath)
-                            }
-                        }
+                val newPaths = newMedia.mapTo(HashSet()) { it.path }
+                cached.forEach { thumbnailItem ->
+                    val mediumPath = (thumbnailItem as? Medium)?.path
+                    if (mediumPath != null && mediumPath !in newPaths) {
+                        deleteDBPath(mediumPath)
                     }
-                } catch (ignored: Exception) {
                 }
+            } catch (ignored: Exception) {
             }
-        }.execute()
+        }
     }
 }
 
@@ -641,42 +624,6 @@ fun Context.getFolderNameFromPath(path: String): String {
     }
 }
 
-fun Context.loadImage(
-    type: Int,
-    path: String,
-    target: MySquareImageView,
-    horizontalScroll: Boolean,
-    animateGifs: Boolean,
-    cropThumbnails: Boolean,
-    roundCorners: Int,
-    signature: ObjectKey,
-    skipMemoryCacheAtPaths: ArrayList<String>? = null,
-    onError: (() -> Unit)? = null
-) {
-    target.isHorizontalScrolling = horizontalScroll
-    if (type == TYPE_SVGS) {
-        loadSVG(
-            path = path,
-            target = target,
-            cropThumbnails = cropThumbnails,
-            roundCorners = roundCorners,
-            signature = signature
-        )
-    } else {
-        loadImageBase(
-            path = path,
-            target = target,
-            cropThumbnails = cropThumbnails,
-            roundCorners = roundCorners,
-            signature = signature,
-            skipMemoryCacheAtPaths = skipMemoryCacheAtPaths,
-            animate = animateGifs,
-            tryLoadingWithPicasso = type == TYPE_IMAGES && path.isPng(),
-            onError = onError
-        )
-    }
-}
-
 fun Context.addTempFolderIfNeeded(dirs: ArrayList<Directory>): ArrayList<Directory> {
     val tempFolderPath = config.tempFolderPath
     return if (tempFolderPath.isNotEmpty()) {
@@ -707,166 +654,6 @@ fun Context.getPathLocation(path: String): Int {
         isPathOnSD(path) -> LOCATION_SD
         isPathOnOTG(path) -> LOCATION_OTG
         else -> LOCATION_INTERNAL
-    }
-}
-
-@SuppressLint("CheckResult")
-fun Context.loadImageBase(
-    path: String,
-    target: MySquareImageView,
-    cropThumbnails: Boolean,
-    roundCorners: Int,
-    signature: ObjectKey,
-    skipMemoryCacheAtPaths: ArrayList<String>? = null,
-    animate: Boolean = false,
-    tryLoadingWithPicasso: Boolean = false,
-    crossFadeDuration: Int = THUMBNAIL_FADE_DURATION_MS,
-    onError: (() -> Unit)? = null
-) {
-    val options = RequestOptions()
-        .signature(signature)
-        .skipMemoryCache(skipMemoryCacheAtPaths?.contains(path) == true)
-        .priority(Priority.LOW)
-        .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
-        .format(DecodeFormat.PREFER_ARGB_8888)
-
-    if (cropThumbnails) {
-        options.optionalTransform(CenterCrop())
-        options.optionalTransform(
-            WebpDrawable::class.java,
-            WebpDrawableTransformation(CenterCrop())
-        )
-    } else {
-        options.optionalTransform(FitCenter())
-        options.optionalTransform(WebpDrawable::class.java, WebpDrawableTransformation(FitCenter()))
-    }
-
-    // animation is only supported without rounded corners and the file must be a GIF or WEBP.
-    if (animate && roundCorners == ROUNDED_CORNERS_NONE && (path.isGif() || path.isWebP())) {
-        // this is required to make glide cache aware of changes
-        options.decode(Drawable::class.java)
-    } else {
-        options.dontAnimate()
-        // don't animate is not enough for webp files, decode as bitmap forces first frame use in animated webps
-        options.decode(Bitmap::class.java)
-    }
-
-    if (roundCorners != ROUNDED_CORNERS_NONE) {
-        val cornerSize =
-            if (roundCorners == ROUNDED_CORNERS_SMALL) org.fossify.commons.R.dimen.rounded_corner_radius_small else org.fossify.commons.R.dimen.rounded_corner_radius_big
-        val cornerRadius = resources.getDimension(cornerSize).toInt()
-        val roundedCornersTransform = RoundedCorners(cornerRadius)
-        options.optionalTransform(MultiTransformation(CenterCrop(), roundedCornersTransform))
-        options.optionalTransform(
-            WebpDrawable::class.java,
-            MultiTransformation(
-                WebpDrawableTransformation(CenterCrop()),
-                WebpDrawableTransformation(roundedCornersTransform)
-            )
-        )
-    }
-
-    WebpBitmapFactory.sUseSystemDecoder = false // CVE-2023-4863
-    var builder = Glide.with(applicationContext)
-        .load(path)
-        .apply(options)
-        .set(WebpDownsampler.USE_SYSTEM_DECODER, false) // CVE-2023-4863
-        .transition(getOptionalCrossFadeTransition(crossFadeDuration))
-
-    builder = builder.listener(object : RequestListener<Drawable> {
-        override fun onLoadFailed(
-            e: GlideException?,
-            model: Any?,
-            targetBitmap: Target<Drawable>,
-            isFirstResource: Boolean
-        ): Boolean {
-            if (tryLoadingWithPicasso) {
-                tryLoadingWithPicasso(path, target, cropThumbnails, roundCorners, signature)
-            } else {
-                onError?.invoke()
-            }
-
-            return true
-        }
-
-        override fun onResourceReady(
-            resource: Drawable,
-            model: Any,
-            targetBitmap: Target<Drawable>,
-            dataSource: DataSource,
-            isFirstResource: Boolean,
-        ) = false
-    })
-
-    builder.into(target)
-}
-
-fun Context.loadSVG(
-    path: String,
-    target: MySquareImageView,
-    cropThumbnails: Boolean,
-    roundCorners: Int,
-    signature: ObjectKey,
-    crossFadeDuration: Int = THUMBNAIL_FADE_DURATION_MS,
-) {
-    target.scaleType = if (cropThumbnails) {
-        ImageView.ScaleType.CENTER_CROP
-    } else {
-        ImageView.ScaleType.FIT_CENTER
-    }
-
-    val options = RequestOptions().signature(signature)
-    var builder = Glide.with(applicationContext)
-        .`as`(PictureDrawable::class.java)
-        .listener(SvgSoftwareLayerSetter())
-        .load(path)
-        .apply(options)
-        .transition(getOptionalCrossFadeTransition(crossFadeDuration))
-
-    if (roundCorners != ROUNDED_CORNERS_NONE) {
-        val cornerSize = when (roundCorners) {
-            ROUNDED_CORNERS_SMALL -> org.fossify.commons.R.dimen.rounded_corner_radius_small
-            else -> org.fossify.commons.R.dimen.rounded_corner_radius_big
-        }
-
-        val cornerRadius = resources.getDimension(cornerSize).toInt()
-        builder = builder.transform(CenterCrop(), RoundedCorners(cornerRadius))
-    }
-
-    builder.into(target)
-}
-
-// intended mostly for Android 11 issues, that fail loading PNG files bigger than 10 MB
-fun Context.tryLoadingWithPicasso(
-    path: String,
-    view: MySquareImageView,
-    cropThumbnails: Boolean,
-    roundCorners: Int,
-    signature: ObjectKey
-) {
-    var pathToLoad = "file://$path"
-    pathToLoad = pathToLoad.replace("%", "%25").replace("#", "%23")
-
-    try {
-        var builder = Picasso.get()
-            .load(pathToLoad)
-            .stableKey(signature.toString())
-
-        builder = if (cropThumbnails) {
-            builder.centerCrop().fit()
-        } else {
-            builder.centerInside()
-        }
-
-        if (roundCorners != ROUNDED_CORNERS_NONE) {
-            val cornerSize =
-                if (roundCorners == ROUNDED_CORNERS_SMALL) org.fossify.commons.R.dimen.rounded_corner_radius_small else org.fossify.commons.R.dimen.rounded_corner_radius_big
-            val cornerRadius = resources.getDimension(cornerSize).toInt()
-            builder = builder.transform(PicassoRoundedCornersTransformation(cornerRadius.toFloat()))
-        }
-
-        builder.into(view)
-    } catch (e: Exception) {
     }
 }
 
@@ -1075,8 +862,8 @@ fun Context.updateDBMediaPath(oldPath: String, newPath: String) {
     val newFilename = newPath.getFilenameFromPath()
     val newParentPath = newPath.getParentPath()
     try {
-        mediaDB.updateMedium(newFilename, newPath, newParentPath, oldPath)
-        favoritesDB.updateFavorite(newFilename, newPath, newParentPath, oldPath)
+        mediaDB.updateMedium(oldPath, newParentPath, newFilename, newPath)
+        MediaRepository(this).migratePathMetadata(oldPath, newPath)
     } catch (ignored: Exception) {
     }
 }
@@ -1123,8 +910,7 @@ fun Context.updateFavorite(path: String, isFavorite: Boolean) {
 
 fun Context.updateRating(path: String, rating: Int) {
     try {
-        mediaDB.updateRating(path, rating)
-        XmpWriter.write(path, XmpWriter.read(path).tags, rating)
+        MediaRepository(this).updateRating(path, rating)
     } catch (e: Exception) { android.util.Log.e("Context", "updateRating failed for $path", e) }
 }
 
@@ -1251,40 +1037,48 @@ fun Context.parseFileChannel(
 
 fun Context.addPathToDB(path: String) {
     ensureBackgroundThread {
-        if (!getDoesFilePathExist(path)) {
-            return@ensureBackgroundThread
-        }
+        addPathToDBSync(path)
+    }
+}
 
-        val type = when {
-            path.isVideoFast() -> TYPE_VIDEOS
-            path.isGif() -> TYPE_GIFS
-            path.isRawFast() -> TYPE_RAWS
-            path.isSvg() -> TYPE_SVGS
-            path.isPortrait() -> TYPE_PORTRAITS
-            else -> TYPE_IMAGES
-        }
+/**
+ * Synchronous Room insertion helper for callers that are already running on an I/O thread
+ * (e.g., a BroadcastReceiver holding a `goAsync()` PendingResult).
+ */
+internal fun Context.addPathToDBSync(path: String) {
+    if (!getDoesFilePathExist(path)) {
+        return
+    }
 
-        try {
-            val isFavorite = favoritesDB.isFavorite(path)
-            val videoDuration = if (type == TYPE_VIDEOS) getDuration(path) ?: 0 else 0
-            val medium = Medium(
-                id = null,
-                name = path.getFilenameFromPath(),
-                path = path,
-                parentPath = path.getParentPath(),
-                modified = System.currentTimeMillis(),
-                taken = System.currentTimeMillis(),
-                size = File(path).length(),
-                type = type,
-                videoDuration = videoDuration,
-                isFavorite = isFavorite,
-                deletedTS = 0L,
-                mediaStoreId = 0L
-            )
+    val type = when {
+        path.isVideoFast() -> TYPE_VIDEOS
+        path.isGif() -> TYPE_GIFS
+        path.isRawFast() -> TYPE_RAWS
+        path.isSvg() -> TYPE_SVGS
+        path.isPortrait() -> TYPE_PORTRAITS
+        else -> TYPE_IMAGES
+    }
 
-            mediaDB.insert(medium)
-        } catch (ignored: Exception) {
-        }
+    try {
+        val isFavorite = favoritesDB.isFavorite(path)
+        val videoDuration = if (type == TYPE_VIDEOS) getDuration(path) ?: 0 else 0
+        val medium = Medium(
+            id = null,
+            name = path.getFilenameFromPath(),
+            path = path,
+            parentPath = path.getParentPath(),
+            modified = System.currentTimeMillis(),
+            taken = System.currentTimeMillis(),
+            size = File(path).length(),
+            type = type,
+            videoDuration = videoDuration,
+            isFavorite = isFavorite,
+            deletedTS = 0L,
+            mediaStoreId = 0L
+        )
+
+        mediaDB.insert(medium)
+    } catch (ignored: Exception) {
     }
 }
 

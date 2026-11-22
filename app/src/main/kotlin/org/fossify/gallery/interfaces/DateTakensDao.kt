@@ -16,4 +16,7 @@ interface DateTakensDao {
 
     @Query("SELECT full_path, filename, parent_path, date_taken, last_fixed, last_modified FROM date_takens")
     fun getAllDateTakens(): List<DateTaken>
+
+    @Query("UPDATE OR IGNORE date_takens SET full_path = :newPath, filename = :newFilename, parent_path = :newParentPath WHERE full_path = :oldPath COLLATE NOCASE")
+    fun updatePath(oldPath: String, newPath: String, newFilename: String, newParentPath: String)
 }

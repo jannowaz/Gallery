@@ -14,7 +14,7 @@ import android.view.View
  */
 fun View.applyPrivacyBlur(enabled: Boolean, radiusPx: Float = 50f) {
     if (!enabled) {
-        setRenderEffect(null)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) setRenderEffect(null)
         alpha = 1f
         return
     }

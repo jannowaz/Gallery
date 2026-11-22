@@ -15,9 +15,13 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import org.fossify.commons.FossifyApp
 import org.fossify.gallery.compose.util.BlurState
+import org.fossify.gallery.compose.util.ThumbnailOverlayState
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.extensions.defaultSharedPrefs
 import org.fossify.gallery.helpers.CrashLogger
+import org.fossify.gallery.helpers.JxlCoilDecoder
 import org.fossify.gallery.helpers.RefreshBus
+import org.fossify.gallery.navigation.ViewerArgs
 
 class App : FossifyApp(), ImageLoaderFactory {
 
@@ -39,6 +43,7 @@ class App : FossifyApp(), ImageLoaderFactory {
             .components {
                 add(coil.decode.VideoFrameDecoder.Factory())
                 add(coil.decode.SvgDecoder.Factory())
+                add(JxlCoilDecoder.Factory())
                 // ImageDecoderDecoder needs API 28's platform ImageDecoder; GifDecoder is the
                 // movie-based fallback for the API 26/27 devices this app's minSdk still covers.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -52,6 +57,12 @@ class App : FossifyApp(), ImageLoaderFactory {
             // default (ARGB_8888) is what actually renders transparency correctly; the size cap on
             // individual requests (e.g. ImagePage's 2560px viewer request) already bounds per-image
             // memory regardless of bit depth.
+            // Coil's default FileKeyer calls File.lastModified() synchronously on the main thread
+            // when building every memory cache key (AsyncImagePainter.onRemembered). On Android 11+
+            // FUSE-backed storage that triggers 100-250ms StrictMode DiskReadViolations right in
+            // the middle of scroll and startup frames. In-place edits explicitly evict the path
+            // from Coil's caches instead (see EditActivity.scanFinalPath).
+            .addLastModifiedToFileCacheKey(false)
             .crossfade(true)
             .build()
     }
@@ -78,6 +89,7 @@ class App : FossifyApp(), ImageLoaderFactory {
             )
         }
         super.onCreate()
+        ViewerArgs.configure(this)
         Reprint.initialize(this)
 
         // Gates RefreshBus on the process being in the foreground. Registered here, before any
@@ -96,6 +108,7 @@ class App : FossifyApp(), ImageLoaderFactory {
         // already read it. Read eagerly/synchronously (not in the async warm-up block below) so
         // there's no window on cold start where a persisted "on" reads back as off.
         BlurState.enabled = config.blurAllMedia
+        ThumbnailOverlayState.sync(config)
 
         // Coil's ImageLoader (see newImageLoader() above) is built lazily on whatever thread
         // first requests an image - building its DiskCache does I/O (creates the cache dir and
@@ -122,7 +135,8 @@ class App : FossifyApp(), ImageLoaderFactory {
         @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
         GlobalScope.launch(Dispatchers.IO) {
             config
-            android.preference.PreferenceManager.getDefaultSharedPreferences(this@App)
+            defaultSharedPrefs()
+            org.fossify.gallery.helpers.AppShortcutsHelper.publish(this@App)
         }
     }
 }

@@ -18,12 +18,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
+import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -32,13 +37,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.activities.MainScreen
 import org.fossify.gallery.compose.screens.folderscreen.FolderMediaScreen
+import org.fossify.gallery.compose.screens.folderswipe.FolderSwipeScreen
 import org.fossify.gallery.compose.screens.settings.SettingsScreen
 import org.fossify.gallery.compose.screens.collections.ManageCollectionsScreen
 import org.fossify.gallery.compose.screens.about.AboutScreen
 import org.fossify.gallery.compose.screens.tagbrowser.TagBrowserScreen
 import org.fossify.gallery.compose.screens.analysis.StorageAnalysisScreen
 import org.fossify.gallery.compose.screens.analysis.DuplicateFinderScreen
+import org.fossify.gallery.compose.screens.analysis.CleanupHubScreen
 import org.fossify.gallery.compose.screens.analysis.CompressionReviewScreen
+import org.fossify.gallery.compose.screens.analysis.PersonReviewScreen
 import org.fossify.gallery.compose.screens.RecycleBinScreen
 import org.fossify.gallery.compose.screens.FoldersMoverScreen
 import org.fossify.gallery.compose.screens.viewer.ViewerScreen
@@ -48,11 +56,16 @@ import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.compose.theme.resolveDarkTheme
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.mediaTagDB
-import org.fossify.gallery.models.MediaTag
 import org.fossify.gallery.helpers.MediaRepository
+import org.fossify.gallery.models.MediaTag
 import org.fossify.gallery.helpers.UndoManager
 import org.fossify.gallery.helpers.UndoType
 import org.fossify.gallery.compose.util.PrivacyPauseScrim
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.Alignment
 
 val LocalAnimatedVisibilityScope = staticCompositionLocalOf<AnimatedVisibilityScope> {
     error("No AnimatedVisibilityScope provided")
@@ -67,21 +80,60 @@ val LocalSharedTransitionScope = staticCompositionLocalOf<SharedTransitionScope>
 fun GalleryNavHost(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
+    onContentReady: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
-    val repo = remember { MediaRepository(ctx) }
-    val conf = ctx.config
+    val appCtx = remember(ctx) { ctx.applicationContext }
+    val repo = remember(appCtx) { MediaRepository(appCtx) }
+    val conf = appCtx.config
+
+    DisposableEffect(navController) {
+        val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
+            if (!destination.route.orEmpty().startsWith(Viewer::class.qualifiedName.orEmpty())) {
+                ViewerNavigationGate.release(navController)
+            }
+        }
+        navController.addOnDestinationChangedListener(listener)
+        onDispose {
+            navController.removeOnDestinationChangedListener(listener)
+            ViewerNavigationGate.release(navController)
+        }
+    }
 
     LaunchedEffect(repo) {
         UndoManager.registerHandler(UndoType.DELETE) { action -> action.paths.forEach { repo.restoreFromRecycleBin(it) }; org.fossify.gallery.helpers.RefreshBus.trigger() }
-        UndoManager.registerHandler(UndoType.TAG_ADD) { action -> action.paths.forEach { repo.removeTag(it, action.extra["tag"] ?: "") } }
-        UndoManager.registerHandler(UndoType.TAG_REMOVE) { action -> action.paths.forEach { repo.addTag(it, action.extra["tag"] ?: "") } }
-        UndoManager.registerHandler(UndoType.RATING_CHANGE) { action -> action.paths.forEach { repo.updateRating(it, action.extra["oldRating"]?.toIntOrNull() ?: 0) }; org.fossify.gallery.helpers.RefreshBus.trigger() }
+        UndoManager.registerHandler(UndoType.TAG_ADD) {
+            val action = it
+            org.fossify.gallery.compose.util.XmpBatch.run(appCtx, action.paths.toList()) { repo.removeTag(it, action.extra["tag"] ?: "") }
+        }
+        UndoManager.registerHandler(UndoType.TAG_REMOVE) {
+            val action = it
+            org.fossify.gallery.compose.util.XmpBatch.run(appCtx, action.paths.toList()) { repo.addTag(it, action.extra["tag"] ?: "") }
+        }
+        UndoManager.registerHandler(UndoType.TAG_RESTORE_SNAPSHOT) { action ->
+            val paths = action.tagSnapshots.keys.toList()
+            // Restore the hierarchy first so the exact tag snapshot is serialized with the old
+            // ancestry rather than briefly writing it with the post-edit parent map.
+            action.hierarchyBefore?.let { appCtx.config.tagHierarchy = it.toMutableMap() }
+            org.fossify.gallery.compose.util.XmpBatch.run(appCtx, paths) { path -> repo.replaceTags(path, action.tagSnapshots[path].orEmpty()) }
+            org.fossify.gallery.helpers.RefreshBus.trigger(pathsChanged = false, collectionsChanged = false)
+        }
+        UndoManager.registerHandler(UndoType.TAG_HIERARCHY) { action ->
+            action.hierarchyBefore?.let { appCtx.config.tagHierarchy = it.toMutableMap() }
+            if (action.paths.isNotEmpty()) repo.rewriteTagHierarchy(action.paths)
+            org.fossify.gallery.helpers.RefreshBus.trigger(pathsChanged = false, collectionsChanged = false)
+        }
+        UndoManager.registerHandler(UndoType.RATING_CHANGE) {
+            val action = it
+            val snapshots = action.ratingSnapshots
+            org.fossify.gallery.compose.util.XmpBatch.run(appCtx, action.paths.toList()) { path -> repo.updateRating(path, snapshots[path] ?: action.extra["oldRating"]?.toIntOrNull() ?: 0) }
+            org.fossify.gallery.helpers.RefreshBus.trigger(pathsChanged = false)
+        }
         UndoManager.registerHandler(UndoType.COMPRESS_REPLACE) { action ->
             action.paths.forEach { repo.restoreFromRecycleBin(it) }
             action.extra["newPath"]?.let { newPath ->
                 runCatching { java.io.File(newPath).delete() }
-                runCatching { android.media.MediaScannerConnection.scanFile(ctx, arrayOf(newPath), null, null) }
+                runCatching { android.media.MediaScannerConnection.scanFile(appCtx, arrayOf(newPath), null, null) }
             }
             org.fossify.gallery.helpers.RefreshBus.trigger()
         }
@@ -92,7 +144,7 @@ fun GalleryNavHost(
             action.extra.forEach { (binPath, newPath) ->
                 repo.restoreFromRecycleBin(binPath)
                 runCatching { java.io.File(newPath).delete() }
-                runCatching { android.media.MediaScannerConnection.scanFile(ctx, arrayOf(newPath), null, null) }
+                runCatching { android.media.MediaScannerConnection.scanFile(appCtx, arrayOf(newPath), null, null) }
             }
             org.fossify.gallery.helpers.RefreshBus.trigger()
         }
@@ -108,7 +160,7 @@ fun GalleryNavHost(
                 org.fossify.gallery.models.BatchJobItem(jobId = "", sourcePath = currentPath, targetPath = originalPath)
             }
             if (items.isNotEmpty()) {
-                org.fossify.gallery.workers.MediaBatchWorker.enqueue(ctx, org.fossify.gallery.workers.BatchOperation.MOVE_COPY_DELETE, items)
+                org.fossify.gallery.workers.MediaBatchWorker.enqueue(appCtx, org.fossify.gallery.workers.BatchOperation.MOVE_COPY_DELETE, items)
             }
         }
     }
@@ -121,23 +173,51 @@ fun GalleryNavHost(
     // - Already running: ComposeExplorerActivity.onNewIntent() publishes onto NavigateBus instead,
     //   since FLAG_ACTIVITY_CLEAR_TOP on an already-top instance never goes through onCreate()
     //   again, and a plain intent-extra read wouldn't be observed by an already-composed NavHost.
+    fun navigateShortcutTarget(target: String?) {
+        when (target) {
+            org.fossify.gallery.helpers.MoverWidgetProvider.NAVIGATE_TARGET_MOVER ->
+                navController.navigate(FoldersMover) { launchSingleTop = true }
+            org.fossify.gallery.helpers.AppShortcutsHelper.NAVIGATE_TARGET_CLEANUP ->
+                navController.navigate(CleanupHub) { launchSingleTop = true }
+            org.fossify.gallery.helpers.AppShortcutsHelper.NAVIGATE_TARGET_RECYCLE_BIN ->
+                navController.navigate(RecycleBin) { launchSingleTop = true }
+        }
+    }
     LaunchedEffect(Unit) {
         val activity = ctx as? android.app.Activity
-        if (activity?.intent?.getStringExtra(org.fossify.gallery.helpers.MoverWidgetProvider.EXTRA_NAVIGATE_TO) == org.fossify.gallery.helpers.MoverWidgetProvider.NAVIGATE_TARGET_MOVER) {
+        val target = activity?.intent?.getStringExtra(org.fossify.gallery.helpers.MoverWidgetProvider.EXTRA_NAVIGATE_TO)
+        if (!target.isNullOrBlank()) {
             activity.intent.removeExtra(org.fossify.gallery.helpers.MoverWidgetProvider.EXTRA_NAVIGATE_TO)
-            navController.navigate(FoldersMover)
+            navigateShortcutTarget(target)
+        }
+        val widgetFolder = activity?.intent?.getStringExtra(org.fossify.gallery.helpers.DIRECTORY)
+        if (!widgetFolder.isNullOrBlank()) {
+            activity.intent.removeExtra(org.fossify.gallery.helpers.DIRECTORY)
+            navController.navigate(Folder(widgetFolder)) { launchSingleTop = true }
         }
     }
     LaunchedEffect(Unit) {
         org.fossify.gallery.compose.util.NavigateBus.events.collect { target ->
-            if (target == org.fossify.gallery.helpers.MoverWidgetProvider.NAVIGATE_TARGET_MOVER) {
-                navController.navigate(FoldersMover)
-            }
+            navigateShortcutTarget(target)
+        }
+    }
+    LaunchedEffect(Unit) {
+        org.fossify.gallery.compose.util.NavigateBus.folderEvents.collect { folderPath ->
+            navController.navigate(Folder(folderPath)) { launchSingleTop = true }
+        }
+    }
+    // Media details can request "show in Explorer" from routes such as the full-screen viewer.
+    // Return to the existing Home entry; MainScreen then consumes the retained folder request and
+    // selects Explorer. Keeping the request in a StateFlow avoids losing it during that pop.
+    LaunchedEffect(Unit) {
+        org.fossify.gallery.compose.util.ExplorerNavigationBus.folderPath.collect { folderPath ->
+            if (folderPath != null) navController.popBackStack(Home, inclusive = false)
         }
     }
 
     // One-time sanitisation of cached tags that may contain UTF-16LE byte dumps (e.g. "100 0 97 0 …").
     LaunchedEffect(Unit) {
+        if (conf.tagCacheSanitizeVersion >= 1) return@LaunchedEffect
         withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 ctx.mediaTagDB.getAllTagPathPairs().forEach { row ->
@@ -147,6 +227,7 @@ fun GalleryNavHost(
                         if (sanitised.isNotBlank()) ctx.mediaTagDB.insert(MediaTag(mediaPath = row.path, tag = sanitised))
                     }
                 }
+                conf.tagCacheSanitizeVersion = 1
             } catch (e: Exception) { android.util.Log.e("GalleryNavHost", "Tag sanitize migration failed", e) }
         }
     }
@@ -181,6 +262,7 @@ fun GalleryNavHost(
                             MainScreen(
                                 navController = navController,
                                 onFinish = { (ctx as? android.app.Activity)?.finish() },
+                                onContentReady = onContentReady,
                             )
                         }
                     }
@@ -190,7 +272,43 @@ fun GalleryNavHost(
                             FolderMediaScreen(
                                 folderPath = route.folderPath,
                                 onBack = { navController.popBackStack() },
-                                onNavigateToViewer = { paths, startIndex -> org.fossify.gallery.helpers.PickIntent.handleMediaTap(ctx as? android.app.Activity, paths, startIndex) { ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex)) } },
+                                onNavigateToViewer = { paths, startIndex -> org.fossify.gallery.helpers.PickIntent.handleMediaTap(ctx as? android.app.Activity, paths, startIndex) { navController.navigateToViewer(paths, startIndex) } },
+                            onOpenSwipeMode = { path, startPath ->
+                                navController.navigate(FolderSwipe(path, startPath.orEmpty())) { launchSingleTop = true }
+                            },
+                            onOpenPersonReview = { path ->
+                                navController.navigate(PersonReview(path)) { launchSingleTop = true }
+                            },
+                        )
+                        }
+                    }
+                    composable<FolderSwipe> { backStackEntry ->
+                        val route = backStackEntry.toRoute<FolderSwipe>()
+                        FolderSwipeScreen(
+                            folderPath = route.folderPath,
+                            startPath = route.startPath,
+                            onBack = { navController.popBackStack() },
+                            onNavigateToViewer = { paths, startIndex ->
+                                org.fossify.gallery.helpers.PickIntent.handleMediaTap(ctx as? android.app.Activity, paths, startIndex) {
+                                    navController.navigateToViewer(paths, startIndex)
+                                }
+                            },
+                        )
+                    }
+                    composable<PersonReview> { backStackEntry ->
+                        val route = backStackEntry.toRoute<PersonReview>()
+                        // PersonReview reuses MediaScreen, whose tiles participate in the same
+                        // shared-element transitions as FolderMediaScreen. Provide this route's
+                        // AnimatedVisibilityScope just like every other media grid route.
+                        CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
+                            PersonReviewScreen(
+                                folderPath = route.folderPath,
+                                onBack = { navController.popBackStack() },
+                                onNavigateToViewer = { paths, startIndex ->
+                                    org.fossify.gallery.helpers.PickIntent.handleMediaTap(ctx as? android.app.Activity, paths, startIndex) {
+                                        navController.navigateToViewer(paths, startIndex)
+                                    }
+                                },
                             )
                         }
                     }
@@ -206,25 +324,54 @@ fun GalleryNavHost(
                         popExitTransition = { fadeOut(AppMotion.short) },
                     ) { backStackEntry ->
                         val route = backStackEntry.toRoute<Viewer>()
-                        val viewerPaths = remember { ViewerArgs.paths }
-                        CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
-                            ViewerScreen(
-                                paths = viewerPaths,
-                                startIndex = route.startIndex,
-                                onClose = { navController.popBackStack() },
-                            )
+                        DisposableEffect(route.sessionId) {
+                            onDispose { ViewerArgs.cancelResolution(route.sessionId) }
+                        }
+                        val viewerPathsFlow = remember(route.sessionId) { ViewerArgs.observe(route.sessionId) }
+                        val observedPaths by viewerPathsFlow.collectAsStateWithLifecycle()
+                        val viewerPaths = observedPaths.ifEmpty {
+                            route.startPath.takeIf { it.isNotBlank() }?.let(::listOf).orEmpty()
+                        }
+                        LaunchedEffect(route.sessionId) {
+                            // Process-death recovery is asynchronous; normal launches already have
+                            // the tapped item in the flow and never wait here.
+                            ViewerArgs.load(route.sessionId)
+                        }
+                        if (viewerPaths.isEmpty()) {
+                            Column(
+                                Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                            ) { CircularProgressIndicator(color = MaterialTheme.colorScheme.primary) }
+                        } else {
+                            CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
+                                ViewerScreen(
+                                    paths = viewerPaths,
+                                    startIndex = route.startIndex,
+                                    startPath = route.startPath,
+                                    onLoadMore = { direction, anchorPath -> ViewerArgs.loadMore(route.sessionId, anchorPath, direction) },
+                                    onClose = { navController.popBackStack() },
+                                )
+                            }
                         }
                     }
                     composable<Settings> {
                         SettingsScreen(
                             onBack = { navController.popBackStack() },
-                            onNavigateToAbout = { navController.navigate(About) },
+                            onNavigateToAbout = { navController.navigate(About) { launchSingleTop = true } },
                         )
                     }
                     composable<ManageCollections> {
                         ManageCollectionsScreen(
                             onBack = { navController.popBackStack() },
-                            onCollectionClick = { navController.popBackStack() },
+                            onCollectionClick = { collection ->
+                                val singleFolder = collection.getIncludedPaths().singleOrNull()
+                                if (singleFolder != null) {
+                                    navController.navigate(Folder(singleFolder)) { launchSingleTop = true }
+                                } else {
+                                    navController.popBackStack()
+                                }
+                            },
                         )
                     }
                     composable<About> {
@@ -233,10 +380,11 @@ fun GalleryNavHost(
                     composable<TagBrowser> {
                         TagBrowserScreen(
                             onBack = { navController.popBackStack() },
-                            onTagFilterApplied = { tagPaths, tagName ->
+                            onTagFilterApplied = { tagPaths, tagName, matchAll ->
                                 navController.previousBackStackEntry?.savedStateHandle?.apply {
                                     set("tagFilterPaths", ArrayList(tagPaths))
                                     set("tagFilterName", tagName)
+                                    set("tagFilterMatchAll", matchAll)
                                 }
                                 navController.popBackStack()
                             },
@@ -246,14 +394,24 @@ fun GalleryNavHost(
                         CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
                         StorageAnalysisScreen(
                             onBack = { navController.popBackStack() },
-                            onNavigateToViewer = { path -> ViewerArgs.paths = listOf(path); navController.navigate(Viewer(0)) },
-                            onNavigateToCompressionReview = { navController.navigate(CompressionReview) },
+                            onNavigateToViewer = { path -> navController.navigateToViewer(listOf(path), 0) },
+                            onNavigateToCompressionReview = { navController.navigate(CompressionReview) { launchSingleTop = true } },
                             onNavigateToSwipe = { results ->
-                                org.fossify.gallery.compose.screens.analysis.CompressionSwipeArgs.results = results
-                                navController.navigate(CompressionSwipe)
+                                org.fossify.gallery.compose.screens.analysis.CompressionSwipeArgs.save(appCtx, results)
+                                navController.navigate(CompressionSwipe) { launchSingleTop = true }
                             },
                         )
                         }
+                    }
+                    composable<CleanupHub> { backStackEntry ->
+                        val route = backStackEntry.toRoute<CleanupHub>()
+                        CleanupHubScreen(
+                            onBack = { navController.popBackStack() },
+                            onOpenStorageAnalysis = { navController.navigate(StorageAnalysis) { launchSingleTop = true } },
+                            onOpenDuplicates = { navController.navigate(DuplicateFinder(route.folderPath)) { launchSingleTop = true } },
+                            onOpenRecycleBin = { navController.navigate(RecycleBin) { launchSingleTop = true } },
+                            onOpenCompressionReview = { navController.navigate(CompressionReview) { launchSingleTop = true } },
+                        )
                     }
                     composable<DuplicateFinder> { backStackEntry ->
                         val route = backStackEntry.toRoute<DuplicateFinder>()
@@ -261,7 +419,7 @@ fun GalleryNavHost(
                         DuplicateFinderScreen(
                             initialFolder = route.folderPath,
                             onBack = { navController.popBackStack() },
-                            onNavigateToViewer = { paths, startIndex -> org.fossify.gallery.helpers.PickIntent.handleMediaTap(ctx as? android.app.Activity, paths, startIndex) { ViewerArgs.paths = paths; navController.navigate(Viewer(startIndex.coerceAtLeast(0))) } },
+                            onNavigateToViewer = { paths, startIndex -> org.fossify.gallery.helpers.PickIntent.handleMediaTap(ctx as? android.app.Activity, paths, startIndex) { navController.navigateToViewer(paths, startIndex) } },
                         )
                         }
                     }
@@ -275,7 +433,14 @@ fun GalleryNavHost(
                         FoldersMoverScreen(onBack = { navController.popBackStack() })
                     }
                     composable<RecycleBin> {
-                        RecycleBinScreen(onBack = { navController.popBackStack() })
+                        RecycleBinScreen(
+                            onBack = { navController.popBackStack() },
+                            onNavigateToViewer = { paths, startIndex ->
+                                org.fossify.gallery.helpers.PickIntent.handleMediaTap(ctx as? android.app.Activity, paths, startIndex) {
+                                    navController.navigateToViewer(paths, startIndex)
+                                }
+                            },
+                        )
                     }
                 }
             }

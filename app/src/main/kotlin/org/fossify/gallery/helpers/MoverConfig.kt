@@ -1,9 +1,9 @@
 package org.fossify.gallery.helpers
 
 import android.content.Context
-import android.preference.PreferenceManager
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import org.fossify.gallery.extensions.defaultSharedPrefs
 import java.io.File
 
 /**
@@ -17,7 +17,7 @@ data class FolderPair(val source: String = "", val destination: String = "")
 private const val MOVER_PAIRS_PREF_KEY = "mover_pairs"
 
 fun loadMoverPairs(context: Context): List<FolderPair> {
-    val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+    val prefs = context.defaultSharedPrefs()
     val json = prefs.getString(MOVER_PAIRS_PREF_KEY, null) ?: return emptyList()
     return try {
         Gson().fromJson(json, object : TypeToken<List<FolderPair>>() {}.type)
@@ -27,7 +27,7 @@ fun loadMoverPairs(context: Context): List<FolderPair> {
 }
 
 fun saveMoverPairs(context: Context, pairs: List<FolderPair>) {
-    PreferenceManager.getDefaultSharedPreferences(context).edit()
+    context.defaultSharedPrefs().edit()
         .putString(MOVER_PAIRS_PREF_KEY, Gson().toJson(pairs))
         .apply()
 }

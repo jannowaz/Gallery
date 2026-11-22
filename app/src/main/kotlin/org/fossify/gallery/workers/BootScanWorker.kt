@@ -46,7 +46,7 @@ class BootScanWorker(
                 return Result.success()
             }
 
-            MediaRepository(applicationContext).syncNewMediaFromStore()
+            MediaRepository(applicationContext).syncNewMediaFromStoreCoalesced(source = "boot")
             config.lastBootScanTimestamp = now
             Result.success()
         } catch (e: Exception) {

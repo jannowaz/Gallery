@@ -1,3 +1,5 @@
+@file:android.annotation.SuppressLint("RestrictedApi")
+
 package org.fossify.gallery.helpers
 
 import android.database.Cursor
@@ -16,7 +18,7 @@ import org.fossify.gallery.models.Medium
 class FilteredMediaPagingSource(
     query: SupportSQLiteQuery,
     db: RoomDatabase,
-) : LimitOffsetPagingSource<Medium>(query, db, "media", "media_tags") {
+) : LimitOffsetPagingSource<Medium>(query, db, "media", "media_tags", "media_review_states") {
 
     override fun convertRows(cursor: Cursor): List<Medium> {
         val result = ArrayList<Medium>(cursor.count)
@@ -36,6 +38,8 @@ class FilteredMediaPagingSource(
                     deletedTS = cursor.getLong(9),
                     mediaStoreId = cursor.getLong(10),
                     rating = cursor.getInt(11),
+                    dateSortKey = cursor.getLong(12),
+                    dateAdded = cursor.getLong(13),
                 )
             )
         }

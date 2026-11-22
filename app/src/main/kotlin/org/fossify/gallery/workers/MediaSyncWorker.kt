@@ -34,7 +34,7 @@ class MediaSyncWorker(
             // tested implementation instead of two that can silently drift apart.
             val repo = MediaRepository(applicationContext)
             val isGapRepair = inputData.getBoolean(KEY_FULL_RESCAN, false)
-            var newMedia = repo.syncNewMediaFromStore(fullRescan = isGapRepair)
+            var newMedia = repo.syncNewMediaFromStoreCoalesced(fullRescan = isGapRepair, source = "worker")
             if (isGapRepair) {
                 // Only after the pass actually completed - a failure throws out of here and leaves
                 // the flag unset, so the repair is retried on the next launch instead of being
@@ -43,8 +43,15 @@ class MediaSyncWorker(
                 android.util.Log.i("MediaSyncWorker", "Gap repair done, recovered ${newMedia.size} rows")
             }
             // Externally deleted files leave ghost rows (sync only adds) - sweep at most every 6h,
-            // piggybacked here because this worker already runs off the ContentObserver.
-            repo.pruneMissingMediaIfDue()
+            // piggybacked here because this worker already runs off the ContentObserver. It is a
+            // full-library filesystem/DB pass, though, and can open many CursorWindows. Let visible
+            // Media Paging win while the gallery is open; the next background worker run will pick
+            // up the unchanged due sweep because pruneMissingMediaIfDue() is not entered here.
+            if (!RefreshBus.isInForeground) {
+                repo.pruneMissingMediaIfDue()
+            } else {
+                android.util.Log.d("MediaSyncWorker", "skip ghost sweep while app is foreground")
+            }
 
             if (newMedia.isNotEmpty()) {
                 // Directory rows are rebuilt inside syncNewMediaFromStore() itself now (see
@@ -52,15 +59,10 @@ class MediaSyncWorker(
                 // used to live here only ran on this worker's path, while the MediaViewModel sync
                 // path consumed lastSyncTimestamp first and left new folders out of Albums forever.
                 //
-                // The ContentObserver in ComposeExplorerActivity already fires RefreshBus.trigger()
-                // the instant MediaStore changes, well before this worker's deliberate delay (see
-                // scheduleIncrementalSync) has actually written the new rows into the `media`/
-                // `directories` tables - so a RefreshBus subscriber reloading on that first signal
-                // (e.g. AlbumsViewModel, which reads the `directories` table) can end up reloading
-                // stale data and missing the new media entirely. Firing again here, once the DB
-                // writes above are actually committed, closes that race for every RefreshBus
-                // subscriber, not just Albums.
-                RefreshBus.trigger()
+                // The ContentObserver only schedules this worker. Emit after the DB writes above
+                // are committed, so every subscriber reloads the same consistent snapshot instead
+                // of racing a still-running import and then doing a second reload.
+                RefreshBus.trigger(affectedPaths = newMedia.map { it.path })
             }
 
             // Close the KEEP-coalescing gap. scheduleIncrementalSync uses ExistingWorkPolicy.KEEP, so
@@ -74,8 +76,8 @@ class MediaSyncWorker(
             // worker - whatever is left after the cap is picked up by the next trigger.
             var sweeps = 0
             while (newMedia.isNotEmpty() && sweeps++ < MAX_CATCHUP_SWEEPS) {
-                newMedia = repo.syncNewMediaFromStore()
-                if (newMedia.isNotEmpty()) RefreshBus.trigger()
+                newMedia = repo.syncNewMediaFromStoreCoalesced(source = "worker-catch-up")
+                if (newMedia.isNotEmpty()) RefreshBus.trigger(affectedPaths = newMedia.map { it.path })
             }
 
             Result.success()
@@ -104,8 +106,12 @@ class MediaSyncWorker(
         private const val INITIAL_WORK_NAME = "media_sync_initial"
 
         fun schedule(context: Context) {
+            val constraints = Constraints.Builder()
+                .setRequiresBatteryNotLow(true)
+                .build()
             val workRequest = PeriodicWorkRequestBuilder<MediaSyncWorker>(168, TimeUnit.HOURS)
                 .addTag(WORK_NAME)
+                .setConstraints(constraints)
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
@@ -162,7 +168,11 @@ class MediaSyncWorker(
         fun scheduleIncrementalSync(context: Context) {
             val workRequest = OneTimeWorkRequestBuilder<MediaSyncWorker>()
                 .addTag("media_sync_incremental")
-                .setInitialDelay(2, TimeUnit.SECONDS)
+                // Keep a short settling window for camera/chat apps that write a row in several
+                // steps, but don't make the library feel as if refreshes are queued behind a timer.
+                // KEEP coalesces the burst and the worker's catch-up sweeps cover writes that land
+                // while the first query is running.
+                .setInitialDelay(750, TimeUnit.MILLISECONDS)
                 .build()
             // KEEP, not REPLACE: a burst of MediaStore writes (e.g. a chat app saving several photos
             // in quick succession) fires the ContentObserver repeatedly, and each call here used to

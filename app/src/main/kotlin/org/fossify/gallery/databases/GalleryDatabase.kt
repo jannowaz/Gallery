@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import org.fossify.gallery.interfaces.*
 import org.fossify.gallery.models.*
 
-@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class, CompressionReviewItem::class, org.fossify.gallery.models.FileHash::class], version = 27)
+@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class, CompressionReviewItem::class, org.fossify.gallery.models.FileHash::class, MediaReviewState::class, MediaPersonScan::class], version = GalleryDatabase.DB_VERSION)
 abstract class GalleryDatabase : RoomDatabase() {
 
     abstract fun DirectoryDao(): DirectoryDao
@@ -34,7 +34,12 @@ abstract class GalleryDatabase : RoomDatabase() {
 
     abstract fun FileHashDao(): org.fossify.gallery.interfaces.FileHashDao
 
+    abstract fun MediaReviewStateDao(): MediaReviewStateDao
+
+    abstract fun MediaPersonScanDao(): MediaPersonScanDao
+
     companion object {
+        internal const val DB_VERSION = 32
         private var db: GalleryDatabase? = null
 
         // Keeps media.date_sort_key (`date_added > 0 ? date_added : (date_taken > 0 ? date_taken :
@@ -65,34 +70,44 @@ abstract class GalleryDatabase : RoomDatabase() {
             )
         }
 
+        internal val ALL_MIGRATIONS: Array<Migration>
+            get() = arrayOf(
+                MIGRATION_4_5,
+                MIGRATION_5_6,
+                MIGRATION_6_7,
+                MIGRATION_7_8,
+                MIGRATION_8_9,
+                MIGRATION_9_10,
+                MIGRATION_10_11,
+                MIGRATION_11_12,
+                MIGRATION_12_13,
+                MIGRATION_13_14,
+                MIGRATION_14_15,
+                MIGRATION_15_16,
+                MIGRATION_16_17,
+                MIGRATION_17_18,
+                MIGRATION_18_19,
+                MIGRATION_19_20,
+                MIGRATION_20_21,
+                MIGRATION_21_22,
+                MIGRATION_22_23,
+                MIGRATION_23_24,
+                MIGRATION_24_25,
+                MIGRATION_25_26,
+                MIGRATION_26_27,
+                MIGRATION_27_28,
+                MIGRATION_28_29,
+                MIGRATION_29_30,
+                MIGRATION_30_31,
+                MIGRATION_31_32,
+            )
+
         fun getInstance(context: Context): GalleryDatabase {
             if (db == null) {
                 synchronized(GalleryDatabase::class) {
                     if (db == null) {
                         db = Room.databaseBuilder(context.applicationContext, GalleryDatabase::class.java, "gallery.db")
-                            .addMigrations(MIGRATION_4_5)
-                            .addMigrations(MIGRATION_5_6)
-                            .addMigrations(MIGRATION_6_7)
-                            .addMigrations(MIGRATION_7_8)
-                            .addMigrations(MIGRATION_8_9)
-                            .addMigrations(MIGRATION_9_10)
-                            .addMigrations(MIGRATION_10_11)
-                            .addMigrations(MIGRATION_11_12)
-                            .addMigrations(MIGRATION_12_13)
-                            .addMigrations(MIGRATION_13_14)
-                            .addMigrations(MIGRATION_14_15)
-                            .addMigrations(MIGRATION_15_16)
-                            .addMigrations(MIGRATION_16_17)
-                            .addMigrations(MIGRATION_17_18)
-                            .addMigrations(MIGRATION_18_19)
-                            .addMigrations(MIGRATION_19_20)
-                            .addMigrations(MIGRATION_20_21)
-                            .addMigrations(MIGRATION_21_22)
-                            .addMigrations(MIGRATION_22_23)
-                            .addMigrations(MIGRATION_23_24)
-                            .addMigrations(MIGRATION_24_25)
-                            .addMigrations(MIGRATION_25_26)
-                            .addMigrations(MIGRATION_26_27)
+                            .addMigrations(*ALL_MIGRATIONS)
                             .fallbackToDestructiveMigrationFrom(1, 2, 3)
                             // Room only runs migrations when upgrading an *existing* database - a
                             // fresh install gets its schema (including date_sort_key and its index)
@@ -404,6 +419,76 @@ abstract class GalleryDatabase : RoomDatabase() {
                 database.execSQL("ALTER TABLE collections ADD COLUMN min_size INTEGER NOT NULL DEFAULT 0")
                 database.execSQL("ALTER TABLE collections ADD COLUMN date_range INTEGER NOT NULL DEFAULT 0")
                 database.execSQL("ALTER TABLE collections ADD COLUMN type_filter INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        // Manual collection membership: explicit media paths are additive to smart filters and
+        // survive later changes to the collection's grouping/filter dimensions.
+        private val MIGRATION_27_28 = object : Migration(27, 28) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE collections ADD COLUMN media_paths TEXT NOT NULL DEFAULT '[]'")
+            }
+        }
+
+        private val MIGRATION_28_29 = object : Migration(28, 29) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `media_review_states` (`media_path` TEXT NOT NULL COLLATE NOCASE, `status` TEXT NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`media_path`))"
+                )
+            }
+        }
+
+        private val MIGRATION_29_30 = object : Migration(29, 30) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `media_person_scans` (`media_path` TEXT NOT NULL COLLATE NOCASE, `folder_path` TEXT NOT NULL COLLATE NOCASE, `content_signature` TEXT NOT NULL, `result` TEXT NOT NULL, `person_coverage` REAL NOT NULL, `scanned_at` INTEGER NOT NULL, PRIMARY KEY(`media_path`))"
+                )
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_person_scans_folder_path_result` ON `media_person_scans` (`folder_path`, `result`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_person_scans_content_signature` ON `media_person_scans` (`content_signature`)")
+            }
+        }
+
+        private val MIGRATION_30_31 = object : Migration(30, 31) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Room's entity schema deliberately has no SQL default for `is_kept`. SQLite can
+                // only add a NOT NULL column to a populated table with a default, which then fails
+                // Room's exact schema validation. Rebuild once instead: existing rows are retained
+                // and initialized to false, while the resulting table exactly matches the entity.
+                database.execSQL(
+                    "CREATE TABLE media_person_scans_new (" +
+                        "media_path TEXT NOT NULL COLLATE NOCASE, " +
+                        "folder_path TEXT NOT NULL COLLATE NOCASE, " +
+                        "content_signature TEXT NOT NULL, " +
+                        "result TEXT NOT NULL, " +
+                        "person_coverage REAL NOT NULL, " +
+                        "is_kept INTEGER NOT NULL, " +
+                        "scanned_at INTEGER NOT NULL, " +
+                        "PRIMARY KEY(media_path))",
+                )
+                database.execSQL(
+                    "INSERT INTO media_person_scans_new " +
+                        "(media_path, folder_path, content_signature, result, person_coverage, is_kept, scanned_at) " +
+                        "SELECT media_path, folder_path, content_signature, result, person_coverage, 0, scanned_at " +
+                        "FROM media_person_scans",
+                )
+                database.execSQL("DROP TABLE media_person_scans")
+                database.execSQL("ALTER TABLE media_person_scans_new RENAME TO media_person_scans")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_media_person_scans_folder_path_result ON media_person_scans (folder_path, result)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_media_person_scans_content_signature ON media_person_scans (content_signature)")
+            }
+        }
+
+        // Replaces (deleted_ts, parent_path) with its strict prefix superset
+        // (deleted_ts, parent_path, date_sort_key) so both per-folder lookups and
+        // getDirectoryAggregates' newest-thumbnail subselect (ORDER BY date_sort_key DESC LIMIT 1)
+        // are answered directly from the index in O(log n).
+        private val MIGRATION_31_32 = object : Migration(31, 32) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("DROP INDEX IF EXISTS `index_media_deleted_ts_parent_path`")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_media_deleted_ts_parent_path_date_sort_key` ON `media` (`deleted_ts`, `parent_path`, `date_sort_key`)")
+                database.execSQL(
+                    "UPDATE media SET date_sort_key = CASE WHEN date_added > 0 THEN date_added WHEN date_taken > 0 THEN date_taken ELSE last_modified END WHERE date_sort_key = 0"
+                )
             }
         }
     }

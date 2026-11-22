@@ -8,23 +8,18 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.RemoteViews
-import com.bumptech.glide.Glide
-import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.request.RequestOptions
 import org.fossify.commons.extensions.applyColorFilter
-import org.fossify.commons.extensions.getFileSignature
 import org.fossify.commons.extensions.setText
 import org.fossify.commons.extensions.setVisibleIf
 import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.gallery.R
-import org.fossify.gallery.activities.MediaActivity
+import org.fossify.gallery.activities.ComposeExplorerActivity
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.directoryDB
 import org.fossify.gallery.extensions.getFolderNameFromPath
 import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.extensions.widgetsDB
 import org.fossify.gallery.models.Widget
-import java.io.File
 
 class MyWidgetProvider : AppWidgetProvider() {
     companion object {
@@ -47,37 +42,20 @@ class MyWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == ACTION_RENAME) {
-            val count = intent.getIntExtra(EXTRA_COUNT, 5)
-            val prefix = intent.getStringExtra(EXTRA_PREFIX) ?: return
-            val pending = goAsync()
-            ensureBackgroundThread {
-                try {
-                    val media = context.mediaDB.getNewestMedia(count)
-                    var renamed = 0
-                    media.forEachIndexed { idx, m ->
-                        val file = java.io.File(m.path)
-                        if (!file.exists()) return@forEachIndexed
-                        val ext = file.extension
-                        val newName = "${prefix}_${idx + 1}.$ext"
-                        val newFile = java.io.File(file.parent, newName)
-                        if (file.renameTo(newFile)) {
-                            try { context.mediaDB.updateMedium(m.path, file.parent ?: "", newName, newFile.absolutePath) } catch (_: Exception) { }
-                            renamed++
-                        }
-                    }
-                    android.util.Log.i("WidgetRename", "Renamed $renamed of $count media with prefix '$prefix'")
-                } catch (_: Exception) { }
-                pending.finish()
-            }
-        }
     }
+
     private fun setupAppOpenIntent(context: Context, views: RemoteViews, id: Int, widget: Widget) {
-        val intent = Intent(context, MediaActivity::class.java).apply {
+        val intent = Intent(context, ComposeExplorerActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(DIRECTORY, widget.folderPath)
         }
 
-        val pendingIntent = PendingIntent.getActivity(context, widget.widgetId, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            widget.widgetId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         views.setOnClickPendingIntent(id, pendingIntent)
     }
 
@@ -99,16 +77,6 @@ class MyWidgetProvider : AppWidgetProvider() {
                 // everything else still gets set up and pushed.
                 val path = context.directoryDB.getDirectoryThumbnail(widget.folderPath)
                 if (path != null) {
-                    val options = RequestOptions()
-                        .signature(path.getFileSignature())
-                        .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
-
-                    if (config.cropThumbnails) {
-                        options.centerCrop()
-                    } else {
-                        options.fitCenter()
-                    }
-
                     val density = context.resources.displayMetrics.density
                     // Was appWidgetIds.first() - every widget instance's thumbnail was sized using
                     // the *first* placed widget's dimensions instead of its own, so a second folder
@@ -116,25 +84,17 @@ class MyWidgetProvider : AppWidgetProvider() {
                     val appWidgetOptions = appWidgetManager.getAppWidgetOptions(widget.widgetId)
                     val width = appWidgetOptions.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)
                     val height = appWidgetOptions.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)
+                    val widgetSize = (maxOf(width, height) * density).toInt().takeIf { it > 0 } ?: (200 * density).toInt()
 
-                    val widgetSize = (Math.max(width, height) * density).toInt()
-                    try {
-                        var image = Glide.with(context)
-                            .asBitmap()
-                            .load(path)
-                            .apply(options)
-                            .submit(widgetSize, widgetSize)
-                            .get()
-                        // RemoteViews (this widget runs in the host launcher's process) can't apply a
-                        // live Modifier.blur()/RenderEffect - the only thing it can display is a plain
-                        // static Bitmap, so "blur all media" is honored here by baking a solid scrim
-                        // directly into the bitmap before handing it off. Previously this ignored the
-                        // setting entirely and always showed the real thumbnail on the home screen.
-                        if (config.blurAllMedia) {
-                            image = image.withPrivacyScrim()
-                        }
+                    val image = loadWidgetBitmap(
+                        context = context,
+                        path = path,
+                        sizePx = widgetSize,
+                        centerCrop = config.cropThumbnails,
+                        blur = config.blurAllMedia,
+                    )
+                    if (image != null) {
                         views.setImageViewBitmap(R.id.widget_imageview, image)
-                    } catch (e: Exception) {
                     }
                 }
 
@@ -155,7 +115,7 @@ class MyWidgetProvider : AppWidgetProvider() {
         val config = context.config
         val count = config.widgetRenameCount.coerceIn(1, 50)
         val prefix = config.widgetRenamePrefix.ifBlank { "IMG" }
-        val intent = Intent(context, MyWidgetProvider::class.java).apply {
+        val intent = Intent(context, org.fossify.gallery.receivers.WidgetActionReceiver::class.java).apply {
             action = ACTION_RENAME
             putExtra(EXTRA_COUNT, count)
             putExtra(EXTRA_PREFIX, prefix)

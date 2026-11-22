@@ -77,13 +77,22 @@ object MoveConflicts {
         // Preferred: MediaStore-trash the file - frees the original path AND hides the backed-up old
         // version from other apps (same as a normal delete). Re-point the row to the trashed path but
         // keep the original filename for display.
-        val trashedPath = MediaStoreOps.setTrashed(context, uri, true)
-        if (trashedPath != null && trashedPath != path) {
+        val trash = MediaStoreOps.setTrashed(context, uri, true)
+        if (trash.updated && trash.path != null && trash.path != path) {
+            val trashedPath = trash.path
             runCatching {
-                context.mediaDB.updateMedium(path, File(trashedPath).parent ?: File(path).parent ?: "", File(path).name, trashedPath)
+                val updated = context.mediaDB.updateMedium(path, File(trashedPath).parent ?: File(path).parent ?: "", File(path).name, trashedPath)
+                if (updated <= 0) return null
+                MediaRepository(context).migratePathMetadata(path, trashedPath)
                 context.mediaDB.softDelete(trashedPath, now)
             }
             return trashedPath
+        }
+        if (trash.updated) {
+            // MediaStore moved the bytes but its DATA query was temporarily unavailable. Keep a
+            // recoverable Room row at the old logical path; restore can resolve it by mediaStoreId.
+            context.mediaDB.softDelete(path, now)
+            return path
         }
         // Fallback (pre-Android-11 / no All-Files-Access): rename aside + DB-only soft-delete. Frees
         // the path but stays visible to other apps - the best we can do without trash support.
@@ -91,7 +100,8 @@ object MoveConflicts {
         val backupName = File(backupPath).name
         if (!MediaStoreOps.rename(context, uri, backupName)) return null
         runCatching {
-            context.mediaDB.updateMedium(path, File(path).parent ?: "", File(path).name, backupPath)
+            if (context.mediaDB.updateMedium(path, File(path).parent ?: "", File(path).name, backupPath) <= 0) return null
+            MediaRepository(context).migratePathMetadata(path, backupPath)
             context.mediaDB.softDelete(backupPath, now)
         }
         return backupPath

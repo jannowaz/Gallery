@@ -3,7 +3,6 @@ package org.fossify.gallery.models
 import android.content.Context
 import androidx.compose.runtime.Stable
 import androidx.room.*
-import com.bumptech.glide.signature.ObjectKey
 import org.fossify.commons.extensions.*
 import org.fossify.commons.helpers.*
 import org.fossify.commons.models.FileDirItem
@@ -21,11 +20,11 @@ import java.util.Locale
         Index(value = ["deleted_ts", "date_sort_key"]),
         Index(value = ["deleted_ts", "size"]),
         Index(value = ["deleted_ts", "rating", "last_modified"]),
-        // Backs getMediaFromPath (WHERE deleted_ts = 0 AND parent_path = :path), the per-folder query
-        // the Explorer file list and the drilled-into-album view now use as their single source of
-        // truth (same media table as the Media tab) - without this it was a full table scan per folder
-        // navigation on a large library.
-        Index(value = ["deleted_ts", "parent_path"]),
+        // Backs both per-folder queries (WHERE deleted_ts = 0 AND parent_path = :path) and
+        // getDirectoryAggregates' newest-thumbnail subselect (ORDER BY date_sort_key DESC LIMIT 1)
+        // in O(log n) without scanning every item in the folder. Strict prefix superset of the
+        // previous (deleted_ts, parent_path) index.
+        Index(value = ["deleted_ts", "parent_path", "date_sort_key"]),
         // Backs the Favorites tab (getFavorites/getFavoritesCount: WHERE deleted_ts = 0 AND
         // is_favorite = 1) - was a full table scan of the whole library every time the tab loaded.
         Index(value = ["deleted_ts", "is_favorite"]),
@@ -155,8 +154,6 @@ data class Medium(
 
         return "$path-$lastModified-$size"
     }
-
-    fun getKey() = ObjectKey(getSignature())
 
     fun toFileDirItem() = FileDirItem(path, name, false, 0, size, modified, mediaStoreId)
 }

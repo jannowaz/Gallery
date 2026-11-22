@@ -21,6 +21,10 @@ data class MediaCollection(
     @ColumnInfo(name = "min_size") val minSize: Long = 0L,
     @ColumnInfo(name = "date_range") val dateRange: Int = 0,
     @ColumnInfo(name = "type_filter") val typeFilter: Int = 0,
+    // Explicit media members make a collection usable as a manual stack. They are deliberately
+    // separate from the smart-collection filters above: changing a filter/group must never remove
+    // images that the user added manually.
+    @ColumnInfo(name = "media_paths") val mediaPaths: String = "[]",
 ) {
     fun getIncludedPaths(): List<String> {
         return try {
@@ -33,6 +37,13 @@ data class MediaCollection(
         return try {
             val type = object : TypeToken<List<String>>() {}.type
             Gson().fromJson(excludedPaths, type) ?: emptyList()
+        } catch (_: Exception) { emptyList() }
+    }
+
+    fun getMediaPaths(): List<String> {
+        return try {
+            val type = object : TypeToken<List<String>>() {}.type
+            Gson().fromJson(mediaPaths, type) ?: emptyList()
         } catch (_: Exception) { emptyList() }
     }
 

@@ -3,6 +3,7 @@ package org.fossify.gallery.helpers
 import android.app.Activity
 import android.content.Context
 import org.fossify.commons.extensions.handleDeletePasswordProtection
+import org.fossify.gallery.extensions.config
 
 /**
  * Runs [onProceed] only after the delete-password check passes. commons
@@ -17,4 +18,13 @@ import org.fossify.commons.extensions.handleDeletePasswordProtection
  */
 fun Context.withDeletePasswordCheck(onProceed: () -> Unit) {
     (this as? Activity)?.handleDeletePasswordProtection { onProceed() } ?: onProceed()
+}
+
+/** Runs a normal user delete (move to the recycle bin). When the user explicitly enabled both
+ * the recycle bin and "skip delete confirmation", the recycle bin is the safety net and the
+ * additional delete-password prompt is skipped as well. Permanent deletion from the recycle bin
+ * deliberately continues to use [withDeletePasswordCheck]. */
+fun Context.withRecycleBinDeletePasswordCheck(onProceed: () -> Unit) {
+    if (config.useRecycleBin && config.skipDeleteConfirmation) onProceed()
+    else withDeletePasswordCheck(onProceed)
 }

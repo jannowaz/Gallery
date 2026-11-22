@@ -23,6 +23,21 @@ fun expandTagsWithDescendants(tags: Collection<String>, hierarchy: Map<String, S
 fun childrenByParentMap(hierarchy: Map<String, String>): Map<String, List<String>> =
     hierarchy.entries.groupBy({ it.value }, { it.key })
 
+/** Renames one tag in both sides of the child→parent map. Existing target ancestry wins when
+ * merging into a tag that already exists; otherwise the renamed tag inherits the source ancestry. */
+fun renameTagInHierarchy(hierarchy: Map<String, String>, oldName: String, newName: String): MutableMap<String, String> {
+    if (oldName == newName) return hierarchy.toMutableMap()
+    val result = linkedMapOf<String, String>()
+    hierarchy.forEach { (child, parent) ->
+        if (child == oldName) return@forEach
+        val rewrittenParent = if (parent == oldName) newName else parent
+        val rewrittenChild = child
+        if (rewrittenChild != rewrittenParent) result[rewrittenChild] = rewrittenParent
+    }
+    if (newName !in hierarchy) hierarchy[oldName]?.takeIf { it != newName }?.let { result[newName] = it }
+    return result
+}
+
 /** Walks [tag]'s parent chain up to its topmost ancestor. Guards against a corrupted/cyclic
  * [hierarchy] (e.g. from manually edited prefs) the same way the parent-assignment dialog's
  * cycle check does, by bailing out the moment a tag is revisited. */

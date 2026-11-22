@@ -20,6 +20,38 @@ object XmpWriter {
         val hierarchy: Map<String, String> = emptyMap(),
     )
 
+    /** Deletes both supported sidecar naming conventions for a media path. */
+    fun deleteSidecars(path: String) {
+        val file = File(path)
+        listOf(
+            File("${file.absolutePath}.xmp"),
+            File(file.parentFile, "${file.nameWithoutExtension}.xmp"),
+        ).distinctBy { it.absolutePath }.forEach { runCatching { it.delete() } }
+    }
+
+    /** Moves both supported sidecar styles together with a media file. */
+    fun migrateSidecars(oldPath: String, newPath: String) {
+        if (oldPath.equals(newPath, ignoreCase = true)) return
+        val old = File(oldPath)
+        val target = File(newPath)
+        val candidates = listOf(
+            File("${old.absolutePath}.xmp") to File("${target.absolutePath}.xmp"),
+            File(old.parentFile, "${old.nameWithoutExtension}.xmp") to File(target.parentFile, "${target.nameWithoutExtension}.xmp"),
+        ).distinctBy { it.first.absolutePath }
+        candidates.forEach { (source, destination) ->
+            if (!source.exists() || source.absolutePath == destination.absolutePath || destination.exists()) return@forEach
+            runCatching {
+                if (!source.renameTo(destination)) {
+                    val temp = File("${destination.absolutePath}.tmp")
+                    source.inputStream().use { input -> temp.outputStream().use { output -> input.copyTo(output) } }
+                    check(temp.length() == source.length())
+                    check(temp.renameTo(destination))
+                    check(source.delete())
+                }
+            }.onFailure { android.util.Log.w("XmpWriter", "Sidecar migration failed: $oldPath -> $newPath", it) }
+        }
+    }
+
     fun read(path: String): XmpData {
         if (path.isBlank()) return XmpData()
         val file = File(path)
@@ -65,7 +97,7 @@ object XmpWriter {
             val extra = readExternalKeywords(file)
             if (extra.isNotEmpty()) data = data.copy(tags = extra)
         }
-        return data.copy(tags = data.tags.map(::sanitizeTag).filter { it.isNotBlank() }.distinct(), hierarchy = data.hierarchy)
+        return data.copy(tags = normalizeTags(data.tags), hierarchy = data.hierarchy)
     }
 
     /**
@@ -137,6 +169,7 @@ object XmpWriter {
     fun write(path: String, tags: List<String>, rating: Int, hierarchy: Map<String, String> = emptyMap()): Boolean {
         val file = File(path)
         if (!file.exists()) return false
+        val normalizedRating = rating.coerceIn(0, 5)
         val isJpeg = file.extension.lowercase() in setOf("jpg", "jpeg")
         // Read-modify-write instead of regenerating from scratch: an existing XMP packet can carry
         // fields this app knows nothing about (GPS, captions, copyright, another app's own
@@ -146,7 +179,7 @@ object XmpWriter {
         // fresh one, which would silently drop the file's foreign fields (GPS, captions, ...). "" (no
         // XMP present) is fine and proceeds with a new packet.
         val existingRaw = (if (isJpeg) readXmpFromJpeg(file) else readXmpFromSidecar(file)) ?: return false
-        val xmpBytes = buildXmpPacket(existingRaw, tags, rating, hierarchy)
+        val xmpBytes = buildXmpPacket(existingRaw, normalizeTags(tags), normalizedRating, hierarchy)
         return if (isJpeg) writeXmpToJpeg(file, xmpBytes) else writeXmpSidecar(file, xmpBytes)
     }
 
@@ -180,7 +213,7 @@ object XmpWriter {
         val rating = Regex("<xmp:Rating>(\\d+)</xmp:Rating>").find(raw)?.groupValues?.get(1)?.toIntOrNull()
             ?: Regex("xmp:Rating=\"(\\d+)\"").find(raw)?.groupValues?.get(1)?.toIntOrNull()
             ?: 0
-        return XmpData(tags = tags.filter { it.isNotBlank() }, rating = rating, hierarchy = hierarchy)
+        return XmpData(tags = tags.filter { it.isNotBlank() }, rating = rating.coerceIn(0, 5), hierarchy = hierarchy)
     }
 
     private fun addHierarchicalChain(full: String, separator: String, tags: MutableSet<String>, hierarchy: MutableMap<String, String>) {
@@ -200,7 +233,7 @@ object XmpWriter {
         val trimmed = text.trim()
         if (trimmed.isBlank()) return XmpData()
         val rating = trimmed.toIntOrNull()
-        if (rating != null) return XmpData(rating = rating)
+        if (rating != null) return XmpData(rating = rating.coerceIn(0, 5))
         val tags = trimmed.split(",").map { it.trim() }.filter { it.isNotBlank() }
         if (tags.isNotEmpty()) return XmpData(tags = tags)
         return XmpData()
@@ -312,6 +345,15 @@ $ownedDescription
         .replace("\"", "&quot;")
         .replace("'", "&apos;")
 
+    /** Keeps tag identity stable across all entry points (UI, import, merge and legacy metadata).
+     * The first spelling wins, while case-only duplicates are collapsed for predictable filtering. */
+    private fun normalizeTags(tags: List<String>): List<String> {
+        val seen = HashSet<String>()
+        return tags.map(::sanitizeTag)
+            .filter { it.isNotBlank() }
+            .filter { seen.add(it.lowercase()) }
+    }
+
     // Counterpart to xmlEscape - without this, a tag like "Tom & Jerry" was written escaped but
     // read back raw, mutating to "Tom &amp; Jerry" on every write→read cycle. &amp; must be
     // resolved last so a literal "&amp;lt;" doesn't collapse twice into "<".
@@ -374,7 +416,19 @@ $ownedDescription
     }
 
     private fun writeXmpSidecar(file: File, xmpData: ByteArray): Boolean {
-        return try { sidecarPath(file).writeBytes(xmpData); true } catch (_: Exception) { false }
+        val target = sidecarPath(file)
+        val temp = File("${target.absolutePath}.tmp")
+        return try {
+            // Never truncate the live sidecar before the complete packet is ready. A process kill or
+            // a full filesystem therefore leaves the old metadata readable instead of a half XML file.
+            temp.writeBytes(xmpData)
+            val replaced = temp.renameTo(target)
+            if (!replaced) temp.delete()
+            replaced
+        } catch (_: Exception) {
+            temp.delete()
+            false
+        }
     }
 
     /**
@@ -459,12 +513,13 @@ $ownedDescription
                 if (tempFile.renameTo(file)) {
                     true
                 } else {
-                    val copied = try {
-                        tempFile.inputStream().use { ins -> file.outputStream().use { outs -> ins.copyTo(outs) } }
-                        true
-                    } catch (_: Exception) { false }
+                    // Do not truncate the live JPEG as a fallback. A process kill or a full
+                    // filesystem during this copy would leave the original media corrupt. A
+                    // metadata edit can safely fail and be retried; it must never trade a tag or
+                    // rating update for the loss of the image itself.
+                    false
+                }.also {
                     tempFile.delete()
-                    copied
                 }
             } else {
                 tempFile.delete()
