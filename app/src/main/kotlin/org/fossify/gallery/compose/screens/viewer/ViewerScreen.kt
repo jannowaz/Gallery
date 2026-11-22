@@ -606,7 +606,7 @@ fun ViewerScreen(
                 }
             }
             .drawBehind {
-                val dragAlpha = (1f - (abs(dragOffset) / 600f)).coerceIn(0.5f, 1f)
+                val dragAlpha = (1f - (abs(dragOffset) / 520f)).coerceIn(0.15f, 1f)
                 drawRect(viewerBgColor.copy(alpha = dragAlpha))
             }
     ) {
@@ -930,8 +930,16 @@ fun ViewerScreen(
         // rating and actions never overlap and the rail slides smoothly with the viewer chrome. For
         // videos the group sits permanently above the seek bar (constant offset).
         val bottomGroupOffset = if (currentIsVideo) 64.dp else 0.dp
+        val showFilmstrip = showUI && !inPip && items.size > 1
         Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = bottomGroupOffset),
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .graphicsLayer {
+                    alpha = (1f - (abs(dragOffset) / 160f)).coerceIn(0f, 1f)
+                }
+                .navigationBarsPadding()
+                .padding(bottom = bottomGroupOffset),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (showUI && !inPip) {
@@ -940,6 +948,21 @@ fun ViewerScreen(
                 Box(
                     Modifier.padding(bottom = 2.dp).width(32.dp).height(4.dp).clip(RoundedCornerShape(2.dp))
                     .background(Color.White.copy(alpha = 0.58f))
+                )
+            }
+            AnimatedVisibility(
+                visible = showFilmstrip,
+                enter = fadeIn(AppMotion.medium),
+                exit = fadeOut(AppMotion.medium),
+            ) {
+                ViewerFilmstrip(
+                    items = items,
+                    currentPage = pagerState.currentPage,
+                    onSelectPage = { targetIdx ->
+                        uiInteractionTick++
+                        scope.launch { pagerState.animateScrollToPage(targetIdx) }
+                    },
+                    modifier = Modifier.padding(bottom = 2.dp),
                 )
             }
             AnimatedVisibility(
@@ -1042,8 +1065,9 @@ fun ViewerScreen(
         // Keep the undo affordance above the viewer action row AND rating rail so it never
         // covers either the delete button or the rating stars.
         if (!inPip) {
+            val filmstripClearance = if (showFilmstrip) 56.dp else 0.dp
             val undoClearance = if (showUI) {
-                if (showRatingOverlay) 128.dp else 72.dp
+                (if (showRatingOverlay) 128.dp else 72.dp) + filmstripClearance
             } else 0.dp
             UndoBar(
                 modifier = Modifier

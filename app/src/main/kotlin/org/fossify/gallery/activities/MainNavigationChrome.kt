@@ -547,6 +547,7 @@ internal fun BottomChrome(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
     showNavigation: Boolean = true,
+    searchBarVisible: Boolean = true,
 ) {
     Column(Modifier.imePadding()) {
         if (!isMediaSelectionActive) {
@@ -587,6 +588,8 @@ internal fun BottomChrome(
                     )
                 }
                 val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+                val effectiveSearchVisible = searchBarVisible || searchActive ||
+                    omniQuery.isNotEmpty() || hasActiveFilter || !showNavigation
                 if (isLandscape && showNavBar) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.weight(1f)) { searchField() }
@@ -595,7 +598,19 @@ internal fun BottomChrome(
                         }
                     }
                 } else {
-                    searchField()
+                    AnimatedVisibility(
+                        visible = effectiveSearchVisible,
+                        enter = expandVertically(
+                            expandFrom = Alignment.Bottom,
+                            animationSpec = tween(200),
+                        ) + fadeIn(tween(160)),
+                        exit = shrinkVertically(
+                            shrinkTowards = Alignment.Bottom,
+                            animationSpec = tween(160),
+                        ) + fadeOut(tween(120)),
+                    ) {
+                        searchField()
+                    }
                     AnimatedVisibility(
                         visible = showNavBar,
                         enter = expandVertically(

@@ -152,11 +152,13 @@ import org.fossify.gallery.compose.components.LibraryScreenHeader
 import org.fossify.gallery.compose.components.FloatingSectionLabel
 import org.fossify.gallery.compose.components.tagAccentColor
 import org.fossify.gallery.helpers.currentBreadcrumb
+import org.fossify.gallery.compose.util.ColumnCountIndicator
 import org.fossify.gallery.compose.util.PeekState
 import org.fossify.gallery.compose.util.MediaSelectionMode
 import org.fossify.gallery.compose.util.ScrollToTopEffect
 import org.fossify.gallery.compose.util.SelectionDragState
 import org.fossify.gallery.compose.util.dragSelectionGesture
+import org.fossify.gallery.compose.util.pinchToChangeColumns
 import org.fossify.gallery.compose.util.rememberSelectionDragState
 import org.fossify.gallery.helpers.UndoAction
 import org.fossify.gallery.helpers.UndoManager
@@ -248,9 +250,11 @@ fun MediaScreen(
     // selection behaviour is completely unchanged.
     pickMultiple: Boolean = false,
     onConfirmPick: ((List<String>) -> Unit)? = null,
+    onColumnCountChange: ((Int) -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     val res = androidx.compose.ui.platform.LocalResources.current
+    var showColumnIndicator by remember { mutableStateOf(false) }
     val viewModel: MediaViewModel = viewModel(key = viewModelKey)
     val state by viewModel.state.collectAsStateWithLifecycle()
     val filteredSelectionCount by viewModel.filteredResultCount.collectAsStateWithLifecycle()
@@ -767,6 +771,7 @@ fun MediaScreen(
                         onNavigateToViewerFast = onNavigateToViewerFast,
                         unratedLabel = unratedLabel,
                         pickMultiple = pickMultiple,
+                        onColumnCountChange = onColumnCountChange,
                     )
                 }
             }
@@ -850,13 +855,26 @@ fun MediaScreen(
                         }
                     }
                     CompositionLocalProvider(LocalOverscrollFactory provides null) {
-                Box(Modifier.dragSelectionGesture(
-                    dragSelection,
-                    enabled = false,
-                    gridState = gridState,
-                    onSelectPath = { path -> selectedPaths = selectedPaths + path },
-                    onLongPressSelectPath = null,
-                )) {
+                Box(
+                    Modifier
+                        .pinchToChangeColumns(
+                            enabled = onColumnCountChange != null && !hasSelection,
+                            currentColumns = viewSettings.columnCount,
+                            minColumns = 2,
+                            maxColumns = 6,
+                            onColumnsChange = { next ->
+                                onColumnCountChange?.invoke(next)
+                                showColumnIndicator = true
+                            },
+                        )
+                        .dragSelectionGesture(
+                            dragSelection,
+                            enabled = false,
+                            gridState = gridState,
+                            onSelectPath = { path -> selectedPaths = selectedPaths + path },
+                            onLongPressSelectPath = null,
+                        ),
+                ) {
                     LazyVerticalGrid(state = gridState, columns = GridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
                     groupRows.forEach { row ->
                         when (row) {
@@ -908,6 +926,12 @@ fun MediaScreen(
                 }
                     val currentBreadcrumbLabel by remember(groupRows) { derivedStateOf { currentBreadcrumb(groupRows, gridState.firstVisibleItemIndex) } }
                     FloatingSectionLabel(currentBreadcrumbLabel, isScrolling, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
+                    ColumnCountIndicator(
+                        columnCount = viewSettings.columnCount,
+                        visible = showColumnIndicator,
+                        onAutoHide = { showColumnIndicator = false },
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
+                    )
                     FastScrollBar(
                         state = gridState,
                         positionLabel = { index -> currentBreadcrumb(groupRows, index) },
@@ -966,13 +990,26 @@ fun MediaScreen(
                         }
                     }
                     CompositionLocalProvider(LocalOverscrollFactory provides null) {
-                    Box(Modifier.dragSelectionGesture(
-                        dragSelection,
-                        enabled = false,
-                        staggeredGridState = mosaicState,
-                        onSelectPath = { path -> selectedPaths = selectedPaths + path },
-                        onLongPressSelectPath = null,
-                    )) {
+                    Box(
+                        Modifier
+                            .pinchToChangeColumns(
+                                enabled = onColumnCountChange != null && !hasSelection,
+                                currentColumns = viewSettings.columnCount,
+                                minColumns = 2,
+                                maxColumns = 6,
+                                onColumnsChange = { next ->
+                                    onColumnCountChange?.invoke(next)
+                                    showColumnIndicator = true
+                                },
+                            )
+                            .dragSelectionGesture(
+                                dragSelection,
+                                enabled = false,
+                                staggeredGridState = mosaicState,
+                                onSelectPath = { path -> selectedPaths = selectedPaths + path },
+                                onLongPressSelectPath = null,
+                            ),
+                    ) {
                     LazyVerticalStaggeredGrid(state = mosaicState, columns = StaggeredGridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
                     groupRows.forEach { row ->
                         when (row) {
@@ -1024,6 +1061,12 @@ fun MediaScreen(
                 }
                     val currentBreadcrumbLabelStag by remember(groupRows) { derivedStateOf { currentBreadcrumb(groupRows, mosaicState.firstVisibleItemIndex) } }
                     FloatingSectionLabel(currentBreadcrumbLabelStag, isScrollingStag, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
+                    ColumnCountIndicator(
+                        columnCount = viewSettings.columnCount,
+                        visible = showColumnIndicator,
+                        onAutoHide = { showColumnIndicator = false },
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
+                    )
                     FastScrollBar(
                         state = mosaicState,
                         positionLabel = { index -> currentBreadcrumb(groupRows, index) },

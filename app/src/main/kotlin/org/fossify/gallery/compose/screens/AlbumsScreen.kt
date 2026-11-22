@@ -142,6 +142,7 @@ fun AlbumsScreen(
     onOpenViewSettings: (() -> Unit)? = null,
     onSelectionActiveChanged: (Boolean) -> Unit = {},
     tabIndex: Int? = null,
+    onColumnCountChange: ((Int) -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     val repo = LocalMediaRepository.current
@@ -297,6 +298,7 @@ fun AlbumsScreen(
                             modifier = Modifier.weight(1f),
                             tabIndex = tabIndex,
                             fastScrollLabel = { index -> albumItems.getOrNull(index)?.name },
+                            onColumnCountChange = onColumnCountChange,
                         )
                     }
                 }

@@ -58,11 +58,13 @@ import org.fossify.gallery.compose.components.MediaListRow
 import org.fossify.gallery.compose.components.MediaTile
 import org.fossify.gallery.compose.components.SectionHeader
 import org.fossify.gallery.compose.theme.Radius
+import org.fossify.gallery.compose.util.ColumnCountIndicator
 import org.fossify.gallery.compose.util.MediaSelectionMode
 import org.fossify.gallery.compose.util.ScrollToTopEffect
 import org.fossify.gallery.compose.util.SelectionDragState
 import org.fossify.gallery.compose.util.ThumbnailOverlayState
 import org.fossify.gallery.compose.util.dragSelectionGesture
+import org.fossify.gallery.compose.util.pinchToChangeColumns
 import org.fossify.gallery.compose.util.rememberEffectiveColumnCount
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.helpers.GroupBy
@@ -165,10 +167,12 @@ internal fun PagedContent(
     onNavigateToViewerFast: ((startPath: String, resolveWindow: suspend () -> ViewerPathWindow, loadMore: suspend (String, ViewerLoadDirection, Int) -> ViewerPathChunk) -> Unit)? = null,
     unratedLabel: String,
     pickMultiple: Boolean = false,
+    onColumnCountChange: ((Int) -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var viewerOpeningPath by remember { mutableStateOf<String?>(null) }
+    var showColumnIndicator by remember { mutableStateOf(false) }
     var selectedPaths by selectedPathsState
     var rangeAnchorIndex by rangeAnchorIndexState
     var rangeAnchorPath by rangeAnchorPathState
@@ -300,13 +304,26 @@ internal fun PagedContent(
                     }
                 }
                 CompositionLocalProvider(LocalOverscrollFactory provides null) {
-                    Box(Modifier.dragSelectionGesture(
-                        dragSelection,
-                        enabled = false,
-                        gridState = gridState,
-                        onSelectPath = { path -> selectedPaths = selectedPaths + path },
-                        onLongPressSelectPath = null,
-                    )) {
+                    Box(
+                        Modifier
+                            .pinchToChangeColumns(
+                                enabled = onColumnCountChange != null && !hasSelection,
+                                currentColumns = viewSettings.columnCount,
+                                minColumns = 2,
+                                maxColumns = 6,
+                                onColumnsChange = { next ->
+                                    onColumnCountChange?.invoke(next)
+                                    showColumnIndicator = true
+                                },
+                            )
+                            .dragSelectionGesture(
+                                dragSelection,
+                                enabled = false,
+                                gridState = gridState,
+                                onSelectPath = { path -> selectedPaths = selectedPaths + path },
+                                onLongPressSelectPath = null,
+                            ),
+                    ) {
                         LazyVerticalGrid(state = gridState, columns = GridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
                             items(
                                 count = rows.size,
@@ -366,6 +383,12 @@ internal fun PagedContent(
                         }
                         val currentLabel by remember(rows, viewSettings.anchorBottom) { derivedStateOf { currentSectionLabel(rows, gridState.firstVisibleItemIndex, viewSettings.anchorBottom) } }
                         FloatingSectionLabel(currentLabel, isScrolling, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
+                        ColumnCountIndicator(
+                            columnCount = viewSettings.columnCount,
+                            visible = showColumnIndicator,
+                            onAutoHide = { showColumnIndicator = false },
+                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
+                        )
                         FastScrollBar(
                             state = gridState,
                             positionLabel = { index -> currentSectionLabel(rows, index, viewSettings.anchorBottom) },
@@ -405,13 +428,26 @@ internal fun PagedContent(
                     }
                 }
                 CompositionLocalProvider(LocalOverscrollFactory provides null) {
-                    Box(Modifier.dragSelectionGesture(
-                        dragSelection,
-                        enabled = false,
-                        staggeredGridState = mosaicState,
-                        onSelectPath = { path -> selectedPaths = selectedPaths + path },
-                        onLongPressSelectPath = null,
-                    )) {
+                    Box(
+                        Modifier
+                            .pinchToChangeColumns(
+                                enabled = onColumnCountChange != null && !hasSelection,
+                                currentColumns = viewSettings.columnCount,
+                                minColumns = 2,
+                                maxColumns = 6,
+                                onColumnsChange = { next ->
+                                    onColumnCountChange?.invoke(next)
+                                    showColumnIndicator = true
+                                },
+                            )
+                            .dragSelectionGesture(
+                                dragSelection,
+                                enabled = false,
+                                staggeredGridState = mosaicState,
+                                onSelectPath = { path -> selectedPaths = selectedPaths + path },
+                                onLongPressSelectPath = null,
+                            ),
+                    ) {
                         LazyVerticalStaggeredGrid(
                             state = mosaicState,
                             columns = StaggeredGridCells.Fixed(columnCount),
@@ -491,6 +527,12 @@ internal fun PagedContent(
                         }
                         val currentLabelStag by remember(rows, viewSettings.anchorBottom) { derivedStateOf { currentSectionLabel(rows, mosaicState.firstVisibleItemIndex, viewSettings.anchorBottom) } }
                         FloatingSectionLabel(currentLabelStag, isScrollingStag, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
+                        ColumnCountIndicator(
+                            columnCount = viewSettings.columnCount,
+                            visible = showColumnIndicator,
+                            onAutoHide = { showColumnIndicator = false },
+                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
+                        )
                         FastScrollBar(
                             state = mosaicState,
                             positionLabel = { index -> currentSectionLabel(rows, index, viewSettings.anchorBottom) },

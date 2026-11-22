@@ -313,6 +313,12 @@ fun FolderMediaScreen(
                             scrollPositionKey = folderPath,
                             onNavigateToViewer = onNavigateToViewer,
                             onFirstVisibleMediaPathChanged = { firstVisibleMediaPath = it },
+                            onColumnCountChange = { next ->
+                                val updated = viewSettings.copy(columnCount = next)
+                                val applyGlobally = !viewSettingsVM.hasCustomFolderMediaSettings(folderPath)
+                                viewSettingsVM.updateFolderMediaForPath(folderPath, updated, applyGlobally)
+                                viewSettings = updated
+                            },
                             modifier = Modifier.weight(1f),
                         )
                     }

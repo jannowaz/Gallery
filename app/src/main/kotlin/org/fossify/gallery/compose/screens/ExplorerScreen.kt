@@ -126,8 +126,10 @@ import org.fossify.gallery.compose.util.ThumbnailOverlayState
 import org.fossify.gallery.compose.theme.Scrim
 import org.fossify.gallery.compose.theme.SelectionVisual
 import org.fossify.gallery.compose.util.BlurState
+import org.fossify.gallery.compose.util.ColumnCountIndicator
 import org.fossify.gallery.compose.util.ScrollToTopEffect
 import org.fossify.gallery.compose.util.decodeImageAspect
+import org.fossify.gallery.compose.util.pinchToChangeColumns
 import org.fossify.gallery.compose.util.privacyBlur
 import org.fossify.gallery.compose.util.sharedElementKey
 import org.fossify.gallery.compose.util.rememberPeekState
@@ -207,6 +209,8 @@ fun ExplorerScreen(
     onOpenViewSettings: (() -> Unit)? = null,
     onTagClick: (String) -> Unit = {},
     tabIndex: Int? = null,
+    onMediaColumnCountChange: ((Int) -> Unit)? = null,
+    onFolderColumnCountChange: ((Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val repo = LocalMediaRepository.current
@@ -1254,7 +1258,36 @@ fun ExplorerScreen(
                 DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant
                 else -> MaterialTheme.colorScheme.surface
             }
-            Box(Modifier.weight(1f)) {
+            var showColumnIndicator by remember { mutableStateOf(false) }
+            var indicatorColumnCount by remember { mutableIntStateOf(mediaSettings.columnCount) }
+            val pinchMedia = visibleFileItems.isNotEmpty() &&
+                mediaSettings.viewType != ViewType.LIST &&
+                onMediaColumnCountChange != null
+            val pinchFolders = !pinchMedia &&
+                visibleFolderItems.isNotEmpty() &&
+                folderSettings.viewType == ViewType.GRID &&
+                onFolderColumnCountChange != null
+            val pinchColumns = if (pinchMedia) mediaSettings.columnCount else folderSettings.columnCount
+            val pinchMaxColumns = if (pinchMedia) 6 else 5
+            Box(
+                Modifier
+                    .weight(1f)
+                    .pinchToChangeColumns(
+                        enabled = (pinchMedia || pinchFolders) && !hasFileSelection && !hasFolderSelection,
+                        currentColumns = pinchColumns,
+                        minColumns = 2,
+                        maxColumns = pinchMaxColumns,
+                        onColumnsChange = { next ->
+                            if (pinchMedia) {
+                                onMediaColumnCountChange(next)
+                            } else {
+                                onFolderColumnCountChange?.invoke(next)
+                            }
+                            indicatorColumnCount = next
+                            showColumnIndicator = true
+                        },
+                    ),
+            ) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(4.dp)) {
                 if (visibleFolderItems.isNotEmpty()) {
                     item(key = "explorer_folders_header", contentType = "section_header") {
@@ -1557,6 +1590,12 @@ fun ExplorerScreen(
                     modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface),
                 )
             }
+            ColumnCountIndicator(
+                columnCount = indicatorColumnCount,
+                visible = showColumnIndicator,
+                onAutoHide = { showColumnIndicator = false },
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
+            )
             FastScrollBar(
                 state = listState,
                 modifier = Modifier.align(Alignment.CenterEnd).padding(vertical = 10.dp),

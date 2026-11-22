@@ -17,7 +17,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,7 +39,9 @@ import org.fossify.gallery.compose.screens.ListDensity
 import org.fossify.gallery.compose.screens.ViewSettings
 import org.fossify.gallery.compose.screens.ViewType
 import org.fossify.gallery.compose.theme.LocalSpacing
+import org.fossify.gallery.compose.util.ColumnCountIndicator
 import org.fossify.gallery.compose.util.ScrollToTopEffect
+import org.fossify.gallery.compose.util.pinchToChangeColumns
 import org.fossify.gallery.compose.util.rememberEffectiveColumnCount
 
 /** Generic "album-like" item used by the shared album/library grid (Albums, Favorites, Tags, Collections). */
@@ -70,6 +75,7 @@ fun LibraryAlbumGrid(
     pathHint: ((AlbumGridItem) -> String?)? = null,
     tabIndex: Int? = null,
     fastScrollLabel: ((Int) -> String?)? = null,
+    onColumnCountChange: ((Int) -> Unit)? = null,
 ) {
     val containerColor = when (viewSettings.displayMode) {
         // Not colorScheme.surface - this app's custom ColorScheme sets background == surface, so an
@@ -108,6 +114,7 @@ fun LibraryAlbumGrid(
             pathHint = pathHint,
             tabIndex = tabIndex,
             fastScrollLabel = fastScrollLabel,
+            onColumnCountChange = onColumnCountChange,
             modifier = modifier,
         )
     }
@@ -188,11 +195,13 @@ private fun LibraryAlbumTiles(
     tabIndex: Int?,
     fastScrollLabel: ((Int) -> String?)?,
     modifier: Modifier = Modifier,
+    onColumnCountChange: ((Int) -> Unit)? = null,
 ) {
     val gridState = rememberLazyGridState()
     ScrollToTopEffect(tabIndex) { gridState.animateScrollToItem(0) }
     val itemSpacing = viewSettings.spacing.dp
     val effectiveColumns = rememberEffectiveColumnCount(viewSettings.columnCount)
+    var showColumnIndicator by remember { mutableStateOf(false) }
     val containerWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
     val tileWidthDp = containerWidthDp / effectiveColumns.coerceAtLeast(1)
     val isNarrowTile = tileWidthDp < 88.dp
@@ -200,7 +209,20 @@ private fun LibraryAlbumTiles(
     // Surface the path hint on grid tiles only when two visible folders share a name (e.g.
     // two "Instagram" or "Screenshots" folders) so single-instance tiles stay uncluttered.
     val duplicateNames = remember(items) { findDuplicateFolderNames(items.map { it.name }) }
-    Box(modifier.fillMaxSize()) {
+    Box(
+        modifier
+            .fillMaxSize()
+            .pinchToChangeColumns(
+                enabled = onColumnCountChange != null,
+                currentColumns = viewSettings.columnCount,
+                minColumns = 2,
+                maxColumns = 5,
+                onColumnsChange = { next ->
+                    onColumnCountChange?.invoke(next)
+                    showColumnIndicator = true
+                },
+            ),
+    ) {
         LazyVerticalGrid(
             state = gridState,
             columns = GridCells.Fixed(effectiveColumns),
@@ -260,6 +282,12 @@ private fun LibraryAlbumTiles(
             state = gridState,
             modifier = Modifier.align(Alignment.CenterEnd).padding(vertical = 8.dp),
             positionLabel = { index -> fastScrollLabel?.invoke(index) },
+        )
+        ColumnCountIndicator(
+            columnCount = viewSettings.columnCount,
+            visible = showColumnIndicator,
+            onAutoHide = { showColumnIndicator = false },
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
         )
     }
 }

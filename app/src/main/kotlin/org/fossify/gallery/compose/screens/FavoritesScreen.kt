@@ -106,6 +106,7 @@ fun FavoritesScreen(
     onFolderClick: (String) -> Unit = {},
     onSelectionActiveChanged: (Boolean) -> Unit = {},
     tabIndex: Int? = null,
+    onColumnCountChange: ((Int) -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     val repo = LocalMediaRepository.current
@@ -316,6 +317,7 @@ fun FavoritesScreen(
                             modifier = Modifier.height(folderSectionHeight),
                             tabIndex = tabIndex,
                             fastScrollLabel = { index -> favoriteDirItems.getOrNull(index)?.name },
+                            onColumnCountChange = onColumnCountChange,
                         )
                         if (visibleFavoriteMedia.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = 8.dp))
                     }
@@ -368,6 +370,7 @@ fun FavoritesScreen(
                             onNavigateToViewer = onNavigateToViewer,
                             onSelectionActiveChanged = { hasMediaSelection = it },
                             tabIndex = tabIndex,
+                            onColumnCountChange = onColumnCountChange,
                         )
                     }
                 }

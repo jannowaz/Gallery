@@ -658,6 +658,52 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit, onContent
     // tab-switch fallback below - otherwise both handlers are enabled at once while browsing a
     // subfolder and back can non-deterministically switch tabs instead of navigating up one level.
     var explorerCanGoUp by remember { mutableStateOf(false) }
+    var searchBarVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(
+        uiState.selectedTab,
+        uiState.explorerPath,
+        searchActive,
+        uiState.hasActiveFilter,
+        isMediaSelectionActive,
+    ) {
+        searchBarVisible = true
+    }
+    val scrollDensity = LocalDensity.current
+    val searchBarScrollConnection = remember(scrollDensity) {
+        val hideThresholdPx = with(scrollDensity) { 56.dp.toPx() }
+        val showThresholdPx = with(scrollDensity) { 24.dp.toPx() }
+        object : NestedScrollConnection {
+            private var accumulatedDy = 0f
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
+                when {
+                    consumed.y < -0.5f -> {
+                        accumulatedDy = if (accumulatedDy > 0f) consumed.y else accumulatedDy + consumed.y
+                        if (accumulatedDy <= -hideThresholdPx) {
+                            searchBarVisible = false
+                            accumulatedDy = 0f
+                        }
+                    }
+                    consumed.y > 0.5f -> {
+                        accumulatedDy = if (accumulatedDy < 0f) consumed.y else accumulatedDy + consumed.y
+                        if (accumulatedDy >= showThresholdPx) {
+                            searchBarVisible = true
+                            accumulatedDy = 0f
+                        }
+                    }
+                    available.y > 12f && consumed.y == 0f -> {
+                        searchBarVisible = true
+                        accumulatedDy = 0f
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
     var showAllFilesPrompt by remember { mutableStateOf(false) }
     val allFilesLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         showAllFilesPrompt = !hasAllFilesAccess(ctx)
@@ -822,15 +868,16 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit, onContent
                 selectedTab = uiState.selectedTab,
                 onTabSelected = selectTabFromChrome,
                 showNavigation = !isWideWindow,
+                searchBarVisible = searchBarVisible,
             )
         }
     ) { padding ->
-        // Keep the persistent browse chrome stable while scrolling. Removing the bottom slot from
-        // Scaffold during a gesture changes the content height underneath the user's finger, while
-        // the media toolbar used to disappear on a separate signal. Both effects felt like a
-        // competing pair of animations rather than one coherent surface. Scroll now moves media
-        // only; chrome changes are reserved for explicit modes such as search and selection.
-        BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
+        BoxWithConstraints(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .nestedScroll(searchBarScrollConnection),
+        ) {
             // Must come from THIS Box's own maxHeight (already reduced by the bottom bar's
             // Modifier.imePadding() while the keyboard is up), not a keyboard-independent value
             // like LocalConfiguration.screenHeightDp - a height computed against the full screen
@@ -1203,6 +1250,13 @@ private fun MainTabContent(
             tabIndex = 0,
             pickMultiple = (ctx as? android.app.Activity)?.let { org.fossify.gallery.helpers.PickIntent.isPick(it.intent) && org.fossify.gallery.helpers.PickIntent.allowsMultiple(it.intent) } ?: false,
             onConfirmPick = { paths -> (ctx as? android.app.Activity)?.let { org.fossify.gallery.helpers.PickIntent.returnMultiple(it, paths) } },
+            onColumnCountChange = { next ->
+                if (state.activeCollectionName != null) {
+                    viewSettingsVM.updateCollectionMedia(tabSettings.collectionMedia.copy(columnCount = next))
+                } else {
+                    viewSettingsVM.updateMedia(tabSettings.media.copy(columnCount = next))
+                }
+            },
         )
         1 -> AlbumsScreen(
             viewModel = albumsViewModel,
@@ -1213,6 +1267,9 @@ private fun MainTabContent(
             onOpenViewSettings = onOpenViewSettings,
             onSelectionActiveChanged = onMediaSelectionChanged,
             tabIndex = 1,
+            onColumnCountChange = { next ->
+                viewSettingsVM.updateAlbums(tabSettings.albums.copy(columnCount = next))
+            },
         )
         2 -> ExplorerScreen(
             internalStoragePath = state.explorerPath,
@@ -1259,6 +1316,18 @@ private fun MainTabContent(
             onOpenViewSettings = onOpenViewSettings,
             onTagClick = { tag -> applyTagFilter(tag, mainVM, ctx, 2) },
             tabIndex = 2,
+            onMediaColumnCountChange = { next ->
+                val current = viewSettingsVM.getExplorerMediaSettingsForPath(state.explorerPath)
+                val applyGlobally = !viewSettingsVM.hasCustomExplorerMediaSettings(state.explorerPath)
+                viewSettingsVM.updateExplorerMediaForPath(
+                    state.explorerPath,
+                    current.copy(columnCount = next),
+                    applyGlobally,
+                )
+            },
+            onFolderColumnCountChange = { next ->
+                viewSettingsVM.updateExplorerAlbums(tabSettings.explorerAlbums.copy(columnCount = next))
+            },
         )
             }
             }
@@ -1286,6 +1355,9 @@ private fun MainTabContent(
             onFolderClick = { path -> openFolderChecked(ctx, path) { navController.navigate(Folder(path)) { launchSingleTop = true } } },
             onSelectionActiveChanged = onMediaSelectionChanged,
             tabIndex = 4,
+            onColumnCountChange = { next ->
+                viewSettingsVM.updateFavorites(tabSettings.favorites.copy(columnCount = next))
+            },
         )
         5 -> TagBrowserScreen(
             onBack = {},
