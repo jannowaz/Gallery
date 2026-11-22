@@ -95,6 +95,7 @@ import kotlinx.coroutines.launch
 import org.fossify.gallery.compose.components.ConfirmDestructive
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.extensions.config
 import org.fossify.gallery.models.CompressionReviewItem
 import java.io.File
 
@@ -560,25 +561,29 @@ internal fun GifToVideoCompare(beforeGifPath: String, afterVideoPath: String, sh
 @Composable
 internal fun ComparePlayer(pathA: String, pathB: String, showB: Boolean, modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
-    val player = remember {
+    val player = remember(pathA, pathB) {
         ExoPlayer.Builder(ctx).build().apply {
-            setMediaItem(MediaItem.fromUri(Uri.fromFile(File(pathA))))
+            setMediaItem(MediaItem.fromUri(Uri.fromFile(File(if (showB) pathB else pathA))))
             prepare()
-            playWhenReady = false
+            playWhenReady = ctx.config.autoplayVideos
         }
     }
     val playerView = remember {
-        (LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView).apply { useController = true }
+        (LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView)
+            .apply { useController = true }
     }
     LaunchedEffect(player) { playerView.player = player }
-    LaunchedEffect(showB) {
-        val pos = player.currentPosition
-        val wasPlaying = player.isPlaying
-        player.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(if (showB) pathB else pathA))))
-        player.prepare()
-        player.seekTo(pos)
-        player.playWhenReady = wasPlaying
+    LaunchedEffect(player, showB) {
+        val targetUri = Uri.fromFile(File(if (showB) pathB else pathA))
+        if (player.currentMediaItem?.localConfiguration?.uri != targetUri) {
+            val pos = player.currentPosition
+            val wasPlaying = player.playWhenReady
+            player.setMediaItem(MediaItem.fromUri(targetUri))
+            player.prepare()
+            player.seekTo(pos)
+            player.playWhenReady = wasPlaying
+        }
     }
-    DisposableEffect(Unit) { onDispose { player.release() } }
+    DisposableEffect(player) { onDispose { player.release() } }
     AndroidView(factory = { playerView }, modifier = modifier)
 }

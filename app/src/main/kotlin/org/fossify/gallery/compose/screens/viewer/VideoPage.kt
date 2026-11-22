@@ -299,10 +299,14 @@ fun VideoPage(
             }
         }
     }
-    LaunchedEffect(isCurrentPage) {
+    LaunchedEffect(player, isCurrentPage) {
         if (isCurrentPage) {
             // Only allocate the decoder/codec once this page is actually the visible one.
-            if (player.playbackState == Player.STATE_IDLE) player.prepare()
+            if (player.playbackState == Player.STATE_IDLE) {
+                player.prepare()
+            } else if (player.playbackState == Player.STATE_ENDED && ctx.config.autoplayVideos) {
+                player.seekTo(0)
+            }
             player.playWhenReady = ctx.config.autoplayVideos
         } else {
             player.playWhenReady = false
@@ -322,7 +326,7 @@ fun VideoPage(
     }
 
     val lifecycleOwner = ctx as? androidx.lifecycle.LifecycleOwner
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(lifecycleOwner, player) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) player.pause()
         }

@@ -442,22 +442,23 @@ private fun ActionRow(leftText: String, rightText: String, onLeft: () -> Unit, o
     }
 }
 
-/** Single-source triage player, paused at the first frame with the standard controller - the same
- * XML-inflated PlayerView pattern as [ComparePlayer] (plain PlayerView(ctx) shows no video). */
+/** Single-source triage player with standard controller - uses the same XML-inflated PlayerView
+ * pattern as [ComparePlayer] (plain PlayerView(ctx) shows no video). */
 @Composable
 private fun SinglePlayer(path: String, modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
-    val player = remember {
+    val player = remember(path) {
         ExoPlayer.Builder(ctx).build().apply {
             setMediaItem(MediaItem.fromUri(Uri.fromFile(File(path))))
             prepare()
-            playWhenReady = false
+            playWhenReady = ctx.config.autoplayVideos
         }
     }
     val playerView = remember {
-        (LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView).apply { useController = true }
+        (LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView)
+            .apply { useController = true }
     }
     LaunchedEffect(player) { playerView.player = player }
-    DisposableEffect(Unit) { onDispose { player.release() } }
+    DisposableEffect(player) { onDispose { player.release() } }
     AndroidView(factory = { playerView }, modifier = modifier)
 }
