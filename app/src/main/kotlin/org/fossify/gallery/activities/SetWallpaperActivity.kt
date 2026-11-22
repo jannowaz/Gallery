@@ -88,12 +88,13 @@ class SetWallpaperActivity : BaseCropActivity() {
     }
 
     private fun handleImage(intent: Intent) {
-        uri = intent.data!!
-        if (uri.scheme != "file" && uri.scheme != "content") {
+        val incomingUri = intent.data
+        if (incomingUri == null || !org.fossify.gallery.helpers.IntentSecurity.isSafeIncomingUri(this, incomingUri)) {
             toast(R.string.unknown_file_location)
             finish()
             return
         }
+        uri = incomingUri
 
         wallpaperManager = WallpaperManager.getInstance(applicationContext)
         binding.cropImageView.apply {

@@ -353,9 +353,11 @@ class ComposeExplorerActivity : FragmentActivity() {
         intent.getStringExtra(org.fossify.gallery.helpers.MoverWidgetProvider.EXTRA_NAVIGATE_TO)?.let {
             org.fossify.gallery.compose.util.NavigateBus.trigger(it)
         }
-        intent.getStringExtra(org.fossify.gallery.helpers.DIRECTORY)?.takeIf { it.isNotBlank() }?.let {
-            org.fossify.gallery.compose.util.NavigateBus.triggerFolder(it)
-        }
+        intent.getStringExtra(org.fossify.gallery.helpers.DIRECTORY)
+            ?.takeIf { org.fossify.gallery.helpers.IntentSecurity.isSafeExternalPath(this, it) }
+            ?.let {
+                org.fossify.gallery.compose.util.NavigateBus.triggerFolder(it)
+            }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

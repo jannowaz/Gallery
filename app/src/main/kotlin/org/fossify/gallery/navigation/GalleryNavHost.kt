@@ -193,7 +193,9 @@ fun GalleryNavHost(
         val widgetFolder = activity?.intent?.getStringExtra(org.fossify.gallery.helpers.DIRECTORY)
         if (!widgetFolder.isNullOrBlank()) {
             activity.intent.removeExtra(org.fossify.gallery.helpers.DIRECTORY)
-            navController.navigate(Folder(widgetFolder)) { launchSingleTop = true }
+            if (org.fossify.gallery.helpers.IntentSecurity.isSafeExternalPath(ctx, widgetFolder)) {
+                navController.navigate(Folder(widgetFolder)) { launchSingleTop = true }
+            }
         }
     }
     LaunchedEffect(Unit) {

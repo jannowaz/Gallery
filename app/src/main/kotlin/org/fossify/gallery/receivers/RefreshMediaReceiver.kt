@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 class RefreshMediaReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != ACTION_REFRESH_MEDIA) return
         val rawPath = intent.getStringExtra(REFRESH_PATH)
         if (!isSafeRefreshMediaPath(rawPath)) return
 
@@ -23,9 +24,13 @@ class RefreshMediaReceiver : BroadcastReceiver() {
         ensureBackgroundThread {
             try {
                 val file = runCatching { File(rawPath!!).canonicalFile }.getOrNull() ?: return@ensureBackgroundThread
+                val canonical = file.path
+                // Re-validate after canonicalization so symlinks cannot escape into /data/ or private app dirs.
+                if (!isSafeRefreshMediaPath(canonical) || !org.fossify.gallery.helpers.IntentSecurity.isSafeExternalPath(appContext, canonical)) {
+                    return@ensureBackgroundThread
+                }
                 if (!file.exists() || !file.isFile) return@ensureBackgroundThread
 
-                val canonical = file.path
                 val now = System.currentTimeMillis()
                 val last = recentPaths[canonical]
                 if (last != null && now - last < THROTTLE_MS) return@ensureBackgroundThread
@@ -41,6 +46,7 @@ class RefreshMediaReceiver : BroadcastReceiver() {
     }
 
     companion object {
+        private const val ACTION_REFRESH_MEDIA = "org.fossify.REFRESH_MEDIA"
         private const val THROTTLE_MS = 2_000L
         private const val MAX_TRACKED_PATHS = 256
         private val recentPaths = ConcurrentHashMap<String, Long>()

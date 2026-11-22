@@ -794,9 +794,12 @@ fun BaseSimpleActivity.writeBitmapToCache(
         }
     }
 
-    val filename = applicationContext.getFilenameFromContentUri(source)
-        ?: "tmp-${System.currentTimeMillis()}.jpg"
-    val newPath = "$folder/$filename"
+    val rawFilename = applicationContext.getFilenameFromContentUri(source)
+    val filename = org.fossify.gallery.helpers.IntentSecurity.sanitizeSingleFilename(
+        rawName = rawFilename,
+        fallback = "tmp-${System.currentTimeMillis()}.jpg",
+    )
+    val newPath = File(folder, filename).absolutePath
     val fileDirItem = FileDirItem(newPath, filename)
     getFileOutputStream(fileDirItem, true) {
         if (it != null) {

@@ -324,8 +324,12 @@ private suspend fun resolveExternalViewerTarget(
 ): ExternalViewerResolution? = withContext(Dispatchers.IO) {
     cleanupStaleExternalViewerCache(context)
 
+    if (!org.fossify.gallery.helpers.IntentSecurity.isSafeIncomingUri(context, uri)) {
+        return@withContext null
+    }
+
     val directPath = resolveDirectPath(context, uri)
-    if (directPath != null) {
+    if (directPath != null && org.fossify.gallery.helpers.IntentSecurity.isSafeExternalPath(context, directPath)) {
         val file = File(directPath)
         if (file.isFile && file.canRead()) {
             val siblings = loadSiblingMediaPaths(file, repo)
@@ -336,6 +340,10 @@ private suspend fun resolveExternalViewerTarget(
                 ExternalViewerResolution(paths = listOf(directPath), startIndex = 0)
             }
         }
+    }
+
+    if (!uri.scheme.equals("content", ignoreCase = true)) {
+        return@withContext null
     }
 
     val copied = copyContentUriToCache(context, uri, intentMimeType) ?: return@withContext null

@@ -17,6 +17,7 @@ import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.scale
 import androidx.core.content.FileProvider
+import androidx.core.content.IntentCompat
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -167,6 +168,7 @@ class EditActivity : BaseCropActivity() {
             if (!it) {
                 toast(org.fossify.commons.R.string.no_storage_permissions)
                 finish()
+                return@handlePermission
             }
             initEditActivity()
         }
@@ -201,38 +203,51 @@ class EditActivity : BaseCropActivity() {
     }
 
     private fun initEditActivity() {
-        if (intent.data == null) {
+        val incomingUri = intent.data
+        if (incomingUri == null) {
             toast(R.string.invalid_image_path)
             finish()
             return
         }
 
-        uri = intent.data!!
-        originalUri = uri
-        if (uri!!.scheme != "file" && uri!!.scheme != "content") {
+        if (!org.fossify.gallery.helpers.IntentSecurity.isSafeIncomingUri(this, incomingUri)) {
             toast(R.string.unknown_file_location)
             finish()
             return
         }
 
+        uri = incomingUri
+        originalUri = incomingUri
+
         val extras = intent.extras
         if (extras?.containsKey(REAL_FILE_PATH) == true) {
-            val realPath = intent.extras!!.getString(REAL_FILE_PATH)
-            uri = when {
-                isPathOnOTG(realPath!!) -> uri
-                realPath.startsWith("file:/") -> realPath.toUri()
-                else -> Uri.fromFile(File(realPath))
+            val realPath = extras.getString(REAL_FILE_PATH)
+            if (!realPath.isNullOrBlank()) {
+                val parsed = if (realPath.startsWith("file:/")) realPath.toUri().path else realPath
+                if (isPathOnOTG(realPath)) {
+                    uri = incomingUri
+                } else if (org.fossify.gallery.helpers.IntentSecurity.isSafeExternalPath(this, parsed)) {
+                    uri = Uri.fromFile(File(parsed!!))
+                }
             }
         } else {
-            (getRealPathFromURI(uri!!))?.apply {
+            (getRealPathFromURI(incomingUri))?.takeIf {
+                org.fossify.gallery.helpers.IntentSecurity.isSafeExternalPath(this, it)
+            }?.apply {
                 uri = Uri.fromFile(File(this))
             }
         }
 
-        saveUri = when {
-            extras?.containsKey(MediaStore.EXTRA_OUTPUT) == true
-                    && extras.get(MediaStore.EXTRA_OUTPUT) is Uri -> extras.get(MediaStore.EXTRA_OUTPUT) as Uri
-            else -> uri!!
+        val extraOutput = IntentCompat.getParcelableExtra(intent, MediaStore.EXTRA_OUTPUT, Uri::class.java)
+        if (extraOutput != null) {
+            if (!org.fossify.gallery.helpers.IntentSecurity.isSafeOutputUri(this, extraOutput)) {
+                toast(R.string.unknown_file_location)
+                finish()
+                return
+            }
+            saveUri = extraOutput
+        } else {
+            saveUri = uri!!
         }
 
         if (isCropIntent) {
