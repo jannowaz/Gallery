@@ -118,6 +118,7 @@ import kotlinx.coroutines.withContext
 import org.fossify.gallery.compose.components.FolderSelectionOverlay
 import org.fossify.gallery.compose.components.MediaListRow
 import org.fossify.gallery.compose.components.MediaTile
+import org.fossify.gallery.compose.components.findDuplicateFolderNames
 import org.fossify.gallery.compose.components.folderPathHint
 import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.theme.LocalMediaRepository
@@ -1247,7 +1248,7 @@ fun ExplorerScreen(
             val isNarrowMediaTile = mediaTileWidthDp < 88.dp
             val internalStorageLabel = stringResource(R.string.internal_storage)
             val duplicateFolderNames = remember(visibleFolderItems) {
-                visibleFolderItems.groupingBy { it.name.lowercase() }.eachCount().filterValues { it > 1 }.keys
+                findDuplicateFolderNames(visibleFolderItems.map { it.name })
             }
             val mediaBg = when (mediaSettings.displayMode) {
                 DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant

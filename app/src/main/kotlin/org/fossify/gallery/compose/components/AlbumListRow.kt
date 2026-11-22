@@ -75,6 +75,13 @@ fun folderPathHint(fullPath: String, internalStorageLabel: String, maxSegments: 
 }
 
 /**
+ * Returns the lowercase names that appear more than once in [names], used by folder grids to
+ * surface containing-path hints only when two visible folders would otherwise look identical.
+ */
+fun findDuplicateFolderNames(names: Iterable<String>): Set<String> =
+    names.groupingBy { it.lowercase() }.eachCount().filterValues { it > 1 }.keys
+
+/**
  * The one list row used by every folder-style list in the app - Albums, Collections, Favorites and
  * the Explorer's folder section - so they read as a single, consistent list instead of four
  * slightly different ones.

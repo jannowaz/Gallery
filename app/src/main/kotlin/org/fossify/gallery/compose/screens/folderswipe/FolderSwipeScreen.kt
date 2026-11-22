@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
@@ -303,9 +304,12 @@ fun FolderSwipeScreen(
                                                             if (current.videoDuration > 0) {
                                                                 val mins = current.videoDuration / 60
                                                                 val secs = current.videoDuration % 60
+                                                                val durStyle = MaterialTheme.typography.labelLarge.copy(
+                                                                    fontFeatureSettings = "tnum",
+                                                                )
                                                                 Text(
                                                                     "%d:%02d".format(mins, secs),
-                                                                    style = MaterialTheme.typography.labelLarge,
+                                                                    style = durStyle,
                                                                     color = androidx.compose.ui.graphics.Color.White,
                                                                     fontWeight = FontWeight.SemiBold,
                                                                 )
@@ -329,9 +333,12 @@ fun FolderSwipeScreen(
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
                                             )
+                                            val posStyle = MaterialTheme.typography.labelSmall.copy(
+                                                fontFeatureSettings = "tnum",
+                                            )
                                             Text(
                                                 stringResource(R.string.swipe_mode_position, currentIndex + 1, loaded.size),
-                                                style = MaterialTheme.typography.labelSmall,
+                                                style = posStyle,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
                                             if (errorMessage != null) {
@@ -449,6 +456,13 @@ private fun SwipeFinished(onBack: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
+        Icon(
+            Icons.Default.CheckCircle,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(56.dp),
+        )
+        Spacer(Modifier.height(16.dp))
         Text(stringResource(R.string.swipe_mode_finished), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(

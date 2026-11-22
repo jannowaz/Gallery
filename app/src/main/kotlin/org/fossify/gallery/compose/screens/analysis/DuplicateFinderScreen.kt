@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -234,11 +235,27 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                 Surface(color = MaterialTheme.colorScheme.secondaryContainer, tonalElevation = 3.dp, shadowElevation = 8.dp) {
                     Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(stringResource(R.string.duplicate_marked_count, sel.size, formatBytes(selSize)), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
+                            Text(
+                                stringResource(R.string.duplicate_marked_count, sel.size, formatBytes(selSize)),
+                                style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+                                fontWeight = FontWeight.Medium,
+                            )
+                            val metaStyle = MaterialTheme.typography.labelSmall.copy(
+                                fontFeatureSettings = "tnum",
+                            )
                             if (fullyMarked > 0) {
-                                Text(stringResource(R.string.dup_confirm_all_deleted, fullyMarked), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Medium)
+                                Text(
+                                    stringResource(R.string.dup_confirm_all_deleted, fullyMarked),
+                                    style = metaStyle,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.Medium,
+                                )
                             } else if (keepingCopy > 0) {
-                                Text(stringResource(R.string.dup_confirm_keeps_copies, keepingCopy), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                                Text(
+                                    stringResource(R.string.dup_confirm_keeps_copies, keepingCopy),
+                                    style = metaStyle,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                )
                             }
                         }
                         TextButton(onClick = { vm.clearSelection() }) { Text(stringResource(R.string.action_empty)) }
@@ -259,7 +276,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
             }
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             // Compact results header with a collapse toggle for the scan form below.
             if (state.groups.isNotEmpty()) {
                 val totalWasted = remember(state.groups) { state.groups.sumOf { it.wastedBytes } }
@@ -441,7 +458,11 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text(stringResource(R.string.tolerance), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                                Text("${state.similarThreshold} · ${thresholdLabel(state.similarThreshold)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                Text(
+                                    "${state.similarThreshold} · ${thresholdLabel(state.similarThreshold)}",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
                             }
                             Slider(
                                 value = state.similarThreshold.toFloat(),
@@ -472,7 +493,12 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                     if (n > 0) {
                         Spacer(Modifier.width(4.dp))
                         Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF43A047), modifier = Modifier.size(13.dp))
-                        Text("$n", style = MaterialTheme.typography.labelMedium, color = Color(0xFF43A047), fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "$n",
+                            style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+                            color = Color(0xFF43A047),
+                            fontWeight = FontWeight.SemiBold,
+                        )
                     }
                 }
                 LazyRow(
@@ -889,7 +915,7 @@ private fun DuplicateGroupCard(
                                 formatBytes(totalSize),
                                 formatBytes(group.wastedBytes),
                             ),
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.tertiary,
                         )

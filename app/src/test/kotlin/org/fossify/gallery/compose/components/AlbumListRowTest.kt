@@ -34,4 +34,18 @@ class AlbumListRowTest {
             folderPathHint("/storage/1234-5678/Pictures/Trips/October", "Internal storage"),
         )
     }
+
+    @Test
+    fun `findDuplicateFolderNames flags case-insensitive collisions only`() {
+        val duplicates = findDuplicateFolderNames(
+            listOf("Camera", "Screenshots", "screenshots", "Downloads", "Instagram", "INSTAGRAM", "instagram"),
+        )
+        assertEquals(setOf("screenshots", "instagram"), duplicates)
+    }
+
+    @Test
+    fun `findDuplicateFolderNames returns empty set for unique or empty input`() {
+        assertEquals(emptySet<String>(), findDuplicateFolderNames(emptyList()))
+        assertEquals(emptySet<String>(), findDuplicateFolderNames(listOf("Camera", "Screenshots", "Downloads")))
+    }
 }

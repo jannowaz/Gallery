@@ -199,9 +199,7 @@ private fun LibraryAlbumTiles(
     val isUltraNarrowTile = tileWidthDp < 84.dp
     // Surface the path hint on grid tiles only when two visible folders share a name (e.g.
     // two "Instagram" or "Screenshots" folders) so single-instance tiles stay uncluttered.
-    val duplicateNames = remember(items) {
-        items.groupingBy { it.name.lowercase() }.eachCount().filterValues { it > 1 }.keys
-    }
+    val duplicateNames = remember(items) { findDuplicateFolderNames(items.map { it.name }) }
     Box(modifier.fillMaxSize()) {
         LazyVerticalGrid(
             state = gridState,

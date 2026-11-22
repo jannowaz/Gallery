@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -265,7 +266,7 @@ fun VideoTrimmerSheet(
                         formatTrimTimestamp(trimEndMs),
                         formatTrimTimestamp((trimEndMs - trimStartMs).coerceAtLeast(0L)),
                     ),
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
                     fontWeight = FontWeight.SemiBold,
                 )
 
@@ -286,6 +287,7 @@ fun VideoTrimmerSheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 48.dp)
                     .toggleable(
                         value = removeAudio,
                         enabled = !exporting,
@@ -311,7 +313,7 @@ fun VideoTrimmerSheet(
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         text = "${stringResource(R.string.trim_video_exporting)} ${exportProgress}%",
-                        style = MaterialTheme.typography.labelLarge,
+                        style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
                     )
                     LinearProgressIndicator(
                         progress = { (exportProgress / 100f).coerceIn(0f, 1f) },
@@ -330,7 +332,7 @@ fun VideoTrimmerSheet(
                         exporting = false
                         onDismiss()
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                 ) {
                     Text(stringResource(R.string.cancel))
                 }
@@ -365,7 +367,7 @@ fun VideoTrimmerSheet(
                         }
                     },
                     enabled = canSave,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                 ) {
                     Text(stringResource(R.string.trim_video_save_copy))
                 }

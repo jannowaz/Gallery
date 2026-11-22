@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -107,7 +108,11 @@ fun CompressionSwipeScreen(onBack: () -> Unit) {
             TopAppBar(
                 title = {
                     val counter = if (phase is SwipePhase.Finished) "" else "  $position/${vm.total}"
-                    Text(stringResource(R.string.swipe_review_title) + counter, fontWeight = FontWeight.Bold)
+                    Text(
+                        stringResource(R.string.swipe_review_title) + counter,
+                        style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
+                        fontWeight = FontWeight.Bold,
+                    )
                 },
                 navigationIcon = { IconButton(onClick = guardedBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -139,7 +144,9 @@ fun CompressionSwipeScreen(onBack: () -> Unit) {
                 }
                 SwipePhase.Finished -> FinishedContent(stats, onBack)
             }
-            org.fossify.gallery.compose.components.UndoBar(Modifier.align(Alignment.BottomCenter))
+            org.fossify.gallery.compose.components.UndoBar(
+                Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
+            )
         }
     }
 }
@@ -262,11 +269,16 @@ private fun InfoPanel(item: AnalysisResult) {
                     if (item.bpp > 0f) add("%.2f BPP".format(item.bpp))
                 }
             }
-            Text(facts.joinToString("  ·  "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+            Text(
+                facts.joinToString("  ·  "),
+                style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
             if (item.wastedBytes > 0) {
                 Text(
                     stringResource(R.string.swipe_savings_estimate, formatBytes(item.wastedBytes)),
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
                     color = MaterialTheme.colorScheme.tertiary,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 4.dp),
@@ -300,7 +312,7 @@ private fun ConvertingContent(item: AnalysisResult, progress: Int?) {
                         modifier = Modifier.fillMaxWidth(0.6f),
                     )
                     Spacer(Modifier.height(12.dp))
-                    Text("$progress %", style = MaterialTheme.typography.titleSmall)
+                    Text("$progress %", style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"))
                 } else {
                     CircularProgressIndicator()
                 }
@@ -408,7 +420,12 @@ private fun FinishedContent(stats: SwipeStats, onBack: () -> Unit) {
 private fun FinishedStat(value: Int, label: String, color: androidx.compose.ui.graphics.Color) {
     Surface(shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)) {
         Column(Modifier.padding(horizontal = 18.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("$value", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = color)
+            Text(
+                "$value",
+                style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
+                fontWeight = FontWeight.Bold,
+                color = color,
+            )
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

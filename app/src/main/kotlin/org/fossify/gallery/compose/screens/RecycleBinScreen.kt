@@ -7,6 +7,7 @@ import java.io.File
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -42,7 +43,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.SelectAll
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -53,8 +53,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -456,7 +454,7 @@ fun RecycleBinScreen(
                     )
                     Text(
                         stringResource(R.string.deleting_forever_progress, done, total),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     )
@@ -467,7 +465,11 @@ fun RecycleBinScreen(
                         stringResource(R.string.no_results),
                         subtitle = stringResource(R.string.no_results_hint),
                         actionLabel = stringResource(R.string.clear_filter),
-                        onAction = { query = "" },
+                        onAction = {
+                            query = ""
+                            mediaTypeFilter = 0
+                            folderFilter = null
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
@@ -543,10 +545,29 @@ fun RecycleBinScreen(
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                         Text(m.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(stringResource(R.string.recycle_bin_deleted_at, formatRecycleBinTimestamp(m.deletedTS)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        val metaStyle = MaterialTheme.typography.labelSmall.copy(
+                                            fontFeatureSettings = "tnum",
+                                        )
+                                        val deletedLabel = stringResource(
+                                            R.string.recycle_bin_deleted_at,
+                                            formatRecycleBinTimestamp(m.deletedTS),
+                                        )
                                         Text(
-                                            "${android.text.format.Formatter.formatFileSize(ctx, m.size.coerceAtLeast(0L))} · ${recycleBinExpiryLabel(ctx, m.deletedTS + RECYCLE_BIN_RETENTION_MS)}",
-                                            style = MaterialTheme.typography.labelSmall,
+                                            deletedLabel,
+                                            style = metaStyle,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        val sizeLabel = android.text.format.Formatter.formatFileSize(
+                                            ctx,
+                                            m.size.coerceAtLeast(0L),
+                                        )
+                                        val expiryLabel = recycleBinExpiryLabel(
+                                            ctx,
+                                            m.deletedTS + RECYCLE_BIN_RETENTION_MS,
+                                        )
+                                        Text(
+                                            "$sizeLabel · $expiryLabel",
+                                            style = metaStyle,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }
@@ -633,10 +654,18 @@ private fun RecycleBinPreviewCard(
                 onClick = { if (selectionMode) onToggleSelection(!selected) else onOpen() },
                 onLongClick = { if (!selectionMode) onStartSelection() },
             ),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = RoundedCornerShape(Radius.md),
+        border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            },
+        ),
     ) {
         Column {
-            Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(topStart = Radius.sm, topEnd = Radius.sm))) {
+            Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(topStart = Radius.md, topEnd = Radius.md))) {
                 GalleryImage(path = medium.path, contentDescription = medium.name, modifier = Modifier.fillMaxSize(), thumbnailSize = 640)
                 if (selectionMode) {
                     Checkbox(
@@ -651,14 +680,14 @@ private fun RecycleBinPreviewCard(
                 Text(medium.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     stringResource(R.string.recycle_bin_deleted_at, formatRecycleBinTimestamp(medium.deletedTS)),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     "${android.text.format.Formatter.formatFileSize(context, medium.size.coerceAtLeast(0L))} · ${recycleBinExpiryLabel(context, medium.deletedTS + RECYCLE_BIN_RETENTION_MS)}",
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

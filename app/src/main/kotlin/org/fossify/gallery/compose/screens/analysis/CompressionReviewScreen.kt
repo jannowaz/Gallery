@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -91,6 +93,7 @@ import kotlinx.coroutines.withContext
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.launch
 import org.fossify.gallery.compose.components.ConfirmDestructive
+import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.models.CompressionReviewItem
 import java.io.File
@@ -126,9 +129,11 @@ fun CompressionReviewScreen(onBack: () -> Unit) {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
         if (items.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.compression_review_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            EmptyState(
+                icon = Icons.Default.Compress,
+                title = stringResource(R.string.compression_review_empty),
+                modifier = Modifier.fillMaxSize(),
+            )
         } else {
             Column(Modifier.fillMaxSize()) {
                 if (doneByFolder.size > 1) {
@@ -168,9 +173,22 @@ fun CompressionReviewScreen(onBack: () -> Unit) {
                     )
                 }
                 if (visibleDone.size > 1) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { pendingBulkAction = "keep_new" }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_all_new)) }
-                        OutlinedButton(onClick = { pendingBulkAction = "keep_original" }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_all_original)) }
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedButton(
+                            onClick = { pendingBulkAction = "keep_new" },
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        ) {
+                            Text(stringResource(R.string.action_keep_all_new))
+                        }
+                        OutlinedButton(
+                            onClick = { pendingBulkAction = "keep_original" },
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        ) {
+                            Text(stringResource(R.string.action_keep_all_original))
+                        }
                     }
                 }
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(8.dp)) {
@@ -241,7 +259,7 @@ private fun DoneCard(item: CompressionReviewItem, onClick: () -> Unit) {
                 val percent = if (item.originalSize > 0) (100 - (item.resultSize * 100 / item.originalSize)).toInt() else 0
                 Text(
                     stringResource(R.string.compression_saved_percent, formatBytes(item.originalSize), formatBytes(item.resultSize), percent),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                     color = MaterialTheme.colorScheme.tertiary,
                 )
             }
@@ -298,7 +316,13 @@ private fun CompareViewerPager(
     // a real device/emulator, taps on Close/Previous/Next in that strip never reached the button at
     // all, even though they were visually in the right place - the status bar window swallows the
     // touch first since it sits above the app in z-order).
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .navigationBarsPadding(),
+    ) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, stringResource(R.string.cd_close)) }
@@ -315,7 +339,7 @@ private fun CompareViewerPager(
                 ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.compare_previous)) }
                 Text(
                     stringResource(R.string.compare_position, pagerState.currentPage + 1, doneItems.size),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 IconButton(
@@ -331,13 +355,26 @@ private fun CompareViewerPager(
                 val percent = if (current.originalSize > 0) (100 - (current.resultSize * 100 / current.originalSize)).toInt() else 0
                 Text(
                     stringResource(R.string.compression_saved_percent, formatBytes(current.originalSize), formatBytes(current.resultSize), percent),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
                     color = MaterialTheme.colorScheme.tertiary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
-                Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { onKeepOriginal(current) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_original)) }
-                    Button(onClick = { onKeepNew(current) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_new)) }
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = { onKeepOriginal(current) },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    ) {
+                        Text(stringResource(R.string.action_keep_original))
+                    }
+                    Button(
+                        onClick = { onKeepNew(current) },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    ) {
+                        Text(stringResource(R.string.action_keep_new))
+                    }
                 }
             }
         }

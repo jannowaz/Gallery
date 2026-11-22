@@ -43,6 +43,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -69,10 +70,10 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.R
+import org.fossify.gallery.compose.components.LibrarySectionHeader
 import org.fossify.gallery.compose.components.LibrarySheetHeader
 import org.fossify.gallery.compose.theme.Radius
 import org.fossify.gallery.compose.theme.RatingStarColor
@@ -89,17 +90,34 @@ import org.fossify.gallery.helpers.EXT_RESOLUTION
 import org.fossify.gallery.helpers.EXT_SIZE
 import java.io.File
 import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
+
+private const val EXIF_DATE_PREFIX_LEN = 10
+
+/** Parses EXIF date headers (`yyyy:MM:dd ...` or `yyyy-MM-dd ...`) into a localized short date. */
+internal fun formatExifDate(rawExifDate: String?, locale: Locale = Locale.getDefault()): String? {
+    val prefix = rawExifDate?.trim()?.take(EXIF_DATE_PREFIX_LEN)?.takeIf { it.isNotEmpty() } ?: return null
+    val patterns = listOf("yyyy:MM:dd", "yyyy-MM-dd")
+    for (pattern in patterns) {
+        val parsed = runCatching {
+            SimpleDateFormat(pattern, Locale.US).apply { isLenient = false }.parse(prefix)
+        }.getOrNull()
+        if (parsed != null) {
+            return DateFormat.getDateInstance(DateFormat.SHORT, locale).format(parsed)
+        }
+    }
+    return prefix
+}
 
 @Composable
 internal fun SheetSectionLabel(text: String) {
-    Text(
-        text.uppercase(),
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        letterSpacing = 0.6.sp,
-        modifier = Modifier.padding(bottom = 6.dp),
+    LibrarySectionHeader(
+        title = text,
+        showDivider = false,
+        topPadding = 6.dp,
+        bottomPadding = 6.dp,
     )
 }
 
@@ -107,15 +125,23 @@ internal fun SheetSectionLabel(text: String) {
 internal fun ActionChip(
     icon: ImageVector,
     label: String,
-    tint: Color = MaterialTheme.colorScheme.onSurface,
+    tint: Color? = null,
     selected: Boolean = false,
     onClick: () -> Unit,
 ) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(Radius.md),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        },
+        contentColor = if (selected) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        },
         modifier = Modifier
             .padding(4.dp)
             .heightIn(min = 64.dp)
@@ -125,13 +151,14 @@ internal fun ActionChip(
                 if (selected) this.selected = true
             },
     ) {
+        val resolvedTint = tint ?: LocalContentColor.current
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
-            Icon(icon, label, tint = tint, modifier = Modifier.size(22.dp))
+            Icon(icon, label, tint = resolvedTint, modifier = Modifier.size(22.dp))
             Spacer(Modifier.height(4.dp))
-            Text(label, style = MaterialTheme.typography.labelSmall, color = tint, maxLines = 1)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = resolvedTint, maxLines = 1)
         }
     }
 }
@@ -177,7 +204,7 @@ internal fun ViewerActionSheet(
             if (!currentIsVideo) {
                 try {
                     val exif = ExifInterface(currentPath)
-                    exif.getAttribute(ExifInterface.TAG_DATETIME)?.let { lines.add(labelDate to it.take(10)) }
+                    formatExifDate(exif.getAttribute(ExifInterface.TAG_DATETIME))?.let { lines.add(labelDate to it) }
                     val dimensions = exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, 0).takeIf { it > 0 }?.let { width ->
                         exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, 0).takeIf { it > 0 }?.let { height -> width to height }
                     } ?: currentPath.getDecodedImageDimensions()
@@ -241,17 +268,36 @@ internal fun ViewerActionSheet(
                 modifier = Modifier.padding(top = 4.dp),
             )
             if (exifLines.isNotEmpty()) {
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(4.dp))
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     exifLines.take(8).forEach { (label, value) ->
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
-                            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Surface(
+                            shape = RoundedCornerShape(Radius.sm),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            ) {
+                                Text(
+                                    value,
+                                    style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                )
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                            }
                         }
                     }
                 }
@@ -313,7 +359,6 @@ internal fun ViewerActionSheet(
                 ActionChip(
                     Icons.Default.Star,
                     stringResource(R.string.viewer_toggle_rating_bar),
-                    tint = if (showRatingOverlay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     selected = showRatingOverlay,
                     onClick = onToggleRatingOverlay,
                 )
@@ -321,7 +366,6 @@ internal fun ViewerActionSheet(
                     ActionChip(
                         Icons.Default.Slideshow,
                         stringResource(R.string.action_slideshow),
-                        tint = if (slideshowActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         selected = slideshowActive,
                         onClick = onToggleSlideshow,
                     )
@@ -354,13 +398,19 @@ internal fun ViewerSlideshowDialog(
                         FilterChip(
                             selected = intervalSec == seconds,
                             onClick = { intervalSec = seconds },
-                            label = { Text("${seconds}s") },
+                            label = {
+                                Text(
+                                    "${seconds}s",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+                                )
+                            },
                         )
                     }
                 }
                 Row(
                     Modifier
                         .fillMaxWidth()
+                        .heightIn(min = 48.dp)
                         .toggleable(value = loopEnabled, role = Role.Switch, onValueChange = { loopEnabled = it })
                         .padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -372,6 +422,7 @@ internal fun ViewerSlideshowDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
+                        .heightIn(min = 48.dp)
                         .toggleable(value = randomEnabled, role = Role.Switch, onValueChange = { randomEnabled = it })
                         .padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -469,7 +520,9 @@ internal fun buildExtendedDetailsText(ctx: Context, path: String, isVideo: Boole
             dimensions?.let { (width, height) -> lines.add("$width × $height") }
         }
         if (flags and EXT_LAST_MODIFIED != 0) lines.add(DateFormat.getDateInstance().format(Date(file.lastModified())))
-        if (flags and EXT_DATE_TAKEN != 0) exif?.getAttribute(ExifInterface.TAG_DATETIME)?.take(10)?.let { lines.add(it) }
+        if (flags and EXT_DATE_TAKEN != 0) {
+            formatExifDate(exif?.getAttribute(ExifInterface.TAG_DATETIME))?.let { lines.add(it) }
+        }
         if (flags and EXT_CAMERA_MODEL != 0) {
             val make = exif?.getAttribute(ExifInterface.TAG_MAKE) ?: ""
             val model = exif?.getAttribute(ExifInterface.TAG_MODEL) ?: ""

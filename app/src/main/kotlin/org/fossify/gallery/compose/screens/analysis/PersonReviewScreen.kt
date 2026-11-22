@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
@@ -36,6 +38,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -236,16 +240,28 @@ fun PersonReviewScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                     )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .toggleable(
+                                value = includeSubfolders,
+                                enabled = !isScanning,
+                                role = Role.Checkbox,
+                                onValueChange = { includeSubfolders = it },
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Checkbox(
                             checked = includeSubfolders,
                             enabled = !isScanning,
-                            onCheckedChange = { includeSubfolders = it },
+                            onCheckedChange = null,
                         )
                         Text(
                             stringResource(R.string.person_scan_include_subfolders),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(start = 8.dp),
                         )
                     }
                     if (isScanning) {
@@ -255,7 +271,7 @@ fun PersonReviewScreen(
                         )
                         Text(
                             stringResource(R.string.person_scan_screen_progress, done, total, suggested),
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
                         TextButton(onClick = {
@@ -405,78 +421,104 @@ private fun PersonReviewDecision(
         }
         return
     }
-    SwipeDecisionSurface(
-        leftLabel = stringResource(R.string.person_scan_ok),
-        rightLabel = stringResource(R.string.person_scan_skip),
-        enabled = !isApplyingDecision,
-        onLeft = { onKeep(current) },
-        onRight = onSkip,
-    ) {
-        Column(Modifier.fillMaxSize()) {
-            Box(
-                Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            ) {
-                Card(
-                    onClick = { onOpenViewer(currentIndex) },
-                    modifier = Modifier.fillMaxSize(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    key(current.path) {
+        SwipeDecisionSurface(
+            leftLabel = stringResource(R.string.person_scan_ok),
+            rightLabel = stringResource(R.string.person_scan_skip),
+            enabled = !isApplyingDecision,
+            onLeft = { onKeep(current) },
+            onRight = onSkip,
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                 ) {
-                    GalleryImage(
-                        path = current.path,
-                        contentDescription = current.name,
+                    Card(
+                        onClick = { onOpenViewer(currentIndex) },
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                        thumbnailSize = 1536,
-                        backgroundColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    )
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        ),
+                    ) {
+                        GalleryImage(
+                            path = current.path,
+                            contentDescription = current.name,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                            thumbnailSize = 1536,
+                            backgroundColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        )
+                    }
                 }
-            }
-            Card(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)),
-            ) {
-                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    Text(current.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        stringResource(R.string.person_scan_position_size, currentIndex + 1, items.size, current.size.formatSize()),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Text(
-                stringResource(R.string.person_scan_review_hint),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            )
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedButton(onClick = onSkip, enabled = !isApplyingDecision, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.person_scan_skip))
-                }
-                FilledTonalButton(onClick = { onKeep(current) }, enabled = !isApplyingDecision, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.person_scan_ok))
-                }
-                Button(
-                    onClick = { onDelete(current) },
-                    enabled = !isApplyingDecision,
-                    modifier = Modifier.weight(1f),
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError,
+                Card(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
                     ),
                 ) {
-                    Text(stringResource(R.string.action_delete))
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        Text(
+                            current.name,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        val positionLabel = stringResource(
+                            R.string.person_scan_position_size,
+                            currentIndex + 1,
+                            items.size,
+                            current.size.formatSize(),
+                        )
+                        Text(
+                            positionLabel,
+                            style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
+                Text(
+                    stringResource(R.string.person_scan_review_hint),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = onSkip,
+                        enabled = !isApplyingDecision,
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    ) {
+                        Text(stringResource(R.string.person_scan_skip))
+                    }
+                    FilledTonalButton(
+                        onClick = { onKeep(current) },
+                        enabled = !isApplyingDecision,
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    ) {
+                        Text(stringResource(R.string.person_scan_ok))
+                    }
+                    Button(
+                        onClick = { onDelete(current) },
+                        enabled = !isApplyingDecision,
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError,
+                        ),
+                    ) {
+                        Text(stringResource(R.string.action_delete))
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
             }
-            Spacer(Modifier.height(8.dp))
         }
     }
     if (isApplyingDecision) {

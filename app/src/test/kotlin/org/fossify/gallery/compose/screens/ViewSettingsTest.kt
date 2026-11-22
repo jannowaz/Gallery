@@ -52,4 +52,35 @@ class ViewSettingsTest {
     fun `default view settings keep media grids quiet without filename captions`() {
         assertFalse(ViewSettings().showFileNames)
     }
+
+    @Test
+    fun `collections and explorer surfaces expose only meaningful sort fields`() {
+        assertEquals(
+            listOf(SortField.NAME, SortField.COUNT),
+            sortFieldsFor(ViewSettingsSurface.COLLECTIONS),
+        )
+        assertEquals(
+            listOf(SortField.NAME, SortField.DATE, SortField.SIZE, SortField.COUNT),
+            sortFieldsFor(ViewSettingsSurface.EXPLORER_ALBUMS),
+        )
+        assertEquals(
+            listOf(SortField.NAME, SortField.DATE, SortField.SIZE, SortField.RATING),
+            sortFieldsFor(ViewSettingsSurface.EXPLORER_MEDIA),
+        )
+    }
+
+    @Test
+    fun `collection media preserves tag grouping and top-level tag toggle`() {
+        val kept = ViewSettings(
+            viewType = ViewType.MOSAIC,
+            sortBy = SortField.RATING,
+            groupBy = GroupBy.TAG,
+            onlyTopLevelTags = true,
+        ).sanitizeFor(ViewSettingsSurface.COLLECTION_MEDIA)
+
+        assertEquals(ViewType.MOSAIC, kept.viewType)
+        assertEquals(SortField.RATING, kept.sortBy)
+        assertEquals(GroupBy.TAG, kept.groupBy)
+        assertTrue(kept.onlyTopLevelTags)
+    }
 }

@@ -529,7 +529,9 @@ fun VideoPage(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         val posMs = if (seekPos >= 0) seekPos else positionMs.toFloat()
-                        Text("%02d:%02d".format((posMs / 1000).toInt() / 60, (posMs / 1000).toInt() % 60), style = MaterialTheme.typography.labelSmall, color = Color.White)
+                        val tabularLabel = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum")
+                        val posText = "%02d:%02d".format((posMs / 1000).toInt() / 60, (posMs / 1000).toInt() % 60)
+                        Text(posText, style = tabularLabel, color = Color.White)
                         Slider(
                             value = if (player.duration > 0) posMs / player.duration else 0f,
                             onValueChange = { fraction ->
@@ -542,7 +544,8 @@ fun VideoPage(
                             modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                             colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
                         )
-                        Text("%02d:%02d".format((player.duration / 1000) / 60, (player.duration / 1000) % 60), style = MaterialTheme.typography.labelSmall, color = Color.White)
+                        val durText = "%02d:%02d".format((player.duration / 1000) / 60, (player.duration / 1000) % 60)
+                        Text(durText, style = tabularLabel, color = Color.White)
                     }
                     // Frame preview — show the nearest pre-extracted thumbnail above the bottom bar.
                     if (scrubFraction >= 0f && frameCache.isNotEmpty()) {
@@ -556,7 +559,13 @@ fun VideoPage(
                                         modifier = Modifier.size(width = 160.dp, height = 90.dp).privacyBlur(BlurRadius.scrubPreview, BlurState.enabled),
                                         contentScale = ContentScale.Crop,
                                     )
-                                    Text("%02d:%02d".format(((scrubFraction * player.duration) / 1000).toInt() / 60, ((scrubFraction * player.duration) / 1000).toInt() % 60), color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(4.dp))
+                                    val scrubSec = ((scrubFraction * player.duration) / 1000).toInt()
+                                    Text(
+                                        "%02d:%02d".format(scrubSec / 60, scrubSec % 60),
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                                        modifier = Modifier.padding(4.dp),
+                                    )
                                 }
                             }
                         }
@@ -595,10 +604,21 @@ fun VideoPage(
                                 valueRange = 0f..1f,
                                 colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = MaterialTheme.colorScheme.primary, inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
                             )
+                            val tabularTrim = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum")
+                            val startSec = (trimStartMs / 1000).toInt()
+                            val endSec = (endMs / 1000).toInt()
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("%02d:%02d".format((trimStartMs / 1000).toInt() / 60, (trimStartMs / 1000).toInt() % 60), color = TrimStartColor, style = MaterialTheme.typography.labelSmall)
-                                Text(" – ", color = Color.White, style = MaterialTheme.typography.labelSmall)
-                                Text("%02d:%02d".format((endMs / 1000).toInt() / 60, (endMs / 1000).toInt() % 60), color = TrimEndColor, style = MaterialTheme.typography.labelSmall)
+                                Text(
+                                    "%02d:%02d".format(startSec / 60, startSec % 60),
+                                    color = TrimStartColor,
+                                    style = tabularTrim,
+                                )
+                                Text(" – ", color = Color.White, style = tabularTrim)
+                                Text(
+                                    "%02d:%02d".format(endSec / 60, endSec % 60),
+                                    color = TrimEndColor,
+                                    style = tabularTrim,
+                                )
                                 Spacer(Modifier.weight(1f))
                                 TextButton(
                                     enabled = !isSavingTrim,

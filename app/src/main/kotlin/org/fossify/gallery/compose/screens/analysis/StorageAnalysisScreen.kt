@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -222,7 +223,17 @@ fun StorageAnalysisScreen(
             if (state.selectedPaths.isNotEmpty()) {
                 Surface(color = MaterialTheme.colorScheme.secondaryContainer, tonalElevation = 3.dp, shadowElevation = 8.dp) {
                     Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.selected_count_saving, selectedSummary.first, formatBytes(selectedSummary.second)), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                        val selectedSavingText = stringResource(
+                            R.string.selected_count_saving,
+                            selectedSummary.first,
+                            formatBytes(selectedSummary.second),
+                        )
+                        Text(
+                            selectedSavingText,
+                            style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f),
+                        )
                         TextButton(onClick = { vm.clearSelection() }) { Text(stringResource(R.string.action_empty)) }
                         TextButton(
                             onClick = { scope.launch { vm.startCompressionAwait(); onNavigateToCompressionReview() } },
@@ -244,7 +255,7 @@ fun StorageAnalysisScreen(
             }
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             // Resume a compression review left unfinished: its results persist in the DB, so offer a
             // one-tap way back instead of forcing a re-compress just to see them again.
             if (reviewItems.isNotEmpty()) {
@@ -320,7 +331,12 @@ fun StorageAnalysisScreen(
 
             if (state.isScanning) {
                 LinearProgressIndicator(progress = { state.progress / 100f }, modifier = Modifier.fillMaxWidth())
-                Text(stringResource(R.string.storage_files_scanned, state.scannedCount, state.totalFiles), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    stringResource(R.string.storage_files_scanned, state.scannedCount, state.totalFiles),
+                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             if (state.results.isNotEmpty()) {
@@ -616,12 +632,26 @@ private fun AnalysisCard(item: AnalysisResult, isSelected: Boolean, onClick: () 
                     Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.width(4.dp))
-                Text(formatBytes(item.fileSize), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    formatBytes(item.fileSize),
+                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (item.mediaType == 2) {
-                Text("${item.width}×${item.height} · ${formatKbps(item.bitrateKbps)} · ${formatDuration(item.durationMs)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val videoSpecs = "${item.width}×${item.height} · " +
+                    "${formatKbps(item.bitrateKbps)} · ${formatDuration(item.durationMs)}"
+                Text(
+                    videoSpecs,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             } else {
-                Text("${item.width}×${item.height} · ${item.imageFormat?.uppercase()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "${item.width}×${item.height} · ${item.imageFormat?.uppercase()}",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (item.wastedBytes > 0) {
                 val expectedSize = (item.fileSize - item.wastedBytes).coerceAtLeast(0)
@@ -641,11 +671,16 @@ private fun AnalysisCard(item: AnalysisResult, isSelected: Boolean, onClick: () 
                         )
                     }
                     Spacer(Modifier.width(8.dp))
-                    Text("−$expectedPercent %", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
+                    Text(
+                        "−$expectedPercent %",
+                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
                 }
                 Text(
                     stringResource(R.string.estimated_size_after_compression, formatBytes(expectedSize), expectedPercent),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp),
                 )

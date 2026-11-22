@@ -9,14 +9,9 @@ import androidx.compose.ui.text.font.FontFamily
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.provider.MediaStore
-import android.widget.Toast
-import org.fossify.gallery.workers.MediaSyncWorker
 import org.fossify.gallery.workers.MetadataSyncWorker
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,8 +25,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,25 +32,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -69,14 +52,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberDatePickerState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -88,42 +69,24 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.dialogs.SecurityDialog
 import org.fossify.commons.extensions.handleHiddenFolderPasswordProtection
-import org.fossify.commons.helpers.PROTECTION_FINGERPRINT
 import org.fossify.commons.helpers.SHOW_ALL_TABS
 import org.fossify.commons.helpers.VIEW_TYPE_GRID
 import org.fossify.commons.helpers.VIEW_TYPE_LIST
-import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.compose.components.LibrarySearchField
 import org.fossify.gallery.compose.components.LibrarySectionHeader
 import org.fossify.gallery.helpers.LibraryActivityKind
 import org.fossify.gallery.helpers.LibraryActivityPhase
 import org.fossify.gallery.helpers.LibraryActivityStatus
-import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.extensions.config
-import org.fossify.gallery.helpers.EXT_CAMERA_MODEL
-import org.fossify.gallery.helpers.EXT_DATE_TAKEN
-import org.fossify.gallery.helpers.EXT_EXIF_PROPERTIES
-import org.fossify.gallery.helpers.EXT_GPS
-import org.fossify.gallery.helpers.EXT_LAST_MODIFIED
-import org.fossify.gallery.helpers.EXT_NAME
-import org.fossify.gallery.helpers.EXT_PATH
-import org.fossify.gallery.helpers.EXT_RESOLUTION
-import org.fossify.gallery.helpers.EXT_SIZE
-import org.fossify.gallery.helpers.ROTATE_BY_ASPECT_RATIO
-import org.fossify.gallery.helpers.ROTATE_BY_DEVICE_ROTATION
 import org.fossify.gallery.compose.util.BlurState
-import org.fossify.gallery.helpers.ROTATE_BY_SYSTEM_SETTING
-import java.util.Locale
 
 private val LocalSettingsQuery = androidx.compose.runtime.compositionLocalOf { "" }
 private class SettingsMatchTracker {
@@ -589,11 +552,18 @@ private fun SettingsCategory(
         SectionLabel(title)
         return
     }
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        label = "settingsCategoryChevron",
+    )
     Surface(
         onClick = onToggle,
         shape = RoundedCornerShape(Radius.md),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 4.dp)
+            .heightIn(min = 48.dp),
     ) {
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -604,7 +574,7 @@ private fun SettingsCategory(
                 Icons.Default.KeyboardArrowDown,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.rotate(if (expanded) 180f else 0f),
+                modifier = Modifier.rotate(chevronRotation),
             )
         }
     }
@@ -626,6 +596,7 @@ internal fun SettingsSwitch(label: String, checked: Boolean, enabled: Boolean = 
         Modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp)
+            .heightIn(min = 48.dp)
             .toggleable(value = internalChecked, enabled = enabled, role = Role.Switch, onValueChange = toggle),
         shape = RoundedCornerShape(Radius.sm),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -649,6 +620,7 @@ internal fun SettingsSwitchControlled(label: String, checked: Boolean, onToggle:
         Modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp)
+            .heightIn(min = 48.dp)
             .toggleable(value = checked, role = Role.Switch, onValueChange = onToggle),
         shape = RoundedCornerShape(Radius.sm),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -664,8 +636,16 @@ internal fun SettingsSwitchControlled(label: String, checked: Boolean, onToggle:
 @Composable
 internal fun SettingsNav(label: String, onClick: () -> Unit) {
     if (!settingsMatches(label)) return
-    Card(Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(onClick = onClick), shape = RoundedCornerShape(Radius.sm),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
+    Card(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(Radius.sm),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(0.dp),
+    ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -676,12 +656,28 @@ internal fun SettingsNav(label: String, onClick: () -> Unit) {
 @Composable
 internal fun SettingsNav(label: String, subtitle: String, onClick: () -> Unit) {
     if (!settingsMatches(label, subtitle)) return
-    Card(Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(onClick = onClick), shape = RoundedCornerShape(Radius.sm),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
+    Card(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(Radius.sm),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(0.dp),
+    ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.bodyMedium)
-                if (subtitle.isNotEmpty()) Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (subtitle.isNotEmpty()) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -691,11 +687,24 @@ internal fun SettingsNav(label: String, subtitle: String, onClick: () -> Unit) {
 @Composable
 internal fun SecurityNav(label: String, enabled: Boolean, onClick: () -> Unit) {
     if (!settingsMatches(label)) return
-    Card(Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(onClick = onClick), shape = RoundedCornerShape(Radius.sm),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
+    Card(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(Radius.sm),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(0.dp),
+    ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Text(if (enabled) stringResource(R.string.set_on) else stringResource(R.string.set_off), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                if (enabled) stringResource(R.string.set_on) else stringResource(R.string.set_off),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = if (enabled) FontWeight.SemiBold else FontWeight.Normal,
+            )
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

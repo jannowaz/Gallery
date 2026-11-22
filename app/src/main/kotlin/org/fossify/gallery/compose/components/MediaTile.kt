@@ -71,6 +71,9 @@ import org.fossify.gallery.helpers.TYPE_SVGS
 import org.fossify.gallery.models.Medium
 import org.fossify.gallery.R
 
+/** Guards against negative padding crashes when a spring animation briefly overshoots below 0.dp. */
+internal fun clampSelectionInset(inset: Dp): Dp = inset.coerceAtLeast(0.dp)
+
 /**
  * Single media thumbnail used by both the grid and the mosaic layout.
  * Stateless apart from a small bounds-update throttle; all behaviour comes in via callbacks so the
@@ -119,7 +122,7 @@ fun MediaTile(
         label = "selectionInset",
     )
     // Low-bouncy spring can briefly overshoot below 0.dp when deselecting; padding() requires >= 0.dp.
-    val selectionInset = rawSelectionInset.coerceAtLeast(0.dp)
+    val selectionInset = clampSelectionInset(rawSelectionInset)
     val thumbShape = if (isSelected || selectionInset > 0.dp) RoundedCornerShape(Radius.md) else cornerShape
     // Scroll state can change for every visible tile at once. Animating this alpha per tile creates
     // dozens of independent animation clocks and a coordinated fade when a fling starts/stops.
