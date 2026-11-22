@@ -1028,11 +1028,6 @@
     <string name="mover_tap_to_add">Tippe unten auf + um ein Paar zu definieren</string>
     <string name="mover_add_pair">Paar hinzufügen</string>
     <string name="mover_move_all">Alle verschieben (%d Paare)</string>
-    <string name="mover_widget_label">Galerie: Schnell-Verschieben</string>
-    <string name="mover_widget_move_now">▶ %d Dateien verschieben</string>
-    <string name="mover_widget_move_started">%d Dateien werden verschoben…</string>
-    <string name="mover_widget_configure">Zum Einrichten der Ordner-Paare tippen</string>
-    <string name="mover_widget_up_to_date">Gerade nichts zu verschieben</string>
     <string name="search_folder_hint">Ordner suchen…</string>
     <string name="mover_select_source">Quelle auswählen</string>
     <string name="mover_select_dest">Ziel auswählen</string>

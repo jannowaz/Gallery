@@ -45,8 +45,7 @@ object MediaStoreOps {
      * own scoped-storage docs, exempts it from the ownership/ [createWriteRequest] consent dance
      * entirely (it can already read/write/delete any file on shared storage directly). Callers
      * asking for a write/delete consent dialog should skip that step when this is true - requesting
-     * it anyway is not just redundant, it can outright fail (e.g. [MoverWidgetProvider]'s "move now"
-     * already skips consent unconditionally and works, since this permission covers it).
+     * it anyway is not just redundant, it can outright fail for non-media-owned files.
      */
     fun hasAllFilesAccess(context: Context): Boolean =
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) android.os.Environment.isExternalStorageManager()

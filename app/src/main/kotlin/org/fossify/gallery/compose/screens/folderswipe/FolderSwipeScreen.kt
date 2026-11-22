@@ -83,7 +83,7 @@ import org.fossify.gallery.helpers.MediaStoreOps
 import org.fossify.gallery.helpers.MoveConflicts
 import org.fossify.gallery.models.BatchJobItem
 import org.fossify.gallery.models.Medium
-import org.fossify.gallery.receivers.WidgetActionReceiver
+import org.fossify.gallery.helpers.IntentSecurity
 import org.fossify.gallery.workers.BatchOperation
 import org.fossify.gallery.workers.MediaBatchWorker
 import java.io.File
@@ -150,7 +150,7 @@ fun FolderSwipeScreen(
             errorMessage = null
             try {
                 val sourcePath = current.path
-                val safeArchiveName = WidgetActionReceiver.sanitizeFilePrefix(archiveFolderName)
+                val safeArchiveName = IntentSecurity.sanitizeFilePrefix(archiveFolderName)
                 val targetPath = withContext(Dispatchers.IO) {
                     val archiveDir = File(sourcePath).parentFile?.resolve(safeArchiveName)
                         ?: error("Missing source folder")
@@ -414,7 +414,7 @@ fun FolderSwipeScreen(
                 TextButton(
                     enabled = draft.isNotBlank(),
                     onClick = {
-                        val sanitized = WidgetActionReceiver.sanitizeFilePrefix(draft)
+                        val sanitized = IntentSecurity.sanitizeFilePrefix(draft)
                         archiveFolderName = sanitized
                         ctx.config.swipeArchiveFolderName = sanitized
                         showArchiveFolderDialog = false

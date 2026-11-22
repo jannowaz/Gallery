@@ -211,15 +211,6 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".activities.WidgetConfigureActivity"
-            android:exported="true"
-            android:windowSoftInputMode="adjustResize">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
-            </intent-filter>
-        </activity>
-
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"
@@ -252,38 +243,6 @@
             <intent-filter>
                 <action android:name="org.fossify.gallery.CANCEL_BATCH_OP" />
             </intent-filter>
-        </receiver>
-
-        <receiver
-            android:name=".receivers.WidgetActionReceiver"
-            android:exported="false" />
-
-        <receiver
-            android:name=".helpers.MyWidgetProvider"
-            android:exported="true"
-            android:icon="@drawable/img_widget_preview"
-            android:label="@string/folder">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/widget_info" />
-        </receiver>
-
-        <receiver
-            android:name=".helpers.MoverWidgetProvider"
-            android:exported="true"
-            android:icon="@drawable/img_widget_preview"
-            android:label="@string/mover_widget_label">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/widget_mover_info" />
         </receiver>
 
         <receiver

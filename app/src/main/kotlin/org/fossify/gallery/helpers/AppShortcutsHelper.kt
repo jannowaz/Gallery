@@ -13,8 +13,10 @@ import org.fossify.gallery.activities.ComposeExplorerActivity
  * across every `SplashActivity.*` icon alias without duplicating static XML metadata per alias.
  */
 object AppShortcutsHelper {
+    const val EXTRA_NAVIGATE_TO = "org.fossify.gallery.NAVIGATE_TO"
     const val NAVIGATE_TARGET_CLEANUP = "cleanup_hub"
     const val NAVIGATE_TARGET_RECYCLE_BIN = "recycle_bin"
+    const val NAVIGATE_TARGET_MOVER = "folders_mover"
 
     fun publish(context: Context) {
         val appCtx = context.applicationContext
@@ -36,9 +38,9 @@ object AppShortcutsHelper {
             buildShortcut(
                 context = appCtx,
                 id = "shortcut_mover",
-                label = appCtx.getString(R.string.mover_widget_label),
+                label = appCtx.getString(R.string.nav_mover),
                 iconRes = R.drawable.ic_launcher_foreground,
-                target = MoverWidgetProvider.NAVIGATE_TARGET_MOVER,
+                target = NAVIGATE_TARGET_MOVER,
             ),
         )
         runCatching { ShortcutManagerCompat.setDynamicShortcuts(appCtx, shortcuts) }
@@ -54,7 +56,7 @@ object AppShortcutsHelper {
         val intent = Intent(context, ComposeExplorerActivity::class.java).apply {
             action = Intent.ACTION_VIEW
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            putExtra(MoverWidgetProvider.EXTRA_NAVIGATE_TO, target)
+            putExtra(EXTRA_NAVIGATE_TO, target)
         }
         return ShortcutInfoCompat.Builder(context, id)
             .setShortLabel(label)

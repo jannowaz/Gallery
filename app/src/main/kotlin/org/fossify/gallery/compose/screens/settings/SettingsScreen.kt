@@ -291,8 +291,6 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             SettingsSwitch(stringResource(R.string.blur_all_media), BlurState.enabled) {
                 conf.blurAllMedia = it
                 BlurState.enabled = it
-                org.fossify.gallery.helpers.MyWidgetProvider.requestImmediateUpdate(ctx)
-                org.fossify.gallery.helpers.MoverWidgetProvider.requestImmediateUpdate(ctx)
             }
             if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
                 Text(

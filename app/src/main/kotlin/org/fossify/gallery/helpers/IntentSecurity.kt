@@ -22,6 +22,8 @@ object IntentSecurity {
     )
 
     private const val MAX_FILENAME_LENGTH = 128
+    private const val MAX_FILE_PREFIX_LENGTH = 64
+    private val UNSAFE_PREFIX_CHARS = Regex("[/\\\\:*?\"<>|\\u0000-\\u001F]")
 
     private val RESTRICTED_SELF_PROVIDER_SEGMENTS = setOf(
         "internal_files",
@@ -98,6 +100,19 @@ object IntentSecurity {
             ?.takeIf { it.isNotEmpty() && it != "." && it != ".." }
             ?: return fallback
         return leaf.replace("..", "_").take(MAX_FILENAME_LENGTH).ifBlank { fallback }
+    }
+
+    /**
+     * Sanitizes a user-supplied filename or archive subfolder prefix so it cannot contain path
+     * separators, traversal segments, or control/wildcard characters.
+     */
+    fun sanitizeFilePrefix(raw: String): String {
+        val cleaned = raw
+            .replace("..", "")
+            .replace(UNSAFE_PREFIX_CHARS, "_")
+            .trim()
+            .trim('.', '_')
+        return cleaned.ifBlank { "IMG" }.take(MAX_FILE_PREFIX_LENGTH)
     }
 
     internal fun isRestrictedSelfProviderUri(packageName: String, uri: Uri): Boolean {

@@ -1,8 +1,6 @@
 package org.fossify.gallery.extensions
 
 import android.annotation.SuppressLint
-import android.appwidget.AppWidgetManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.database.Cursor
@@ -70,7 +68,6 @@ import org.fossify.gallery.helpers.LOCATION_OTG
 import org.fossify.gallery.helpers.LOCATION_SD
 import org.fossify.gallery.helpers.MediaFetcher
 import org.fossify.gallery.helpers.MediaRepository
-import org.fossify.gallery.helpers.MyWidgetProvider
 import org.fossify.gallery.helpers.RECYCLE_BIN
 import org.fossify.gallery.helpers.ROUNDED_CORNERS_NONE
 import org.fossify.gallery.helpers.ROUNDED_CORNERS_SMALL
@@ -89,7 +86,6 @@ import org.fossify.gallery.interfaces.DirectoryDao
 import org.fossify.gallery.interfaces.FavoritesDao
 import org.fossify.gallery.interfaces.MediaCacheDao
 import org.fossify.gallery.interfaces.MediumDao
-import org.fossify.gallery.interfaces.WidgetsDao
 import org.fossify.gallery.models.AlbumCover
 import org.fossify.gallery.models.Directory
 import org.fossify.gallery.models.Favorite
@@ -111,9 +107,6 @@ fun Context.getHumanizedFilename(path: String): String {
 }
 
 val Context.config: Config get() = Config.newInstance(applicationContext)
-
-val Context.widgetsDB: WidgetsDao
-    get() = GalleryDatabase.getInstance(applicationContext).WidgetsDao()
 
 val Context.mediaDB: MediumDao get() = GalleryDatabase.getInstance(applicationContext).MediumDao()
 
@@ -951,20 +944,6 @@ fun Context.deleteMediumWithPath(path: String) {
     try {
         mediaDB.deleteMediumPath(path)
     } catch (ignored: Exception) {
-    }
-}
-
-fun Context.updateWidgets() {
-    val widgetIDs = AppWidgetManager.getInstance(applicationContext)
-        ?.getAppWidgetIds(ComponentName(applicationContext, MyWidgetProvider::class.java))
-        ?: return
-
-    if (widgetIDs.isNotEmpty()) {
-        Intent(applicationContext, MyWidgetProvider::class.java).apply {
-            action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, widgetIDs)
-            sendBroadcast(this)
-        }
     }
 }
 

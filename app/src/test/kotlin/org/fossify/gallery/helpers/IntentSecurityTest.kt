@@ -53,4 +53,38 @@ class IntentSecurityTest {
         assertEquals("fallback.jpg", IntentSecurity.sanitizeSingleFilename("   ", "fallback.jpg"))
         assertEquals("fallback.jpg", IntentSecurity.sanitizeSingleFilename(null, "fallback.jpg"))
     }
+
+    @Test
+    fun sanitizeFilePrefixPreservesSafePrefix() {
+        assertEquals("Vacation_2026", IntentSecurity.sanitizeFilePrefix("Vacation_2026"))
+    }
+
+    @Test
+    fun sanitizeFilePrefixBlocksPathTraversalAndSeparators() {
+        val result = IntentSecurity.sanitizeFilePrefix("../../etc/passwd")
+        assertFalse(result.contains(".."))
+        assertFalse(result.contains('/'))
+        assertFalse(result.contains('\\'))
+        assertEquals("etc_passwd", result)
+    }
+
+    @Test
+    fun sanitizeFilePrefixReplacesInvalidFilenameCharacters() {
+        assertEquals("a_b_c_d_e_f_g", IntentSecurity.sanitizeFilePrefix("a:b*c?d\"e<f>g"))
+    }
+
+    @Test
+    fun sanitizeFilePrefixFallsBackToImgWhenBlankOrDotsOnly() {
+        assertEquals("IMG", IntentSecurity.sanitizeFilePrefix(""))
+        assertEquals("IMG", IntentSecurity.sanitizeFilePrefix("   "))
+        assertEquals("IMG", IntentSecurity.sanitizeFilePrefix("..."))
+        assertEquals("IMG", IntentSecurity.sanitizeFilePrefix(".."))
+        assertEquals("IMG", IntentSecurity.sanitizeFilePrefix("///"))
+    }
+
+    @Test
+    fun sanitizeFilePrefixTrimsDotsAndCapsLength() {
+        assertEquals("hidden", IntentSecurity.sanitizeFilePrefix("...hidden..."))
+        assertEquals(64, IntentSecurity.sanitizeFilePrefix("A".repeat(100)).length)
+    }
 }

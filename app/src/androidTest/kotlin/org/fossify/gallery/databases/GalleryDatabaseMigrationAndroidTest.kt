@@ -302,8 +302,8 @@ class GalleryDatabaseMigrationAndroidTest {
     }
 
     @Test
-    fun migrateAll_25To32_preservesMediaAndCollectionsAndValidatesFinalSchema() {
-        val dbName = "migration-all-25-32.db"
+    fun migrateAll_25ToLatest_preservesMediaAndCollectionsAndValidatesFinalSchema() {
+        val dbName = "migration-all-25-latest.db"
         helper.createDatabase(dbName, 25).use { db ->
             insertV25Medium(
                 db = db,
@@ -325,6 +325,9 @@ class GalleryDatabaseMigrationAndroidTest {
             *GalleryDatabase.ALL_MIGRATIONS,
         ).use { db ->
             assertEquals(1700000200L, queryDateSortKey(db, "/storage/emulated/0/DCIM/Camera/sunset.jpg"))
+            db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='widgets'").use { cursor ->
+                assertEquals(0, cursor.count)
+            }
         }
 
         val context = InstrumentationRegistry.getInstrumentation().targetContext

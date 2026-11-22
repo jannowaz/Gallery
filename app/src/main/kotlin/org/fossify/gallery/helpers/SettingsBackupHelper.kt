@@ -143,7 +143,6 @@ object SettingsBackupHelper {
                 val defEditor = context.defaultSharedPrefs().edit()
                 apply(defEditor, decoded.defaultPrefs, replaceAll = true)
                 defEditor.apply()
-                MoverWidgetProvider.requestImmediateUpdate(context)
             }
             true
         } catch (e: Exception) {

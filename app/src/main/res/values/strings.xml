@@ -1096,11 +1096,6 @@
     <string name="mover_tap_to_add">Tap + below to define a pair</string>
     <string name="mover_add_pair">Add pair</string>
     <string name="mover_move_all">Move all (%d pairs)</string>
-    <string name="mover_widget_label">Gallery: Quick Mover</string>
-    <string name="mover_widget_move_now">▶ Move %d files</string>
-    <string name="mover_widget_move_started">Moving %d files…</string>
-    <string name="mover_widget_configure">Tap to set up folder pairs</string>
-    <string name="mover_widget_up_to_date">Nothing to move right now</string>
     <string name="search_folder_hint">Search folder…</string>
     <string name="mover_select_source">Select source</string>
     <string name="mover_select_dest">Select destination</string>

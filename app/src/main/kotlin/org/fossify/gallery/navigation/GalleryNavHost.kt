@@ -165,8 +165,7 @@ fun GalleryNavHost(
         }
     }
 
-    // The Quick Mover widget's "set up folder pairs" button (shown when no pairs are configured
-    // yet, see MoverWidgetProvider) launches the app with this extra instead of just opening it.
+    // Launcher app shortcuts (see AppShortcutsHelper) launch the app with EXTRA_NAVIGATE_TO.
     // Two paths, since a cold start and an already-running task deliver the request differently:
     // - Cold start: read once off the Activity's own launch intent, consumed via removeExtra() so
     //   a later recreation/config change doesn't re-trigger the same navigation.
@@ -175,7 +174,7 @@ fun GalleryNavHost(
     //   again, and a plain intent-extra read wouldn't be observed by an already-composed NavHost.
     fun navigateShortcutTarget(target: String?) {
         when (target) {
-            org.fossify.gallery.helpers.MoverWidgetProvider.NAVIGATE_TARGET_MOVER ->
+            org.fossify.gallery.helpers.AppShortcutsHelper.NAVIGATE_TARGET_MOVER ->
                 navController.navigate(FoldersMover) { launchSingleTop = true }
             org.fossify.gallery.helpers.AppShortcutsHelper.NAVIGATE_TARGET_CLEANUP ->
                 navController.navigate(CleanupHub()) { launchSingleTop = true }
@@ -185,9 +184,9 @@ fun GalleryNavHost(
     }
     LaunchedEffect(Unit) {
         val activity = ctx as? android.app.Activity
-        val target = activity?.intent?.getStringExtra(org.fossify.gallery.helpers.MoverWidgetProvider.EXTRA_NAVIGATE_TO)
+        val target = activity?.intent?.getStringExtra(org.fossify.gallery.helpers.AppShortcutsHelper.EXTRA_NAVIGATE_TO)
         if (!target.isNullOrBlank()) {
-            activity.intent.removeExtra(org.fossify.gallery.helpers.MoverWidgetProvider.EXTRA_NAVIGATE_TO)
+            activity.intent.removeExtra(org.fossify.gallery.helpers.AppShortcutsHelper.EXTRA_NAVIGATE_TO)
             navigateShortcutTarget(target)
         }
         val widgetFolder = activity?.intent?.getStringExtra(org.fossify.gallery.helpers.DIRECTORY)

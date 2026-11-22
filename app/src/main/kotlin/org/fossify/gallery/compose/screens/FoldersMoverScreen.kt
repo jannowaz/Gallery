@@ -103,9 +103,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     val s = LocalSpacing.current
     val defPrefs = remember { ctx.defaultSharedPrefs() }
     val pairs = remember { mutableStateListOf<FolderPair>().also { it.addAll(loadMoverPairs(ctx)) } }
-    // The Quick Mover widget's button label ("Move N files" vs. "Tap to set up folder pairs")
-    // otherwise only reflects an edit made here once the OS's own next periodic refresh happens.
-    fun savePairs() { saveMoverPairs(ctx, pairs.toList()); org.fossify.gallery.helpers.MoverWidgetProvider.requestImmediateUpdate(ctx) }
+    fun savePairs() { saveMoverPairs(ctx, pairs.toList()) }
     var showAddDialog by remember { mutableStateOf(false) }
     // Set once the move job is enqueued; the job keeps running via MediaBatchWorker (with its own
     // foreground notification) even if this screen is left - it no longer depends on this

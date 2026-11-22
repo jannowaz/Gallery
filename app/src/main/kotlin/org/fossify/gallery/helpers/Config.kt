@@ -799,11 +799,6 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(GROUP_DIRECT_SUBFOLDERS, false)
         set(groupDirectSubfolders) = prefs.edit().putBoolean(GROUP_DIRECT_SUBFOLDERS, groupDirectSubfolders).apply()
 
-
-    var showWidgetFolderName: Boolean
-        get() = prefs.getBoolean(SHOW_WIDGET_FOLDER_NAME, true)
-        set(showWidgetFolderName) = prefs.edit().putBoolean(SHOW_WIDGET_FOLDER_NAME, showWidgetFolderName).apply()
-
     var allowOneToOneZoom: Boolean
         get() = prefs.getBoolean(ALLOW_ONE_TO_ONE_ZOOM, false)
         set(allowOneToOneZoom) = prefs.edit().putBoolean(ALLOW_ONE_TO_ONE_ZOOM, allowOneToOneZoom).apply()
@@ -1031,14 +1026,6 @@ class Config(context: Context) : BaseConfig(context) {
     var lastViewedPath: String
         get() = prefs.getString("last_viewed_path", "") ?: ""
         set(v) = prefs.edit().putString("last_viewed_path", v).apply()
-
-    var widgetRenameCount: Int
-        get() = prefs.getInt("widget_rename_count", 5)
-        set(v) = prefs.edit().putInt("widget_rename_count", v).apply()
-
-    var widgetRenamePrefix: String
-        get() = prefs.getString("widget_rename_prefix", "") ?: ""
-        set(v) = prefs.edit().putString("widget_rename_prefix", v).apply()
 
     var tagHierarchy: MutableMap<String, String>
         get() {

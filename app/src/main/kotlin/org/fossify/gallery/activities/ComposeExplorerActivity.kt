@@ -341,16 +341,16 @@ class ComposeExplorerActivity : FragmentActivity() {
         }
     }
 
-    // Reached when this Activity is already running and gets re-launched (e.g. the Quick Mover
-    // widget's "set up folder pairs" button, see MoverWidgetProvider) - FLAG_ACTIVITY_CLEAR_TOP on
-    // an already-top instance delivers here instead of a fresh onCreate(). setIntent() alone isn't
-    // enough to reach the NavHost (it's already composed and won't re-run a one-shot LaunchedEffect
-    // just because the Activity's own intent field changed), so this also publishes onto
-    // NavigateBus, which GalleryNavHost's effect collects from in addition to the cold-start check.
+    // Reached when this Activity is already running and gets re-launched (e.g. from a launcher
+    // app shortcut, see AppShortcutsHelper) - FLAG_ACTIVITY_CLEAR_TOP on an already-top instance
+    // delivers here instead of a fresh onCreate(). setIntent() alone isn't enough to reach the
+    // NavHost (it's already composed and won't re-run a one-shot LaunchedEffect just because the
+    // Activity's own intent field changed), so this also publishes onto NavigateBus, which
+    // GalleryNavHost's effect collects from in addition to the cold-start check.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.getStringExtra(org.fossify.gallery.helpers.MoverWidgetProvider.EXTRA_NAVIGATE_TO)?.let {
+        intent.getStringExtra(org.fossify.gallery.helpers.AppShortcutsHelper.EXTRA_NAVIGATE_TO)?.let {
             org.fossify.gallery.compose.util.NavigateBus.trigger(it)
         }
         intent.getStringExtra(org.fossify.gallery.helpers.DIRECTORY)

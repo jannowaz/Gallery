@@ -180,11 +180,6 @@ class MediaBatchWorker(
                 UndoManager.push(UndoAction(paths = movedPairs.keys, type = UndoType.MOVE, extra = movedPairs))
             }
             if (affectedPaths.isNotEmpty()) RefreshBus.trigger(affectedPaths = affectedPaths)
-            // A move/rename here can change what either home-screen widget should be showing (a
-            // folder's thumbnail/count for MyWidgetProvider, the "recent media"/pending-move-count
-            // for MoverWidgetProvider) - both otherwise only redraw on the OS's own schedule.
-            org.fossify.gallery.helpers.MyWidgetProvider.requestImmediateUpdate(applicationContext)
-            org.fossify.gallery.helpers.MoverWidgetProvider.requestImmediateUpdate(applicationContext)
             showResultNotification(operation, done, failed, isStopped)
             // WorkInfo.progress (set via setProgress above) is only readable while the worker is
             // RUNNING - WorkManager clears it back to Data.EMPTY once the worker reaches a terminal

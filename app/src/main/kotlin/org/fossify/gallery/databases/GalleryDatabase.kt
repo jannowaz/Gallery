@@ -9,14 +9,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import org.fossify.gallery.interfaces.*
 import org.fossify.gallery.models.*
 
-@Database(entities = [Directory::class, Medium::class, Widget::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class, CompressionReviewItem::class, org.fossify.gallery.models.FileHash::class, MediaReviewState::class, MediaPersonScan::class], version = GalleryDatabase.DB_VERSION)
+@Database(entities = [Directory::class, Medium::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class, CompressionReviewItem::class, org.fossify.gallery.models.FileHash::class, MediaReviewState::class, MediaPersonScan::class], version = GalleryDatabase.DB_VERSION)
 abstract class GalleryDatabase : RoomDatabase() {
 
     abstract fun DirectoryDao(): DirectoryDao
 
     abstract fun MediumDao(): MediumDao
-
-    abstract fun WidgetsDao(): WidgetsDao
 
     abstract fun DateTakensDao(): DateTakensDao
 
@@ -39,7 +37,7 @@ abstract class GalleryDatabase : RoomDatabase() {
     abstract fun MediaPersonScanDao(): MediaPersonScanDao
 
     companion object {
-        internal const val DB_VERSION = 32
+        internal const val DB_VERSION = 33
         private var db: GalleryDatabase? = null
 
         // Keeps media.date_sort_key (`date_added > 0 ? date_added : (date_taken > 0 ? date_taken :
@@ -100,6 +98,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                 MIGRATION_29_30,
                 MIGRATION_30_31,
                 MIGRATION_31_32,
+                MIGRATION_32_33,
             )
 
         fun getInstance(context: Context): GalleryDatabase {
@@ -489,6 +488,12 @@ abstract class GalleryDatabase : RoomDatabase() {
                 database.execSQL(
                     "UPDATE media SET date_sort_key = CASE WHEN date_added > 0 THEN date_added WHEN date_taken > 0 THEN date_taken ELSE last_modified END WHERE date_sort_key = 0"
                 )
+            }
+        }
+
+        private val MIGRATION_32_33 = object : Migration(32, 33) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("DROP TABLE IF EXISTS `widgets`")
             }
         }
     }
