@@ -13,18 +13,21 @@ import org.fossify.gallery.workers.MetadataSyncWorker
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,16 +45,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.VerticalDivider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -70,23 +72,22 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.fossify.commons.dialogs.SecurityDialog
-import org.fossify.commons.extensions.handleHiddenFolderPasswordProtection
-import org.fossify.commons.helpers.SHOW_ALL_TABS
 import org.fossify.commons.helpers.VIEW_TYPE_GRID
 import org.fossify.commons.helpers.VIEW_TYPE_LIST
 import org.fossify.gallery.compose.components.LibrarySearchField
 import org.fossify.gallery.compose.components.LibrarySectionHeader
+import org.fossify.gallery.helpers.Config
 import org.fossify.gallery.helpers.LibraryActivityKind
 import org.fossify.gallery.helpers.LibraryActivityPhase
 import org.fossify.gallery.helpers.LibraryActivityStatus
 import org.fossify.gallery.extensions.config
-import org.fossify.gallery.compose.util.BlurState
 
 private val LocalSettingsQuery = androidx.compose.runtime.compositionLocalOf { "" }
 private class SettingsMatchTracker {
@@ -94,12 +95,14 @@ private class SettingsMatchTracker {
 }
 private val LocalSettingsMatchTracker = androidx.compose.runtime.compositionLocalOf<SettingsMatchTracker?> { null }
 
+private val EXPANDED_SETTINGS_BREAKPOINT = 840.dp
+private val SETTINGS_RAIL_WIDTH = 280.dp
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
     val ctx = LocalContext.current
-    val res = androidx.compose.ui.platform.LocalResources.current
-    val a = ctx as? Activity
+    val activity = ctx as? Activity
     val conf = ctx.config
     val scope = rememberCoroutineScope()
     var showExtendedDialog by remember { mutableStateOf(false) }
@@ -107,8 +110,12 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
     var showFolderTypeDialog by remember { mutableStateOf(false) }
     var manageFoldersMode by remember { mutableStateOf<String?>(null) }
     var settingsQuery by rememberSaveable { mutableStateOf("") }
-    var settingsVersion by remember { mutableStateOf(0) }
-    var expandedSections by rememberSaveable { mutableStateOf(setOf("general")) }
+    var settingsVersion by remember { mutableIntStateOf(0) }
+    var expandedSections by rememberSaveable { mutableStateOf(setOf(SettingsSection.GENERAL.key)) }
+    var selectedSectionKey by rememberSaveable { mutableStateOf(SettingsSection.GENERAL.key) }
+    val selectedSection = remember(selectedSectionKey) {
+        SettingsSection.entries.firstOrNull { it.key == selectedSectionKey } ?: SettingsSection.GENERAL
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     val activityStates by LibraryActivityStatus.states.collectAsStateWithLifecycle()
     val isMetadataScanRunning = activityStates.any {
@@ -117,297 +124,85 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
     fun toggleSection(key: String) {
         expandedSections = if (key in expandedSections) expandedSections - key else expandedSections + key
     }
+    val sectionCallbacks = remember(onNavigateToAbout) {
+        SettingsSectionCallbacks(
+            onOpenThemeMode = { showThemeModeDialog = true },
+            onOpenFolderType = { showFolderTypeDialog = true },
+            onManageFolders = { manageFoldersMode = it },
+            onOpenExtendedDetails = { showExtendedDialog = true },
+            onNavigateToAbout = onNavigateToAbout,
+        )
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(title = { Text(stringResource(R.string.nav_settings), fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface))
-        }
+            TopAppBar(
+                title = { Text(stringResource(R.string.nav_settings), fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back))
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+            )
+        },
     ) { padding ->
         val layoutDirection = LocalLayoutDirection.current
-        Column(
+        BoxWithConstraints(
             Modifier
                 .fillMaxSize()
                 .padding(top = padding.calculateTopPadding())
                 .consumeWindowInsets(padding)
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(
-                    start = 16.dp + padding.calculateStartPadding(layoutDirection),
-                    end = 16.dp + padding.calculateEndPadding(layoutDirection),
-                    top = 8.dp,
-                    bottom = 8.dp + padding.calculateBottomPadding(),
-                ),
+                .imePadding(),
         ) {
-            LibrarySearchField(
-                value = settingsQuery,
-                onValueChange = { settingsQuery = it },
-                placeholderRes = R.string.settings_search_hint,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
+            val isTwoPane = maxWidth >= EXPANDED_SETTINGS_BREAKPOINT
             val matchTracker = SettingsMatchTracker()
             CompositionLocalProvider(
                 LocalSettingsQuery provides settingsQuery.trim(),
                 LocalSettingsMatchTracker provides matchTracker,
             ) {
-            @Suppress("UNUSED_EXPRESSION") settingsVersion // re-read config-derived labels after a change
-
-            SettingsCategory(stringResource(R.string.set_general), settingsQuery, "general" in expandedSections) { toggleSection("general") }
-            if ("general" in expandedSections || settingsQuery.isNotBlank()) {
-            val themeModeLabel = when {
-                conf.forceDarkMode -> stringResource(R.string.theme_mode_dark)
-                conf.forceLightMode -> stringResource(R.string.theme_mode_light)
-                else -> stringResource(R.string.theme_mode_system)
-            }
-            SettingsNav(stringResource(R.string.theme_mode_label), themeModeLabel) { showThemeModeDialog = true }
-            SettingsSwitch(stringResource(R.string.set_amoled_background), conf.useAmoledBackground) { conf.useAmoledBackground = it; org.fossify.gallery.compose.theme.ThemePrefsBus.invalidate() }
-            SettingsSwitch(stringResource(R.string.set_dynamic_colors), conf.useDynamicColors) { conf.useDynamicColors = it; org.fossify.gallery.compose.theme.ThemePrefsBus.invalidate() }
-            // Controlled (not the internal-state SettingsSwitch) so a cancelled hidden-items password
-            // prompt visually reverts the toggle. Enabling "show hidden" behind the hidden-items
-            // password mirrors the legacy viewer, where revealing hidden media asked for it first;
-            // the Compose switch flipped it with no prompt at all.
-            var showHiddenChecked by remember { mutableStateOf(conf.showHiddenMedia) }
-            fun applyShowHidden(enabled: Boolean) {
-                showHiddenChecked = enabled
-                conf.showHiddenMedia = enabled
-                org.fossify.gallery.helpers.RefreshBus.trigger()
-                org.fossify.gallery.workers.MediaSyncWorker.scheduleIncrementalSync(ctx)
-            }
-            SettingsSwitchControlled(stringResource(R.string.set_show_hidden), showHiddenChecked) { want ->
-                when {
-                    !want -> applyShowHidden(false)
-                    a != null && conf.isHiddenPasswordProtectionOn ->
-                        a.handleHiddenFolderPasswordProtection { applyShowHidden(true) }
-                    else -> applyShowHidden(true)
-                }
-            }
-            SettingsSwitch(stringResource(R.string.set_animate_gifs), conf.animateGifs) {
-                conf.animateGifs = it
-                org.fossify.gallery.compose.util.ThumbnailOverlayState.animateGifs = it
-            }
-            SettingsSwitch(stringResource(R.string.set_max_brightness), conf.maxBrightness) { conf.maxBrightness = it }
-            // Legacy-only toggles (searchAllFilesByDefault, scrollHorizontally) are intentionally
-            // omitted in Compose settings because OmniSearch always searches globally and Compose
-            // grids scroll vertically.
-            SettingsSwitch(stringResource(R.string.set_pull_refresh), conf.enablePullToRefresh) { conf.enablePullToRefresh = it }
-            SettingsNav(stringResource(R.string.set_folder_type), getViewTypeLabel(ctx, conf.viewTypeFolders)) { showFolderTypeDialog = true }
-            val includedCount = conf.includedFolders.size
-            val excludedCount = conf.excludedFolders.size
-            SettingsNav(
-                stringResource(R.string.set_included_folders),
-                if (includedCount > 0) includedCount.toString() else "",
-            ) { manageFoldersMode = "included" }
-            SettingsNav(
-                stringResource(R.string.set_excluded_folders),
-                if (excludedCount > 0) excludedCount.toString() else "",
-            ) {
-                if (a != null && conf.isExcludedPasswordProtectionOn) {
-                    SecurityDialog(a, conf.excludedPasswordHash, conf.excludedProtectionType) { _, _, success ->
-                        if (success) manageFoldersMode = "excluded"
-                    }
-                } else {
-                    manageFoldersMode = "excluded"
-                }
-            }
-            SettingsDivider()
-            }
-
-            SettingsCategory(stringResource(R.string.set_video), settingsQuery, "video" in expandedSections) { toggleSection("video") }
-            if ("video" in expandedSections || settingsQuery.isNotBlank()) {
-            SettingsSwitch(stringResource(R.string.set_autoplay), conf.autoplayVideos) { conf.autoplayVideos = it }
-            SettingsSwitch(stringResource(R.string.set_loop_videos), conf.loopVideos) { conf.loopVideos = it }
-            SettingsSwitch(stringResource(R.string.set_mute_videos), conf.muteVideos) { conf.muteVideos = it }
-            SettingsSwitch(stringResource(R.string.set_remember_position), conf.rememberLastVideoPosition) { conf.rememberLastVideoPosition = it }
-            SettingsSwitch(stringResource(R.string.set_video_gestures), conf.allowVideoGestures) { conf.allowVideoGestures = it }
-            SettingsDivider()
-            }
-
-            SettingsCategory(stringResource(R.string.set_fullscreen), settingsQuery, "fullscreen" in expandedSections) { toggleSection("fullscreen") }
-            if ("fullscreen" in expandedSections || settingsQuery.isNotBlank()) {
-            SettingsSwitch(stringResource(R.string.set_black_bg), conf.blackBackground) { conf.blackBackground = it }
-            SettingsSwitch(stringResource(R.string.set_hide_system_ui), conf.hideSystemUI) { conf.hideSystemUI = it }
-            SettingsSwitch(stringResource(R.string.set_keep_screen_on), conf.keepScreenOn) { conf.keepScreenOn = it }
-            SettingsSwitch(stringResource(R.string.set_show_notch), conf.showNotch) { conf.showNotch = it }
-            SettingsSwitch(stringResource(R.string.set_swipe_close), conf.allowDownGesture) { conf.allowDownGesture = it }
-            if (org.fossify.gallery.helpers.ColorModeHelper.isGainmapSupported()) {
-                SettingsSwitch(stringResource(R.string.render_ultra_hdr_photos), conf.ultraHdrRendering) { conf.ultraHdrRendering = it }
-            }
-            SettingsDivider()
-            }
-
-            SettingsCategory(stringResource(R.string.set_thumbnails), settingsQuery, "thumbnails" in expandedSections) { toggleSection("thumbnails") }
-            if ("thumbnails" in expandedSections || settingsQuery.isNotBlank()) {
-            SettingsSwitch(stringResource(R.string.set_crop_thumbnails), conf.cropThumbnails) { conf.cropThumbnails = it }
-            // Compose grids consume the observable overlay state; use the same persisted flags as
-            // the view screens so this global setting has one source of truth everywhere.
-            SettingsSwitch(stringResource(R.string.show_video_duration), conf.showVideoDurationOnThumbnails) {
-                conf.showVideoDurationOnThumbnails = it
-                org.fossify.gallery.compose.util.ThumbnailOverlayState.showVideoDuration = it
-            }
-            SettingsSwitch(stringResource(R.string.set_show_file_type), conf.showThumbnailFileTypes) { conf.showThumbnailFileTypes = it }
-            SettingsSwitch(stringResource(R.string.set_mark_favorites), conf.markFavoriteItems) { conf.markFavoriteItems = it }
-            SettingsSwitch(stringResource(R.string.show_rating), conf.showRatingOnThumbnails) {
-                conf.showRatingOnThumbnails = it
-                org.fossify.gallery.compose.util.ThumbnailOverlayState.showRating = it
-            }
-            SettingsSwitch(stringResource(R.string.blur_all_media), BlurState.enabled) {
-                conf.blurAllMedia = it
-                BlurState.enabled = it
-            }
-            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
-                Text(
-                    stringResource(R.string.blur_all_media_legacy_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp),
-                )
-            }
-            SettingsDivider()
-            }
-
-            SettingsCategory(stringResource(R.string.nav_recycle_bin), settingsQuery, "bin" in expandedSections) { toggleSection("bin") }
-            if ("bin" in expandedSections || settingsQuery.isNotBlank()) {
-            SettingsSwitch(stringResource(R.string.set_use_recycle_bin), conf.useRecycleBin) { conf.useRecycleBin = it }
-            SettingsDivider()
-            }
-
-            SettingsCategory(stringResource(R.string.set_files), settingsQuery, "files" in expandedSections) { toggleSection("files") }
-            if ("files" in expandedSections || settingsQuery.isNotBlank()) {
-            SettingsSwitch(stringResource(R.string.set_skip_delete_confirm), conf.skipDeleteConfirmation) { conf.skipDeleteConfirmation = it }
-            SettingsDivider()
-            }
-
-            SettingsCategory(stringResource(R.string.set_extended_details), settingsQuery, "details" in expandedSections) { toggleSection("details") }
-            if ("details" in expandedSections || settingsQuery.isNotBlank()) {
-            SettingsSwitch(stringResource(R.string.set_show_details), conf.showExtendedDetails) { conf.showExtendedDetails = it }
-            SettingsSwitch(stringResource(R.string.set_hide_details), conf.hideExtendedDetails, enabled = conf.showExtendedDetails) { conf.hideExtendedDetails = it }
-            SettingsNav(stringResource(R.string.set_manage_details), getExtendedDetailsSummary(ctx, conf.extendedDetails)) { showExtendedDialog = true }
-            SettingsDivider()
-            }
-
-            SettingsCategory(stringResource(R.string.set_security), settingsQuery, "security" in expandedSections) { toggleSection("security") }
-            if ("security" in expandedSections || settingsQuery.isNotBlank()) {
-            // conf reads aren't reactive, so bump this after each toggle so the On/Off labels below
-            // refresh immediately instead of showing stale state until the screen is re-entered.
-            var securityTick by remember { mutableIntStateOf(0) }
-            SecurityNav(stringResource(R.string.set_app_password), securityTick.let { conf.isAppPasswordProtectionOn }) {
-                a?.let { act ->
-                    SecurityDialog(act, conf.appPasswordHash, if (conf.isAppPasswordProtectionOn) conf.appProtectionType else SHOW_ALL_TABS) { hash, type, success ->
-                        if (success) {
-                            val wasOn = conf.isAppPasswordProtectionOn
-                            conf.isAppPasswordProtectionOn = !wasOn
-                            conf.appPasswordHash = if (wasOn) "" else hash
-                            conf.appProtectionType = type
-                            securityTick++
-                        }
-                    }
-                }
-            }
-            SecurityNav(stringResource(R.string.set_hidden_password), securityTick.let { conf.isHiddenPasswordProtectionOn }) {
-                a?.let { act ->
-                    SecurityDialog(act, conf.hiddenPasswordHash, if (conf.isHiddenPasswordProtectionOn) conf.hiddenProtectionType else SHOW_ALL_TABS) { hash, type, success ->
-                        if (success) {
-                            val wasOn = conf.isHiddenPasswordProtectionOn
-                            conf.isHiddenPasswordProtectionOn = !wasOn
-                            conf.hiddenPasswordHash = if (wasOn) "" else hash
-                            conf.hiddenProtectionType = type
-                            securityTick++
-                        }
-                    }
-                }
-            }
-            SecurityNav(stringResource(R.string.set_delete_password), securityTick.let { conf.isDeletePasswordProtectionOn }) {
-                a?.let { act ->
-                    SecurityDialog(act, conf.deletePasswordHash, if (conf.isDeletePasswordProtectionOn) conf.deleteProtectionType else SHOW_ALL_TABS) { hash, type, success ->
-                        if (success) {
-                            val wasOn = conf.isDeletePasswordProtectionOn
-                            conf.isDeletePasswordProtectionOn = !wasOn
-                            conf.deletePasswordHash = if (wasOn) "" else hash
-                            conf.deleteProtectionType = type
-                            securityTick++
-                        }
-                    }
-                }
-            }
-            SettingsDivider()
-            }
-
-            SettingsCategory(stringResource(R.string.set_tags_ratings), settingsQuery, "metadata" in expandedSections) { toggleSection("metadata") }
-            if ("metadata" in expandedSections || settingsQuery.isNotBlank()) {
-            SettingsNav(stringResource(R.string.set_read_metadata)) {
-                MetadataSyncWorker.scheduleFullScan(ctx)
-                scope.launch {
-                    val result = snackbarHostState.showSnackbar(
-                        message = res.getString(R.string.scan_started_notification),
-                        actionLabel = res.getString(R.string.cancel),
-                        duration = SnackbarDuration.Short,
+                @Suppress("UNUSED_EXPRESSION") settingsVersion
+                if (isTwoPane) {
+                    SettingsTwoPaneBody(
+                        selectedSection = selectedSection,
+                        settingsQuery = settingsQuery,
+                        onQueryChange = { settingsQuery = it },
+                        onSelectSection = { section ->
+                            selectedSectionKey = section.key
+                            if (settingsQuery.isNotBlank()) settingsQuery = ""
+                        },
+                        matchTracker = matchTracker,
+                        startPadding = padding.calculateStartPadding(layoutDirection),
+                        endPadding = padding.calculateEndPadding(layoutDirection),
+                        bottomPadding = padding.calculateBottomPadding(),
+                        ctx = ctx,
+                        activity = activity,
+                        conf = conf,
+                        scope = scope,
+                        snackbarHostState = snackbarHostState,
+                        isMetadataScanRunning = isMetadataScanRunning,
+                        callbacks = sectionCallbacks,
                     )
-                    if (result == SnackbarResult.ActionPerformed) {
-                        MetadataSyncWorker.cancel(ctx)
-                    }
+                } else {
+                    SettingsSinglePaneBody(
+                        expandedSections = expandedSections,
+                        settingsQuery = settingsQuery,
+                        onQueryChange = { settingsQuery = it },
+                        onToggleSection = ::toggleSection,
+                        matchTracker = matchTracker,
+                        startPadding = padding.calculateStartPadding(layoutDirection),
+                        endPadding = padding.calculateEndPadding(layoutDirection),
+                        bottomPadding = padding.calculateBottomPadding(),
+                        ctx = ctx,
+                        activity = activity,
+                        conf = conf,
+                        scope = scope,
+                        snackbarHostState = snackbarHostState,
+                        isMetadataScanRunning = isMetadataScanRunning,
+                        callbacks = sectionCallbacks,
+                    )
                 }
-            }
-            var showAdvancedScan by remember { mutableStateOf(false) }
-            SettingsNav(stringResource(R.string.advanced_metadata_scan), stringResource(R.string.advanced_metadata_scan_subtitle)) { showAdvancedScan = true }
-            if (showAdvancedScan) {
-                AdvancedScanDialog(onDismiss = { showAdvancedScan = false }) { folder, start, end, inc, charging ->
-                    MetadataSyncWorker.scheduleAdvancedScan(ctx, folder, start, end, inc, charging)
-                    scope.launch {
-                        val result = snackbarHostState.showSnackbar(
-                            message = res.getString(R.string.advanced_scan_scheduled),
-                            actionLabel = res.getString(R.string.cancel),
-                            duration = SnackbarDuration.Short,
-                        )
-                        if (result == SnackbarResult.ActionPerformed) {
-                            MetadataSyncWorker.cancel(ctx)
-                        }
-                    }
-                }
-            }
-            if (isMetadataScanRunning) {
-                SettingsNav(stringResource(R.string.set_cancel_scan)) {
-                    MetadataSyncWorker.cancel(ctx)
-                    scope.launch {
-                        snackbarHostState.showSnackbar(
-                            message = res.getString(R.string.set_scan_cancelled),
-                            duration = SnackbarDuration.Short,
-                        )
-                    }
-                }
-            }
-            SettingsDivider()
-            }
-
-            SettingsCategory(stringResource(R.string.set_manage_data), settingsQuery, "data" in expandedSections) { toggleSection("data") }
-            if ("data" in expandedSections || settingsQuery.isNotBlank()) {
-            FavoritesExportNav(ctx, conf, scope)
-            FavoritesImportNav(ctx, conf, scope)
-            FullBackupExportNav(ctx, scope)
-            FullBackupImportNav(ctx, scope)
-            LibraryHealthNav(ctx, scope)
-            ClearCacheNav(ctx, scope)
-            SettingsDivider()
-            }
-
-            SettingsCategory(stringResource(R.string.set_information), settingsQuery, "information" in expandedSections) { toggleSection("information") }
-            if ("information" in expandedSections || settingsQuery.isNotBlank()) {
-            SettingsNav(stringResource(R.string.set_about), onClick = onNavigateToAbout)
-            CrashLogNav(ctx)
-            }
-
-            if (settingsQuery.isNotBlank() && matchTracker.matchedCount == 0) {
-                Text(
-                    text = stringResource(R.string.no_results),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                )
-            }
-
-            Spacer(Modifier.height(32.dp))
             }
         }
     }
@@ -449,7 +244,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
                             Text(
                                 label,
                                 modifier = Modifier.weight(1f),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Start,
+                                textAlign = TextAlign.Start,
                                 color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                             )
@@ -481,6 +276,205 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             onDismiss = { manageFoldersMode = null },
         )
     }
+}
+
+@Composable
+private fun SettingsSinglePaneBody(
+    expandedSections: Set<String>,
+    settingsQuery: String,
+    onQueryChange: (String) -> Unit,
+    onToggleSection: (String) -> Unit,
+    matchTracker: SettingsMatchTracker,
+    startPadding: Dp,
+    endPadding: Dp,
+    bottomPadding: Dp,
+    ctx: Context,
+    activity: Activity?,
+    conf: Config,
+    scope: CoroutineScope,
+    snackbarHostState: SnackbarHostState,
+    isMetadataScanRunning: Boolean,
+    callbacks: SettingsSectionCallbacks,
+) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(
+                start = 16.dp + startPadding,
+                end = 16.dp + endPadding,
+                top = 8.dp,
+                bottom = 8.dp + bottomPadding,
+            ),
+    ) {
+        LibrarySearchField(
+            value = settingsQuery,
+            onValueChange = onQueryChange,
+            placeholderRes = R.string.settings_search_hint,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        val sections = SettingsSection.entries
+        sections.forEachIndexed { index, section ->
+            val isExpanded = section.key in expandedSections || settingsQuery.isNotBlank()
+            SettingsCategory(
+                title = stringResource(section.titleRes),
+                query = settingsQuery,
+                expanded = section.key in expandedSections,
+                onToggle = { onToggleSection(section.key) },
+            )
+            if (isExpanded) {
+                SettingsSectionContent(
+                    section = section,
+                    ctx = ctx,
+                    activity = activity,
+                    conf = conf,
+                    scope = scope,
+                    snackbarHostState = snackbarHostState,
+                    isMetadataScanRunning = isMetadataScanRunning,
+                    callbacks = callbacks,
+                )
+                if (index < sections.lastIndex) SettingsDivider()
+            }
+        }
+        if (settingsQuery.isNotBlank() && matchTracker.matchedCount == 0) {
+            SettingsNoResultsMessage()
+        }
+        Spacer(Modifier.height(32.dp))
+    }
+}
+
+@Composable
+private fun SettingsTwoPaneBody(
+    selectedSection: SettingsSection,
+    settingsQuery: String,
+    onQueryChange: (String) -> Unit,
+    onSelectSection: (SettingsSection) -> Unit,
+    matchTracker: SettingsMatchTracker,
+    startPadding: Dp,
+    endPadding: Dp,
+    bottomPadding: Dp,
+    ctx: Context,
+    activity: Activity?,
+    conf: Config,
+    scope: CoroutineScope,
+    snackbarHostState: SnackbarHostState,
+    isMetadataScanRunning: Boolean,
+    callbacks: SettingsSectionCallbacks,
+) {
+    Row(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .width(SETTINGS_RAIL_WIDTH + startPadding)
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    start = 16.dp + startPadding,
+                    end = 12.dp,
+                    top = 8.dp,
+                    bottom = 16.dp + bottomPadding,
+                ),
+        ) {
+            LibrarySearchField(
+                value = settingsQuery,
+                onValueChange = onQueryChange,
+                placeholderRes = R.string.settings_search_hint,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+            SettingsSection.entries.forEach { section ->
+                val isSelected = settingsQuery.isBlank() && section == selectedSection
+                Surface(
+                    onClick = { onSelectSection(section) },
+                    shape = RoundedCornerShape(Radius.md),
+                    color = if (isSelected) {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    },
+                    contentColor = if (isSelected) {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp)
+                        .heightIn(min = 48.dp),
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(section.titleRes),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+        VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    start = 24.dp,
+                    end = 24.dp + endPadding,
+                    top = 12.dp,
+                    bottom = 32.dp + bottomPadding,
+                ),
+        ) {
+            if (settingsQuery.isBlank()) {
+                Text(
+                    text = stringResource(selectedSection.titleRes),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+                SettingsSectionContent(
+                    section = selectedSection,
+                    ctx = ctx,
+                    activity = activity,
+                    conf = conf,
+                    scope = scope,
+                    snackbarHostState = snackbarHostState,
+                    isMetadataScanRunning = isMetadataScanRunning,
+                    callbacks = callbacks,
+                )
+            } else {
+                SettingsSection.entries.forEach { section ->
+                    SettingsSectionContent(
+                        section = section,
+                        ctx = ctx,
+                        activity = activity,
+                        conf = conf,
+                        scope = scope,
+                        snackbarHostState = snackbarHostState,
+                        isMetadataScanRunning = isMetadataScanRunning,
+                        callbacks = callbacks,
+                    )
+                }
+                if (matchTracker.matchedCount == 0) {
+                    SettingsNoResultsMessage()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsNoResultsMessage() {
+    Text(
+        text = stringResource(R.string.no_results),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+        textAlign = TextAlign.Center,
+    )
 }
 
 @Composable

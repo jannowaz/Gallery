@@ -346,8 +346,6 @@ fun ExplorerScreen(
     var fileCurrentRating by remember { mutableIntStateOf(0) }
     var fileSelectedCommonTags by remember { mutableStateOf<Set<String>>(emptySet()) }
     var fileMixedTagCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
-    var fileAllTags by remember { mutableStateOf<List<String>>(emptyList()) }
-    var fileTagCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var fileRatingIsMixed by remember { mutableStateOf(false) }
     LaunchedEffect(selectedFilePaths) {
         if (selectedFilePaths.isEmpty()) {
@@ -591,80 +589,48 @@ fun ExplorerScreen(
         },
     ) {
         if (hasFolderSelection) {
-            SelectionAppBar(
-                count = selectedFolderPaths.size,
+            ExplorerFolderSelectionBar(
+                selectedCount = selectedFolderPaths.size,
+                visibleFolderCount = visibleFolderItems.size,
+                allAlreadyMoverSources = selectedFolderPaths.isNotEmpty() &&
+                    selectedFolderPaths.all { it in moverSourcePaths },
                 onClose = { selectedFolderPaths = emptySet() },
-                subtitle = stringResource(R.string.selection_scope_visible, visibleFolderItems.size),
-                actions = {
-                    IconButton(onClick = { selectedFolderPaths.firstOrNull()?.let { p -> navStack.add(p); navigateToPath(p) }; selectedFolderPaths = emptySet() }) {
-                        Icon(Icons.Default.Folder, stringResource(R.string.action_open))
-                    }
-                    IconButton(onClick = {
-                        selectedFolderPaths.forEach { p -> context.config.hideExplorer2Folder(p) }
-                        scope.launch {
-                            try {
-                                loadFolderContents(currentPath)
-                                loadError = null
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                loadError = e.message
-                            }
-                        }
-                        selectedFolderPaths = emptySet()
-                    }) {
-                        Icon(Icons.Default.VisibilityOff, stringResource(R.string.action_hide))
-                    }
-                    val allAlreadyMoverSources = selectedFolderPaths.isNotEmpty() && selectedFolderPaths.all { it in moverSourcePaths }
-                    IconButton(onClick = {
-                        pendingMoverSources = selectedFolderPaths.toList()
-                        selectedFolderPaths = emptySet()
-                    }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.DriveFileMove,
-                            stringResource(if (allAlreadyMoverSources) R.string.mover_source_marker else R.string.action_use_as_mover_source),
-                            // error/red instead of tertiary - tertiary read as too close to the
-                            // toolbar's other icons to notice at a glance, and this is a state the
-                            // user needs to actually see before tapping (already-configured vs. new).
-                            tint = if (allAlreadyMoverSources) MaterialTheme.colorScheme.error else LocalContentColor.current,
-                        )
-                    }
-                    // Rename/Delete tucked behind an overflow menu, mirroring AlbumsScreen's folder
-                    // selection bar - keeps this consistent across both folder-selection surfaces.
-                    var folderMenuOpen by remember { mutableStateOf(false) }
-                    val isSingleFolder = selectedFolderPaths.size == 1
-                    Box {
-                        IconButton(onClick = { folderMenuOpen = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions)) }
-                        DropdownMenu(expanded = folderMenuOpen, onDismissRequest = { folderMenuOpen = false }) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_select_all)) },
-                                onClick = { folderMenuOpen = false; selectedFolderPaths = selectionForAll(selectedFolderPaths, visibleFolderItems.map { it.path }, invert = false) },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_invert_selection)) },
-                                onClick = { folderMenuOpen = false; selectedFolderPaths = selectionForAll(selectedFolderPaths, visibleFolderItems.map { it.path }, invert = true) },
-                            )
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.action_open_in_media)) },
-                                leadingIcon = { Icon(Icons.Default.PhotoLibrary, null) },
-                                onClick = { folderMenuOpen = false; onOpenInMedia(selectedFolderPaths); selectedFolderPaths = emptySet() },
-                            )
-                            if (isSingleFolder) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.action_rename)) },
-                                    leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, null) },
-                                    onClick = { folderMenuOpen = false; renameFolderPath = selectedFolderPaths.first() },
-                                )
-                            }
-                            DropdownMenuItem(
-                                text = { Text(stringResource(org.fossify.commons.R.string.delete)) },
-                                leadingIcon = { Icon(Icons.Default.Delete, null) },
-                                onClick = { folderMenuOpen = false; showDeleteFoldersConfirm = true },
-                            )
-                        }
-                    }
+                onOpenSelection = {
+                    selectedFolderPaths.firstOrNull()?.let { p -> navStack.add(p); navigateToPath(p) }
+                    selectedFolderPaths = emptySet()
                 },
+                onHideSelection = {
+                    selectedFolderPaths.forEach { p -> context.config.hideExplorer2Folder(p) }
+                    scope.launch {
+                        try {
+                            loadFolderContents(currentPath)
+                            loadError = null
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            loadError = e.message
+                        }
+                    }
+                    selectedFolderPaths = emptySet()
+                },
+                onUseAsMoverSource = {
+                    pendingMoverSources = selectedFolderPaths.toList()
+                    selectedFolderPaths = emptySet()
+                },
+                onSelectAll = {
+                    val visiblePaths = visibleFolderItems.map { it.path }
+                    selectedFolderPaths = selectionForAll(selectedFolderPaths, visiblePaths, invert = false)
+                },
+                onInvertSelection = {
+                    val visiblePaths = visibleFolderItems.map { it.path }
+                    selectedFolderPaths = selectionForAll(selectedFolderPaths, visiblePaths, invert = true)
+                },
+                onOpenInMedia = {
+                    onOpenInMedia(selectedFolderPaths)
+                    selectedFolderPaths = emptySet()
+                },
+                onRenameSingle = { renameFolderPath = selectedFolderPaths.first() },
+                onDeleteSelection = { showDeleteFoldersConfirm = true },
             )
         } else if (hasFileSelection) {
             SelectionTopAppBar(
@@ -713,168 +679,28 @@ fun ExplorerScreen(
                 selectAllLabel = stringResource(R.string.action_select_all_visible),
             )
         } else {
-            // Breadcrumb navigation bar
-            val breadcrumbChain = remember(currentPath, storageRoot) {
-                explorerAncestorChain(storageRoot, currentPath)
-            }
-            var breadcrumbsExpanded by remember(currentPath) { mutableStateOf(false) }
-            val expandPathDescription = stringResource(R.string.cd_expand_path)
-            val visibleBreadcrumbIndices = if (breadcrumbsExpanded || breadcrumbChain.size <= 3) {
-                breadcrumbChain.indices.toList()
-            } else {
-                listOf(0, -1, breadcrumbChain.lastIndex - 1, breadcrumbChain.lastIndex)
-            }
-            val breadcrumbScrollState = rememberScrollState()
-            LaunchedEffect(currentPath) {
-                // The storage root has just one breadcrumb. Scrolling it to the end clipped
-                // the beginning of “Interner Speicher” (shown as “peicher”). Only nested
-                // paths need to reveal their right-most, current-folder segment.
-                if (breadcrumbChain.size > 1) {
-                    breadcrumbScrollState.animateScrollTo(breadcrumbScrollState.maxValue)
-                } else {
-                    breadcrumbScrollState.scrollTo(0)
-                }
-            }
-            var showExplorerQuickActions by remember(currentPath) { mutableStateOf(false) }
-            Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)).padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (canGoUp) {
-                    IconButton(onClick = { goUpOneLevel() }, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                    }
-                } else {
-                    Spacer(Modifier.size(48.dp))
-                }
-                Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
-                    Row(
-                        Modifier.fillMaxWidth().horizontalScroll(breadcrumbScrollState),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        visibleBreadcrumbIndices.forEachIndexed { visibleIndex, breadcrumbIndex ->
-                            if (visibleIndex > 0) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                            if (breadcrumbIndex == -1) {
-                                TextButton(
-                                    onClick = { breadcrumbsExpanded = true },
-                                    modifier = Modifier.heightIn(min = 48.dp),
-                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                                ) {
-                                    Text("…", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.semantics { contentDescription = expandPathDescription })
-                                }
-                            } else {
-                                val breadcrumbPath = breadcrumbChain[breadcrumbIndex]
-                                val label = if (breadcrumbPath == storageRoot) stringResource(R.string.internal_storage) else File(breadcrumbPath).name
-                                TextButton(
-                                    onClick = {
-                                        navStack.clear()
-                                        navStack.addAll(breadcrumbChain.take(breadcrumbIndex + 1))
-                                        navigateToPath(breadcrumbPath)
-                                    },
-                                    modifier = Modifier.heightIn(min = 48.dp),
-                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                                ) {
-                                    Text(
-                                        label,
-                                        style = if (breadcrumbPath == currentPath) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelLarge,
-                                        fontWeight = if (breadcrumbPath == currentPath) FontWeight.Medium else FontWeight.Normal,
-                                        color = if (breadcrumbPath == currentPath) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    if (normalizedNameFilter.isNotBlank()) {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(top = 2.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            ActiveFilterChip(
-                                label = stringResource(R.string.filter_search_query, normalizedNameFilter),
-                                onRemove = onClearNameFilter,
-                            )
-                        }
-                    }
-                    LibraryFilterSummary(
-                        filter = filterState,
-                        resultCount = visibleFileItems.size,
-                        actions = filterActions,
-                    )
-                }
-                if (onOpenViewSettings != null) {
-                    IconButton(
-                        onClick = onOpenViewSettings,
-                        modifier = Modifier.size(48.dp),
-                    ) {
-                        Icon(
-                            Icons.Default.Tune,
-                            contentDescription = stringResource(R.string.view_settings_title),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                Box {
-                    IconButton(
-                        onClick = { showExplorerQuickActions = true },
-                        modifier = Modifier.size(48.dp),
-                    ) {
-                        Icon(
-                            Icons.Default.MoreVert,
-                            contentDescription = stringResource(R.string.more_actions),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = showExplorerQuickActions,
-                        onDismissRequest = { showExplorerQuickActions = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.swipe_mode_open)) },
-                            leadingIcon = { Icon(Icons.Default.TouchApp, contentDescription = null) },
-                            onClick = {
-                                showExplorerQuickActions = false
-                                onOpenSwipeMode(currentPath, firstVisibleMediaPath)
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.person_scan_open)) },
-                            leadingIcon = { Icon(Icons.Default.PersonSearch, contentDescription = null) },
-                            onClick = {
-                                showExplorerQuickActions = false
-                                onOpenPersonReview(currentPath)
-                            },
-                        )
-                        HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.action_refresh)) },
-                            leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
-                            enabled = !isRefreshing,
-                            onClick = {
-                                showExplorerQuickActions = false
-                                onRescan()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.action_scan_metadata)) },
-                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Label, contentDescription = null) },
-                            onClick = {
-                                showExplorerQuickActions = false
-                                onScanMetadata()
-                            },
-                        )
-                    }
-                }
-            }
+            ExplorerBreadcrumbBar(
+                currentPath = currentPath,
+                storageRoot = storageRoot,
+                canGoUp = canGoUp,
+                normalizedNameFilter = normalizedNameFilter,
+                filterState = filterState,
+                filterActions = filterActions,
+                visibleFileCount = visibleFileItems.size,
+                isRefreshing = isRefreshing,
+                onGoUp = { goUpOneLevel() },
+                onSelectBreadcrumb = { prefix, targetPath ->
+                    navStack.clear()
+                    navStack.addAll(prefix)
+                    navigateToPath(targetPath)
+                },
+                onClearNameFilter = onClearNameFilter,
+                onOpenViewSettings = onOpenViewSettings,
+                onOpenSwipeMode = { onOpenSwipeMode(currentPath, firstVisibleMediaPath) },
+                onOpenPersonReview = { onOpenPersonReview(currentPath) },
+                onRescan = onRescan,
+                onScanMetadata = onScanMetadata,
+            )
             org.fossify.gallery.compose.components.LongPressSelectHint(
                 visible = showMultiSelectHint && !isNameFiltering,
                 onDismiss = {
@@ -1026,24 +852,14 @@ fun ExplorerScreen(
                     return@LaunchedEffect
                 }
                 val (nextMap, nextRows) = withContext(Dispatchers.Default) {
-                    val nextMap = visibleFileItems.associateBy { it.path }
-                    val fileMedia = visibleFileItems.map { it.toMediumForGrouping() }
-                    val nextRows = when (mediaSettings.groupBy) {
-                        org.fossify.gallery.helpers.GroupBy.TAG -> org.fossify.gallery.helpers.buildTagGroupRows(fileMedia, fileTagsByPath, context.config.tagHierarchy, mediaSettings.groupOrder, mediaSettings.onlyTopLevelTags, emptySet(), untaggedLabel)
-                        org.fossify.gallery.helpers.GroupBy.RATING -> org.fossify.gallery.helpers.buildRatingGroupRows(fileMedia, mediaSettings.groupOrder, unratedLabel)
-                        org.fossify.gallery.helpers.GroupBy.SIZE -> org.fossify.gallery.helpers.buildSizeGroupRows(fileMedia, mediaSettings.sortDesc)
-                        org.fossify.gallery.helpers.GroupBy.ALPHABET -> org.fossify.gallery.helpers.buildAlphabetGroupRows(fileMedia, mediaSettings.sortDesc)
-                        org.fossify.gallery.helpers.GroupBy.MONTH -> {
-                            val g = LinkedHashMap<String, MutableList<org.fossify.gallery.models.Medium>>()
-                            fileMedia.forEach { m -> g.getOrPut(org.fossify.gallery.viewmodels.MediaViewModel.monthLabelFor(m)) { mutableListOf() }.add(m) }
-                            g.flatMap { (label, items) ->
-                                val key = "month:$label"
-                                listOf(org.fossify.gallery.helpers.GroupRow.SectionHeader(key, label, 0, items.size, items.size, false, true), org.fossify.gallery.helpers.GroupRow.Items(key, items))
-                            }
-                        }
-                        org.fossify.gallery.helpers.GroupBy.NONE -> if (fileMedia.isEmpty()) emptyList() else listOf(org.fossify.gallery.helpers.GroupRow.Items("all", fileMedia))
-                    }
-                    nextMap to nextRows
+                    buildExplorerFileGroupRows(
+                        visibleFileItems = visibleFileItems,
+                        fileTagsByPath = fileTagsByPath,
+                        tagHierarchy = context.config.tagHierarchy,
+                        mediaSettings = mediaSettings,
+                        untaggedLabel = untaggedLabel,
+                        unratedLabel = unratedLabel,
+                    )
                 }
                 if (loadedPath != currentPath) return@LaunchedEffect
                 fileItemByPath = nextMap
@@ -1061,54 +877,26 @@ fun ExplorerScreen(
             }
             val collapsibleFileGroupKeys = remember(fileGroupRows) { org.fossify.gallery.helpers.collapsibleGroupKeys(fileGroupRows) }
             val allFileGroupsExpanded = collapsibleFileGroupKeys.isNotEmpty() && collapsibleFileGroupKeys.none { it in collapsedGroupKeys }
-            // Compose's lazy index is only a positional detail. Build the same item-key map the
-            // list uses so a folder can be restored by the first visible file after a sync inserts
-            // or removes rows above it. Grid/mosaic rows use their first media path as the semantic
-            // anchor; the path itself remains stable even though the row index may change.
-            val scrollKeyToPath = remember(visibleFolderItems, visibleFileItems, fileGroupRows, folderSettings.viewType, mediaSettings.viewType, mediaGridColumns) {
-                val keyToPath = LinkedHashMap<String, String>()
-                val indexByPath = LinkedHashMap<String, Int>()
-                var lazyIndex = 0
-                fun addRow(key: String, paths: List<String>) {
-                    paths.firstOrNull()?.let { first ->
-                        keyToPath[key] = first
-                        paths.forEach { path -> indexByPath.putIfAbsent(path, lazyIndex) }
-                    }
-                    lazyIndex++
-                }
-                if (visibleFolderItems.isNotEmpty()) {
-                    lazyIndex++ // Folders section header
-                    if (folderSettings.viewType == ViewType.GRID) {
-                        visibleFolderItems.chunked(folderGridColumns).forEachIndexed { rowIndex, chunk ->
-                            addRow("folderrow_$rowIndex", chunk.map { it.path })
-                        }
-                    } else {
-                        visibleFolderItems.chunked(1).forEach { chunk ->
-                            addRow("folderrow_" + chunk.joinToString { it.path }, chunk.map { it.path })
-                        }
-                    }
-                }
-                if (visibleFileItems.isNotEmpty()) {
-                    lazyIndex++ // Media section header
-                    fileGroupRows.forEach { row ->
-                        when (row) {
-                            is org.fossify.gallery.helpers.GroupRow.SectionHeader -> lazyIndex++
-                            is org.fossify.gallery.helpers.GroupRow.Items -> {
-                                val paths = row.media.mapNotNull { fileItemByPath[it.path]?.path }
-                                when (mediaSettings.viewType) {
-                                    ViewType.GRID -> paths.chunked(mediaGridColumns).forEachIndexed { rowIndex, chunk ->
-                                        addRow("${row.sectionKey}/gridrow_$rowIndex", chunk)
-                                    }
-                                    ViewType.MOSAIC -> paths.chunked(EXPLORER_MOSAIC_CHUNK_SIZE).forEachIndexed { chunkIndex, chunk ->
-                                        addRow("explorer_media_mosaic_${row.sectionKey}_$chunkIndex", chunk)
-                                    }
-                                    else -> paths.forEach { path -> addRow("${row.sectionKey}/$path", listOf(path)) }
-                                }
-                            }
-                        }
-                    }
-                }
-                keyToPath to indexByPath
+            val scrollKeyToPath = remember(
+                visibleFolderItems,
+                visibleFileItems,
+                fileGroupRows,
+                fileItemByPath,
+                folderSettings.viewType,
+                mediaSettings.viewType,
+                folderGridColumns,
+                mediaGridColumns,
+            ) {
+                buildExplorerScrollIndexMaps(
+                    visibleFolderItems = visibleFolderItems,
+                    visibleFileItems = visibleFileItems,
+                    fileGroupRows = fileGroupRows,
+                    fileItemByPath = fileItemByPath,
+                    folderSettings = folderSettings,
+                    mediaSettings = mediaSettings,
+                    folderGridColumns = folderGridColumns,
+                    mediaGridColumns = mediaGridColumns,
+                )
             }
             val scrollKeyToPathMap = scrollKeyToPath.first
             val scrollIndexByPath = scrollKeyToPath.second
@@ -1242,390 +1030,73 @@ fun ExplorerScreen(
                     selectFileForInteraction(item.path, startSelection = true)
                 }
             }
-            val explorerWindowWidthDp = with(androidx.compose.ui.platform.LocalDensity.current) {
-                androidx.compose.ui.platform.LocalWindowInfo.current.containerSize.width.toDp()
-            }
-            val folderTileWidthDp = explorerWindowWidthDp / folderGridColumns.coerceAtLeast(1)
-            val isNarrowFolderTile = folderTileWidthDp < 88.dp
-            val isUltraNarrowFolderTile = folderTileWidthDp < 84.dp
-            val mediaTileWidthDp = explorerWindowWidthDp / mediaGridColumns.coerceAtLeast(1)
-            val isNarrowMediaTile = mediaTileWidthDp < 88.dp
-            val internalStorageLabel = stringResource(R.string.internal_storage)
-            val duplicateFolderNames = remember(visibleFolderItems) {
-                findDuplicateFolderNames(visibleFolderItems.map { it.name })
-            }
-            val mediaBg = when (mediaSettings.displayMode) {
-                DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant
-                else -> MaterialTheme.colorScheme.surface
-            }
-            var showColumnIndicator by remember { mutableStateOf(false) }
-            var indicatorColumnCount by remember { mutableIntStateOf(mediaSettings.columnCount) }
-            val pinchMedia = visibleFileItems.isNotEmpty() &&
-                mediaSettings.viewType != ViewType.LIST &&
-                onMediaColumnCountChange != null
-            val pinchFolders = !pinchMedia &&
-                visibleFolderItems.isNotEmpty() &&
-                folderSettings.viewType == ViewType.GRID &&
-                onFolderColumnCountChange != null
-            val pinchColumns = if (pinchMedia) mediaSettings.columnCount else folderSettings.columnCount
-            val pinchMaxColumns = if (pinchMedia) 6 else 5
-            Box(
-                Modifier
-                    .weight(1f)
-                    .pinchToChangeColumns(
-                        enabled = (pinchMedia || pinchFolders) && !hasFileSelection && !hasFolderSelection,
-                        currentColumns = pinchColumns,
-                        minColumns = 2,
-                        maxColumns = pinchMaxColumns,
-                        onColumnsChange = { next ->
-                            if (pinchMedia) {
-                                onMediaColumnCountChange(next)
+            ExplorerContentList(
+                listState = listState,
+                data = ExplorerListContentData(
+                    visibleFolderItems = visibleFolderItems,
+                    visibleFileItems = visibleFileItems,
+                    fileGroupRows = fileGroupRows,
+                    fileItemByPath = fileItemByPath,
+                    fileTagsByPath = fileTagsByPath,
+                    selectedFolderPaths = selectedFolderPaths,
+                    selectedFilePaths = selectedFilePaths,
+                    hasFolderSelection = hasFolderSelection,
+                    hasFileSelection = hasFileSelection,
+                    collapsibleFileGroupKeys = collapsibleFileGroupKeys,
+                    allFileGroupsExpanded = allFileGroupsExpanded,
+                ),
+                peekState = peekState,
+                config = ExplorerListDisplayConfig(
+                    folderSettings = folderSettings,
+                    mediaSettings = mediaSettings,
+                    folderGridColumns = folderGridColumns,
+                    mediaGridColumns = mediaGridColumns,
+                    folderCardColor = folderCardColor,
+                    isNameFiltering = isNameFiltering,
+                    normalizedNameFilter = normalizedNameFilter,
+                    filterState = filterState,
+                ),
+                callbacks = ExplorerListCallbacks(
+                    onFolderClick = { item ->
+                        if (!hasFileSelection) {
+                            if (hasFolderSelection) {
+                                selectedFolderPaths = if (item.path in selectedFolderPaths) {
+                                    selectedFolderPaths - item.path
+                                } else {
+                                    selectedFolderPaths + item.path
+                                }
                             } else {
-                                onFolderColumnCountChange?.invoke(next)
-                            }
-                            indicatorColumnCount = next
-                            showColumnIndicator = true
-                        },
-                    ),
-            ) {
-            LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(4.dp)) {
-                if (visibleFolderItems.isNotEmpty()) {
-                    item(key = "explorer_folders_header", contentType = "section_header") {
-                        ExplorerSectionHeader(stringResource(R.string.folders), visibleFolderItems.size)
-                    }
-                    if (folderSettings.viewType == ViewType.GRID) {
-                        visibleFolderItems.chunked(folderGridColumns).forEachIndexed { rowIndex, chunk ->
-                            // A content-derived key changed for every later row when a new folder
-                            // was inserted at the top. Keep row identity positional and let each
-                            // FolderTile key its image model by path instead.
-                            item(key = "folderrow_$rowIndex", contentType = "folder_grid_row") {
-                                Row(Modifier.fillMaxWidth().padding(folderSettings.spacing.dp / 2)) {
-                                    chunk.forEach { item ->
-                                        val disambiguationHint = if (item.name.lowercase() in duplicateFolderNames) {
-                                            folderPathHint(item.path, internalStorageLabel)
-                                        } else {
-                                            null
-                                        }
-                                        Box(Modifier.weight(1f).padding(folderSettings.spacing.dp / 2).combinedClickable(
-                                            onClick = { if (hasFileSelection) Unit else if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); navigateToPath(item.path) } },
-                                            onLongClick = { if (!hasFileSelection) { selectedFilePaths = emptySet(); selectedFolderPaths = selectedFolderPaths + item.path } }
-                                        ).semantics(mergeDescendants = true) {
-                                            contentDescription = buildString {
-                                                append(item.name)
-                                                if (item.mediaCount > 0) append(", ").append(item.mediaCount)
-                                                if (!disambiguationHint.isNullOrEmpty()) {
-                                                    append(", ").append(disambiguationHint)
-                                                }
-                                            }
-                                            role = Role.Button
-                                            selected = item.path in selectedFolderPaths
-                                        }) {
-                                            FolderTile(
-                                                name = item.name,
-                                                thumbnailPath = item.thumbnailPath,
-                                                showThumbnail = folderSettings.showFolderThumbnails,
-                                                roundedCorners = folderSettings.roundedCorners,
-                                                containerColor = folderCardColor,
-                                                subtitle = if (item.mediaCount > 0) androidx.compose.ui.res.pluralStringResource(R.plurals.media_count_plural, item.mediaCount, item.mediaCount) else null,
-                                                pathHint = disambiguationHint,
-                                                imageCount = item.imageCount,
-                                                videoCount = item.videoCount,
-                                                isNarrow = isNarrowFolderTile,
-                                                isUltraNarrow = isUltraNarrowFolderTile,
-                                            )
-                                            if (hasFolderSelection) {
-                                                if (item.path in selectedFolderPaths) {
-                                                    FolderSelectionOverlay(
-                                                        roundedCorners = folderSettings.roundedCorners,
-                                                        modifier = Modifier.matchParentSize(),
-                                                        isNarrow = isNarrowFolderTile,
-                                                    )
-                                                } else {
-                                                    val checkSize = if (isNarrowFolderTile) 18.dp else 24.dp
-                                                    val pad = if (isNarrowFolderTile) 3.dp else 6.dp
-                                                    Box(
-                                                        Modifier
-                                                            .align(Alignment.TopStart)
-                                                            .padding(pad)
-                                                            .size(checkSize),
-                                                        contentAlignment = Alignment.Center,
-                                                    ) {
-                                                        Box(
-                                                            Modifier
-                                                                .matchParentSize()
-                                                                .background(Scrim.a35, CircleShape),
-                                                        )
-                                                        Icon(
-                                                            Icons.Default.RadioButtonUnchecked,
-                                                            stringResource(R.string.cd_not_selected),
-                                                            tint = Color.White,
-                                                            modifier = Modifier.size(checkSize - 2.dp),
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    repeat(folderGridColumns - chunk.size) { Spacer(Modifier.weight(1f)) }
-                                }
+                                navStack.add(item.path)
+                                navigateToPath(item.path)
                             }
                         }
-                    } else {
-                        // Lists are always one column; density and spacing are controlled explicitly
-                        // in the shared view settings sheet and never inferred from grid columns.
-                        val folderListHalfGap = ((folderSettings.spacing / 2).coerceAtLeast(2) / 2f).dp
-                        val listCols = 1
-                        visibleFolderItems.chunked(listCols).forEach { chunk ->
-                            item(key = "folderrow_" + chunk.joinToString { it.path }, contentType = "folder_list_row") {
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                                    chunk.forEach { item ->
-                                        Box(Modifier.weight(1f)) {
-                                            org.fossify.gallery.compose.components.AlbumListRow(
-                                                name = item.name,
-                                                subtitle = androidx.compose.ui.res.pluralStringResource(R.plurals.media_count_plural, item.mediaCount, item.mediaCount),
-                                                coverPath = item.thumbnailPath.ifEmpty { item.previewPaths.firstOrNull() ?: "" },
-                                                selected = item.path in selectedFolderPaths,
-                                                showChevron = true,
-                                                showThumbnail = folderSettings.showFolderThumbnails,
-                                                roundedCorners = folderSettings.roundedCorners,
-                                                containerColor = folderCardColor,
-                                                compact = folderSettings.listDensity == ListDensity.COMPACT,
-                                                badgeSubtitle = true,
-                                                pathHint = folderPathHint(item.path, internalStorageLabel),
-                                                imageCount = item.imageCount,
-                                                videoCount = item.videoCount,
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = folderListHalfGap).combinedClickable(
-                                                    onClick = { if (hasFileSelection) Unit else if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); navigateToPath(item.path) } },
-                                                    onLongClick = { if (!hasFileSelection) { selectedFilePaths = emptySet(); selectedFolderPaths = selectedFolderPaths + item.path } }
-                                                ),
-                                            )
-                                        }
-                                    }
-                                    repeat(listCols - chunk.size) { Spacer(Modifier.weight(1f)) }
-                                }
-                            }
+                    },
+                    onFolderLongClick = { item ->
+                        if (!hasFileSelection) {
+                            selectedFilePaths = emptySet()
+                            selectedFolderPaths = selectedFolderPaths + item.path
                         }
-                    }
-                }
-
-                if (visibleFileItems.isNotEmpty()) {
-                    item(key = "explorer_media_header", contentType = "section_header") {
-                        ExplorerSectionHeader(
-                            label = stringResource(R.string.media),
-                            count = visibleFileItems.size,
-                            showGroupToggle = mediaSettings.groupBy in setOf(org.fossify.gallery.helpers.GroupBy.TAG, org.fossify.gallery.helpers.GroupBy.RATING) && collapsibleFileGroupKeys.isNotEmpty(),
-                            groupsExpanded = allFileGroupsExpanded,
-                            onToggleGroups = {
-                                collapsedGroupKeys = org.fossify.gallery.helpers.setGroupsExpanded(
-                                    collapsedKeys = collapsedGroupKeys,
-                                    rows = fileGroupRows,
-                                    expanded = !allFileGroupsExpanded,
-                                )
-                            },
+                    },
+                    onFileClick = ::onFileClick,
+                    onFileLongClick = ::onFileLongClick,
+                    onTagClick = onTagClick,
+                    onToggleGroup = { key ->
+                        collapsedGroupKeys = org.fossify.gallery.helpers.toggleGroupKey(collapsedGroupKeys, key)
+                    },
+                    onToggleAllGroups = {
+                        collapsedGroupKeys = org.fossify.gallery.helpers.setGroupsExpanded(
+                            collapsedKeys = collapsedGroupKeys,
+                            rows = fileGroupRows,
+                            expanded = !allFileGroupsExpanded,
                         )
-                    }
-                    val cornerShape = if (mediaSettings.roundedCorners) RoundedCornerShape(Radius.sm) else RoundedCornerShape(0.dp)
-                    when (mediaSettings.viewType) {
-                    ViewType.GRID -> {
-                        fileGroupRows.forEach { row ->
-                        when (row) {
-                            is org.fossify.gallery.helpers.GroupRow.SectionHeader -> item(key = "filehdr_${row.key}", contentType = "header") {
-                                SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = org.fossify.gallery.helpers.toggleGroupKey(collapsedGroupKeys, row.key) }, ratingValue = row.ratingValue, accentColor = row.rootKey?.let { org.fossify.gallery.compose.components.tagAccentColor(it) })
-                            }
-                            is org.fossify.gallery.helpers.GroupRow.Items -> {
-                        val groupFileItems = row.media.mapNotNull { fileItemByPath[it.path] }
-                        groupFileItems.chunked(mediaGridColumns).forEachIndexed { rowIndex, chunk ->
-                            item(key = "${row.sectionKey}/gridrow_$rowIndex", contentType = "media_grid_row") {
-                                Row(Modifier.fillMaxWidth().padding(mediaSettings.spacing.dp / 2)) {
-                                    chunk.forEach { item ->
-                                        val isVideo = item.type == 2 || item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
-                                        val medium = remember(item) { item.toMediumForGrouping() }
-                                        val itemTags = fileTagsByPath[item.path].orEmpty()
-                                        Box(Modifier.weight(1f)) {
-                                            MediaTile(
-                                                medium = medium,
-                                                isVideo = isVideo,
-                                                isSelected = item.path in selectedFilePaths,
-                                                isSelectionMode = hasFileSelection,
-                                                hasTag = itemTags.isNotEmpty(),
-                                                tags = itemTags,
-                                                onTagClick = if (!hasFileSelection) onTagClick else null,
-                                                showOverlays = true,
-                                                aspectRatio = 1f,
-                                                cornerShape = cornerShape,
-                                                cardColor = mediaBg,
-                                                itemSpacing = mediaSettings.spacing.dp,
-                                                showFileName = mediaSettings.showFileNames,
-                                                reserveGridCaptionSpace = mediaSettings.showFileNames,
-                                                showVideoDuration = ThumbnailOverlayState.showVideoDuration,
-                                                showRating = ThumbnailOverlayState.showRating,
-                                                markFavorite = true,
-                                                isNarrowTile = isNarrowMediaTile,
-                                                onClick = { onFileClick(item) },
-                                                onLongClick = { onFileLongClick(item) },
-                                                onSwipeToSelect = {},
-                                                onBoundsChanged = {},
-                                            )
-                                            if (hasFileSelection) {
-                                                IconButton(
-                                                    onClick = { peekState.show(item.path, isVideo) },
-                                                    modifier = Modifier.align(Alignment.TopEnd).size(48.dp),
-                                                ) {
-                                                    Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = Color.White, modifier = Modifier.size(20.dp))
-                                                }
-                                            }
-                                        }
-                                    }
-                                    repeat(mediaGridColumns - chunk.size) { Spacer(Modifier.weight(1f)) }
-                                }
-                            }
-                        }
-                            }
-                        }
-                        }
-                    }
-                    ViewType.MOSAIC -> {
-                        fileGroupRows.forEach { row ->
-                        when (row) {
-                            is org.fossify.gallery.helpers.GroupRow.SectionHeader -> item(key = "filehdr_${row.key}", contentType = "header") {
-                                SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = org.fossify.gallery.helpers.toggleGroupKey(collapsedGroupKeys, row.key) }, ratingValue = row.ratingValue, accentColor = row.rootKey?.let { org.fossify.gallery.compose.components.tagAccentColor(it) })
-                            }
-                            is org.fossify.gallery.helpers.GroupRow.Items -> {
-                        val groupFileItems = row.media.mapNotNull { fileItemByPath[it.path] }
-                        groupFileItems.chunked(EXPLORER_MOSAIC_CHUNK_SIZE).forEachIndexed { chunkIndex, chunk ->
-                            // Keep masonry composition bounded. The old implementation rendered all
-                            // files in this group inside one LazyColumn item, so a large folder was
-                            // effectively eager and one aspect-ratio result invalidated everything.
-                            item(key = "explorer_media_mosaic_${row.sectionKey}_$chunkIndex", contentType = "media_mosaic_chunk") {
-                                ExplorerMosaicChunk(
-                                    items = chunk,
-                                    tagsByPath = fileTagsByPath,
-                                    columnCount = mediaGridColumns,
-                                    spacing = mediaSettings.spacing.dp,
-                                    cornerShape = cornerShape,
-                                    displayMode = mediaSettings.displayMode,
-                                    showFileNames = mediaSettings.showFileNames,
-                                    hasFileSelection = hasFileSelection,
-                                    selectedFilePaths = selectedFilePaths,
-                                    onClick = ::onFileClick,
-                                    onLongClick = ::onFileLongClick,
-                                    onTagClick = onTagClick,
-                                    onPreviewClick = { item ->
-                                        val video = item.type == 2 ||
-                                            item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
-                                        peekState.show(item.path, video)
-                                    },
-                                )
-                            }
-                        }
-                            }
-                        }
-                        }
-                    }
-                    else -> {
-                        val listCompact = mediaSettings.listDensity == ListDensity.COMPACT
-                        val mediaListHalfGap = (((mediaSettings.spacing - 2) / 2).coerceAtLeast(0) / 2f).dp
-                        fileGroupRows.forEach { row ->
-                        when (row) {
-                            is org.fossify.gallery.helpers.GroupRow.SectionHeader -> item(key = "filehdr_${row.key}", contentType = "header") {
-                                SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = org.fossify.gallery.helpers.toggleGroupKey(collapsedGroupKeys, row.key) }, ratingValue = row.ratingValue, accentColor = row.rootKey?.let { org.fossify.gallery.compose.components.tagAccentColor(it) }, showGuideLine = true)
-                            }
-                            is org.fossify.gallery.helpers.GroupRow.Items -> {
-                        val groupFileItems = row.media.mapNotNull { fileItemByPath[it.path] }
-                        items(
-                            items = groupFileItems,
-                            key = { "${row.sectionKey}/${it.path}" },
-                            contentType = { "explorer_media_row" },
-                        ) { item ->
-                            val isVideo = item.type == 2 || item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
-                            val medium = remember(item) { item.toMediumForGrouping() }
-                            val itemTags = fileTagsByPath[item.path].orEmpty()
-                            val isSelected = item.path in selectedFilePaths
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = mediaListHalfGap),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                MediaListRow(
-                                    medium = medium,
-                                    isVideo = isVideo,
-                                    isSelected = isSelected,
-                                    hasSelection = hasFileSelection,
-                                    cardColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else mediaBg,
-                                    fileSizeLabel = remember(item.size) { formatFileSize(item.size) },
-                                    onClick = { onFileClick(item) },
-                                    onLongClick = { onFileLongClick(item) },
-                                    onSwipeToSelect = {},
-                                    onBoundsChanged = {},
-                                    modifier = Modifier.weight(1f),
-                                    showRating = ThumbnailOverlayState.showRating,
-                                    showVideoDuration = ThumbnailOverlayState.showVideoDuration,
-                                    compact = listCompact,
-                                    roundedCorners = mediaSettings.roundedCorners,
-                                    hasTag = itemTags.isNotEmpty(),
-                                    tags = itemTags,
-                                    onTagClick = if (!hasFileSelection) onTagClick else null,
-                                    markFavorite = true,
-                                )
-                                if (hasFileSelection) {
-                                    IconButton(onClick = { peekState.show(item.path, isVideo) }, modifier = Modifier.size(48.dp)) {
-                                        Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                                    }
-                                }
-                            }
-                        }
-                            }
-                        }
-                        }
-                    }
-                    }
-                }
-            }
-            if ((isNameFiltering || filterState.isActive) && visibleFolderItems.isEmpty() && visibleFileItems.isEmpty()) {
-                EmptyState(
-                    icon = Icons.Default.SearchOff,
-                    title = stringResource(R.string.no_results),
-                    subtitle = if (isNameFiltering) stringResource(R.string.explorer_name_filter_no_results, normalizedNameFilter) else stringResource(R.string.no_items_hint),
-                    actionLabel = stringResource(R.string.clear_filter),
-                    onAction = if (isNameFiltering) onClearNameFilter else filterActions.clearAll,
-                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface),
-                )
-            }
-            ColumnCountIndicator(
-                columnCount = indicatorColumnCount,
-                visible = showColumnIndicator,
-                onAutoHide = { showColumnIndicator = false },
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
+                    },
+                    onClearNameFilter = onClearNameFilter,
+                    filterActions = filterActions,
+                    onMediaColumnCountChange = onMediaColumnCountChange,
+                    onFolderColumnCountChange = onFolderColumnCountChange,
+                ),
+                modifier = Modifier.weight(1f),
             )
-            FastScrollBar(
-                state = listState,
-                modifier = Modifier.align(Alignment.CenterEnd).padding(vertical = 10.dp),
-            )
-            peekState.path?.let { peekPath ->
-                val peekBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
-                NavigationBackHandler(state = peekBackState, isBackEnabled = true, onBackCompleted = { peekState.hide() })
-                Box(
-                    Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.86f)).clickable { peekState.hide() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (peekState.isVideo) {
-                        VideoThumbnail(
-                            videoPath = peekPath,
-                            modifier = Modifier.fillMaxWidth(0.92f).fillMaxHeight(0.75f),
-                            contentScale = ContentScale.Fit,
-                            thumbnailSize = 1024,
-                        )
-                    } else {
-                        GalleryImage(
-                            path = peekPath,
-                            contentDescription = peekPath.substringAfterLast('/'),
-                            modifier = Modifier.fillMaxWidth(0.92f).fillMaxHeight(0.75f),
-                            contentScale = ContentScale.Fit,
-                            thumbnailSize = 1024,
-                        )
-                    }
-                }
-            }
-            }
         }
         }
 
@@ -1638,150 +1109,54 @@ fun ExplorerScreen(
     )
     }
 
-    if (showFileFolderPicker) {
-        val batch = selectedFilePaths.toList()
-        FolderPickerSheet(
-            isMoveOperation = fileFolderPickerIsMove,
-            sourcePaths = batch,
-            onDismiss = { showFileFolderPicker = false; selectedFilePaths = emptySet() },
-        )
-    }
-    fileInfoPath?.let { path ->
-        MediaInfoDialog(path = path, onDismiss = { fileInfoPath = null })
-    }
-    if (showFileRenameDialog) {
-        val batch = selectedFilePaths.toList()
-        RenameDialog(
-            paths = batch,
-            onRenamed = { mapping ->
-                selectedFilePaths = selectedFilePaths.map { mapping[it] ?: it }.toSet()
-                fileRangeAnchorPath = fileRangeAnchorPath?.let { mapping[it] ?: it }
-            },
-            onDismiss = { showFileRenameDialog = false },
-        )
-    }
-    if (showFileRateTagSheet) {
-        val batch = selectedFilePaths.toList()
-        LaunchedEffect(Unit) {
-            withContext(Dispatchers.IO) {
-                val counts = repo.getTagCountsCached()
-                fileAllTags = counts.entries.sortedByDescending { it.value }.map { it.key }
-                fileTagCounts = counts
+    ExplorerDialogsHost(
+        dialogsState = ExplorerDialogsState(
+            showFileFolderPicker = showFileFolderPicker,
+            fileFolderPickerIsMove = fileFolderPickerIsMove,
+            fileInfoPath = fileInfoPath,
+            showFileRenameDialog = showFileRenameDialog,
+            showFileRateTagSheet = showFileRateTagSheet,
+            showFileDeleteConfirm = showFileDeleteConfirm,
+            renameFolderPath = renameFolderPath,
+            showDeleteFoldersConfirm = showDeleteFoldersConfirm,
+            pendingMoverSources = pendingMoverSources,
+            selectedFilePaths = selectedFilePaths,
+            selectedFolderPaths = selectedFolderPaths,
+            fileCurrentRating = fileCurrentRating,
+            fileRatingIsMixed = fileRatingIsMixed,
+            fileSelectedCommonTags = fileSelectedCommonTags,
+            fileMixedTagCounts = fileMixedTagCounts,
+        ),
+        scope = scope,
+        onDismissFileFolderPicker = { showFileFolderPicker = false; selectedFilePaths = emptySet() },
+        onDismissFileInfo = { fileInfoPath = null },
+        onRenameFiles = { mapping ->
+            selectedFilePaths = selectedFilePaths.map { mapping[it] ?: it }.toSet()
+            fileRangeAnchorPath = fileRangeAnchorPath?.let { mapping[it] ?: it }
+        },
+        onDismissFileRename = { showFileRenameDialog = false },
+        onRateChange = { rating ->
+            fileCurrentRating = rating
+            fileRatingIsMixed = false
+        },
+        onDismissRateTag = { showFileRateTagSheet = false },
+        onConfirmFileDelete = {
+            showFileDeleteConfirm = false
+            val d = selectedFilePaths
+            context.withRecycleBinDeletePasswordCheck {
+                scope.launch(Dispatchers.IO) { repo.moveToRecycleBinBatch(d) }
+                UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE))
+                selectedFilePaths = emptySet()
             }
-        }
-        RateAndTagSheet(
-            batchCount = batch.size,
-            currentRating = fileCurrentRating,
-            ratingIsMixed = fileRatingIsMixed,
-            onRate = { i ->
-                fileCurrentRating = i
-                fileRatingIsMixed = false
-                scope.launch {
-                    val oldRatings = withContext(Dispatchers.IO) { repo.getRatingsForPaths(batch) }
-                    val successful = mutableListOf<String>()
-                    org.fossify.gallery.compose.util.XmpBatch.run(context, batch.distinct(), onSuccess = { successful += it }) {
-                        repo.writeRatingXmp(it, i)
-                    }
-                    withContext(Dispatchers.IO) {
-                        repo.setDbRatingBatch(successful, i)
-                        repo.refreshMetadataCache(successful)
-                    }
-                    if (successful.isNotEmpty()) UndoManager.push(UndoAction(successful.toSet(), UndoType.RATING_CHANGE, ratingSnapshots = oldRatings.filterKeys { it in successful }))
-                }
-            },
-            initialTags = fileSelectedCommonTags,
-            mixedTagCounts = fileMixedTagCounts,
-            onAddTag = { tag -> scope.launch {
-                val successful = mutableSetOf<String>()
-                org.fossify.gallery.compose.util.XmpBatch.run(context, batch.distinct(), onSuccess = { successful += it }) { repo.addTag(it, tag) }
-                if (successful.isNotEmpty()) {
-                    context.config.rememberRecentTag(tag)
-                    UndoManager.push(UndoAction(successful, UndoType.TAG_ADD, extra = mapOf("tag" to tag)))
-                }
-            } },
-            onRemoveTag = { tag -> scope.launch {
-                val successful = mutableSetOf<String>()
-                org.fossify.gallery.compose.util.XmpBatch.run(context, batch.distinct(), onSuccess = { successful += it }) { repo.removeTag(it, tag) }
-                if (successful.isNotEmpty()) UndoManager.push(UndoAction(successful, UndoType.TAG_REMOVE, extra = mapOf("tag" to tag)))
-            } },
-            suggestedTags = fileAllTags,
-            suggestedTagCounts = fileTagCounts,
-            recentTags = context.config.recentTags,
-            tagHierarchy = context.config.tagHierarchy,
-            onSetTagParent = { child, parent ->
-                val hierarchy = context.config.tagHierarchy.toMutableMap()
-                if (parent.isNullOrBlank()) hierarchy.remove(child) else hierarchy[child] = parent
-                context.config.tagHierarchy = hierarchy
-            },
-            onDismiss = { showFileRateTagSheet = false },
-        )
-    }
-    if (showFileDeleteConfirm) {
-        val itemsCnt = selectedFilePaths.size
-        val res = androidx.compose.ui.platform.LocalResources.current
-        val itemsText = res.getQuantityString(org.fossify.commons.R.plurals.delete_items, itemsCnt, itemsCnt)
-        val question = res.getString(if (context.config.useRecycleBin) org.fossify.commons.R.string.move_to_recycle_bin_confirmation else org.fossify.commons.R.string.deletion_confirmation, itemsText)
-        ConfirmDestructive(
-            title = stringResource(org.fossify.commons.R.string.delete),
-            text = question,
-            confirmLabel = stringResource(org.fossify.commons.R.string.delete),
-            onConfirm = {
-                showFileDeleteConfirm = false
-                val d = selectedFilePaths
-                context.withRecycleBinDeletePasswordCheck {
-                    scope.launch(Dispatchers.IO) { repo.moveToRecycleBinBatch(d) }
-                    UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE))
-                    selectedFilePaths = emptySet()
-                }
-            },
-            onDismiss = { showFileDeleteConfirm = false },
-        )
-    }
-
-    renameFolderPath?.let { path ->
-        FolderRenameDialog(
-            folderPath = path,
-            onDismiss = { renameFolderPath = null },
-            onRenamed = { _, _ -> selectedFolderPaths = emptySet() },
-        )
-    }
-
-    if (showDeleteFoldersConfirm) {
-        ConfirmDestructive(
-            title = stringResource(org.fossify.commons.R.string.delete),
-            text = stringResource(R.string.delete_folders_confirmation),
-            confirmLabel = stringResource(org.fossify.commons.R.string.delete),
-            onConfirm = {
-                showDeleteFoldersConfirm = false
-                val folders = selectedFolderPaths
-                context.withRecycleBinDeletePasswordCheck {
-                    selectedFolderPaths = emptySet()
-                    scope.launch {
-                        val paths = withContext(Dispatchers.IO) { repo.mediaPathsUnderFolders(folders) }
-                        if (paths.isNotEmpty()) {
-                            repo.moveToRecycleBinBatch(paths)
-                            UndoManager.push(UndoAction(paths = paths.toSet(), type = UndoType.DELETE))
-                        }
-                    }
-                }
-            },
-            onDismiss = { showDeleteFoldersConfirm = false },
-        )
-    }
-
-    pendingMoverSources?.let { sources ->
-        val addedFormat = stringResource(R.string.mover_pair_added)
-        val addedCountFormat = stringResource(R.string.mover_pairs_added_count)
-        FolderPathPickerSheet(
-            title = stringResource(R.string.mover_select_dest),
-            initialPath = context.config.lastExplorerPath.ifBlank { context.config.internalStoragePath },
-            onPathSelected = { destination ->
-                org.fossify.gallery.helpers.addMoverPairs(context, sources, destination)
-                val msg = if (sources.size == 1) addedFormat.format(File(sources[0]).name, File(destination).name) else addedCountFormat.format(sources.size, File(destination).name)
-                context.toast(msg, android.widget.Toast.LENGTH_SHORT)
-            },
-            onDismiss = { pendingMoverSources = null },
-            suggestedFolderName = if (sources.size == 1) File(sources[0]).name else null,
-        )
-    }
+        },
+        onDismissFileDelete = { showFileDeleteConfirm = false },
+        onRenameFolder = { selectedFolderPaths = emptySet() },
+        onDismissFolderRename = { renameFolderPath = null },
+        onConfirmFolderDelete = {
+            showDeleteFoldersConfirm = false
+            selectedFolderPaths = emptySet()
+        },
+        onDismissFolderDelete = { showDeleteFoldersConfirm = false },
+        onDismissMoverPicker = { pendingMoverSources = null },
+    )
 }
