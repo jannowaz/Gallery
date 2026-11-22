@@ -3,12 +3,10 @@
   <ManuallySuppressedIssues/>
   <CurrentIssues>
     <ID>ComplexCondition:Activity.kt$(hide &amp;&amp; filename.startsWith('.')) || (!hide &amp;&amp; !filename.startsWith('.'))</ID>
-    <ID>ComplexCondition:ComposeExplorerActivity.kt$(uiState.dbInitialized || uiState.dbInitError != null) &amp;&amp; (uiState.selectedTab != 1 || !albumsState.isLoading)</ID>
     <ID>ComplexCondition:DuplicateScanner.kt$DuplicateScanner$i == 0 || percent == 100 || (percent != lastPublishedPercent &amp;&amp; now - lastPublishedAt &gt;= 120L)</ID>
     <ID>ComplexCondition:ExplorerScreen.kt$(isNameFiltering || filterState.isActive) &amp;&amp; visibleFolderItems.isEmpty() &amp;&amp; visibleFileItems.isEmpty()</ID>
     <ID>ComplexCondition:FolderPathPickerSheet.kt$folderName.isNotBlank() &amp;&amp; folderName != "." &amp;&amp; folderName != ".." &amp;&amp; !folderName.contains('/') &amp;&amp; !folderName.contains('\\')</ID>
     <ID>ComplexCondition:FolderPickerSheet.kt$folderName.isNotBlank() &amp;&amp; folderName != "." &amp;&amp; folderName != ".." &amp;&amp; !folderName.contains('/') &amp;&amp; !folderName.contains('\\')</ID>
-    <ID>ComplexCondition:GalleryRegionDecoder.kt$GalleryRegionDecoder$(rect.width() &gt; rect.height() &amp;&amp; screenWidth &gt; screenHeight) || (rect.height() &gt; rect.width() &amp;&amp; screenHeight &gt; screenWidth)</ID>
     <ID>ComplexCondition:MediaAnalyzer.kt$MediaAnalyzer$i == 0 || progress == 100 || (progress != lastPublishedPercent &amp;&amp; now - lastPublishedAt &gt;= 120L)</ID>
     <ID>ComplexCondition:MediaFetcher.kt$MediaFetcher$!isImage &amp;&amp; !isVideo &amp;&amp; !isGif &amp;&amp; !isRaw &amp;&amp; !isSvg</ID>
     <ID>ComplexCondition:MediaFetcher.kt$MediaFetcher$curPath != FAVORITES &amp;&amp; curPath != RECYCLE_BIN &amp;&amp; isRPlus() &amp;&amp; !isExternalStorageManager()</ID>
@@ -596,19 +594,15 @@
     <ID>MagicNumber:PersonPresenceDetector.kt$PersonPresenceDetector$270</ID>
     <ID>MagicNumber:PersonPresenceDetector.kt$PersonPresenceDetector$4</ID>
     <ID>MagicNumber:PersonPresenceDetector.kt$PersonPresenceDetector$90</ID>
-    <ID>MagicNumber:PrivacyBlurView.kt$0.04f</ID>
-    <ID>MagicNumber:PrivacyScrim.kt$235</ID>
     <ID>MagicNumber:RecycleBinCleanupWorker.kt$RecycleBinCleanupWorker.Companion$24</ID>
     <ID>MagicNumber:RefreshBus.kt$RefreshBus$256L</ID>
     <ID>MagicNumber:RefreshBus.kt$RefreshBus$300</ID>
     <ID>MagicNumber:SelectableModifier.kt$4f</ID>
     <ID>MagicNumber:SelectableModifier.kt$80f</ID>
-    <ID>MagicNumber:SetWallpaperActivity.kt$SetWallpaperActivity$90</ID>
     <ID>MagicNumber:SettingsDialogs.kt$1_000_000</ID>
     <ID>MagicNumber:SettingsDialogs.kt$1_000_000.0</ID>
     <ID>MagicNumber:SettingsDialogs.kt$3</ID>
     <ID>MagicNumber:SharedElementModifier.kt$300</ID>
-    <ID>MagicNumber:SimpleActivity.kt$SimpleActivity.&lt;no name provided&gt;$1500</ID>
     <ID>MagicNumber:StorageAnalysisScreen.kt$60</ID>
     <ID>MagicNumber:StorageAnalysisViewModel.kt$TransformationEngine$0.4f</ID>
     <ID>MagicNumber:StorageAnalysisViewModel.kt$TransformationEngine$0.8f</ID>
@@ -656,7 +650,6 @@
     <ID>MagicNumber:VideoTrimmerSheet.kt$3600L</ID>
     <ID>MagicNumber:VideoTrimmerSheet.kt$60L</ID>
     <ID>MagicNumber:VideoTrimmerSheet.kt$&lt;no name provided&gt;$250</ID>
-    <ID>MagicNumber:View.kt$200</ID>
     <ID>MagicNumber:ViewSettingsViewModel.kt$ViewSettingsViewModel$10</ID>
     <ID>MagicNumber:ViewSettingsViewModel.kt$ViewSettingsViewModel$11</ID>
     <ID>MagicNumber:ViewSettingsViewModel.kt$ViewSettingsViewModel$12</ID>
@@ -779,7 +772,6 @@
     <ID>MaxLineLength:CollectionsScreen.kt$var selectedCollectionIds by rememberSaveable(stateSaver = collectionSelectionSaver) { mutableStateOf&lt;Set&lt;String&gt;&gt;(emptySet()) }</ID>
     <ID>MaxLineLength:ComposeExplorerActivity.kt$ComposeExplorerActivity$.</ID>
     <ID>MaxLineLength:ComposeExplorerActivity.kt$ComposeExplorerActivity$Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(48.dp))</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$ComposeExplorerActivity$MediaPermissionState.FULL, MediaPermissionState.SELECTED -&gt; GalleryNavHost(onContentReady = ::reportContentReady)</ID>
     <ID>MaxLineLength:ComposeExplorerActivity.kt$ComposeExplorerActivity$imagesGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED</ID>
     <ID>MaxLineLength:ComposeExplorerActivity.kt$ComposeExplorerActivity$startActivity</ID>
     <ID>MaxLineLength:ComposeExplorerActivity.kt$ComposeExplorerActivity$try { batchJobItemDB.deleteStale(System.currentTimeMillis() - 24 * 60 * 60 * 1000L) } catch (e: Exception) { android.util.Log.e("Explorer", "Stale batch-job cleanup failed", e) }</ID>
@@ -1372,8 +1364,6 @@
     <ID>MaxLineLength:GalleryNavHost.kt$org.fossify.gallery.helpers.PickIntent</ID>
     <ID>MaxLineLength:GalleryNavHost.kt$org.fossify.gallery.workers.MediaBatchWorker.enqueue(appCtx, org.fossify.gallery.workers.BatchOperation.MOVE_COPY_DELETE, items)</ID>
     <ID>MaxLineLength:GalleryNavHost.kt$popExitTransition = { fadeOut(AppMotion.short) + scaleOut(targetScale = 0.92f, animationSpec = AppMotion.short) }</ID>
-    <ID>MaxLineLength:GalleryRegionDecoder.kt$GalleryRegionDecoder$if</ID>
-    <ID>MaxLineLength:GalleryRegionDecoder.kt$GalleryRegionDecoder$return bitmap ?: throw RuntimeException("Region decoder returned null bitmap - image format may not be supported")</ID>
     <ID>MaxLineLength:GifInspectTest.kt$GifInspectTest$assertEquals(-1, GifInspect.frameCount(ByteArrayInputStream(intBytes(0x89, 0x50, 0x4E, 0x47, 1, 2, 3, 4, 5, 6, 7, 8))))</ID>
     <ID>MaxLineLength:GifInspectTest.kt$GifInspectTest$private</ID>
     <ID>MaxLineLength:GifInspectTest.kt$GifInspectTest$private fun count(vararg parts: ByteArray)</ID>
@@ -1916,7 +1906,6 @@
     <ID>MaxLineLength:SelectionTopAppBar.kt$onResetReview?.let { action -&gt; DropdownMenuItem(text = { Text(stringResource(R.string.review_reset)) }, onClick = { closeSheetAnd(action) }) }</ID>
     <ID>MaxLineLength:SelectionTopAppBar.kt$onSkipReview?.let { action -&gt; DropdownMenuItem(text = { Text(stringResource(R.string.review_skip)) }, onClick = { closeSheetAnd(action) }) }</ID>
     <ID>MaxLineLength:SelectionTopAppBar.kt$onTags?.let { action -&gt; DropdownMenuItem(text = { Text(stringResource(R.string.action_tags)) }, onClick = { closeSheetAnd(action) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Label, null) }) }</ID>
-    <ID>MaxLineLength:SetWallpaperActivity.kt$SetWallpaperActivity$RadioItem(WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK, getString(R.string.home_and_lock_screen))</ID>
     <ID>MaxLineLength:SettingsBackupHelper.kt$SettingsBackupHelper$T_STRING_SET -&gt; (e.value as? List&lt;*&gt;)?.let { editor.putStringSet(e.key, it.filterIsInstance&lt;String&gt;().toSet()) }</ID>
     <ID>MaxLineLength:SettingsDialogs.kt$Checkbox(checked = result and flag != 0, onCheckedChange = { if (it) result += flag else result -= flag })</ID>
     <ID>MaxLineLength:SettingsDialogs.kt$EXT_DATE_TAKEN to stringResource(R.string.date_taken_full)</ID>
@@ -2153,7 +2142,6 @@
     <ID>MaxLineLength:UndoBar.kt$Row</ID>
     <ID>MaxLineLength:UndoBar.kt$Text(label, color = MaterialTheme.colorScheme.inverseOnSurface, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))</ID>
     <ID>MaxLineLength:UndoBar.kt$Text(stringResource(if (undoError) R.string.retry else R.string.undo), color = MaterialTheme.colorScheme.inversePrimary, style = MaterialTheme.typography.labelLarge)</ID>
-    <ID>MaxLineLength:UndoBar.kt$UndoType.OPTIMIZE_REPLACE -&gt; stringResource(R.string.undo_optimized_count, visibleAction?.paths?.size ?: 0)</ID>
     <ID>MaxLineLength:VideoFrameExtractor.kt$VideoFrameExtractor$android.util.Log.d("FrameExtractor", "sampled ${out.size}/$steps frames in ${System.currentTimeMillis() - started}ms")</ID>
     <ID>MaxLineLength:VideoFrameExtractor.kt$VideoFrameExtractor$if</ID>
     <ID>MaxLineLength:VideoFrameExtractor.kt$VideoFrameExtractor$if (saved.isNotEmpty()) runCatching { MediaScannerConnection.scanFile(context, saved.toTypedArray(), null, null) }</ID>
@@ -2168,7 +2156,6 @@
     <ID>MaxLineLength:VideoPage.kt$Box</ID>
     <ID>MaxLineLength:VideoPage.kt$Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions), tint = Color.White, modifier = Modifier.size(22.dp))</ID>
     <ID>MaxLineLength:VideoPage.kt$IconButton</ID>
-    <ID>MaxLineLength:VideoPage.kt$IconButton(onClick = { isMuted = !isMuted; player.volume = if (isMuted) 0f else 1f; onInteract() }, modifier = Modifier.size(48.dp)) { Icon(if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, stringResource(R.string.set_mute_videos), tint = Color.White, modifier = Modifier.size(22.dp)) }</ID>
     <ID>MaxLineLength:VideoPage.kt$Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Scrim.a60).padding(horizontal = 12.dp, vertical = 8.dp).navigationBarsPadding()</ID>
     <ID>MaxLineLength:VideoPage.kt$Text(stringResource(R.string.trim_save), color = if (validRange) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.4f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)</ID>
     <ID>MaxLineLength:VideoPage.kt$Text(stringResource(org.fossify.commons.R.string.cancel), color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelLarge)</ID>
@@ -2484,7 +2471,6 @@
     <ID>TooGenericExceptionCaught:VideoPage.kt$e: Exception</ID>
     <ID>TooGenericExceptionCaught:ViewerScreen.kt$e: Exception</ID>
     <ID>TooGenericExceptionCaught:XmpBatch.kt$XmpBatch$e: Exception</ID>
-    <ID>TooGenericExceptionThrown:GalleryRegionDecoder.kt$GalleryRegionDecoder$throw RuntimeException("Region decoder returned null bitmap - image format may not be supported")</ID>
     <ID>TooManyFunctions:Activity.kt$org.fossify.gallery.extensions.Activity.kt</ID>
     <ID>TooManyFunctions:AnalysisCriteria.kt$AnalysisCriteria</ID>
     <ID>TooManyFunctions:ComposeExplorerActivity.kt$ComposeExplorerActivity : FragmentActivity</ID>
@@ -2511,7 +2497,6 @@
     <ID>TooManyFunctions:Routes.kt$ViewerArgs</ID>
     <ID>TooManyFunctions:SettingsDialogs.kt$org.fossify.gallery.compose.screens.settings.SettingsDialogs.kt</ID>
     <ID>TooManyFunctions:SettingsScreen.kt$org.fossify.gallery.compose.screens.settings.SettingsScreen.kt</ID>
-    <ID>TooManyFunctions:SimpleActivity.kt$SimpleActivity : BaseSimpleActivity</ID>
     <ID>TooManyFunctions:StorageAnalysisViewModel.kt$StorageAnalysisViewModel : AndroidViewModel</ID>
     <ID>TooManyFunctions:ViewSettingsViewModel.kt$ViewSettingsViewModel : AndroidViewModel</ID>
     <ID>TooManyFunctions:XmpWriter.kt$XmpWriter</ID>
@@ -2542,8 +2527,6 @@
     <ID>UnusedPrivateProperty:FolderPickerSheet.kt$val parentPath = File(dest).parent ?: rootPath</ID>
     <ID>UnusedPrivateProperty:MediaViewModelTest.kt$MediaViewModelTest$private lateinit var viewModel: MediaViewModel</ID>
     <ID>UnusedPrivateProperty:String.kt$i</ID>
-    <ID>UnusedPrivateProperty:TimelineHelper.kt$TimelineHelper$val calendar = Calendar.getInstance()</ID>
-    <ID>UnusedPrivateProperty:TimelineHelper.kt$TimelineHelper$val now = System.currentTimeMillis() / 1000</ID>
     <ID>UnusedPrivateProperty:ViewerScreen.kt$var showPersistentTags by remember { mutableStateOf(true) }</ID>
     <ID>UnusedPrivateProperty:ViewerScreen.kt$var showQuickTags by remember { mutableStateOf(false) }</ID>
     <ID>UnusedPrivateProperty:ViewerScreen.kt$var tagRefreshTrigger by remember { mutableIntStateOf(0) }</ID>
@@ -2589,6 +2572,5 @@
     <ID>WildcardImport:Medium.kt$import org.fossify.gallery.helpers.*</ID>
     <ID>WildcardImport:MediumDao.kt$import androidx.room.*</ID>
     <ID>WildcardImport:ResizeDialog.kt$import org.fossify.commons.extensions.*</ID>
-    <ID>WildcardImport:SimpleActivity.kt$import org.fossify.commons.extensions.*</ID>
   </CurrentIssues>
 </SmellBaseline>

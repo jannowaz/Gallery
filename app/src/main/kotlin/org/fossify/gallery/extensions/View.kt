@@ -1,18 +1,7 @@
 package org.fossify.gallery.extensions
 
-import android.os.SystemClock
-import android.view.MotionEvent
 import android.view.View
-import androidx.core.graphics.ColorUtils
 import org.fossify.commons.extensions.toast
-
-fun View.sendFakeClick(x: Float, y: Float) {
-    val uptime = SystemClock.uptimeMillis()
-    val event = MotionEvent.obtain(uptime, uptime, MotionEvent.ACTION_DOWN, x, y, 0)
-    dispatchTouchEvent(event)
-    event.action = MotionEvent.ACTION_UP
-    dispatchTouchEvent(event)
-}
 
 fun View.showContentDescriptionOnLongClick() {
     setOnLongClickListener {
@@ -22,8 +11,4 @@ fun View.showContentDescriptionOnLongClick() {
         }
         true
     }
-}
-
-fun View.applyGlassmorphism(bgColor: Int) {
-    setBackgroundColor(ColorUtils.setAlphaComponent(bgColor, 200))
 }

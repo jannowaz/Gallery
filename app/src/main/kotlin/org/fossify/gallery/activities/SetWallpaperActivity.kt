@@ -2,171 +2,263 @@ package org.fossify.gallery.activities
 
 import android.app.WallpaperManager
 import android.content.Intent
-import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
+import android.view.WindowManager
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.scale
+import androidx.lifecycle.lifecycleScope
+import com.canhub.cropper.CropImageOptions
 import com.canhub.cropper.CropImageView
-import org.fossify.commons.dialogs.RadioGroupDialog
-import org.fossify.commons.extensions.checkAppSideloading
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
-import org.fossify.commons.extensions.viewBinding
-import org.fossify.commons.helpers.NavigationIcon
-import org.fossify.commons.helpers.ensureBackgroundThread
-import org.fossify.commons.models.RadioItem
 import org.fossify.gallery.R
-import org.fossify.gallery.databinding.ActivitySetWallpaperBinding
+import org.fossify.gallery.compose.screens.wallpaper.SetWallpaperScreen
+import org.fossify.gallery.compose.screens.wallpaper.WallpaperAspectRatio
+import org.fossify.gallery.compose.screens.wallpaper.WallpaperTarget
+import org.fossify.gallery.compose.theme.GalleryTheme
+import org.fossify.gallery.compose.theme.resolveDarkTheme
+import org.fossify.gallery.extensions.config
+import org.fossify.gallery.helpers.IntentSecurity
+import java.io.IOException
 
-class SetWallpaperActivity : BaseCropActivity() {
+class SetWallpaperActivity : ComponentActivity() {
     companion object {
-        private const val RATIO_PORTRAIT = 0
-        private const val RATIO_LANDSCAPE = 1
-        private const val RATIO_SQUARE = 2
-        private const val PICK_IMAGE = 1
+        private const val TAG = "SetWallpaperActivity"
+        private const val ROTATE_RIGHT_DEGREES = 90
     }
 
-    private var aspectRatio = RATIO_PORTRAIT
-    private var wallpaperFlag = -1
+    private var imageUri by mutableStateOf<Uri?>(null)
+    private var aspectRatio by mutableStateOf(WallpaperAspectRatio.PORTRAIT)
+    private var isApplying by mutableStateOf(false)
+    private var showTargetDialog by mutableStateOf(false)
 
-    lateinit var uri: Uri
-    lateinit var wallpaperManager: WallpaperManager
+    private var cropImageView: CropImageView? = null
+    private var lastLoadedUri: Uri? = null
+    private var applyJob: Job? = null
 
-    private val binding by viewBinding(ActivitySetWallpaperBinding::inflate)
+    private val wallpaperManager: WallpaperManager by lazy {
+        WallpaperManager.getInstance(applicationContext)
+    }
 
-    override val cropImageView: CropImageView
-        get() = binding.cropImageView
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(binding.root)
-        setupEdgeToEdge(
-            padBottomSystem = listOf(binding.activitySetWallpaperHolder)
-        )
-        setupBottomActions()
-
-        if (checkAppSideloading()) {
-            return
+    private val pickImageLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val resultData = result.data
+        if (result.resultCode == RESULT_OK && resultData != null) {
+            handleIncomingIntent(resultData)
+        } else {
+            finish()
         }
+    }
 
-        setupOptionsMenu()
-        if (intent.data == null) {
-            val pickIntent = Intent(applicationContext, ComposeExplorerActivity::class.java)
-            pickIntent.action = Intent.ACTION_PICK
-            pickIntent.type = "image/*"
-            startActivityForResult(pickIntent, PICK_IMAGE)
-            return
+    private fun updateSecureWindowFlag() {
+        if (config.isAppPasswordProtectionOn || config.blurAllMedia) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
-
-        handleImage(intent)
     }
 
     override fun onResume() {
         super.onResume()
-        setupTopAppBar(binding.setWallpaperAppbar, NavigationIcon.Arrow)
+        updateSecureWindowFlag()
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, resultData: Intent?) {
-        if (requestCode == PICK_IMAGE) {
-            if (resultCode == RESULT_OK && resultData != null) {
-                handleImage(resultData)
-            } else {
-                finish()
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        updateSecureWindowFlag()
+
+        if (intent.data == null) {
+            val pickIntent = Intent(applicationContext, ComposeExplorerActivity::class.java).apply {
+                action = Intent.ACTION_PICK
+                type = "image/*"
+            }
+            pickImageLauncher.launch(pickIntent)
+        } else {
+            handleIncomingIntent(intent)
+        }
+
+        setContent {
+            GalleryTheme(
+                darkTheme = resolveDarkTheme(config.forceDarkMode, config.forceLightMode),
+                dynamicColor = config.useDynamicColors,
+                amoledBlack = config.useAmoledBackground,
+            ) {
+                SetWallpaperScreen(
+                    hasImage = imageUri != null,
+                    aspectRatio = aspectRatio,
+                    isApplying = isApplying,
+                    showTargetDialog = showTargetDialog,
+                    onBack = { finish() },
+                    onCycleAspectRatio = {
+                        aspectRatio = aspectRatio.nextPreset()
+                        cropImageView?.let(::applyAspectRatio)
+                    },
+                    onAllowFreeAspectRatio = {
+                        aspectRatio = WallpaperAspectRatio.FREE
+                        cropImageView?.clearAspectRatio()
+                    },
+                    onRotateRight = {
+                        cropImageView?.rotateImage(ROTATE_RIGHT_DEGREES)
+                    },
+                    onSaveClick = {
+                        showTargetDialog = true
+                    },
+                    onDismissTargetDialog = {
+                        showTargetDialog = false
+                    },
+                    onConfirmTarget = { target ->
+                        showTargetDialog = false
+                        applyWallpaper(target)
+                    },
+                ) { modifier ->
+                    val currentUri = imageUri
+                    AndroidView(
+                        modifier = modifier,
+                        factory = { ctx ->
+                            CropImageView(ctx).apply {
+                                setImageCropOptions(
+                                    CropImageOptions(
+                                        backgroundColor = ContextCompat.getColor(
+                                            ctx,
+                                            R.color.crop_image_view_background,
+                                        ),
+                                        initialCropWindowPaddingRatio = 0f,
+                                    ),
+                                )
+                                cropImageView = this
+                            }
+                        },
+                        update = { view ->
+                            cropImageView = view
+                            if (currentUri != null && currentUri != lastLoadedUri) {
+                                lastLoadedUri = currentUri
+                                view.setImageUriAsync(currentUri)
+                                applyAspectRatio(view)
+                            }
+                        },
+                    )
+                }
             }
         }
-        super.onActivityResult(requestCode, resultCode, resultData)
     }
 
-    private fun setupOptionsMenu() {
-        binding.setWallpaperToolbar.setOnMenuItemClickListener { menuItem ->
-            when (menuItem.itemId) {
-                R.id.save -> confirmWallpaper()
-                R.id.allow_changing_aspect_ratio -> binding.cropImageView.clearAspectRatio()
-                else -> return@setOnMenuItemClickListener false
-            }
-            return@setOnMenuItemClickListener true
-        }
+    override fun onDestroy() {
+        applyJob?.cancel()
+        cropImageView = null
+        super.onDestroy()
     }
 
-    private fun handleImage(intent: Intent) {
-        val incomingUri = intent.data
-        if (incomingUri == null || !org.fossify.gallery.helpers.IntentSecurity.isSafeIncomingUri(this, incomingUri)) {
+    private fun handleIncomingIntent(sourceIntent: Intent) {
+        val incomingUri = sourceIntent.data
+        if (incomingUri == null || !IntentSecurity.isSafeIncomingUri(this, incomingUri)) {
             toast(R.string.unknown_file_location)
             finish()
             return
         }
-        uri = incomingUri
-
-        wallpaperManager = WallpaperManager.getInstance(applicationContext)
-        binding.cropImageView.apply {
-            setImageUriAsync(uri)
-        }
-
-        setupAspectRatio()
+        imageUri = incomingUri
     }
 
-    private fun setupBottomActions() {
-        binding.bottomSetWallpaperActions.bottomSetWallpaperAspectRatio.setOnClickListener {
-            changeAspectRatio()
-        }
-
-        binding.bottomSetWallpaperActions.bottomSetWallpaperRotate.setOnClickListener {
-            binding.cropImageView.rotateImage(90)
-        }
-    }
-
-    private fun setupAspectRatio() {
-        var widthToUse = wallpaperManager.desiredMinimumWidth
-        val heightToUse = wallpaperManager.desiredMinimumHeight
-        if (widthToUse == heightToUse) {
-            widthToUse /= 2
-        }
-
-        when (aspectRatio) {
-            RATIO_PORTRAIT -> binding.cropImageView.setAspectRatio(heightToUse, widthToUse)
-            RATIO_LANDSCAPE -> binding.cropImageView.setAspectRatio(widthToUse, heightToUse)
-            else -> binding.cropImageView.setAspectRatio(widthToUse, widthToUse)
-        }
-    }
-
-    private fun changeAspectRatio() {
-        aspectRatio = ++aspectRatio % (RATIO_SQUARE + 1)
-        setupAspectRatio()
-    }
-
-    private fun confirmWallpaper() {
-        val items = arrayListOf(
-            RadioItem(WallpaperManager.FLAG_SYSTEM, getString(R.string.home_screen)),
-            RadioItem(WallpaperManager.FLAG_LOCK, getString(R.string.lock_screen)),
-            RadioItem(WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK, getString(R.string.home_and_lock_screen))
-        )
-
-        RadioGroupDialog(this, items) {
-            wallpaperFlag = it as Int
-            cropImage()
-        }
-    }
-
-    override fun onImageCropped(bitmap: Bitmap?, error: Exception?) {
-        if (isFinishing || isDestroyed) return
-        if (error != null || bitmap == null) {
-            toast("${getString(R.string.image_editing_failed)}: ${error?.message}")
+    private fun applyAspectRatio(view: CropImageView) {
+        if (aspectRatio == WallpaperAspectRatio.FREE) {
+            view.clearAspectRatio()
             return
         }
 
-        toast(R.string.setting_wallpaper)
-        ensureBackgroundThread {
-            val wantedHeight = wallpaperManager.desiredMinimumHeight
-            val ratio = wantedHeight / bitmap.height.toFloat()
-            val wantedWidth = (bitmap.width * ratio).toInt()
-            try {
-                val scaledBitmap = bitmap.scale(wantedWidth, wantedHeight)
-                wallpaperManager.setBitmap(scaledBitmap, null, true, wallpaperFlag)
-                setResult(RESULT_OK)
-            } catch (ignored: OutOfMemoryError) {
+        val heightToUse = wallpaperManager.desiredMinimumHeight.coerceAtLeast(1)
+        var widthToUse = wallpaperManager.desiredMinimumWidth.coerceAtLeast(1)
+        if (widthToUse == heightToUse) {
+            widthToUse = (widthToUse / 2).coerceAtLeast(1)
+        }
+
+        when (aspectRatio) {
+            WallpaperAspectRatio.PORTRAIT -> view.setAspectRatio(heightToUse, widthToUse)
+            WallpaperAspectRatio.LANDSCAPE -> view.setAspectRatio(widthToUse, heightToUse)
+            WallpaperAspectRatio.SQUARE -> view.setAspectRatio(widthToUse, widthToUse)
+            WallpaperAspectRatio.FREE -> view.clearAspectRatio()
+        }
+    }
+
+    private fun applyWallpaper(target: WallpaperTarget) {
+        val cropView = cropImageView ?: return
+        isApplying = true
+        applyJob?.cancel()
+        applyJob = lifecycleScope.launch {
+            val bitmap = try {
+                withContext(Dispatchers.Default) {
+                    cropView.getCroppedImage()
+                }
+            } catch (oom: OutOfMemoryError) {
+                Log.e(TAG, "Cropping wallpaper failed with OOM", oom)
+                isApplying = false
                 toast(org.fossify.commons.R.string.out_of_memory_error)
+                return@launch
+            }
+
+            if (isFinishing || isDestroyed) return@launch
+            if (bitmap == null) {
+                isApplying = false
+                toast(R.string.set_as_wallpaper_failed)
+                return@launch
+            }
+
+            val applied = withContext(Dispatchers.IO) {
+                setScaledWallpaper(bitmap, target)
+            }
+
+            if (isFinishing || isDestroyed) return@launch
+            isApplying = false
+            if (applied) {
+                toast(R.string.wallpaper_set_successfully)
+                setResult(RESULT_OK)
+                finish()
+            } else {
                 setResult(RESULT_CANCELED)
             }
-            finish()
+        }
+    }
+
+    private fun setScaledWallpaper(
+        bitmap: android.graphics.Bitmap,
+        target: WallpaperTarget,
+    ): Boolean {
+        return try {
+            val wantedHeight = wallpaperManager.desiredMinimumHeight.coerceAtLeast(1)
+            val ratio = wantedHeight / bitmap.height.coerceAtLeast(1).toFloat()
+            val wantedWidth = (bitmap.width * ratio).toInt().coerceAtLeast(1)
+            val scaledBitmap = bitmap.scale(wantedWidth, wantedHeight)
+            wallpaperManager.setBitmap(scaledBitmap, null, true, target.flag)
+            true
+        } catch (oom: OutOfMemoryError) {
+            Log.e(TAG, "Scaling wallpaper failed with OOM", oom)
+            toast(org.fossify.commons.R.string.out_of_memory_error)
+            false
+        } catch (ioe: IOException) {
+            Log.e(TAG, "Failed to apply wallpaper", ioe)
+            toast(R.string.set_as_wallpaper_failed)
+            false
+        } catch (se: SecurityException) {
+            Log.e(TAG, "Permission denied while setting wallpaper", se)
+            toast(R.string.set_as_wallpaper_failed)
+            false
         }
     }
 }

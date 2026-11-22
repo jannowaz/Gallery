@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CallSplit
+import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Block
@@ -46,7 +46,11 @@ fun MoveConflictDialog(
             Column {
                 Text(stringResource(R.string.move_conflict_text, conflictCount))
                 Spacer(Modifier.height(12.dp))
-                Option(Icons.Default.CallSplit, stringResource(R.string.move_conflict_keep_both), onKeepBoth)
+                Option(
+                    Icons.AutoMirrored.Filled.CallSplit,
+                    stringResource(R.string.move_conflict_keep_both),
+                    onKeepBoth,
+                )
                 Spacer(Modifier.height(6.dp))
                 Option(Icons.Default.SwapHoriz, stringResource(R.string.move_conflict_replace), onReplace)
                 Spacer(Modifier.height(6.dp))

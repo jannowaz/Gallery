@@ -22,7 +22,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -105,7 +104,10 @@ fun UndoBar(modifier: Modifier = Modifier, onActionLabel: ((UndoAction) -> Strin
                         UndoType.TAG_HIERARCHY -> stringResource(R.string.undo_tag_hierarchy)
                         UndoType.RATING_CHANGE -> stringResource(R.string.undo_rating_changed)
                         UndoType.COMPRESS_REPLACE -> stringResource(R.string.undo_compress_replaced)
-                        UndoType.OPTIMIZE_REPLACE -> stringResource(R.string.undo_optimized_count, visibleAction?.paths?.size ?: 0)
+                        UndoType.OPTIMIZE_REPLACE -> stringResource(
+                            R.string.undo_optimized_count,
+                            visibleAction.paths.size,
+                        )
                         null -> ""
                     }
                 }

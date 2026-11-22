@@ -33,13 +33,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -480,7 +480,21 @@ fun VideoPage(
                 val nextSpeed = speeds[(speedIdx + 1) % speeds.size]
                 val speedLabel = if (playbackSpeed % 1f == 0f) "${playbackSpeed.toInt()}x" else "${playbackSpeed}x"
                 Column(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) {
-                    IconButton(onClick = { isMuted = !isMuted; player.volume = if (isMuted) 0f else 1f; onInteract() }, modifier = Modifier.size(48.dp)) { Icon(if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, stringResource(R.string.set_mute_videos), tint = Color.White, modifier = Modifier.size(22.dp)) }
+                    IconButton(
+                        onClick = { isMuted = !isMuted; player.volume = if (isMuted) 0f else 1f; onInteract() },
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (isMuted) {
+                                Icons.AutoMirrored.Filled.VolumeOff
+                            } else {
+                                Icons.AutoMirrored.Filled.VolumeUp
+                            },
+                            contentDescription = stringResource(R.string.set_mute_videos),
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                     Box {
                         IconButton(onClick = { moreControlsOpen = true; onInteract() }, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions), tint = Color.White, modifier = Modifier.size(22.dp))

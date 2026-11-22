@@ -29,6 +29,9 @@ import org.fossify.gallery.compose.screens.analysis.CleanupHubScreen
 import org.fossify.gallery.compose.screens.collections.ManageCollectionsScreen
 import org.fossify.gallery.compose.screens.folderswipe.FolderSwipeScreen
 import org.fossify.gallery.compose.screens.settings.SettingsScreen
+import org.fossify.gallery.compose.screens.wallpaper.SetWallpaperScreen
+import org.fossify.gallery.compose.screens.wallpaper.WallpaperAspectRatio
+import org.fossify.gallery.compose.screens.wallpaper.WallpaperTarget
 import org.fossify.gallery.compose.theme.AppProviders
 import org.fossify.gallery.compose.theme.GalleryTheme
 import org.fossify.gallery.extensions.config
@@ -333,5 +336,59 @@ class GalleryComposeUiSmokeTest {
 
         composeRule.onNodeWithText(saveLabel)
             .assertIsEnabled()
+    }
+
+    @Test
+    fun setWallpaperScreen_cyclesAspectRatio_rotates_andConfirmsTargetDialog() {
+        val ctx = composeRule.activity
+        var aspectRatio by mutableStateOf(WallpaperAspectRatio.PORTRAIT)
+        var showTargetDialog by mutableStateOf(false)
+        var rotateCount = 0
+        var confirmedTarget: WallpaperTarget? = null
+
+        composeRule.setContent {
+            GalleryTheme(dynamicColor = false) {
+                SetWallpaperScreen(
+                    hasImage = true,
+                    aspectRatio = aspectRatio,
+                    isApplying = false,
+                    showTargetDialog = showTargetDialog,
+                    onBack = {},
+                    onCycleAspectRatio = { aspectRatio = aspectRatio.nextPreset() },
+                    onAllowFreeAspectRatio = { aspectRatio = WallpaperAspectRatio.FREE },
+                    onRotateRight = { rotateCount++ },
+                    onSaveClick = { showTargetDialog = true },
+                    onDismissTargetDialog = { showTargetDialog = false },
+                    onConfirmTarget = { target ->
+                        confirmedTarget = target
+                        showTargetDialog = false
+                    },
+                    cropContent = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText(ctx.getString(R.string.portrait_aspect_ratio))
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.onNodeWithText(ctx.getString(R.string.landscape_aspect_ratio))
+            .assertIsDisplayed()
+
+        composeRule.onNodeWithText(ctx.getString(R.string.rotate))
+            .performClick()
+        composeRule.runOnIdle { assertEquals(1, rotateCount) }
+
+        composeRule.onNodeWithContentDescription(ctx.getString(org.fossify.commons.R.string.save))
+            .performClick()
+
+        composeRule.onNodeWithText(ctx.getString(R.string.lock_screen))
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.onNodeWithText(ctx.getString(org.fossify.commons.R.string.save))
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(WallpaperTarget.LOCK, confirmedTarget)
+        }
     }
 }
