@@ -77,8 +77,10 @@ fun MediaListRow(
     onTagClick: ((String) -> Unit)? = null,
     markFavorite: Boolean = true,
 ) {
-    DisposableEffect(medium.path, hasSelection) {
-        onDispose { onBoundsRemoved?.invoke() }
+    if (hasSelection) {
+        DisposableEffect(medium.path) {
+            onDispose { onBoundsRemoved?.invoke() }
+        }
     }
     val rowShape = if (roundedCorners) RoundedCornerShape(Radius.sm) else RoundedCornerShape(0.dp)
     val durationText = remember(medium.videoDuration, isVideo, showVideoDuration) {

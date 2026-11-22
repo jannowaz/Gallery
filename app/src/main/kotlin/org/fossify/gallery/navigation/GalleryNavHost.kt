@@ -34,6 +34,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.activities.MainScreen
 import org.fossify.gallery.compose.screens.folderscreen.FolderMediaScreen
@@ -196,23 +197,23 @@ fun GalleryNavHost(
                 navController.navigate(Folder(widgetFolder)) { launchSingleTop = true }
             }
         }
-    }
-    LaunchedEffect(Unit) {
-        org.fossify.gallery.compose.util.NavigateBus.events.collect { target ->
-            navigateShortcutTarget(target)
+        launch {
+            org.fossify.gallery.compose.util.NavigateBus.events.collect { navTarget ->
+                navigateShortcutTarget(navTarget)
+            }
         }
-    }
-    LaunchedEffect(Unit) {
-        org.fossify.gallery.compose.util.NavigateBus.folderEvents.collect { folderPath ->
-            navController.navigate(Folder(folderPath)) { launchSingleTop = true }
+        launch {
+            org.fossify.gallery.compose.util.NavigateBus.folderEvents.collect { folderPath ->
+                navController.navigate(Folder(folderPath)) { launchSingleTop = true }
+            }
         }
-    }
-    // Media details can request "show in Explorer" from routes such as the full-screen viewer.
-    // Return to the existing Home entry; MainScreen then consumes the retained folder request and
-    // selects Explorer. Keeping the request in a StateFlow avoids losing it during that pop.
-    LaunchedEffect(Unit) {
-        org.fossify.gallery.compose.util.ExplorerNavigationBus.folderPath.collect { folderPath ->
-            if (folderPath != null) navController.popBackStack(Home, inclusive = false)
+        // Media details can request "show in Explorer" from routes such as the full-screen viewer.
+        // Return to the existing Home entry; MainScreen then consumes the retained folder request
+        // and selects Explorer. Keeping the request in a StateFlow avoids losing it during that pop.
+        launch {
+            org.fossify.gallery.compose.util.ExplorerNavigationBus.folderPath.collect { folderPath ->
+                if (folderPath != null) navController.popBackStack(Home, inclusive = false)
+            }
         }
     }
 

@@ -1,27 +1,47 @@
 package org.fossify.gallery.compose.util
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.node.GlobalPositionAwareModifierNode
+import androidx.compose.ui.node.LayoutModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.PointerInputModifierNode
+import androidx.compose.ui.node.invalidatePlacement
+import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntSize
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import org.fossify.gallery.compose.theme.AppMotion
 
 @Stable
 class SelectionDragState {
@@ -96,19 +116,23 @@ class PeekState {
 fun rememberPeekState(): PeekState = remember { PeekState() }
 
 @OptIn(ExperimentalFoundationApi::class)
+@Composable
 fun Modifier.selectableItem(
     isSelectionMode: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onSwipeToSelect: () -> Unit = {},
     interactionSource: MutableInteractionSource? = null,
-): Modifier = composed {
+): Modifier {
     val haptic = rememberGalleryHaptics()
-    this.combinedClickable(
+    return this.combinedClickable(
         onClick = onClick,
-        onLongClick = { haptic(HapticFeedbackType.LongPress); onLongClick() },
+        onLongClick = {
+            haptic(HapticFeedbackType.LongPress)
+            onLongClick()
+        },
         interactionSource = interactionSource,
-        indication = androidx.compose.foundation.LocalIndication.current
+        indication = LocalIndication.current,
     )
 }
 
@@ -212,17 +236,154 @@ fun Modifier.dragSelectionGesture(
  * onGloballyPositioned callback is attached at all, sparing every visible tile a bounds computation on
  * every layout pass during normal scrolling (the common case, and the hot path on a large grid).
  */
-fun Modifier.throttledBoundsReporting(enabled: Boolean, throttleMs: Long = 50L, onBoundsChanged: (Rect) -> Unit): Modifier =
-    if (!enabled) this
-    else composed {
-        var lastUpdate by remember { mutableLongStateOf(0L) }
-        this.onGloballyPositioned { coords ->
-            val now = System.currentTimeMillis()
-            if (lastUpdate == 0L || now - lastUpdate > throttleMs) {
-                lastUpdate = now
-                val p = coords.positionInWindow()
-                val s = coords.size
-                onBoundsChanged(Rect(p, Size(s.width.toFloat(), s.height.toFloat())))
+fun Modifier.throttledBoundsReporting(
+    enabled: Boolean,
+    throttleMs: Long = 50L,
+    onBoundsChanged: (Rect) -> Unit,
+): Modifier = if (!enabled) this else this.then(ThrottledBoundsElement(throttleMs, onBoundsChanged))
+
+private data class ThrottledBoundsElement(
+    val throttleMs: Long,
+    val onBoundsChanged: (Rect) -> Unit,
+) : ModifierNodeElement<ThrottledBoundsNode>() {
+    override fun create(): ThrottledBoundsNode = ThrottledBoundsNode(throttleMs, onBoundsChanged)
+
+    override fun update(node: ThrottledBoundsNode) {
+        node.throttleMs = throttleMs
+        node.onBoundsChanged = onBoundsChanged
+    }
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "throttledBoundsReporting"
+        properties["throttleMs"] = throttleMs
+    }
+}
+
+private class ThrottledBoundsNode(
+    var throttleMs: Long,
+    var onBoundsChanged: (Rect) -> Unit,
+) : Modifier.Node(), GlobalPositionAwareModifierNode {
+    private var lastUpdate = 0L
+
+    override fun onGloballyPositioned(coordinates: LayoutCoordinates) {
+        val now = System.currentTimeMillis()
+        if (lastUpdate == 0L || now - lastUpdate > throttleMs) {
+            lastUpdate = now
+            val pos = coordinates.positionInWindow()
+            val sz = coordinates.size
+            onBoundsChanged(Rect(pos, Size(sz.width.toFloat(), sz.height.toFloat())))
+        }
+    }
+
+    override fun onDetach() {
+        lastUpdate = 0L
+    }
+}
+
+/**
+ * Tactile press-scale feedback backed by a lazy [Modifier.Node] so grid tiles allocate zero
+ * coroutines, [Animatable] instances, or graphics layers while idle or scrolling.
+ */
+fun Modifier.pressScale(pressedScale: Float = 0.96f): Modifier = this.then(PressScaleElement(pressedScale))
+
+private data class PressScaleElement(
+    val pressedScale: Float,
+) : ModifierNodeElement<PressScaleNode>() {
+    override fun create(): PressScaleNode = PressScaleNode(pressedScale)
+
+    override fun update(node: PressScaleNode) {
+        node.pressedScale = pressedScale
+    }
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "pressScale"
+        properties["pressedScale"] = pressedScale
+    }
+}
+
+private class PressScaleNode(
+    var pressedScale: Float,
+) : Modifier.Node(), PointerInputModifierNode, LayoutModifierNode {
+    private var isPressed = false
+    private var scaleAnim: Animatable<Float, AnimationVector1D>? = null
+    private var scaleJob: Job? = null
+
+    override fun onPointerEvent(
+        pointerEvent: PointerEvent,
+        pass: PointerEventPass,
+        bounds: IntSize,
+    ) {
+        when {
+            pass == PointerEventPass.Initial && pointerEvent.type == PointerEventType.Press -> {
+                if (!isPressed) {
+                    isPressed = true
+                    animateScaleTo(pressedScale)
+                }
+            }
+            pass == PointerEventPass.Initial &&
+                (pointerEvent.type == PointerEventType.Release || pointerEvent.type == PointerEventType.Exit) -> {
+                releasePress()
+            }
+            pass == PointerEventPass.Final &&
+                pointerEvent.type == PointerEventType.Move &&
+                isPressed &&
+                pointerEvent.changes.any { it.isConsumed } -> {
+                releasePress()
             }
         }
     }
+
+    override fun onCancelPointerInput() {
+        releasePress()
+    }
+
+    override fun onDetach() {
+        scaleJob?.cancel()
+        scaleJob = null
+        isPressed = false
+        scaleAnim = null
+    }
+
+    private fun releasePress() {
+        if (!isPressed) return
+        isPressed = false
+        if (scaleAnim != null) {
+            animateScaleTo(1f)
+        }
+    }
+
+    private fun animateScaleTo(target: Float) {
+        if (!isAttached) return
+        val anim = scaleAnim ?: Animatable(1f).also {
+            scaleAnim = it
+            invalidatePlacement()
+        }
+        scaleJob?.cancel()
+        scaleJob = coroutineScope.launch {
+            anim.animateTo(target, animationSpec = AppMotion.short)
+            if (!isPressed && anim.value == 1f) {
+                scaleAnim = null
+                invalidatePlacement()
+            }
+        }
+    }
+
+    override fun MeasureScope.measure(
+        measurable: Measurable,
+        constraints: Constraints,
+    ): MeasureResult {
+        val placeable = measurable.measure(constraints)
+        val anim = scaleAnim
+        return layout(placeable.width, placeable.height) {
+            if (anim == null) {
+                placeable.place(0, 0)
+            } else {
+                placeable.placeWithLayer(0, 0) {
+                    val s = anim.value
+                    scaleX = s
+                    scaleY = s
+                }
+            }
+        }
+    }
+}

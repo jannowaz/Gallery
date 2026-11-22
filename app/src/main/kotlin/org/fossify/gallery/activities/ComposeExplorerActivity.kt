@@ -371,10 +371,6 @@ class ComposeExplorerActivity : FragmentActivity() {
         // Cover the very first frame when a launch lock is armed, so the gallery never flashes before
         // onResume() gets a chance to raise the prompt.
         showLockCover.value = config.isAppPasswordProtectionOn
-        // Seed the observable thumbnail-overlay flags from persisted config so the media grids read
-        // Compose-observable values (see ThumbnailOverlayState) and pick up toggles from the view
-        // sheet instantly instead of only after a restart.
-        org.fossify.gallery.compose.util.ThumbnailOverlayState.sync(config)
         addOnPictureInPictureModeChangedListener { info ->
             org.fossify.gallery.compose.util.PipState.inPip = info.isInPictureInPictureMode
         }
@@ -504,11 +500,13 @@ class ComposeExplorerActivity : FragmentActivity() {
         // Reproduced on an emulator: 3 images added while backgrounded stayed at 0 rows across a
         // foreground round trip, then all 3 landed after a force-stop + relaunch.
         //
-        // Cheap to do unconditionally: syncNewMediaFromStore() is watermark-filtered
-        // (DATE_MODIFIED > lastSyncTimestamp), so an onStart with nothing new is a single empty
-        // query, and the enqueue itself is KEEP-policy so a still-pending job is not restarted.
-        // Measured on a 163k-item library: 0 CPU ticks per foreground return.
-        MediaSyncWorker.scheduleIncrementalSync(this)
+        // Cheap to do unconditionally, and dispatched on IO so WorkManager initialization/enqueue
+        // never stalls the main thread on cold start or foreground resume.
+        if (mediaPermissionState.hasMediaAccess) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                MediaSyncWorker.scheduleIncrementalSync(this@ComposeExplorerActivity)
+            }
+        }
     }
 
     override fun onResume() {

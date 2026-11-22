@@ -30,7 +30,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,9 +45,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -61,6 +57,7 @@ import org.fossify.gallery.compose.theme.RatingStarColor
 import org.fossify.gallery.compose.theme.Scrim
 import org.fossify.gallery.compose.theme.SelectionVisual
 import org.fossify.gallery.compose.util.BlurState
+import org.fossify.gallery.compose.util.pressScale
 import org.fossify.gallery.compose.util.privacyBlur
 import org.fossify.gallery.compose.util.selectableItem
 import org.fossify.gallery.compose.util.sharedElementKey
@@ -110,24 +107,29 @@ fun MediaTile(
     onBoundsRemoved: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    DisposableEffect(medium.path, isSelectionMode) {
-        onDispose { onBoundsRemoved?.invoke() }
+    if (isSelectionMode) {
+        DisposableEffect(medium.path) {
+            onDispose { onBoundsRemoved?.invoke() }
+        }
     }
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (isPressed) 0.96f else 1f, animationSpec = AppMotion.short, label = "pressScale")
-    val rawSelectionInset by animateDpAsState(
-        targetValue = if (isSelected) (if (isNarrowTile) 4.dp else 6.dp) else 0.dp,
-        animationSpec = AppMotion.selectionInsetSpring,
-        label = "selectionInset",
-    )
-    // Low-bouncy spring can briefly overshoot below 0.dp when deselecting; padding() requires >= 0.dp.
-    val selectionInset = clampSelectionInset(rawSelectionInset)
+    // Keep normal scrolling free of per-tile Animatable/coroutine allocations; only animate the
+    // selection inset while selection mode is actually active.
+    val selectionInset = if (isSelectionMode) {
+        val rawSelectionInset by animateDpAsState(
+            targetValue = if (isSelected) (if (isNarrowTile) 4.dp else 6.dp) else 0.dp,
+            animationSpec = AppMotion.selectionInsetSpring,
+            label = "selectionInset",
+        )
+        // Low-bouncy spring can briefly overshoot below 0.dp when deselecting; padding() requires >= 0.dp.
+        clampSelectionInset(rawSelectionInset)
+    } else {
+        0.dp
+    }
     val thumbShape = if (isSelected || selectionInset > 0.dp) RoundedCornerShape(Radius.md) else cornerShape
     // Scroll state can change for every visible tile at once. Animating this alpha per tile creates
     // dozens of independent animation clocks and a coordinated fade when a fling starts/stops.
-    // Keep the state change synchronous; the press scale above remains animated because it belongs
-    // to one directly touched tile and does not affect list layout.
+    // Keep the state change synchronous; the press scale uses a lazy Modifier.Node that allocates
+    // zero animation state until a tile is actually touched.
     val overlayAlpha = if (showOverlays) 1f else 0f
     // The image is the primary content. Rating, tag and file-type badges are secondary metadata;
     // keep the default grid quiet and reveal them when the user has entered selection mode or
@@ -153,10 +155,7 @@ fun MediaTile(
     Column(
         modifier
             .padding(itemSpacing / 2)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
+            .pressScale()
             .background(cardColor, cornerShape)
             // Only report bounds while a selection is active - drag-select hit-testing is the sole
             // consumer, so this stays off during normal scrolling (see throttledBoundsReporting).
@@ -183,7 +182,6 @@ fun MediaTile(
                     onClick = onClick,
                     onLongClick = onLongClick,
                     onSwipeToSelect = onSwipeToSelect,
-                    interactionSource = interactionSource,
                 )
                 .semantics {
                     // The image itself is intentionally descriptive, but the clickable tile also

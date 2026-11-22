@@ -90,14 +90,13 @@ internal fun MediaRepository.syncNewMediaFromStoreImpl(fullRescan: Boolean): Lis
         batcher.finish()
         val latestTimestamp = batcher.watermark
 
-        val deletedPaths = try {
-            context.mediaDB.getDeletedMedia().map { it.path }.toSet()
-        } catch (e: Exception) {
-            Log.e("MediaRepository", "getDeletedMedia failed", e)
-            emptySet()
-        }
-
         if (newMedia.isNotEmpty() || lastSync == 0L) {
+            val deletedPaths = try {
+                context.mediaDB.getDeletedPaths().toSet()
+            } catch (e: Exception) {
+                Log.e("MediaRepository", "getDeletedPaths failed", e)
+                emptySet()
+            }
             newMedia.addAll(recentDiskMedia(newMedia.map { it.path }.toSet() + deletedPaths))
         }
 
@@ -105,24 +104,13 @@ internal fun MediaRepository.syncNewMediaFromStoreImpl(fullRescan: Boolean): Lis
             val diskMedia = scanMediaFromDiskImpl()
             val merged = (newMedia + diskMedia).distinctBy { it.path }
             if (merged.isNotEmpty()) {
-                try {
-                    context.mediaDB.insertAllKeepingExisting(merged)
-                    syncDirectoriesFromMedia(force = true)
-                } catch (e: Exception) {
-                    Log.e("MediaRepository", "insertAllKeepingExisting failed", e)
-                }
+                insertSyncedMediaInBatches(merged)
             }
             context.config.lastSyncTimestamp = System.currentTimeMillis()
             return merged
         } else if (newMedia.isNotEmpty()) {
-            try {
-                reviveSoftDeleted(newMedia)
-                context.mediaDB.insertAllKeepingExisting(newMedia)
-                context.config.lastSyncTimestamp = latestTimestamp
-                syncDirectoriesFromMedia(force = true)
-            } catch (e: Exception) {
-                Log.e("MediaRepository", "insertAllKeepingExisting failed", e)
-            }
+            reviveSoftDeleted(newMedia)
+            insertSyncedMediaInBatches(newMedia, updatedWatermark = latestTimestamp)
             return newMedia
         } else {
             context.config.lastSyncTimestamp = latestTimestamp
@@ -188,6 +176,25 @@ internal fun MediaRepository.scanMediaFromDiskImpl(): List<Medium> {
     return allMedia.sortedByDescending { it.modified }
 }
 
+private const val SYNC_INSERT_BATCH_SIZE = 750
+
+private fun MediaRepository.insertSyncedMediaInBatches(
+    items: List<Medium>,
+    updatedWatermark: Long? = null,
+) {
+    try {
+        items.chunked(SYNC_INSERT_BATCH_SIZE).forEach { chunk ->
+            context.mediaDB.insertAllKeepingExisting(chunk)
+        }
+        if (updatedWatermark != null) {
+            context.config.lastSyncTimestamp = updatedWatermark
+        }
+        syncDirectoriesFromMedia(force = true)
+    } catch (e: Exception) {
+        Log.e("MediaRepository", "insertAllKeepingExisting failed", e)
+    }
+}
+
 private fun MediaRepository.reviveSoftDeleted(candidates: List<Medium>) {
     if (candidates.isEmpty()) return
     try {
@@ -195,15 +202,20 @@ private fun MediaRepository.reviveSoftDeleted(candidates: List<Medium>) {
         val softDeleted = byPath.keys.chunked(SQLITE_BATCH_CHUNK_SIZE)
             .flatMap { context.mediaDB.getSoftDeletedMedia(it) }
         if (softDeleted.isEmpty()) return
-        var revived = 0
+        val toRevive = ArrayList<Medium>()
         softDeleted.forEach { deletedRow ->
-            val m = byPath[deletedRow.path] ?: byPath.entries.firstOrNull { it.key.equals(deletedRow.path, ignoreCase = true) }?.value
+            val m = byPath[deletedRow.path]
+                ?: byPath.entries.firstOrNull { it.key.equals(deletedRow.path, ignoreCase = true) }?.value
                 ?: return@forEach
             if (m.size == deletedRow.size && m.modified == deletedRow.modified) return@forEach
-            context.mediaDB.reviveMedium(deletedRow.path, m.modified, m.taken, m.size, m.type, m.dateAdded)
-            revived++
+            toRevive += m.copy(path = deletedRow.path)
         }
-        if (revived > 0) Log.i("MediaRepository", "Revived $revived re-created files from soft-deleted rows")
+        if (toRevive.isNotEmpty()) {
+            toRevive.chunked(SYNC_INSERT_BATCH_SIZE).forEach { chunk ->
+                context.mediaDB.reviveMediaBatch(chunk)
+            }
+            Log.i("MediaRepository", "Revived ${toRevive.size} re-created files from soft-deleted rows")
+        }
     } catch (e: Exception) {
         Log.e("MediaRepository", "reviveSoftDeleted failed", e)
     }

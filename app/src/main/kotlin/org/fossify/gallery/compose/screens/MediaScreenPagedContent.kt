@@ -412,54 +412,79 @@ internal fun PagedContent(
                         onSelectPath = { path -> selectedPaths = selectedPaths + path },
                         onLongPressSelectPath = null,
                     )) {
-                        LazyVerticalStaggeredGrid(state = mosaicState, columns = StaggeredGridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
-                            rows.forEachIndexed { i, row ->
-                                when (row) {
-                                    is PagedRow.Header -> item(key = "header_${i}_${row.label}", span = StaggeredGridItemSpan.FullLine, contentType = "header") {
-                                        PagedSectionHeader(row, pagedGroupsAreCollapsible, ::togglePagedRatingGroup)
+                        LazyVerticalStaggeredGrid(
+                            state = mosaicState,
+                            columns = StaggeredGridCells.Fixed(columnCount),
+                            reverseLayout = viewSettings.anchorBottom,
+                            contentPadding = PaddingValues(itemSpacing / 2),
+                        ) {
+                            items(
+                                count = rows.size,
+                                key = { i ->
+                                    when (val r = rows[i]) {
+                                        is PagedRow.Header -> "header_${i}_${r.label}"
+                                        is PagedRow.Item -> pagingItemKey(r.pagingIndex)
                                     }
-                                    is PagedRow.Item -> item(
-                                        key = pagingItemKey(row.pagingIndex),
-                                        contentType = safePeek(lazyPagingItems, row.pagingIndex)?.type ?: 0,
-                                    ) {
-                                        val m = safeGet(lazyPagingItems, row.pagingIndex)
-                                        if (m != null) {
-                                            val isVideo = remember(m.path, m.type) { m.type == TYPE_VIDEOS || m.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS }
-                                            if (!isVideo) LaunchedEffect(m.path) { viewModel.requestAspect(m.path) }
-                                            val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
-                                            MediaTile(
-                                                medium = m,
-                                                isVideo = isVideo,
-                                                isSelected = isSelected,
-                                                isSelectionMode = hasSelection,
-                                                hasTag = m.path in taggedPaths,
-                                                tags = state.tagsByPath[m.path].orEmpty(),
-                                                onTagClick = if (!hasSelection && !pickMultiple) onTagClick else null,
-                                                showOverlays = true,
-                                                aspectRatio = if (isVideo) 1f else (appliedAspectRatios[m.path] ?: 1f),
-                                                cornerShape = cornerShape,
-                                                cardColor = mediaCardColor,
-                                                itemSpacing = itemSpacing,
-                                                showFileName = viewSettings.showFileNames,
-                                                showVideoDuration = ThumbnailOverlayState.showVideoDuration,
-                                                cropThumbnails = cropThumbnails,
-                                                showRating = ThumbnailOverlayState.showRating,
-                                                showFileType = showThumbnailFileTypes,
-                                                markFavorite = markFavoriteItems,
-                                                isNarrowTile = isNarrowMediaTile,
-                                                onClick = {
-                                                    if (hasSelection || pickMultiple) {
-                                                        selectPagedItem(m.path, row.pagingIndex)
-                                                    } else openViewerPaged(m.path)
-                                                },
-                                                onLongClick = {
-                                                    selectPagedItem(m.path, row.pagingIndex, startSelection = true)
-                                                },
-                                                onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
-                                                onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
-                                                onBoundsRemoved = { dragSelection.unregisterItemBounds(m.path) },
-                                            )
+                                },
+                                span = { i ->
+                                    if (rows[i] is PagedRow.Header) {
+                                        StaggeredGridItemSpan.FullLine
+                                    } else {
+                                        StaggeredGridItemSpan.SingleLane
+                                    }
+                                },
+                                contentType = { i ->
+                                    when (val r = rows[i]) {
+                                        is PagedRow.Header -> "header"
+                                        is PagedRow.Item -> safePeek(lazyPagingItems, r.pagingIndex)?.type ?: 0
+                                    }
+                                },
+                            ) { i ->
+                                when (val row = rows[i]) {
+                                    is PagedRow.Header ->
+                                        PagedSectionHeader(row, pagedGroupsAreCollapsible, ::togglePagedRatingGroup)
+                                    is PagedRow.Item -> {
+                                        val m = safeGet(lazyPagingItems, row.pagingIndex) ?: return@items
+                                        val isVideo = remember(m.path, m.type) {
+                                            m.type == TYPE_VIDEOS ||
+                                                m.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
                                         }
+                                        if (!isVideo) LaunchedEffect(m.path) { viewModel.requestAspect(m.path) }
+                                        val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
+                                        MediaTile(
+                                            medium = m,
+                                            isVideo = isVideo,
+                                            isSelected = isSelected,
+                                            isSelectionMode = hasSelection,
+                                            hasTag = m.path in taggedPaths,
+                                            tags = state.tagsByPath[m.path].orEmpty(),
+                                            onTagClick = if (!hasSelection && !pickMultiple) onTagClick else null,
+                                            showOverlays = true,
+                                            aspectRatio = if (isVideo) 1f else (appliedAspectRatios[m.path] ?: 1f),
+                                            cornerShape = cornerShape,
+                                            cardColor = mediaCardColor,
+                                            itemSpacing = itemSpacing,
+                                            showFileName = viewSettings.showFileNames,
+                                            showVideoDuration = ThumbnailOverlayState.showVideoDuration,
+                                            cropThumbnails = cropThumbnails,
+                                            showRating = ThumbnailOverlayState.showRating,
+                                            showFileType = showThumbnailFileTypes,
+                                            markFavorite = markFavoriteItems,
+                                            isNarrowTile = isNarrowMediaTile,
+                                            onClick = {
+                                                if (hasSelection || pickMultiple) {
+                                                    selectPagedItem(m.path, row.pagingIndex)
+                                                } else {
+                                                    openViewerPaged(m.path)
+                                                }
+                                            },
+                                            onLongClick = {
+                                                selectPagedItem(m.path, row.pagingIndex, startSelection = true)
+                                            },
+                                            onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
+                                            onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
+                                            onBoundsRemoved = { dragSelection.unregisterItemBounds(m.path) },
+                                        )
                                     }
                                 }
                             }

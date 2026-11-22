@@ -813,7 +813,7 @@ class MediaRepository(internal val context: Context) : MediaRepositoryInterface 
         } catch (_: Exception) { emptyMap() }
 
     fun getDeletedPaths(): Set<String> =
-        try { context.mediaDB.getDeletedMedia().map { it.path }.toSet() } catch (_: Exception) { emptySet() }
+        try { context.mediaDB.getDeletedPaths().toSet() } catch (_: Exception) { emptySet() }
 
     fun getFavorites(): List<Medium> =
         try { context.mediaDB.getFavorites() } catch (_: Exception) { emptyList() }
@@ -1122,8 +1122,7 @@ class MediaRepository(internal val context: Context) : MediaRepositoryInterface 
                     videoCount = agg.videoCount,
                 )
             }
-            context.directoryDB.insertAll(dirs)
-            context.directoryDB.deleteDirectoriesWithoutMedia()
+            context.directoryDB.syncFilesystemDirectories(dirs)
         } catch (e: Exception) {
             android.util.Log.e("MediaRepository", "syncDirectoriesFromMedia failed", e)
         }

@@ -105,6 +105,7 @@ object ViewerArgs {
     private val resolverJobs = LinkedHashMap<String, kotlinx.coroutines.Job>()
     private val loadingDirections = HashSet<String>()
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var appContext: Context? = null
     @Volatile private var storageDir: File? = null
 
     private data class SessionState(
@@ -114,12 +115,16 @@ object ViewerArgs {
         val loadMore: (suspend (String, ViewerLoadDirection, Int) -> ViewerPathChunk)? = null,
     )
 
-    /** Configures the process-local snapshot store before the first Activity is created. */
+    /** Configures the process-local snapshot store without performing disk I/O on the main thread. */
     fun configure(context: Context) {
-        synchronized(this) {
-            if (storageDir == null) {
-                storageDir = context.applicationContext.filesDir.resolve("viewer_sessions").apply { mkdirs() }
-            }
+        appContext = context.applicationContext
+    }
+
+    private fun resolveStorageDir(): File? {
+        storageDir?.let { return it }
+        val ctx = appContext ?: return null
+        return synchronized(this) {
+            storageDir ?: ctx.filesDir.resolve("viewer_sessions").apply { mkdirs() }.also { storageDir = it }
         }
     }
 
@@ -143,9 +148,9 @@ object ViewerArgs {
             resolverJobs.remove(oldest)?.cancel()
             removed += oldest
         }
-        val dir = storageDir
-        if (dir != null) {
+        if (appContext != null) {
             ioScope.launch {
+                val dir = resolveStorageDir() ?: return@launch
                 persist(dir.resolve("$id.json"), snapshot)
                 removed.forEach { dir.resolve("$it.json").delete() }
             }
@@ -172,8 +177,11 @@ object ViewerArgs {
         state.hasPrevious = false
         state.hasNext = false
         sessionFlows.getOrPut(sessionId) { MutableStateFlow(snapshot) }.value = snapshot
-        storageDir?.let { dir ->
-            ioScope.launch { persist(dir.resolve("$sessionId.json"), snapshot) }
+        if (appContext != null) {
+            ioScope.launch {
+                val dir = resolveStorageDir() ?: return@launch
+                persist(dir.resolve("$sessionId.json"), snapshot)
+            }
         }
     }
 
@@ -201,7 +209,12 @@ object ViewerArgs {
         state.hasPrevious = window.hasPrevious
         state.hasNext = window.hasNext
         sessionFlows.getOrPut(sessionId) { MutableStateFlow(paths) }.value = paths
-        storageDir?.let { dir -> ioScope.launch { persist(dir.resolve("$sessionId.json"), paths) } }
+        if (appContext != null) {
+            ioScope.launch {
+                val dir = resolveStorageDir() ?: return@launch
+                persist(dir.resolve("$sessionId.json"), paths)
+            }
+        }
     }
 
     /** Loads more paths at the edge of the current window, coalescing duplicate edge requests. */
@@ -225,7 +238,12 @@ object ViewerArgs {
                 state.paths = ViewerWindowMath.merge(state.paths, chunk.paths, direction, MAX_WINDOW_PATHS)
                 if (direction == ViewerLoadDirection.BEFORE) state.hasPrevious = chunk.hasMore else state.hasNext = chunk.hasMore
                 sessionFlows[sessionId]?.value = state.paths
-                storageDir?.let { dir -> ioScope.launch { persist(dir.resolve("$sessionId.json"), state.paths) } }
+                if (appContext != null) {
+                    ioScope.launch {
+                        val dir = resolveStorageDir() ?: return@launch
+                        persist(dir.resolve("$sessionId.json"), state.paths)
+                    }
+                }
             }
         } finally {
             synchronized(this) { loadingDirections.remove(key) }
@@ -262,7 +280,7 @@ object ViewerArgs {
     /** Loads a snapshot after process death without blocking composition on file I/O. */
     suspend fun load(sessionId: String): List<String> = withContext(Dispatchers.IO) {
         synchronized(this@ViewerArgs) { sessions[sessionId]?.paths }?.let { return@withContext it }
-        val file = storageDir?.resolve("$sessionId.json") ?: return@withContext emptyList()
+        val file = resolveStorageDir()?.resolve("$sessionId.json") ?: return@withContext emptyList()
         if (!file.isFile) return@withContext emptyList()
         val loaded = runCatching {
             val json = JSONArray(file.readText())

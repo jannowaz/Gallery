@@ -4,13 +4,18 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import org.fossify.gallery.helpers.RECYCLE_BIN
 import org.fossify.gallery.models.Directory
+import java.util.Locale
 
 @Dao
 interface DirectoryDao {
     @Query("SELECT path, thumbnail, filename, media_count, last_modified, date_taken, size, location, media_types, sort_value FROM directories")
     fun getAll(): List<Directory>
+
+    @Query("SELECT path FROM directories")
+    fun getAllPaths(): List<String>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insert(directory: Directory)
@@ -21,21 +26,32 @@ interface DirectoryDao {
     @Query("DELETE FROM directories WHERE path = :path COLLATE NOCASE")
     fun deleteDirPath(path: String)
 
+    @Query("DELETE FROM directories WHERE path IN (:paths)")
+    fun deleteByPaths(paths: List<String>)
+
     @Query("UPDATE OR REPLACE directories SET thumbnail = :thumbnail, media_count = :mediaCnt, last_modified = :lastModified, date_taken = :dateTaken, size = :size, media_types = :mediaTypes, sort_value = :sortValue WHERE path = :path COLLATE NOCASE")
     fun updateDirectory(path: String, thumbnail: String, mediaCnt: Int, lastModified: Long, dateTaken: Long, size: Long, mediaTypes: Int, sortValue: String)
-
-    @Query("UPDATE directories SET thumbnail = :thumbnail, filename = :name, path = :newPath WHERE path = :oldPath COLLATE NOCASE")
-    fun updateDirectoryAfterRename(thumbnail: String, name: String, newPath: String, oldPath: String)
 
     @Query("DELETE FROM directories WHERE path = \'$RECYCLE_BIN\' COLLATE NOCASE")
     fun deleteRecycleBin()
 
-    @Query("SELECT thumbnail FROM directories WHERE path = :path")
-    fun getDirectoryThumbnail(path: String): String?
+    /**
+     * Atomically replaces filesystem directory rows and prunes stale folders using the already
+     * computed [directories] aggregate instead of running a second full scan of the `media` table
+     * and emitting two separate Room invalidations. Virtual rows (recycle bin, favorites) don't
+     * start with '/' and are left alone.
+     */
+    @Transaction
+    fun syncFilesystemDirectories(directories: List<Directory>) {
+        val liveLower = directories.mapTo(HashSet(directories.size)) { it.path.lowercase(Locale.ROOT) }
+        val stalePaths = getAllPaths().filter { path ->
+            path.startsWith("/") && path.lowercase(Locale.ROOT) !in liveLower
+        }
+        stalePaths.chunked(SQLITE_BIND_CHUNK_SIZE).forEach(::deleteByPaths)
+        insertAll(directories)
+    }
 
-    /** Removes real filesystem rows whose folder no longer holds any live media - ghost albums
-     * that kept showing with stale counts after their contents were deleted. Virtual rows
-     * (recycle bin, favorites) don't start with '/' and are left alone. */
-    @Query("DELETE FROM directories WHERE path LIKE '/%' AND path NOT IN (SELECT DISTINCT parent_path FROM media WHERE deleted_ts = 0)")
-    fun deleteDirectoriesWithoutMedia()
+    companion object {
+        private const val SQLITE_BIND_CHUNK_SIZE = 900
+    }
 }
