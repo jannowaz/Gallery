@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -281,7 +283,14 @@ fun FolderPickerSheet(
         // screens a fixed 480dp could push the confirm button below the visible area.
         val screenHeightDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp().value }
         val sheetHeight = minOf(480, (screenHeightDp * 0.85f).toInt()).dp
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(sheetHeight)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .height(sheetHeight),
+        ) {
             LibrarySheetHeader(
                 title = stringResource(if (isMoveOperation) R.string.folder_picker_move_title else R.string.folder_picker_copy_title),
                 onDismiss = onDismiss,

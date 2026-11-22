@@ -98,7 +98,8 @@
             android:name=".activities.ComposeSettingsActivity"
             android:exported="true"
             android:label="@string/settings"
-            android:parentActivityName=".activities.ComposeExplorerActivity">
+            android:parentActivityName=".activities.ComposeExplorerActivity"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.APPLICATION_PREFERENCES" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -113,7 +114,8 @@
             android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|screenLayout"
             android:exported="true"
             android:resizeableActivity="true"
-            android:supportsPictureInPicture="true">
+            android:supportsPictureInPicture="true"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -164,7 +166,8 @@
             android:name="org.fossify.gallery.activities.EditActivity"
             android:configChanges="orientation"
             android:exported="true"
-            android:label="@string/basic_editor">
+            android:label="@string/basic_editor"
+            android:windowSoftInputMode="adjustResize">
 
             <intent-filter android:name="foss-editor">
 
@@ -210,7 +213,8 @@
 
         <activity
             android:name=".activities.WidgetConfigureActivity"
-            android:exported="true">
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
             </intent-filter>

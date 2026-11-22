@@ -4,6 +4,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -36,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -137,9 +141,15 @@ fun CleanupHubScreen(
             )
         },
     ) { padding ->
+        val layoutDirection = LocalLayoutDirection.current
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+            modifier = Modifier.fillMaxSize().consumeWindowInsets(padding),
+            contentPadding = PaddingValues(
+                start = 16.dp + padding.calculateStartPadding(layoutDirection),
+                top = 16.dp + padding.calculateTopPadding(),
+                end = 16.dp + padding.calculateEndPadding(layoutDirection),
+                bottom = 16.dp + padding.calculateBottomPadding(),
+            ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {

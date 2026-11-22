@@ -4,6 +4,7 @@ import android.app.Activity
 import android.appwidget.AppWidgetManager
 import android.content.Intent
 import android.graphics.Color as AndroidColor
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import android.widget.RemoteViews
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -88,6 +90,9 @@ class WidgetConfigureActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
         if (config.isAppPasswordProtectionOn || config.blurAllMedia) {
             window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
@@ -219,7 +224,13 @@ private fun WidgetConfigureScreen(
         },
         bottomBar = {
             Surface(tonalElevation = 3.dp) {
-                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Button(
                         onClick = { onSave(folderPath, effectiveBgColor, textColor, showFolderName) },
                         enabled = folderPath.isNotEmpty(),
