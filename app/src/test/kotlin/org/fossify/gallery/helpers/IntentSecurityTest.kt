@@ -16,8 +16,16 @@ class IntentSecurityTest {
 
     @Test
     fun rejectsPrivateAndSystemPaths() {
-        assertFalse(IntentSecurity.isSyntacticallySafeExternalPath("/data/data/org.fossify.gallery/shared_prefs/Prefs.xml"))
-        assertFalse(IntentSecurity.isSyntacticallySafeExternalPath("/data/user/0/org.fossify.gallery/databases/gallery.db"))
+        assertFalse(
+            IntentSecurity.isSyntacticallySafeExternalPath(
+                "/data/data/org.fossify.gallery/shared_prefs/Prefs.xml"
+            )
+        )
+        assertFalse(
+            IntentSecurity.isSyntacticallySafeExternalPath(
+                "/data/user/0/org.fossify.gallery/databases/gallery.db"
+            )
+        )
         assertFalse(IntentSecurity.isSyntacticallySafeExternalPath("/proc/self/environ"))
         assertFalse(IntentSecurity.isSyntacticallySafeExternalPath("/sys/class/power_supply"))
         assertFalse(IntentSecurity.isSyntacticallySafeExternalPath("/system/build.prop"))

@@ -40,7 +40,6 @@ import org.fossify.gallery.helpers.MediaInfoReader
 import java.text.DateFormat
 import java.util.Date
 import java.io.File
-import java.util.Locale
 
 /** A portrait-friendly replacement for the generic file-properties dialog for one medium. */
 @Composable
@@ -198,11 +197,20 @@ private fun InfoDivider() {
 @Composable
 private fun formatDateTime(timestamp: Long): String {
     // Observe the Compose configuration so dates update when the app language changes.
-    val locale = LocalConfiguration.current.locales[0] ?: Locale.getDefault()
+    val locales = LocalConfiguration.current.locales
+    val locale = if (!locales.isEmpty) locales[0] else null
     return remember(timestamp, locale) {
         val date = Date(timestamp)
-        val formattedDate = DateFormat.getDateInstance(DateFormat.MEDIUM, locale).format(date)
-        val formattedTime = DateFormat.getTimeInstance(DateFormat.SHORT, locale).format(date)
+        val formattedDate = if (locale != null) {
+            DateFormat.getDateInstance(DateFormat.MEDIUM, locale).format(date)
+        } else {
+            DateFormat.getDateInstance(DateFormat.MEDIUM).format(date)
+        }
+        val formattedTime = if (locale != null) {
+            DateFormat.getTimeInstance(DateFormat.SHORT, locale).format(date)
+        } else {
+            DateFormat.getTimeInstance(DateFormat.SHORT).format(date)
+        }
         "$formattedDate · $formattedTime"
     }
 }

@@ -178,7 +178,7 @@ fun GalleryNavHost(
             org.fossify.gallery.helpers.MoverWidgetProvider.NAVIGATE_TARGET_MOVER ->
                 navController.navigate(FoldersMover) { launchSingleTop = true }
             org.fossify.gallery.helpers.AppShortcutsHelper.NAVIGATE_TARGET_CLEANUP ->
-                navController.navigate(CleanupHub) { launchSingleTop = true }
+                navController.navigate(CleanupHub()) { launchSingleTop = true }
             org.fossify.gallery.helpers.AppShortcutsHelper.NAVIGATE_TARGET_RECYCLE_BIN ->
                 navController.navigate(RecycleBin) { launchSingleTop = true }
         }

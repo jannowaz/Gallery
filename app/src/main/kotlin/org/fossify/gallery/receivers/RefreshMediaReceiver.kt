@@ -6,6 +6,7 @@ import android.content.Intent
 import org.fossify.commons.helpers.REFRESH_PATH
 import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.gallery.extensions.addPathToDBSync
+import org.fossify.gallery.helpers.IntentSecurity
 import org.fossify.gallery.helpers.MEDIA_EXTENSIONS
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -26,7 +27,10 @@ class RefreshMediaReceiver : BroadcastReceiver() {
                 val file = runCatching { File(rawPath!!).canonicalFile }.getOrNull() ?: return@ensureBackgroundThread
                 val canonical = file.path
                 // Re-validate after canonicalization so symlinks cannot escape into /data/ or private app dirs.
-                if (!isSafeRefreshMediaPath(canonical) || !org.fossify.gallery.helpers.IntentSecurity.isSafeExternalPath(appContext, canonical)) {
+                if (
+                    !isSafeRefreshMediaPath(canonical) ||
+                    !IntentSecurity.isSafeExternalPath(appContext, canonical)
+                ) {
                     return@ensureBackgroundThread
                 }
                 if (!file.exists() || !file.isFile) return@ensureBackgroundThread

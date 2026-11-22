@@ -1,47 +1,28 @@
-# Targeted R8 keep rules — replaces the historical `-keep class org.fossify.** { *; }`
-# wildcard that previously prevented R8 from shrinking/inlining app and commons code.
+# Targeted R8 keep rules — minimal ruleset on top of proguard-android-optimize.txt and
+# library consumer rules (Room, Coroutines, Compose, Media3, Coil, AndroidX, OkHttp, AAPT2).
 
-# Gson-serialized and Java Serializable data models (no @SerializedName annotations)
--keep class org.fossify.gallery.models.** { *; }
--keep class org.fossify.commons.models.** { *; }
+# Gson-serialized models without @SerializedName annotations (only these classes are read/written
+# via Gson; the other 17 classes in org.fossify.gallery.models.* are Room/Kotlin models and stay
+# free for full R8 shrinking, inlining, and obfuscation).
+-keep class org.fossify.gallery.models.AlbumCover { *; }
 -keep class org.fossify.gallery.helpers.FolderPair { *; }
 -keep class org.fossify.gallery.helpers.SettingsBackupHelper$Entry { *; }
 -keep class org.fossify.gallery.helpers.SettingsBackupHelper$BundleEnvelope { *; }
 
-# Keep custom View constructors for XML inflation alongside aapt_rules.txt
--keepclassmembers class org.fossify.gallery.views.** {
-    public <init>(android.content.Context);
-    public <init>(android.content.Context, android.util.AttributeSet);
-    public <init>(android.content.Context, android.util.AttributeSet, int);
-}
+# Upstream Fossify Commons models & XML-inflated views (commons 6.1.6 does not bundle full rules)
+-keep class org.fossify.commons.models.** { *; }
 -keepclassmembers class org.fossify.commons.views.** {
     public <init>(android.content.Context);
     public <init>(android.content.Context, android.util.AttributeSet);
     public <init>(android.content.Context, android.util.AttributeSet, int);
 }
 
-# Keep local JNI photo filter bridge (src/main/jni) and JXL native decoder
+# Local JNI photo filter bridge (src/main/jni) and JXL native decoder
 -keep class com.zomato.photofilters.imageprocessors.NativeImageProcessor { *; }
 -keep class com.awxkee.jxlcoder.** { *; }
 
+# Reprint loads fingerprint modules reflectively via Reprint.initialize()
+-keep class com.github.ajalt.reprint.module.** { *; }
+
 -dontwarn android.graphics.Canvas
 -dontwarn org.fossify.**
-
-# OkHttp
--dontwarn javax.annotation.**
--keepnames class okhttp3.internal.publicsuffix.PublicSuffixDatabase
--dontwarn org.codehaus.mojo.animal_sniffer.*
--dontwarn okhttp3.internal.platform.ConscryptPlatform
-
--keepclassmembers class * implements android.os.Parcelable {
-    static ** CREATOR;
-}
-
-# RenderScript / JNI
--keepclasseswithmembernames class * {
-    native <methods>;
-}
--keep class androidx.renderscript.** { *; }
-
-# Reprint
--keep class com.github.ajalt.reprint.module.** { *; }

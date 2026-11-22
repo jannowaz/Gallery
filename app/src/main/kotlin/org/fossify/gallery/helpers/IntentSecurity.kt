@@ -21,6 +21,8 @@ object IntentSecurity {
         "/product/",
     )
 
+    private const val MAX_FILENAME_LENGTH = 128
+
     private val RESTRICTED_SELF_PROVIDER_SEGMENTS = setOf(
         "internal_files",
         "cache_files",
@@ -95,7 +97,7 @@ object IntentSecurity {
             ?.trim()
             ?.takeIf { it.isNotEmpty() && it != "." && it != ".." }
             ?: return fallback
-        return leaf.replace("..", "_").take(128).ifBlank { fallback }
+        return leaf.replace("..", "_").take(MAX_FILENAME_LENGTH).ifBlank { fallback }
     }
 
     internal fun isRestrictedSelfProviderUri(packageName: String, uri: Uri): Boolean {
