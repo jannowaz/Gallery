@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,6 +29,8 @@ import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -61,6 +64,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.components.ActiveFilterChip
+import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.theme.LocalMediaRepository
@@ -293,17 +297,51 @@ internal fun OmniSearchPanel(
                 }
                 Spacer(Modifier.height(8.dp))
             }
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                Surface(onClick = onEditFilters, shape = RoundedCornerShape(Radius.md), color = if (hasAnyFilter) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
-                    Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.FilterList, null, modifier = Modifier.size(14.dp), tint = if (hasAnyFilter) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(stringResource(R.string.filter_label), style = MaterialTheme.typography.labelSmall, color = if (hasAnyFilter) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val filterContainer = if (hasAnyFilter) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                }
+                val filterContent = if (hasAnyFilter) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                Surface(
+                    onClick = onEditFilters,
+                    shape = RoundedCornerShape(Radius.md),
+                    color = filterContainer,
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.FilterList, null, modifier = Modifier.size(16.dp), tint = filterContent)
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            stringResource(R.string.filter_label),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = filterContent,
+                        )
                     }
                 }
                 if (hasAnyFilter) {
-                    Spacer(Modifier.width(4.dp))
-                    Surface(onClick = onResetFilters, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.errorContainer) {
-                        Text(stringResource(R.string.reset), Modifier.padding(horizontal = 8.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                    Spacer(Modifier.width(6.dp))
+                    Surface(
+                        onClick = onResetFilters,
+                        shape = RoundedCornerShape(Radius.md),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                    ) {
+                        Text(
+                            stringResource(R.string.reset),
+                            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
                     }
                 }
             }
@@ -323,7 +361,11 @@ internal fun OmniSearchPanel(
                     selectedTagNames.sorted().forEach { tag ->
                         ActiveFilterChip(tag) { onToggleTag(tag) }
                     }
-                    if (tagMatchAll) ActiveFilterChip(stringResource(R.string.filter_tags_match_all)) { onTagMatchAllChange(false) }
+                    if (tagMatchAll) {
+                        ActiveFilterChip(stringResource(R.string.filter_tags_match_all)) {
+                            onTagMatchAllChange(false)
+                        }
+                    }
                     if (typeFilter > 0) ActiveFilterChip(
                         when (typeFilter) {
                             org.fossify.gallery.helpers.TYPE_IMAGES -> stringResource(R.string.images)
@@ -347,85 +389,255 @@ internal fun OmniSearchPanel(
                 }
             }
 
-            val hasAnyResults = hasResults || folderResults.isNotEmpty() || tagResults.isNotEmpty() || collectionResults.isNotEmpty() || favoriteResults.isNotEmpty()
+            val hasAnyResults = hasResults || folderResults.isNotEmpty() || tagResults.isNotEmpty() ||
+                collectionResults.isNotEmpty() || favoriteResults.isNotEmpty()
             if (isSearching && !hasAnyResults) {
-                Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
-            } else if (query.length >= 2 && !isSearching && !hasAnyResults) {
                 Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
-                    Text(stringResource(R.string.no_results), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                 }
+            } else if (query.length >= 2 && !isSearching && !hasAnyResults) {
+                EmptyState(
+                    icon = Icons.Default.SearchOff,
+                    title = stringResource(R.string.no_results),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                )
             } else if (hasAnyResults || isSearching) {
                 Spacer(Modifier.height(4.dp)); HorizontalDivider(); Spacer(Modifier.height(4.dp))
+                val numStyle = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum")
                 LazyColumn(
                     state = resultListState,
                     contentPadding = PaddingValues(bottom = 8.dp),
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 ) {
                     if (folderResults.isNotEmpty()) {
-                        item { Text(stringResource(R.string.folders), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 4.dp)) }
+                        item {
+                            Text(
+                                stringResource(R.string.folders),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(vertical = 4.dp),
+                            )
+                        }
                         items(folderResults.take(5), key = { it.second }) { (name, path) ->
                             val parentLabel = remember(path) {
                                 val parent = File(path).parent ?: ""
                                 parent.removePrefix(storagePath).trim('/').ifEmpty { "/" }
                             }
-                            Surface(modifier = Modifier.fillMaxWidth().clickable { onNavigate(path) }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
-                                Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { onNavigate(path) },
+                                color = Color.Transparent,
+                                shape = RoundedCornerShape(Radius.sm),
+                            ) {
+                                Row(
+                                    Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.Default.Folder,
+                                        null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                    Spacer(Modifier.width(10.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
-                                        Text(parentLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
+                                        Text(
+                                            name,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled),
+                                        )
+                                        Text(
+                                            parentLabel,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled),
+                                        )
                                     }
-                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp),
+                                    )
                                 }
                             }
                         }
-                        if (folderResults.size > 5) item { Text(stringResource(R.string.plus_n_more, folderResults.size - 5), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp)) }
+                        if (folderResults.size > 5) {
+                            item {
+                                Text(
+                                    stringResource(R.string.plus_n_more, folderResults.size - 5),
+                                    style = numStyle,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 4.dp),
+                                )
+                            }
+                        }
                         item { Spacer(Modifier.height(8.dp)) }
                     }
                     if (tagResults.isNotEmpty()) {
-                        item { Text(stringResource(R.string.nav_tags), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(vertical = 4.dp)) }
+                        item {
+                            Text(
+                                stringResource(R.string.nav_tags),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.padding(vertical = 4.dp),
+                            )
+                        }
                         items(tagResults.take(8), key = { it.first }) { (tag, cnt) ->
-                            Surface(modifier = Modifier.fillMaxWidth().clickable {
-                                onApplyTagOnly(tag); onDismiss()
-                            }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
-                                Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
-                                    Text(tag, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).privacyBlur(BlurRadius.thumbnail, BlurState.enabled)); Text("$cnt", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable {
+                                    onApplyTagOnly(tag); onDismiss()
+                                },
+                                color = Color.Transparent,
+                                shape = RoundedCornerShape(Radius.sm),
+                            ) {
+                                Row(
+                                    Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Label,
+                                        null,
+                                        tint = MaterialTheme.colorScheme.tertiary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        tag,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        modifier = Modifier.weight(1f)
+                                            .privacyBlur(BlurRadius.thumbnail, BlurState.enabled),
+                                    )
+                                    Text(
+                                        "$cnt",
+                                        style = numStyle,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                 }
                             }
                         }
                         item { Spacer(Modifier.height(8.dp)) }
                     }
                     if (collectionResults.isNotEmpty()) {
-                        item { Text(stringResource(R.string.nav_collections), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 4.dp)) }
+                        item {
+                            Text(
+                                stringResource(R.string.nav_collections),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(vertical = 4.dp),
+                            )
+                        }
                         items(collectionResults, key = { it.id }) { coll ->
-                            Surface(modifier = Modifier.fillMaxWidth().clickable { onOpenCollection(coll); onDismiss() }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
-                                Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.CollectionsBookmark, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
-                                    Text(coll.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
-                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable {
+                                    onOpenCollection(coll); onDismiss()
+                                },
+                                color = Color.Transparent,
+                                shape = RoundedCornerShape(Radius.sm),
+                            ) {
+                                Row(
+                                    Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.Default.CollectionsBookmark,
+                                        null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        coll.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                            .privacyBlur(BlurRadius.thumbnail, BlurState.enabled),
+                                    )
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp),
+                                    )
                                 }
                             }
                         }
                         item { Spacer(Modifier.height(8.dp)) }
                     }
                     if (favoriteResults.isNotEmpty()) {
-                        item { Text(stringResource(R.string.nav_favorites), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(vertical = 4.dp)) }
+                        item {
+                            Text(
+                                stringResource(R.string.nav_favorites),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.padding(vertical = 4.dp),
+                            )
+                        }
                         items(favoriteResults.take(8), key = { it.second }) { (name, path) ->
-                            Surface(modifier = Modifier.fillMaxWidth().clickable { onOpenFavorite(path); onDismiss() }, color = Color.Transparent, shape = RoundedCornerShape(Radius.sm)) {
-                                Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Favorite, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
-                                    Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable {
+                                    onOpenFavorite(path); onDismiss()
+                                },
+                                color = Color.Transparent,
+                                shape = RoundedCornerShape(Radius.sm),
+                            ) {
+                                Row(
+                                    Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.Default.Favorite,
+                                        null,
+                                        tint = MaterialTheme.colorScheme.tertiary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                            .privacyBlur(BlurRadius.thumbnail, BlurState.enabled),
+                                    )
                                 }
                             }
                         }
-                        if (favoriteResults.size > 8) item { Text(stringResource(R.string.plus_n_more, favoriteResults.size - 8), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp)) }
+                        if (favoriteResults.size > 8) {
+                            item {
+                                Text(
+                                    stringResource(R.string.plus_n_more, favoriteResults.size - 8),
+                                    style = numStyle,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 4.dp),
+                                )
+                            }
+                        }
                         item { Spacer(Modifier.height(8.dp)) }
                     }
                     if (hasResults) {
-                        item { Text(stringResource(R.string.media_count_paren, mc), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(vertical = 4.dp)) }
                         item {
-                            LazyRow(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                stringResource(R.string.media_count_paren, mc),
+                                style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.padding(vertical = 4.dp),
+                            )
+                        }
+                        item {
+                            LazyRow(
+                                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
                                 items(textMatches!!.paths, key = { it }) { path ->
                                     Surface(
                                         onClick = { onOpenMedia(path); onDismiss() },
@@ -444,29 +656,56 @@ internal fun OmniSearchPanel(
                         }
                     } else if (isSearching) {
                         item {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
                                 CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
                                 Spacer(Modifier.width(8.dp))
-                                Text(stringResource(R.string.searching), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    stringResource(R.string.searching),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
                     }
                 }
                 Spacer(Modifier.height(4.dp))
                 if (hasResults) {
-                    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.Center) {
-                        Surface(onClick = {
-                            onApplyResults(query.trim())
-                            onDismiss()
-                        }, shape = RoundedCornerShape(Radius.xl), color = MaterialTheme.colorScheme.primary) {
-                            Text(stringResource(R.string.show_results_count, mc), Modifier.padding(horizontal = 20.dp, vertical = 10.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)
+                    Row(
+                        Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Surface(
+                            onClick = {
+                                onApplyResults(query.trim())
+                                onDismiss()
+                            },
+                            shape = RoundedCornerShape(Radius.xl),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) {
+                            Box(
+                                Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    stringResource(R.string.show_results_count, mc),
+                                    style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                )
+                            }
                         }
                     }
                 }
             } else if (!hasAnyFilter) {
-                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    Text(stringResource(R.string.search_min_chars_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                EmptyState(
+                    icon = Icons.Default.Search,
+                    title = stringResource(R.string.search_min_chars_hint),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                )
             }
         }
     }

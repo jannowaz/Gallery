@@ -65,7 +65,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -74,6 +73,7 @@ import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.components.ConfirmDestructive
+import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.models.MediaCollection
 
@@ -144,7 +144,7 @@ fun ManageCollectionsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.collections)) },
+                title = { Text(stringResource(R.string.collections), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back))
@@ -162,15 +162,12 @@ fun ManageCollectionsScreen(
         }
     ) { padding ->
         if (collections.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.CollectionsBookmark, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
-                    Spacer(Modifier.height(16.dp))
-                    Text(stringResource(R.string.no_collections), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                    Spacer(Modifier.height(8.dp))
-                    Text(stringResource(R.string.tap_to_create_collection), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            EmptyState(
+                icon = Icons.Default.CollectionsBookmark,
+                title = stringResource(R.string.no_collections),
+                subtitle = stringResource(R.string.tap_to_create_collection),
+                modifier = Modifier.padding(padding).consumeWindowInsets(padding),
+            )
         } else {
             val layoutDirection = LocalLayoutDirection.current
             LazyColumn(
@@ -181,17 +178,24 @@ fun ManageCollectionsScreen(
                     end = 12.dp + padding.calculateEndPadding(layoutDirection),
                     bottom = 88.dp + padding.calculateBottomPadding(),
                 ),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(collections, key = { it.id }) { coll ->
                     Card(
                         modifier = Modifier.fillMaxWidth().clickable { onCollectionClick(coll) },
                         shape = RoundedCornerShape(Radius.md),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        ),
                     ) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.CollectionsBookmark, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                                Icon(
+                                    Icons.Default.CollectionsBookmark,
+                                    null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp),
+                                )
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
@@ -200,7 +204,7 @@ fun ManageCollectionsScreen(
                                     style = MaterialTheme.typography.bodyLarge,
                                     fontWeight = FontWeight.Medium,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                                 val inclCount = coll.getIncludedPaths().size
                                 val exclCount = coll.getExcludedPaths().size
@@ -210,18 +214,29 @@ fun ManageCollectionsScreen(
                                     if (exclCount > 0) parts.add(stringResource(R.string.folders_excluded, exclCount))
                                     Text(
                                         parts.joinToString(" · "),
-                                        style = MaterialTheme.typography.labelSmall,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        overflow = TextOverflow.Ellipsis,
                                     )
                                 }
                             }
-                            IconButton(onClick = { editingColl = coll; showEditDialog = true }, modifier = Modifier.size(48.dp)) {
+                            IconButton(
+                                onClick = { editingColl = coll; showEditDialog = true },
+                                modifier = Modifier.size(48.dp),
+                            ) {
                                 Icon(Icons.Default.Edit, stringResource(R.string.edit), modifier = Modifier.size(20.dp))
                             }
-                            IconButton(onClick = { showDeleteConfirm = coll }, modifier = Modifier.size(48.dp)) {
-                                Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                            IconButton(
+                                onClick = { showDeleteConfirm = coll },
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    stringResource(org.fossify.commons.R.string.delete),
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(20.dp),
+                                )
                             }
                         }
                     }
@@ -296,48 +311,84 @@ private fun EditCollectionDialog(
                 Surface(
                     onClick = { inclPicker.launch(null) },
                     shape = RoundedCornerShape(Radius.sm),
-                    color = MaterialTheme.colorScheme.surfaceVariant
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.heightIn(min = 48.dp),
                 ) {
-                    Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(R.string.add_folder), style = MaterialTheme.typography.labelSmall)
+                    Row(
+                        Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Folder,
+                            null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.add_folder), style = MaterialTheme.typography.labelMedium)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
 
-                Text(stringResource(R.string.excluded_folders), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                Text(
+                    stringResource(R.string.excluded_folders),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
                 excludedPaths.forEach { p ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(p.substringAfterLast('/').take(50), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { excludedPaths = excludedPaths - p }, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.Default.Delete, stringResource(R.string.remove), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                        Text(
+                            p.substringAfterLast('/').take(50),
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(onClick = { excludedPaths = excludedPaths - p }, modifier = Modifier.size(48.dp)) {
+                            Icon(
+                                Icons.Default.Delete,
+                                stringResource(R.string.remove),
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp),
+                            )
                         }
                     }
                 }
                 Surface(
                     onClick = { exclPicker.launch(null) },
                     shape = RoundedCornerShape(Radius.sm),
-                    color = MaterialTheme.colorScheme.surfaceVariant
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.heightIn(min = 48.dp),
                 ) {
-                    Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(R.string.exclude_folder), style = MaterialTheme.typography.labelSmall)
+                    Row(
+                        Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Folder,
+                            null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.exclude_folder), style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                if (name.isBlank()) return@TextButton
-                val col = (initial ?: MediaCollection(id = 0, name = "")).copy(
-                    name = name,
-                    includedPaths = MediaCollection.createPathsJson(includedPaths),
-                    excludedPaths = MediaCollection.createPathsJson(excludedPaths),
-                )
-                onSave(col)
-            }) { Text(stringResource(org.fossify.commons.R.string.save)) }
+            TextButton(
+                enabled = name.isNotBlank(),
+                onClick = {
+                    if (name.isBlank()) return@TextButton
+                    val col = (initial ?: MediaCollection(id = 0, name = "")).copy(
+                        name = name.trim(),
+                        includedPaths = MediaCollection.createPathsJson(includedPaths),
+                        excludedPaths = MediaCollection.createPathsJson(excludedPaths),
+                    )
+                    onSave(col)
+                },
+            ) { Text(stringResource(org.fossify.commons.R.string.save)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(org.fossify.commons.R.string.cancel)) } }
     )

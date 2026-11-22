@@ -1,6 +1,7 @@
 package org.fossify.gallery.compose.screens.about
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -54,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.fossify.gallery.BuildConfig
 import org.fossify.gallery.R
+import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.Radius
 
 private data class OpenSourceComponent(val name: String, val license: String)
@@ -140,13 +143,13 @@ fun AboutScreen(onBack: () -> Unit) {
                             )
                             Text(
                                 text = "${stringResource(R.string.version_label, BuildConfig.VERSION_NAME)} (${BuildConfig.VERSION_CODE})",
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             if (installedText.isNotEmpty()) {
                                 Text(
                                     text = stringResource(R.string.settings_installed_on, installedText),
-                                    style = MaterialTheme.typography.labelMedium,
+                                    style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -256,6 +259,11 @@ private fun ExpandableAboutCard(
     onToggle: () -> Unit,
     content: @Composable () -> Unit,
 ) {
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = AppMotion.short,
+        label = "aboutChevron",
+    )
     Card(
         shape = RoundedCornerShape(Radius.md),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -265,6 +273,7 @@ private fun ExpandableAboutCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 56.dp)
                     .clickable(onClick = onToggle)
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -280,7 +289,7 @@ private fun ExpandableAboutCard(
                 Icon(
                     Icons.Default.KeyboardArrowDown,
                     contentDescription = null,
-                    modifier = Modifier.rotate(if (expanded) 180f else 0f),
+                    modifier = Modifier.rotate(chevronRotation),
                 )
             }
             AnimatedVisibility(visible = expanded) {

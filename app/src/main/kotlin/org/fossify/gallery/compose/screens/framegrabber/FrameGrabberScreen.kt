@@ -3,9 +3,10 @@ package org.fossify.gallery.compose.screens.framegrabber
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,21 +14,28 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
@@ -44,6 +52,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,16 +67,18 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.DisposableEffect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.R
+import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.compose.theme.Radius
 import org.fossify.gallery.compose.theme.RatingStarColor
 import org.fossify.gallery.compose.util.BlurState
 import org.fossify.gallery.compose.util.privacyBlur
@@ -138,30 +149,56 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(stringResource(R.string.grab_frames)) },
-                    navigationIcon = { IconButton(onClick = { if (!saving) onDismiss(false) }) { Icon(Icons.Default.Close, stringResource(org.fossify.commons.R.string.cancel)) } },
+                    title = { Text(stringResource(R.string.grab_frames), fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = { if (!saving) onDismiss(false) }) {
+                            Icon(Icons.Default.Close, stringResource(org.fossify.commons.R.string.cancel))
+                        }
+                    },
                 )
             },
             bottomBar = {
                 if (candidates.isNotEmpty()) {
                     Surface(tonalElevation = 3.dp) {
-                        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                        ) {
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
-                                FilterChip(selected = onlySharp, onClick = { onlySharp = !onlySharp }, label = { Text(stringResource(R.string.grab_frames_only_sharp)) })
-                                FilterChip(selected = sortBySharp, onClick = { sortBySharp = !sortBySharp }, label = { Text(stringResource(R.string.grab_frames_sort_sharp)) })
+                                FilterChip(
+                                    selected = onlySharp,
+                                    onClick = { onlySharp = !onlySharp },
+                                    label = { Text(stringResource(R.string.grab_frames_only_sharp)) },
+                                )
+                                FilterChip(
+                                    selected = sortBySharp,
+                                    onClick = { sortBySharp = !sortBySharp },
+                                    label = { Text(stringResource(R.string.grab_frames_sort_sharp)) },
+                                )
                             }
                             Row(
                                 Modifier
                                     .fillMaxWidth()
-                                    .clickable { deleteOriginal = !deleteOriginal }
-                                    .padding(vertical = 2.dp),
+                                    .heightIn(min = 48.dp)
+                                    .toggleable(
+                                        value = deleteOriginal,
+                                        role = Role.Checkbox,
+                                        onValueChange = { deleteOriginal = it },
+                                    )
+                                    .padding(vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Checkbox(checked = deleteOriginal, onCheckedChange = { deleteOriginal = it })
-                                Text(stringResource(R.string.grab_frames_delete_video), style = MaterialTheme.typography.bodySmall)
+                                Checkbox(checked = deleteOriginal, onCheckedChange = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    stringResource(R.string.grab_frames_delete_video),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
                             }
                             Button(
                                 onClick = {
@@ -169,18 +206,33 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
                                     if (times.isEmpty()) return@Button
                                     scope.launch {
                                         saveProgress = 0 to times.size
-                                        val res = VideoFrameExtractor.saveFrames(ctx, videoPath, times) { d, t -> saveProgress = d to t }
+                                        val res = VideoFrameExtractor.saveFrames(ctx, videoPath, times) { d, t ->
+                                            saveProgress = d to t
+                                        }
                                         saveProgress = null
                                         RefreshBus.trigger()
                                         ctx.toast(
-                                            if (res.failed > 0) resources.getString(R.string.grab_frames_saved_with_failures, res.savedPaths.size, res.failed)
-                                            else resources.getQuantityString(R.plurals.grab_frames_saved, res.savedPaths.size, res.savedPaths.size)
+                                            if (res.failed > 0) {
+                                                resources.getString(
+                                                    R.string.grab_frames_saved_with_failures,
+                                                    res.savedPaths.size,
+                                                    res.failed,
+                                                )
+                                            } else {
+                                                resources.getQuantityString(
+                                                    R.plurals.grab_frames_saved,
+                                                    res.savedPaths.size,
+                                                    res.savedPaths.size,
+                                                )
+                                            },
                                         )
                                         if (deleteOriginal && res.savedPaths.isNotEmpty()) {
                                             ctx.withRecycleBinDeletePasswordCheck {
                                                 scope.launch {
                                                     withContext(Dispatchers.IO) { repo.moveToRecycleBin(videoPath) }
-                                                    UndoManager.push(UndoAction(paths = setOf(videoPath), type = UndoType.DELETE))
+                                                    UndoManager.push(
+                                                        UndoAction(paths = setOf(videoPath), type = UndoType.DELETE),
+                                                    )
                                                     onDismiss(true)
                                                 }
                                             }
@@ -190,62 +242,134 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
                                     }
                                 },
                                 enabled = selected.isNotEmpty() && !saving,
-                                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                            ) { Text(stringResource(R.string.grab_frames_save_count, selected.size)) }
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(top = 6.dp),
+                            ) {
+                                Text(
+                                    stringResource(R.string.grab_frames_save_count, selected.size),
+                                    style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+                                )
+                            }
                         }
                     }
                 }
             },
         ) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding)) {
+            val numLabelSmall = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum")
+            val numLabelMedium = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
+            Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
                 when {
                     extractProgress != null -> {
                         val (d, t) = extractProgress!!
-                        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(
+                            Modifier.align(Alignment.Center),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
                             CircularProgressIndicator()
-                            Text(stringResource(R.string.grab_frames_analyzing, d, t), Modifier.padding(top = 12.dp), style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                stringResource(R.string.grab_frames_analyzing, d, t),
+                                Modifier.padding(top = 12.dp),
+                                style = numLabelMedium,
+                            )
                         }
                     }
-                    candidates.isEmpty() -> Text(stringResource(R.string.grab_frames_none), Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    else -> LazyVerticalGrid(columns = GridCells.Adaptive(140.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
+                    candidates.isEmpty() -> EmptyState(
+                        icon = Icons.Default.Movie,
+                        title = stringResource(R.string.grab_frames_none),
+                    )
+                    else -> LazyVerticalGrid(
+                        columns = GridCells.Adaptive(140.dp),
+                        contentPadding = PaddingValues(4.dp),
+                    ) {
                         items(shown, key = { it.timeMs }) { c ->
                             val isSel = c.timeMs in selected
                             val isRec = c.timeMs in recommended
+                            val tileShape = RoundedCornerShape(Radius.sm)
                             Box(
-                                Modifier.padding(4.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp))
+                                Modifier
+                                    .padding(4.dp)
+                                    .aspectRatio(16f / 9f)
+                                    .clip(tileShape)
+                                    .then(
+                                        if (isSel) {
+                                            Modifier.border(2.dp, MaterialTheme.colorScheme.primary, tileShape)
+                                        } else {
+                                            Modifier
+                                        },
+                                    )
                                     .combinedClickable(
-                                        onClick = { selected = if (isSel) selected - c.timeMs else selected + c.timeMs },
+                                        onClick = {
+                                            selected = if (isSel) selected - c.timeMs else selected + c.timeMs
+                                        },
                                         onLongClick = { peekFrame = c },
                                     ),
                             ) {
-                                Image(c.preview.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize().privacyBlur(BlurRadius.thumbnail, BlurState.enabled), contentScale = ContentScale.Crop)
-                                // Selection tick
+                                Image(
+                                    c.preview.asImageBitmap(),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .privacyBlur(BlurRadius.thumbnail, BlurState.enabled),
+                                    contentScale = ContentScale.Crop,
+                                )
                                 Icon(
                                     if (isSel) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                                     contentDescription = null,
-                                    tint = if (isSel) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.85f),
+                                    tint = if (isSel) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        Color.White.copy(alpha = 0.85f)
+                                    },
                                     modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(22.dp),
                                 )
-                                // Sharp badge
-                                if (isRec) Row(Modifier.align(Alignment.TopStart).padding(4.dp).clip(RoundedCornerShape(4.dp)).background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 4.dp, vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Star, null, tint = RatingStarColor, modifier = Modifier.size(12.dp))
+                                if (isRec) {
+                                    Row(
+                                        Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(4.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color.Black.copy(alpha = 0.45f))
+                                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(Icons.Default.Star, null, tint = RatingStarColor, modifier = Modifier.size(12.dp))
+                                    }
                                 }
                                 val secs = c.timeMs / 1000
                                 Text(
                                     "%d:%02d".format(secs / 60, secs % 60),
-                                    color = Color.White, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.labelSmall,
-                                    modifier = Modifier.align(Alignment.BottomStart).padding(4.dp).clip(RoundedCornerShape(4.dp)).background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 4.dp, vertical = 1.dp),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Medium,
+                                    style = numLabelSmall,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .padding(4.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color.Black.copy(alpha = 0.45f))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp),
                                 )
                             }
                         }
                     }
                 }
                 saveProgress?.let { (d, t) ->
-                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)), contentAlignment = Alignment.Center) {
-                        Surface(shape = RoundedCornerShape(12.dp), tonalElevation = 4.dp) {
-                            Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                LinearProgressIndicator(progress = { if (t > 0) d / t.toFloat() else 0f }, modifier = Modifier.fillMaxWidth())
-                                Text(stringResource(R.string.grab_frames_saving, d, t), Modifier.padding(top = 10.dp), style = MaterialTheme.typography.labelMedium)
+                    Box(
+                        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Surface(shape = RoundedCornerShape(Radius.md), tonalElevation = 4.dp) {
+                            Column(
+                                Modifier.padding(20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                LinearProgressIndicator(
+                                    progress = { if (t > 0) d / t.toFloat() else 0f },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                Text(
+                                    stringResource(R.string.grab_frames_saving, d, t),
+                                    Modifier.padding(top = 10.dp),
+                                    style = numLabelMedium,
+                                )
                             }
                         }
                     }
@@ -265,13 +389,33 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
                         Image(
                             pf.preview.asImageBitmap(),
                             contentDescription = null,
-                            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).privacyBlur(BlurRadius.viewer, BlurState.enabled),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(16f / 9f)
+                                .privacyBlur(BlurRadius.viewer, BlurState.enabled),
                             contentScale = ContentScale.Fit,
                         )
                         val secs = pf.timeMs / 1000
-                        Text("%d:%02d".format(secs / 60, secs % 60), color = Color.White, style = MaterialTheme.typography.titleMedium, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp))
-                        IconButton(onClick = { selected = if (isSel) selected - pf.timeMs else selected + pf.timeMs }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)) {
-                            Icon(if (isSel) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, contentDescription = null, tint = if (isSel) MaterialTheme.colorScheme.primary else Color.White, modifier = Modifier.size(32.dp))
+                        Text(
+                            "%d:%02d".format(secs / 60, secs % 60),
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp),
+                        )
+                        IconButton(
+                            onClick = {
+                                selected = if (isSel) selected - pf.timeMs else selected + pf.timeMs
+                            },
+                            modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+                        ) {
+                            Icon(
+                                if (isSel) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                contentDescription = stringResource(
+                                    if (isSel) R.string.cd_selected else R.string.cd_not_selected,
+                                ),
+                                tint = if (isSel) MaterialTheme.colorScheme.primary else Color.White,
+                                modifier = Modifier.size(32.dp),
+                            )
                         }
                     }
                 }

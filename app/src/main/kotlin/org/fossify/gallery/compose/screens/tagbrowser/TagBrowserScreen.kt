@@ -10,28 +10,22 @@ import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -45,9 +39,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -60,8 +51,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -72,44 +61,37 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
-import org.fossify.gallery.compose.screens.MediaSkeleton
-import org.fossify.gallery.compose.screens.FolderSkeleton
-import org.fossify.gallery.compose.screens.SortField
-import org.fossify.gallery.compose.screens.VideoThumbnail
-import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.compose.components.AlbumGridItem
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.LibraryAlbumGrid
-import org.fossify.gallery.compose.components.AlbumGridItem
+import org.fossify.gallery.compose.components.LibraryScreenHeader
+import org.fossify.gallery.compose.components.LibrarySearchField
 import org.fossify.gallery.compose.components.LoadErrorBanner
 import org.fossify.gallery.compose.components.LoadErrorState
 import org.fossify.gallery.compose.components.RefreshActionButton
-import org.fossify.gallery.compose.components.LibraryScreenHeader
 import org.fossify.gallery.compose.components.SelectionAppBar
-import org.fossify.gallery.compose.components.UndoBar
-import org.fossify.gallery.compose.components.LibrarySearchField
 import org.fossify.gallery.compose.components.TagHierarchyPickerDialog
+import org.fossify.gallery.compose.components.UndoBar
 import org.fossify.gallery.compose.components.viewSettingsSummary
+import org.fossify.gallery.compose.screens.FolderSkeleton
+import org.fossify.gallery.compose.screens.SortField
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
-import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
-import org.fossify.gallery.helpers.expandTagsWithDescendants
-import org.fossify.gallery.helpers.renameTagInHierarchy
+import org.fossify.gallery.helpers.QuickTagsBus
 import org.fossify.gallery.helpers.UndoAction
 import org.fossify.gallery.helpers.UndoManager
 import org.fossify.gallery.helpers.UndoType
-import org.fossify.gallery.helpers.QuickTagsBus
+import org.fossify.gallery.helpers.expandTagsWithDescendants
+import org.fossify.gallery.helpers.renameTagInHierarchy
 import org.fossify.gallery.helpers.selectionForAll
-import java.io.File
 
 private val tagSelectionSaver = listSaver<Set<String>, String>(
     save = { it.toList() },
@@ -333,7 +315,13 @@ fun TagBrowserScreen(
         },
         bottomBar = { UndoBar(if (embeddedInMainTabs) Modifier else Modifier.navigationBarsPadding()) },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .consumeWindowInsets(padding)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
             // Progress of a running tag merge/rename (their dialogs close immediately).
             org.fossify.gallery.compose.util.XmpBatchIndicator()
             if (!embeddedInMainTabs && searchOpen) {
@@ -447,33 +435,137 @@ fun TagBrowserScreen(
                     HorizontalDivider()
                     Spacer(Modifier.height(8.dp))
                     if (selectedTags.size >= 2) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Surface(onClick = { tagMatchAll = false }, shape = RoundedCornerShape(Radius.md), color = if (!tagMatchAll) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest, contentColor = if (!tagMatchAll) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.filter_tags_match_any), style = MaterialTheme.typography.labelSmall) }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Surface(
+                                onClick = { tagMatchAll = false },
+                                shape = RoundedCornerShape(Radius.md),
+                                color = if (!tagMatchAll) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainerHighest
+                                },
+                                contentColor = if (!tagMatchAll) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                            ) {
+                                Box(
+                                    Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        stringResource(R.string.filter_tags_match_any),
+                                        style = MaterialTheme.typography.labelMedium,
+                                    )
+                                }
                             }
-                            Surface(onClick = { tagMatchAll = true }, shape = RoundedCornerShape(Radius.md), color = if (tagMatchAll) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest, contentColor = if (tagMatchAll) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.filter_tags_match_all), style = MaterialTheme.typography.labelSmall) }
+                            Surface(
+                                onClick = { tagMatchAll = true },
+                                shape = RoundedCornerShape(Radius.md),
+                                color = if (tagMatchAll) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainerHighest
+                                },
+                                contentColor = if (tagMatchAll) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                            ) {
+                                Box(
+                                    Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        stringResource(R.string.filter_tags_match_all),
+                                        style = MaterialTheme.typography.labelMedium,
+                                    )
+                                }
                             }
                         }
                     }
                     if (selectedTags.size == 1) {
-                        Spacer(Modifier.height(6.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Surface(onClick = { renameTargetTag = selectedTags.sorted().firstOrNull() }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.action_rename), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Surface(
+                                onClick = { renameTargetTag = selectedTags.sorted().firstOrNull() },
+                                shape = RoundedCornerShape(Radius.md),
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                            ) {
+                                Box(
+                                    Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        stringResource(R.string.action_rename),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    )
+                                }
                             }
-                            Surface(onClick = { pendingParentAssign = selectedTags }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.action_parent), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }
+                            Surface(
+                                onClick = { pendingParentAssign = selectedTags },
+                                shape = RoundedCornerShape(Radius.md),
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                            ) {
+                                Box(
+                                    Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        stringResource(R.string.action_parent),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    )
+                                }
                             }
                         }
                     } else {
-                        Spacer(Modifier.height(6.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Surface(onClick = { pendingParentAssign = selectedTags }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.weight(1f)) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.action_parent), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Surface(
+                                onClick = { pendingParentAssign = selectedTags },
+                                shape = RoundedCornerShape(Radius.md),
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                            ) {
+                                Box(
+                                    Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        stringResource(R.string.action_parent),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    )
+                                }
                             }
-                            Surface(onClick = { mergeTargetTag = selectedTags.sorted().firstOrNull() }, shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.weight(1f)) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.action_merge), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onTertiaryContainer) }
+                            Surface(
+                                onClick = { mergeTargetTag = selectedTags.sorted().firstOrNull() },
+                                shape = RoundedCornerShape(Radius.md),
+                                color = MaterialTheme.colorScheme.tertiaryContainer,
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                            ) {
+                                Box(
+                                    Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        stringResource(R.string.action_merge),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    )
+                                }
                             }
                         }
                     }
@@ -602,10 +694,31 @@ fun TagBrowserScreen(
                         Spacer(Modifier.height(8.dp))
                         Text(stringResource(R.string.existing_tags), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
                             existingTags.forEach { t ->
-                                Surface(onClick = { mergeTargetName = t }, shape = RoundedCornerShape(Radius.md), color = if (t == mergeTargetName) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest, contentColor = if (t == mergeTargetName) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant) {
-                                    Text(t, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                                val isCurrent = t == mergeTargetName
+                                Surface(
+                                    onClick = { mergeTargetName = t },
+                                    shape = RoundedCornerShape(Radius.md),
+                                    color = if (isCurrent) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceContainerHighest
+                                    },
+                                    contentColor = if (isCurrent) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                ) {
+                                    Text(
+                                        t,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    )
                                 }
                             }
                         }
@@ -613,31 +726,56 @@ fun TagBrowserScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    val target = mergeTargetName.trim()
-                    if (target.isBlank()) return@TextButton
-                    val sources = selectedTags - target
-                    // Close the dialog right away - the XmpBatch indicator carries the progress;
-                    // the dialog used to sit visually frozen for the whole multi-minute merge.
-                    mergeTargetTag = null
-                    scope.launch {
-                        val hierarchyBefore = ctx.config.tagHierarchy
-                        val items = sources.flatMap { srcTag -> (allTags[srcTag] ?: emptyList()).map { it to srcTag } }
-                        val affectedPaths = items.map { it.first }.distinct()
-                        val snapshots = withContext(Dispatchers.IO) { repo.getTagsForPaths(affectedPaths) }
-                        // Update hierarchy names before writing files so the replacement XMP carries
-                        // the same ancestry as the newly merged/renamed tag.
-                        sources.forEach { source ->
-                            ctx.config.tagHierarchy = renameTagInHierarchy(ctx.config.tagHierarchy, source, target)
+                TextButton(
+                    enabled = mergeTargetName.isNotBlank(),
+                    onClick = {
+                        val target = mergeTargetName.trim()
+                        if (target.isBlank()) return@TextButton
+                        val sources = selectedTags - target
+                        // Close the dialog right away - the XmpBatch indicator carries the progress;
+                        // the dialog used to sit visually frozen for the whole multi-minute merge.
+                        mergeTargetTag = null
+                        scope.launch {
+                            val hierarchyBefore = ctx.config.tagHierarchy
+                            val items = sources.flatMap { srcTag ->
+                                (allTags[srcTag] ?: emptyList()).map { it to srcTag }
+                            }
+                            val affectedPaths = items.map { it.first }.distinct()
+                            val snapshots = withContext(Dispatchers.IO) { repo.getTagsForPaths(affectedPaths) }
+                            // Update hierarchy names before writing files so the replacement XMP carries
+                            // the same ancestry as the newly merged/renamed tag.
+                            sources.forEach { source ->
+                                ctx.config.tagHierarchy = renameTagInHierarchy(
+                                    ctx.config.tagHierarchy,
+                                    source,
+                                    target,
+                                )
+                            }
+                            val successful = mutableSetOf<String>()
+                            org.fossify.gallery.compose.util.XmpBatch.run(
+                                ctx,
+                                items,
+                                successMessage = res.getString(R.string.merged_into, target),
+                                onSuccess = { successful += it.first },
+                            ) { (p, srcTag) ->
+                                repo.replaceTag(p, srcTag, target)
+                            }
+                            if (successful.isNotEmpty()) {
+                                UndoManager.push(
+                                    UndoAction(
+                                        successful,
+                                        UndoType.TAG_RESTORE_SNAPSHOT,
+                                        tagSnapshots = snapshots
+                                            .filterKeys { it in successful }
+                                            .mapValues { it.value.toSet() },
+                                        hierarchyBefore = hierarchyBefore,
+                                    ),
+                                )
+                            }
+                            refreshTrigger++; selectedTags = emptySet(); tagMatchAll = false
                         }
-                        val successful = mutableSetOf<String>()
-                        org.fossify.gallery.compose.util.XmpBatch.run(ctx, items, successMessage = res.getString(R.string.merged_into, target), onSuccess = { successful += it.first }) { (p, srcTag) ->
-                            repo.replaceTag(p, srcTag, target)
-                        }
-                        if (successful.isNotEmpty()) UndoManager.push(UndoAction(successful, UndoType.TAG_RESTORE_SNAPSHOT, tagSnapshots = snapshots.filterKeys { it in successful }.mapValues { it.value.toSet() }, hierarchyBefore = hierarchyBefore))
-                        refreshTrigger++; selectedTags = emptySet(); tagMatchAll = false
-                    }
-                }) { Text(stringResource(R.string.action_merge)) }
+                    },
+                ) { Text(stringResource(R.string.action_merge)) }
             },
             dismissButton = { TextButton(onClick = { mergeTargetTag = null }) { Text(stringResource(R.string.cancel)) } }
         )
@@ -652,30 +790,59 @@ fun TagBrowserScreen(
             title = { Text(stringResource(R.string.rename_tag_title)) },
             text = {
                 Column {
-                    Text(stringResource(R.string.rename_tag_prompt, oldName, count), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        stringResource(R.string.rename_tag_prompt, oldName, count),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                    )
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(value = newName, onValueChange = { newName = it }, label = { Text(stringResource(R.string.rename_numbered)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        label = { Text(stringResource(R.string.rename_numbered)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    val target = newName.trim()
-                    if (target.isBlank() || target == oldName) return@TextButton
-                    // Dialog closes immediately, the XmpBatch indicator shows the per-file progress.
-                    renameTargetTag = null
-                    scope.launch {
-                        val paths = allTags[oldName] ?: emptyList()
-                        val hierarchyBefore = ctx.config.tagHierarchy
-                        val snapshots = withContext(Dispatchers.IO) { repo.getTagsForPaths(paths) }
-                        ctx.config.tagHierarchy = renameTagInHierarchy(ctx.config.tagHierarchy, oldName, target)
-                        val successful = mutableSetOf<String>()
-                        org.fossify.gallery.compose.util.XmpBatch.run(ctx, paths, successMessage = res.getString(R.string.renamed_tag_result, oldName, target, count), onSuccess = { successful += it }) { p ->
-                            repo.replaceTag(p, oldName, target)
+                val trimmed = newName.trim()
+                TextButton(
+                    enabled = trimmed.isNotEmpty() && trimmed != oldName,
+                    onClick = {
+                        val target = newName.trim()
+                        if (target.isBlank() || target == oldName) return@TextButton
+                        // Dialog closes immediately, the XmpBatch indicator shows the per-file progress.
+                        renameTargetTag = null
+                        scope.launch {
+                            val paths = allTags[oldName] ?: emptyList()
+                            val hierarchyBefore = ctx.config.tagHierarchy
+                            val snapshots = withContext(Dispatchers.IO) { repo.getTagsForPaths(paths) }
+                            ctx.config.tagHierarchy = renameTagInHierarchy(ctx.config.tagHierarchy, oldName, target)
+                            val successful = mutableSetOf<String>()
+                            org.fossify.gallery.compose.util.XmpBatch.run(
+                                ctx,
+                                paths,
+                                successMessage = res.getString(R.string.renamed_tag_result, oldName, target, count),
+                                onSuccess = { successful += it },
+                            ) { p ->
+                                repo.replaceTag(p, oldName, target)
+                            }
+                            if (successful.isNotEmpty()) {
+                                UndoManager.push(
+                                    UndoAction(
+                                        successful,
+                                        UndoType.TAG_RESTORE_SNAPSHOT,
+                                        tagSnapshots = snapshots
+                                            .filterKeys { it in successful }
+                                            .mapValues { it.value.toSet() },
+                                        hierarchyBefore = hierarchyBefore,
+                                    ),
+                                )
+                            }
+                            refreshTrigger++; selectedTags = emptySet(); tagMatchAll = false
                         }
-                        if (successful.isNotEmpty()) UndoManager.push(UndoAction(successful, UndoType.TAG_RESTORE_SNAPSHOT, tagSnapshots = snapshots.filterKeys { it in successful }.mapValues { it.value.toSet() }, hierarchyBefore = hierarchyBefore))
-                        refreshTrigger++; selectedTags = emptySet(); tagMatchAll = false
-                    }
-                }) { Text(stringResource(R.string.action_rename)) }
+                    },
+                ) { Text(stringResource(R.string.action_rename)) }
             },
             dismissButton = { TextButton(onClick = { renameTargetTag = null }) { Text(stringResource(R.string.cancel)) } }
         )
