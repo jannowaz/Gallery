@@ -1,3 +1,8 @@
 package org.fossify.gallery.models
 
-data class AlbumCover(val path: String, val tmb: String)
+import com.google.gson.annotations.SerializedName
+
+data class AlbumCover(
+    @SerializedName("path") val path: String = "",
+    @SerializedName("tmb") val tmb: String = "",
+)

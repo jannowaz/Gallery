@@ -2,6 +2,7 @@ package org.fossify.gallery.helpers
 
 import android.content.Context
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import org.fossify.gallery.extensions.defaultSharedPrefs
 import java.io.File
@@ -10,7 +11,10 @@ import java.io.File
  * One configured source -> destination folder pair for the "Mover" feature in
  * [org.fossify.gallery.compose.screens.FoldersMoverScreen].
  */
-data class FolderPair(val source: String = "", val destination: String = "")
+data class FolderPair(
+    @SerializedName("source") val source: String = "",
+    @SerializedName("destination") val destination: String = "",
+)
 
 private const val MOVER_PAIRS_PREF_KEY = "mover_pairs"
 

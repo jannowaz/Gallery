@@ -4,7 +4,6 @@
   <CurrentIssues>
     <ID>ComplexCondition:Activity.kt$(hide &amp;&amp; filename.startsWith('.')) || (!hide &amp;&amp; !filename.startsWith('.'))</ID>
     <ID>ComplexCondition:ComposeExplorerActivity.kt$(uiState.dbInitialized || uiState.dbInitError != null) &amp;&amp; (uiState.selectedTab != 1 || !albumsState.isLoading)</ID>
-    <ID>ComplexCondition:ComposeExplorerActivity.kt$uiState.selectedTab == 0 || uiState.selectedTab == 4 || (uiState.selectedTab == 2 &amp;&amp; settingsMode == SettingsMode.MEDIA)</ID>
     <ID>ComplexCondition:DuplicateScanner.kt$DuplicateScanner$i == 0 || percent == 100 || (percent != lastPublishedPercent &amp;&amp; now - lastPublishedAt &gt;= 120L)</ID>
     <ID>ComplexCondition:ExplorerScreen.kt$(isNameFiltering || filterState.isActive) &amp;&amp; visibleFolderItems.isEmpty() &amp;&amp; visibleFileItems.isEmpty()</ID>
     <ID>ComplexCondition:FolderPathPickerSheet.kt$folderName.isNotBlank() &amp;&amp; folderName != "." &amp;&amp; folderName != ".." &amp;&amp; !folderName.contains('/') &amp;&amp; !folderName.contains('\\')</ID>
@@ -61,7 +60,6 @@
     <ID>CompositionLocalAllowlist:Tokens.kt$LocalSpacing</ID>
     <ID>CyclomaticComplexMethod:Activity.kt$fun AppCompatActivity.fixDateTaken( paths: ArrayList&lt;String&gt;, showToasts: Boolean, hasRescanned: Boolean = false, callback: (() -&gt; Unit)? = null )</ID>
     <ID>CyclomaticComplexMethod:Activity.kt$fun BaseSimpleActivity.saveRotatedImageToFile(oldPath: String, newPath: String, degrees: Int, showToasts: Boolean, callback: () -&gt; Unit)</ID>
-    <ID>CyclomaticComplexMethod:AlbumListRow.kt$@Composable fun AlbumListRow( name: String, subtitle: String, coverPath: String, modifier: Modifier = Modifier, selected: Boolean = false, showChevron: Boolean = false, showThumbnail: Boolean = true, // Two-columns-side-by-side layout (see LibraryAlbumGrid): each row is only half the width, so // the cover shrinks, the chevron is dropped and the name may wrap to two lines - without this // the name gets clipped to "Zu..." with no room to read it. dense: Boolean = false, // Single-column compact mode keeps the row readable while reducing vertical rhythm. Unlike // dense two-column rows it keeps the trailing navigation affordance. compact: Boolean = false, badgeSubtitle: Boolean = false, // Faint path line for folder rows (see folderPathHint). When present the name stays on one line // so the extra line doesn't stack with a two-line name; null on containers (Collections/Tags). pathHint: String? = null, imageCount: Int = 0, videoCount: Int = 0, )</ID>
     <ID>CyclomaticComplexMethod:AlbumsScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun AlbumsScreen( viewModel: AlbumsViewModel, onFolderClick: (Directory) -&gt; Unit, modifier: Modifier = Modifier, viewSettings: ViewSettings = ViewSettings(), externalSearchQuery: String = "", onClearExternalSearch: () -&gt; Unit = {}, onOpenViewSettings: (() -&gt; Unit)? = null, onSelectionActiveChanged: (Boolean) -&gt; Unit = {}, tabIndex: Int? = null, )</ID>
     <ID>CyclomaticComplexMethod:AlbumsViewModel.kt$AlbumsViewModel$private fun recheckDirectories(dirs: ArrayList&lt;Directory&gt;, changedPaths: Set&lt;String&gt;, generation: Long)</ID>
     <ID>CyclomaticComplexMethod:AlbumsViewModel.kt$AlbumsViewModel$private fun startDirectoryRefresh(showLoading: Boolean)</ID>
@@ -86,7 +84,6 @@
     <ID>CyclomaticComplexMethod:EditActivity.kt$EditActivity$private fun initEditActivity()</ID>
     <ID>CyclomaticComplexMethod:EditActivity.kt$EditActivity$private fun saveBitmapOverwriteSafely(bitmap: Bitmap, path: String, showSavingToast: Boolean)</ID>
     <ID>CyclomaticComplexMethod:EditActivity.kt$EditActivity$private fun updatePrimaryActionButtons()</ID>
-    <ID>CyclomaticComplexMethod:ExplorerComponents.kt$@OptIn(ExperimentalFoundationApi::class) @Composable internal fun ExplorerMosaicChunk( items: List&lt;ExplorerItem&gt;, tagsByPath: Map&lt;String, List&lt;String&gt;&gt;, columnCount: Int, spacing: Dp, cornerShape: Shape, displayMode: DisplayMode, showFileNames: Boolean, hasFileSelection: Boolean, selectedFilePaths: Set&lt;String&gt;, onClick: (ExplorerItem) -&gt; Unit, onLongClick: (ExplorerItem) -&gt; Unit, onTagClick: (String) -&gt; Unit, onPreviewClick: (ExplorerItem) -&gt; Unit, )</ID>
     <ID>CyclomaticComplexMethod:ExplorerModelsAndCache.kt$internal fun ExplorerItem.matchesLibraryFilter( filter: LibraryFilterState, tags: Set&lt;String&gt;, reviewStatus: MediaReviewStatus?, ): Boolean</ID>
     <ID>CyclomaticComplexMethod:ExplorerModelsAndCache.kt$internal suspend fun loadExplorerFolderContents( context: Context, repo: MediaRepository, path: String, storageRoot: String, allEntries: List&lt;MediaStoreOps.MediaEntry&gt;?, folderSettings: ViewSettings, mediaSettings: ViewSettings, needsTags: Boolean, ): ExplorerContent</ID>
     <ID>CyclomaticComplexMethod:ExplorerScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, FlowPreview::class) @Composable fun ExplorerScreen( internalStoragePath: String, nameFilter: String = "", onClearNameFilter: () -&gt; Unit = {}, filterState: LibraryFilterState = LibraryFilterState(), filterActions: LibraryFilterActions = LibraryFilterActions(), modifier: Modifier = Modifier, folderSettings: ViewSettings = ViewSettings(), mediaSettings: ViewSettings = ViewSettings(), onPathChange: (String) -&gt; Unit = {}, onSelectionActiveChanged: (Boolean) -&gt; Unit = {}, onCanGoUpChanged: (Boolean) -&gt; Unit = {}, externalBackHandlerActive: Boolean = false, onNavigateToViewer: (List&lt;String&gt;, Int) -&gt; Unit = { _, _ -&gt; }, initialScrollIndex: Int = 0, initialScrollOffset: Int = 0, onScrollPositionChanged: (Int, Int) -&gt; Unit = { _, _ -&gt; }, // "In Medien öffnen" - opens the Media tab filtered (recursively, via MediaRepository's // directory-prefix LIKE match) to everything under the given folder(s). onOpenInMedia: (Set&lt;String&gt;) -&gt; Unit = {}, onRescan: () -&gt; Unit = {}, onScanMetadata: () -&gt; Unit = {}, onOpenSwipeMode: (String, String?) -&gt; Unit = { _, _ -&gt; }, onOpenPersonReview: (String) -&gt; Unit = {}, onOpenViewSettings: (() -&gt; Unit)? = null, onTagClick: (String) -&gt; Unit = {}, tabIndex: Int? = null, )</ID>
@@ -99,7 +96,6 @@
     <ID>CyclomaticComplexMethod:FolderPickerSheet.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun FolderPickerSheet( isMoveOperation: Boolean, sourcePaths: List&lt;String&gt;, onDismiss: () -&gt; Unit, onTargetSelected: ((String) -&gt; Unit)? = null, )</ID>
     <ID>CyclomaticComplexMethod:FolderRenameDialog.kt$@Composable fun FolderRenameDialog(folderPath: String, onDismiss: () -&gt; Unit, onRenamed: (oldPath: String, newPath: String) -&gt; Unit = { _, _ -&gt; })</ID>
     <ID>CyclomaticComplexMethod:FolderSwipeScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun FolderSwipeScreen( folderPath: String, startPath: String = "", onBack: () -&gt; Unit, onNavigateToViewer: ((paths: List&lt;String&gt;, startIndex: Int) -&gt; Unit)? = null, )</ID>
-    <ID>CyclomaticComplexMethod:FolderTile.kt$@Composable fun FolderTile( name: String, thumbnailPath: String, previewPaths: List&lt;String&gt; = emptyList(), isCollection: Boolean = false, showThumbnail: Boolean, modifier: Modifier = Modifier, roundedCorners: Boolean = true, containerColor: Color = MaterialTheme.colorScheme.surface, subtitle: String? = null, imageCount: Int = 0, videoCount: Int = 0, isNarrow: Boolean = false, isUltraNarrow: Boolean = false, )</ID>
     <ID>CyclomaticComplexMethod:FoldersMoverScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun FoldersMoverScreen(onBack: () -&gt; Unit)</ID>
     <ID>CyclomaticComplexMethod:FoldersMoverScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun AddPairDialog( initialSource: String, initialDest: String, onConfirm: (List&lt;String&gt;, String) -&gt; Unit, onDismiss: () -&gt; Unit, defPrefs: android.content.SharedPreferences, )</ID>
     <ID>CyclomaticComplexMethod:FrameGrabberScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class) @Composable fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) -&gt; Unit)</ID>
@@ -121,7 +117,6 @@
     <ID>CyclomaticComplexMethod:MediaGrouping.kt$fun buildTagGroupRows( media: List&lt;Medium&gt;, tagsByPath: Map&lt;String, List&lt;String&gt;&gt;, hierarchy: Map&lt;String, String&gt;, order: GroupOrder, onlyTopLevelTags: Boolean, collapsedKeys: Set&lt;String&gt;, untaggedLabel: String, ): List&lt;GroupRow&gt;</ID>
     <ID>CyclomaticComplexMethod:MediaInfoDialog.kt$@Composable private fun MediaInfoContent(info: MediaInfoData)</ID>
     <ID>CyclomaticComplexMethod:MediaInfoReader.kt$MediaInfoReader$fun read(path: String): MediaInfoData</ID>
-    <ID>CyclomaticComplexMethod:MediaListRow.kt$@Composable fun MediaListRow( medium: Medium, isVideo: Boolean, isSelected: Boolean, hasSelection: Boolean, cardColor: Color, fileSizeLabel: String, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, onSwipeToSelect: () -&gt; Unit, onBoundsChanged: (Rect) -&gt; Unit, onBoundsRemoved: (() -&gt; Unit)? = null, modifier: Modifier = Modifier, showRating: Boolean = true, showVideoDuration: Boolean = true, compact: Boolean = false, hasTag: Boolean = false, tags: List&lt;String&gt; = emptyList(), onTagClick: ((String) -&gt; Unit)? = null, markFavorite: Boolean = true, )</ID>
     <ID>CyclomaticComplexMethod:MediaRepository.kt$MediaRepository$fun syncTrashFromMediaStore(): Int</ID>
     <ID>CyclomaticComplexMethod:MediaRepository.kt$MediaRepository$suspend fun searchActiveMediaPreview( terms: List&lt;String&gt;, typeFilter: Int = 0, dateFilter: Int = 0, limit: Int = 20, ): TextSearchPreview</ID>
     <ID>CyclomaticComplexMethod:MediaRepositoryFilterQuery.kt$internal fun MediaRepository.buildFilterWhereClauseImpl(filter: MediaFilter): Pair&lt;String, List&lt;Any?&gt;&gt;</ID>
@@ -165,7 +160,6 @@
     <ID>CyclomaticComplexMethod:UndoBar.kt$@Composable fun UndoBar(modifier: Modifier = Modifier, onActionLabel: ((UndoAction) -&gt; String)? = null)</ID>
     <ID>CyclomaticComplexMethod:VideoPage.kt$@Composable fun VideoPage( path: String, scalingMode: Int, onScalingModeChange: (Int) -&gt; Unit, onToggleUi: () -&gt; Unit = {}, onZoomChange: (Boolean) -&gt; Unit = {}, showUi: Boolean = true, onInteract: () -&gt; Unit = {}, modifier: Modifier = Modifier, isCurrentPage: Boolean = true, /** Monotonically increasing request id; only the visible page reacts to it. */ captureFrameRequest: Int = 0, onCaptureFrame: (Bitmap?) -&gt; Unit = {}, )</ID>
     <ID>CyclomaticComplexMethod:VideoTrimmerSheet.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun VideoTrimmerSheet( videoPath: String, onDismiss: () -&gt; Unit, onTrimSaved: (String) -&gt; Unit, )</ID>
-    <ID>CyclomaticComplexMethod:ViewSettingsSheet.kt$@Composable fun ViewSettingsContent( settings: ViewSettings, panel: ViewSettingsPanel = ViewSettingsPanel.ALL, showDisplayMode: Boolean = true, onSettingsChange: (ViewSettings, Boolean) -&gt; Unit, onDismiss: () -&gt; Unit, modeTitle: String? = null, onToggleMode: (() -&gt; Unit)? = null, modeOptions: List&lt;String&gt;? = null, scopeDescription: String? = null, isAlbumMode: Boolean = false, // A flat list of named containers (Collections, Tags) rather than media or folders. Such lists // sort only by name or item count and can't be grouped, mosaicked or show file names - so the // sheet hides those options instead of offering ones that do nothing. Tags additionally expose // the learned most-recently-used ordering through supportsRecentTagSorting. isContainerMode: Boolean = false, supportsRecentTagSorting: Boolean = false, supportsTagGrouping: Boolean = true, supportsSorting: Boolean = true, // Only meaningful for a path-scoped screen (a specific opened folder, or Explorer's current // directory) - lets the user pin the settings they're picking to that one path instead of the // tab's global default. See ViewSettingsViewModel's *ForPath functions. showApplyGloballyToggle: Boolean = false, initialApplyGlobally: Boolean = true, )</ID>
     <ID>CyclomaticComplexMethod:ViewSettingsSummary.kt$@Composable fun viewSettingsSummary(settings: ViewSettings, includeGrouping: Boolean = true): String</ID>
     <ID>CyclomaticComplexMethod:ViewerOverlays.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun ViewerActionSheet( currentPath: String, currentIsVideo: Boolean, currentRating: Int, showRatingOverlay: Boolean, slideshowActive: Boolean, canRunSlideshow: Boolean, onRate: (Int) -&gt; Unit, onToggleRatingOverlay: () -&gt; Unit, onRename: () -&gt; Unit, onCopy: () -&gt; Unit, onMove: () -&gt; Unit, onInfo: () -&gt; Unit, onTrimVideo: () -&gt; Unit, onVideoDisplaySettings: () -&gt; Unit, onSaveFrame: () -&gt; Unit, onOpenFrameGrabber: () -&gt; Unit, onEditImage: () -&gt; Unit, onToggleSlideshow: () -&gt; Unit, onOpenTags: () -&gt; Unit, onDismiss: () -&gt; Unit, )</ID>
     <ID>CyclomaticComplexMethod:ViewerOverlays.kt$internal fun buildExtendedDetailsText(ctx: Context, path: String, isVideo: Boolean): String</ID>
@@ -669,7 +663,6 @@
     <ID>MagicNumber:ViewSettingsViewModel.kt$ViewSettingsViewModel$13</ID>
     <ID>MagicNumber:ViewSettingsViewModel.kt$ViewSettingsViewModel$5</ID>
     <ID>MagicNumber:ViewSettingsViewModel.kt$ViewSettingsViewModel$6</ID>
-    <ID>MagicNumber:ViewerOverlays.kt$10</ID>
     <ID>MagicNumber:XmpWriter.kt$XmpWriter$0xE0</ID>
     <ID>MagicNumber:XmpWriter.kt$XmpWriter$0xEF</ID>
     <ID>MagicNumber:XmpWriter.kt$XmpWriter$0xFF</ID>
@@ -700,17 +693,6 @@
     <ID>MaxLineLength:Activity.kt$mediaDB.updateDeleted(destination.removePrefix(recycleBinPath), 0, "$RECYCLE_BIN${source.removePrefix(recycleBinPath)}")</ID>
     <ID>MaxLineLength:Activity.kt$toast(if (didUpdateFile) R.string.dates_fixed_successfully else org.fossify.commons.R.string.unknown_error_occurred)</ID>
     <ID>MaxLineLength:Activity.kt$try { File(source).delete() } catch (e: Exception) { android.util.Log.e("RecycleBin", "Failed to delete recycle-bin copy after restore: $source", e) }</ID>
-    <ID>MaxLineLength:AlbumListRow.kt$Box</ID>
-    <ID>MaxLineLength:AlbumListRow.kt$GalleryImage(path = coverPath, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 16.dp, thumbnailSize = 160)</ID>
-    <ID>MaxLineLength:AlbumListRow.kt$Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f), modifier = Modifier.size(24.dp))</ID>
-    <ID>MaxLineLength:AlbumListRow.kt$Icon(Icons.Default.Check, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(if (compactLayout) 20.dp else 24.dp))</ID>
-    <ID>MaxLineLength:AlbumListRow.kt$Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.68f), modifier = Modifier.size(24.dp))</ID>
-    <ID>MaxLineLength:AlbumListRow.kt$Modifier.fillMaxWidth().padding(horizontal = if (compactLayout) s.sm else s.md, vertical = if (compactLayout) s.xs else s.sm)</ID>
-    <ID>MaxLineLength:AlbumListRow.kt$VideoThumbnail(videoPath = coverPath, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, thumbnailSize = 160)</ID>
-    <ID>MaxLineLength:AlbumListRow.kt$imageCount &gt; 0 &amp;&amp; videoCount &gt; 0 -&gt; "${pluralStringResource(R.plurals.image_count_short_plural, imageCount, imageCount)}, ${pluralStringResource(R.plurals.video_count_short_plural, videoCount, videoCount)}"</ID>
-    <ID>MaxLineLength:AlbumListRow.kt$style = if (compactLayout) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge</ID>
-    <ID>MaxLineLength:AlbumListRow.kt$val container = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer</ID>
-    <ID>MaxLineLength:AlbumListRow.kt$val containerWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }</ID>
     <ID>MaxLineLength:AlbumsScreen.kt$EmptyState(Icons.Default.SearchOff, stringResource(R.string.no_results), subtitle = stringResource(R.string.no_results_hint), actionLabel = stringResource(R.string.clear_filter), onAction = onClearExternalSearch)</ID>
     <ID>MaxLineLength:AlbumsScreen.kt$IconButton(onClick = { folderMenuOpen = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions)) }</ID>
     <ID>MaxLineLength:AlbumsScreen.kt$IconButton(onClick = { selectedPaths.firstOrNull()?.let { (ctx as? android.app.Activity)?.let { a -&gt; PropertiesDialog(a, it, true) } } }) { Icon(Icons.Default.Info, stringResource(R.string.action_info)) }</ID>
@@ -747,17 +729,10 @@
     <ID>MaxLineLength:AnalysisCriteria.kt$AnalysisCriteria$reasons.add(context.getString(R.string.reason_video_bitrate, formatKbps(bitrateKbps), label, formatKbps(ytRef), "%.0f".format(bitrateKbps.toDouble() / ytRef)))</ID>
     <ID>MaxLineLength:AnalysisCriteria.kt$AnalysisCriteria$val ytRef = when (label) { "4K" -&gt; 68_000L; "1440p" -&gt; 24_000L; "1080p" -&gt; 12_000L; "720p" -&gt; 7_500L; else -&gt; 2_500L }</ID>
     <ID>MaxLineLength:AnalysisCriteria.kt$AnalysisCriteria$width = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0</ID>
-    <ID>MaxLineLength:AnalysisResultHeader.kt$Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:BottomSearchField.kt$contentDescription = stringResource(if (filtersAvailable) R.string.filter_label else R.string.view_settings_title)</ID>
-    <ID>MaxLineLength:BottomSearchField.kt$hasValue -&gt; IconButton(onClick = onClear, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Close, stringResource(R.string.cd_clear_search), tint = MaterialTheme.colorScheme.onSurfaceVariant) }</ID>
-    <ID>MaxLineLength:BottomSearchField.kt$isSearching -&gt; Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) }</ID>
     <ID>MaxLineLength:BottomSearchField.kt$placeholderText</ID>
-    <ID>MaxLineLength:BottomSearchField.kt$tint = if (filtersAvailable &amp;&amp; hasActiveFilter) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant</ID>
     <ID>MaxLineLength:CleanupHubScreen.kt$CleanupAction(R.string.cleanup_duplicates, R.string.cleanup_duplicates_subtitle, Icons.Default.ContentCopy, duplicateMetric, stats?.duplicates?.bytes ?: 0L, onOpenDuplicates)</ID>
     <ID>MaxLineLength:CleanupHubScreen.kt$CleanupAction(R.string.cleanup_recycle_bin, R.string.cleanup_recycle_bin_subtitle, Icons.Default.Delete, recycleMetric, stats?.recycleBin?.bytes ?: 0L, onOpenRecycleBin)</ID>
     <ID>MaxLineLength:CleanupHubScreen.kt$CleanupAction(R.string.cleanup_storage, R.string.cleanup_storage_subtitle, Icons.Default.Storage, storageMetric, stats?.storage?.bytes ?: 0L, onOpenStorageAnalysis)</ID>
-    <ID>MaxLineLength:CleanupHubScreen.kt$Text(stringResource(action.title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)</ID>
-    <ID>MaxLineLength:CollectionsScreen.kt$AlbumGridItem(key = coll.id.toString(), name = coll.name, thumbnailPath = paths.firstOrNull() ?: "", count = paths.size, previewPaths = paths.take(3))</ID>
     <ID>MaxLineLength:CollectionsScreen.kt$Column</ID>
     <ID>MaxLineLength:CollectionsScreen.kt$Crossfade</ID>
     <ID>MaxLineLength:CollectionsScreen.kt$Dialog</ID>
@@ -835,22 +810,17 @@
     <ID>MaxLineLength:CompressionReviewScreen.kt$(LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView).apply { useController = false }</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$(LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView).apply { useController = true }</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$AsyncImage(model = ImageRequest.Builder(ctx).data(File(path)).build(), contentDescription = stringResource(R.string.compare_before), contentScale = ContentScale.Fit, modifier = modifier)</ID>
-    <ID>MaxLineLength:CompressionReviewScreen.kt$Button(onClick = { onKeepNew(current) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_new)) }</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$Card</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$FilterChip(selected = !showAfter, onClick = { showAfter = false }, label = { Text(stringResource(R.string.compare_before)) })</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$FilterChip(selected = showAfter, onClick = { showAfter = true }, label = { Text(stringResource(R.string.compare_after)) })</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$FilterChip(selected = splitMode, onClick = { splitMode = !splitMode }, label = { Text(stringResource(R.string.compare_split)) })</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$LaunchedEffect(afterVideoPath) { player.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(afterVideoPath)))); player.prepare() }</ID>
-    <ID>MaxLineLength:CompressionReviewScreen.kt$OutlinedButton(onClick = { onKeepOriginal(current) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_original)) }</ID>
-    <ID>MaxLineLength:CompressionReviewScreen.kt$OutlinedButton(onClick = { pendingBulkAction = "keep_new" }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_all_new)) }</ID>
-    <ID>MaxLineLength:CompressionReviewScreen.kt$OutlinedButton(onClick = { pendingBulkAction = "keep_original" }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_all_original)) }</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$Row</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$Text(File(item.originalPath).name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$Text(File(item.originalPath).name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$Text(item.errorMessage ?: stringResource(R.string.compression_failed), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, maxLines = 2, overflow = TextOverflow.Ellipsis)</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$Text(stringResource(R.string.compression_pending), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:CompressionReviewScreen.kt$Text(stringResource(R.string.compression_review_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$Text(text, color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$androidx.compose.foundation.pager</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$androidx.compose.material3</ID>
@@ -891,7 +861,6 @@
     <ID>MaxLineLength:CompressionSwipeScreen.kt$FinishedStat(stats.converted, stringResource(R.string.swipe_stat_converted), MaterialTheme.colorScheme.primary)</ID>
     <ID>MaxLineLength:CompressionSwipeScreen.kt$FinishedStat(stats.skipped, stringResource(R.string.swipe_stat_skipped), MaterialTheme.colorScheme.onSurfaceVariant)</ID>
     <ID>MaxLineLength:CompressionSwipeScreen.kt$Surface</ID>
-    <ID>MaxLineLength:CompressionSwipeScreen.kt$Text(facts.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))</ID>
     <ID>MaxLineLength:CompressionSwipeScreen.kt$Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)</ID>
     <ID>MaxLineLength:CompressionSwipeScreen.kt$Text(item.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
     <ID>MaxLineLength:CompressionSwipeScreen.kt$Text(stringResource(R.string.swipe_converting_video_hint), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
@@ -949,10 +918,8 @@
     <ID>MaxLineLength:CustomAspectRatioDialog.kt$CustomAspectRatioDialog$val activity: BaseSimpleActivity</ID>
     <ID>MaxLineLength:DateTakensDao.kt$DateTakensDao$@Query("SELECT full_path, filename, parent_path, date_taken, last_fixed, last_modified FROM date_takens WHERE parent_path = :path COLLATE NOCASE")</ID>
     <ID>MaxLineLength:DateTakensDao.kt$DateTakensDao$@Query("UPDATE OR IGNORE date_takens SET full_path = :newPath, filename = :newFilename, parent_path = :newParentPath WHERE full_path = :oldPath COLLATE NOCASE")</ID>
-    <ID>MaxLineLength:DirectoryDao.kt$DirectoryDao$@Query("DELETE FROM directories WHERE path LIKE '/%' AND path NOT IN (SELECT DISTINCT parent_path FROM media WHERE deleted_ts = 0)")</ID>
     <ID>MaxLineLength:DirectoryDao.kt$DirectoryDao$@Query("SELECT path, thumbnail, filename, media_count, last_modified, date_taken, size, location, media_types, sort_value FROM directories")</ID>
     <ID>MaxLineLength:DirectoryDao.kt$DirectoryDao$@Query("UPDATE OR REPLACE directories SET thumbnail = :thumbnail, media_count = :mediaCnt, last_modified = :lastModified, date_taken = :dateTaken, size = :size, media_types = :mediaTypes, sort_value = :sortValue WHERE path = :path COLLATE NOCASE")</ID>
-    <ID>MaxLineLength:DirectoryDao.kt$DirectoryDao$@Query("UPDATE directories SET thumbnail = :thumbnail, filename = :name, path = :newPath WHERE path = :oldPath COLLATE NOCASE")</ID>
     <ID>MaxLineLength:DirectoryDao.kt$DirectoryDao$fun</ID>
     <ID>MaxLineLength:DoubleBackGuard.kt$Text(stringResource(if (currentRunning &amp;&amp; currentOnCancel != null) R.string.analysis_cancel_and_exit else R.string.leave))</ID>
     <ID>MaxLineLength:DoubleBackGuard.kt$text = { Text(stringResource(if (currentRunning) R.string.analysis_exit_running_body else R.string.analysis_exit_body)) }</ID>
@@ -977,24 +944,19 @@
     <ID>MaxLineLength:DuplicateFinderScreen.kt$LazyColumn</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Row</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Surface</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text("$n", style = MaterialTheme.typography.labelMedium, color = Color(0xFF43A047), fontWeight = FontWeight.SemiBold)</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text("${file.rating}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text("${folder.substringAfterLast('/')} · $count", maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text("${state.similarThreshold} · ${thresholdLabel(state.similarThreshold)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(file.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(file.path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(file.tags.joinToString(", "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(if (state.isScanning) stringResource(R.string.cancel) else stringResource(R.string.cd_search))</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(state.phase, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.dup_confirm_all_deleted, fullyMarked), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.dup_confirm_all_deleted, fullyMarked), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Medium)</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.dup_confirm_keeps_copies, keepingCopy), style = MaterialTheme.typography.labelMedium, color = Color(0xFF43A047))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.dup_confirm_keeps_copies, keepingCopy), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.dup_confirm_rated, ratedAffected), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.dup_confirm_similar), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.dup_stays), Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, color = keepGreen, fontWeight = FontWeight.SemiBold)</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.dup_verified_exact), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.duplicate_marked_count, sel.size, formatBytes(selSize)), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.files_scanned_count, state.totalScanned), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.newest), Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)</ID>
     <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.select_folder_duplicates_short), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)</ID>
@@ -1078,15 +1040,6 @@
     <ID>MaxLineLength:EditActivity.kt$EditActivity$val isOverwrite = originalFilePath != null &amp;&amp; File(path).absolutePath == File(originalFilePath).absolutePath</ID>
     <ID>MaxLineLength:EditActivity.kt$EditActivity$val layoutManager = binding.bottomEditorFilterActions.bottomActionsFilterList.layoutManager as LinearLayoutManager</ID>
     <ID>MaxLineLength:EditActivity.kt$EditActivity$}</ID>
-    <ID>MaxLineLength:ExplorerComponents.kt$.</ID>
-    <ID>MaxLineLength:ExplorerComponents.kt$Box</ID>
-    <ID>MaxLineLength:ExplorerComponents.kt$Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = SelectionVisual.overlayAlpha)))</ID>
-    <ID>MaxLineLength:ExplorerComponents.kt$Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))</ID>
-    <ID>MaxLineLength:ExplorerComponents.kt$Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(22.dp))</ID>
-    <ID>MaxLineLength:ExplorerComponents.kt$Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = Color.White, modifier = Modifier.size(20.dp))</ID>
-    <ID>MaxLineLength:ExplorerComponents.kt$Text(item.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp).privacyBlur(BlurRadius.thumbnail, BlurState.enabled))</ID>
-    <ID>MaxLineLength:ExplorerComponents.kt$Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)</ID>
-    <ID>MaxLineLength:ExplorerComponents.kt$aspectCache[item.path] = withContext(Dispatchers.IO) { decodeImageAspect(item.path) }</ID>
     <ID>MaxLineLength:ExplorerModelsAndCache.kt$(</ID>
     <ID>MaxLineLength:ExplorerModelsAndCache.kt$(filter.excludePathFilter == null || filter.excludePathFilter.none { path.equals(it, ignoreCase = true) || path.startsWith("${it.trimEnd('/')}/", ignoreCase = true) })</ID>
     <ID>MaxLineLength:ExplorerModelsAndCache.kt$(filter.pathFilter == null || filter.pathFilter.any { path.equals(it, ignoreCase = true) || path.startsWith("${it.trimEnd('/')}/", ignoreCase = true) })</ID>
@@ -1098,17 +1051,10 @@
     <ID>MaxLineLength:ExplorerNameFilterTest.kt$ExplorerNameFilterTest$val item = ExplorerItem(name = "photo.jpg", path = "/sdcard/DCIM/photo.jpg", isDirectory = false, type = TYPE_IMAGES)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$"$path|${folderSettings.sortBy}|${folderSettings.sortDesc}|${mediaSettings.sortBy}|${mediaSettings.sortDesc}|${mediaSettings.groupBy}|${if (needsTags) "tags" else "no-tags"}"</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$Box</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = SelectionVisual.overlayAlpha)))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Box(Modifier.matchParentSize().background(Scrim.a20, CircleShape))</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$Crossfade</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$ExplorerContentCache.get("$seedPath|${folderSettings.sortBy}|${folderSettings.sortDesc}|${mediaSettings.sortBy}|${mediaSettings.sortDesc}|${mediaSettings.groupBy}|${if (needsTags) "tags" else "no-tags"}")</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$ExplorerScrollCache.put(currentPath, ExplorerScrollPosition(index, offset, anchorPath.orEmpty()))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$HorizontalDivider(Modifier.padding(start = if (listCompact) 66.dp else 80.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(18.dp))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(22.dp))</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = Color.White, modifier = Modifier.size(20.dp))</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$IconButton</ID>
@@ -1122,17 +1068,11 @@
     <ID>MaxLineLength:ExplorerScreen.kt$SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = org.fossify.gallery.helpers.toggleGroupKey(collapsedGroupKeys, row.key) }, ratingValue = row.ratingValue, accentColor = row.rootKey?.let { org.fossify.gallery.compose.components.tagAccentColor(it) }, showGuideLine = true)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$Surface</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$Text</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Text(formatFileSize(item.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Text(item.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$VideoPlayOverlay(Modifier.align(Alignment.Center), size = if (listCompact) 24.dp else 28.dp)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$ViewType.MOSAIC</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$allEntries = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MediaStoreOps.refreshEntriesFromDb(context, storageRoot) }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$androidx.compose.animation</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$color = if (breadcrumbPath == currentPath) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$color = if (item.path in selectedFilePaths) MaterialTheme.colorScheme.primaryContainer else Color.Transparent</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$coverPath = item.thumbnailPath.ifEmpty { item.previewPaths.firstOrNull() ?: "" }</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$else</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$fileMedia.forEach { m -&gt; g.getOrPut(org.fossify.gallery.viewmodels.MediaViewModel.monthLabelFor(m)) { mutableListOf() }.add(m) }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$fileTagsByPath[item.path].orEmpty().any { tag -&gt; explorerNameMatchesFilter(tag, normalizedNameFilter) }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$fontWeight = if (breadcrumbPath == currentPath) FontWeight.Medium else FontWeight.Normal</ID>
@@ -1152,7 +1092,6 @@
     <ID>MaxLineLength:ExplorerScreen.kt$onClick = { if (hasFileSelection) Unit else if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); navigateToPath(item.path) } }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$onLongClick = { if (!hasFileSelection) { selectedFilePaths = emptySet(); selectedFolderPaths = selectedFolderPaths + item.path } }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$onNavigateToViewer(visibleFileItems.map { it.path }, visibleFileItems.indexOfFirst { it.path == item.path }.coerceAtLeast(0))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$onTagClick = if (!hasFileSelection) onTagClick else null</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$org.fossify.gallery.compose.util.XmpBatch</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$org.fossify.gallery.compose.util.XmpBatch.run(context, batch.distinct(), onSuccess = { successful += it }) { repo.addTag(it, tag) }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$org.fossify.gallery.compose.util.XmpBatch.run(context, batch.distinct(), onSuccess = { successful += it }) { repo.removeTag(it, tag) }</ID>
@@ -1161,8 +1100,6 @@
     <ID>MaxLineLength:ExplorerScreen.kt$org.fossify.gallery.helpers.GroupBy.RATING -&gt; org.fossify.gallery.helpers.buildRatingGroupRows(fileMedia, mediaSettings.groupOrder, unratedLabel)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$org.fossify.gallery.helpers.GroupBy.SIZE -&gt; org.fossify.gallery.helpers.buildSizeGroupRows(fileMedia, mediaSettings.sortDesc)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$org.fossify.gallery.helpers.GroupBy.TAG -&gt; org.fossify.gallery.helpers.buildTagGroupRows(fileMedia, fileTagsByPath, context.config.tagHierarchy, mediaSettings.groupOrder, mediaSettings.onlyTopLevelTags, emptySet(), untaggedLabel)</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$pathHint = org.fossify.gallery.compose.components.folderPathHint(item.path, stringResource(R.string.internal_storage))</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$peekState.show(item.path, item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$selectedFilePaths = selectionForAll(selectedFilePaths, visibleFileItems.map { it.path }, invert = false)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$selectedFilePaths = selectionForAll(selectedFilePaths, visibleFileItems.map { it.path }, invert = true)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$showGroupToggle = mediaSettings.groupBy in setOf(org.fossify.gallery.helpers.GroupBy.TAG, org.fossify.gallery.helpers.GroupBy.RATING) &amp;&amp; collapsibleFileGroupKeys.isNotEmpty()</ID>
@@ -1182,9 +1119,7 @@
     <ID>MaxLineLength:ExplorerScreen.kt$val folderGridColumns = org.fossify.gallery.compose.util.rememberEffectiveColumnCount(folderSettings.columnCount)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val isVideo = item.type == 2 || item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val label = if (breadcrumbPath == storageRoot) stringResource(R.string.internal_storage) else File(breadcrumbPath).name</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$val mediaBg = when (mediaSettings.displayMode) { DisplayMode.DARK -&gt; MaterialTheme.colorScheme.surfaceVariant else -&gt; MaterialTheme.colorScheme.surface }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val mediaGridColumns = org.fossify.gallery.compose.util.rememberEffectiveColumnCount(mediaSettings.columnCount)</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$val mediaTypeDescription = if (isVideo) stringResource(R.string.media_type_video) else stringResource(R.string.media_type_image)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val moverSourcePaths = remember(hasFolderSelection) { org.fossify.gallery.helpers.loadMoverPairs(context).map { it.source }.toSet() }</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val msg = if (sources.size == 1) addedFormat.format(File(sources[0]).name, File(destination).name) else addedCountFormat.format(sources.size, File(destination).name)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$val needsTags = isNameFiltering || filterState.tagNames != null || mediaSettings.groupBy == org.fossify.gallery.helpers.GroupBy.TAG</ID>
@@ -1240,7 +1175,6 @@
     <ID>MaxLineLength:FloatingSectionLabel.kt$AnimatedVisibility</ID>
     <ID>MaxLineLength:FloatingSectionLabel.kt$Surface</ID>
     <ID>MaxLineLength:FloatingSectionLabel.kt$modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp).semantics { liveRegion = LiveRegionMode.Polite }</ID>
-    <ID>MaxLineLength:FolderMediaScreen.kt$IconButton(onClick = { showViewSettings = true }) { Icon(Icons.Default.GridView, stringResource(R.string.view_settings_title)) }</ID>
     <ID>MaxLineLength:FolderMediaScreen.kt$Text(File(folderPath).name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)</ID>
     <ID>MaxLineLength:FolderMediaScreen.kt$androidx.compose.animation</ID>
     <ID>MaxLineLength:FolderMediaScreen.kt$if (loadError != null) LoadErrorBanner(message = loadError, onRetry = { scope.launch { reload() } })</ID>
@@ -1343,10 +1277,6 @@
     <ID>MaxLineLength:FolderSwipeScreen.kt$modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)</ID>
     <ID>MaxLineLength:FolderSwipeScreen.kt$onClick = { onNavigateToViewer?.invoke(loaded.map { it.path }, currentIndex) }</ID>
     <ID>MaxLineLength:FolderSwipeScreen.kt$stringResource(R.string.swipe_mode_position, currentIndex + 1, loaded.size)</ID>
-    <ID>MaxLineLength:FolderTile.kt$VideoThumbnail(videoPath = mainPath, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)</ID>
-    <ID>MaxLineLength:FolderTile.kt$else</ID>
-    <ID>MaxLineLength:FolderTile.kt$if</ID>
-    <ID>MaxLineLength:FolderTile.kt$style = if (isNarrow) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge</ID>
     <ID>MaxLineLength:FoldersMoverScreen.kt$)</ID>
     <ID>MaxLineLength:FoldersMoverScreen.kt$EmptyState(Icons.Default.Folder, stringResource(R.string.mover_no_pairs), subtitle = stringResource(R.string.mover_tap_to_add), modifier = Modifier.weight(1f))</ID>
     <ID>MaxLineLength:FoldersMoverScreen.kt$FolderPickField(label = stringResource(R.string.destination), path = dest, iconTint = MaterialTheme.colorScheme.tertiary, onClick = { openPicker("dest") })</ID>
@@ -1386,30 +1316,7 @@
     <ID>MaxLineLength:FoldersMoverScreen.kt$val items = allMoves.map { (srcPath, destPath) -&gt; org.fossify.gallery.models.BatchJobItem(jobId = "", sourcePath = srcPath, targetPath = destPath) }</ID>
     <ID>MaxLineLength:FoldersMoverScreen.kt$val moveProgressData = if (activeWorkInfo?.state?.isFinished == true) activeWorkInfo.outputData else activeWorkInfo?.progress</ID>
     <ID>MaxLineLength:FoldersMoverScreen.kt$val shortDst = pair.destination.removePrefix(storageRoot).trimStart('/').ifBlank { pair.destination }</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$Box</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$Column</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$FilterChip(selected = onlySharp, onClick = { onlySharp = !onlySharp }, label = { Text(stringResource(R.string.grab_frames_only_sharp)) })</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$FilterChip(selected = sortBySharp, onClick = { sortBySharp = !sortBySharp }, label = { Text(stringResource(R.string.grab_frames_sort_sharp)) })</ID>
     <ID>MaxLineLength:FrameGrabberScreen.kt$Icon(Icons.Default.Star, null, tint = RatingStarColor, modifier = Modifier.size(12.dp))</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$Icon(if (isSel) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, contentDescription = null, tint = if (isSel) MaterialTheme.colorScheme.primary else Color.White, modifier = Modifier.size(32.dp))</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$IconButton</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$Image(c.preview.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize().privacyBlur(BlurRadius.thumbnail, BlurState.enabled), contentScale = ContentScale.Crop)</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$LinearProgressIndicator(progress = { if (t &gt; 0) d / t.toFloat() else 0f }, modifier = Modifier.fillMaxWidth())</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$Text("%d:%02d".format(secs / 60, secs % 60), color = Color.White, style = MaterialTheme.typography.titleMedium, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp))</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$Text(stringResource(R.string.grab_frames_analyzing, d, t), Modifier.padding(top = 12.dp), style = MaterialTheme.typography.labelMedium)</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$Text(stringResource(R.string.grab_frames_delete_video), style = MaterialTheme.typography.bodySmall)</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$Text(stringResource(R.string.grab_frames_saving, d, t), Modifier.padding(top = 10.dp), style = MaterialTheme.typography.labelMedium)</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$UndoManager.push(UndoAction(paths = setOf(videoPath), type = UndoType.DELETE))</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$candidates.isEmpty() -&gt; Text(stringResource(R.string.grab_frames_none), Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$color = Color.White</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$else</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$if</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$modifier = Modifier.align(Alignment.BottomStart).padding(4.dp).clip(RoundedCornerShape(4.dp)).background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 4.dp, vertical = 1.dp)</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).privacyBlur(BlurRadius.viewer, BlurState.enabled)</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$navigationIcon = { IconButton(onClick = { if (!saving) onDismiss(false) }) { Icon(Icons.Default.Close, stringResource(org.fossify.commons.R.string.cancel)) } }</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$onClick = { selected = if (isSel) selected - c.timeMs else selected + c.timeMs }</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$tint = if (isSel) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.85f)</ID>
-    <ID>MaxLineLength:FrameGrabberScreen.kt$val res = VideoFrameExtractor.saveFrames(ctx, videoPath, times) { d, t -&gt; saveProgress = d to t }</ID>
     <ID>MaxLineLength:GalleryDatabase.kt$GalleryDatabase$@Database(entities = [Directory::class, Medium::class, DateTaken::class, Favorite::class, MediaCollection::class, MediaCache::class, BatchJobItem::class, MediaTag::class, CompressionReviewItem::class, org.fossify.gallery.models.FileHash::class, MediaReviewState::class, MediaPersonScan::class], version = GalleryDatabase.DB_VERSION)</ID>
     <ID>MaxLineLength:GalleryDatabase.kt$GalleryDatabase.Companion$"CASE WHEN NEW.date_added &gt; 0 THEN NEW.date_added WHEN NEW.date_taken &gt; 0 THEN NEW.date_taken ELSE NEW.last_modified END"</ID>
     <ID>MaxLineLength:GalleryDatabase.kt$GalleryDatabase.Companion.&lt;no name provided&gt;$"CREATE TABLE IF NOT EXISTS `batch_job_items` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `job_id` TEXT NOT NULL, `source_path` TEXT NOT NULL, `target_path` TEXT NOT NULL, `created_at` INTEGER NOT NULL)"</ID>
@@ -1487,8 +1394,6 @@
     <ID>MaxLineLength:LibraryActivityStatus.kt$LibraryActivityStatus$previous.copy(done = done.coerceAtLeast(0), total = total.coerceAtLeast(0), matches = matches.coerceAtLeast(0))</ID>
     <ID>MaxLineLength:LibraryActivityStatus.kt$LibraryActivityStatus$previous.copy(phase = phase, done = done.coerceAtLeast(0), total = total.coerceAtLeast(0), matches = matches.coerceAtLeast(0), errorMessage = error)</ID>
     <ID>MaxLineLength:LibraryActivityStatus.kt$LibraryActivityStatus$private</ID>
-    <ID>MaxLineLength:LibraryAlbumGrid.kt$Box</ID>
-    <ID>MaxLineLength:LibraryAlbumGrid.kt$Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)))</ID>
     <ID>MaxLineLength:LibraryBadges.kt$if (imageCount &gt; 0) TypeCountBadge(Icons.Default.PhotoLibrary, imageLabel, imageCount, CountBadgeTone.IMAGE, compact, ultraNarrow)</ID>
     <ID>MaxLineLength:LibraryBadges.kt$if (videoCount &gt; 0) TypeCountBadge(Icons.Default.Videocam, videoLabel, videoCount, CountBadgeTone.VIDEO, compact, ultraNarrow)</ID>
     <ID>MaxLineLength:LibraryFilterState.kt$LibraryFilterState$activeFolderFilterName != null</ID>
@@ -1526,61 +1431,17 @@
     <ID>MaxLineLength:MainNavigationChrome.kt$val hasQuickAccess = pinnedFolderPaths.isNotEmpty() || pinnedTagNames.isNotEmpty() || pinnedRatingValues.isNotEmpty() || pinnedCollectionItems.isNotEmpty()</ID>
     <ID>MaxLineLength:MainNavigationChrome.kt$val pinnedFolderPaths = remember(quickAccessVersion) { ctx.config.pinnedFavoriteFolders.sortedBy { File(it).name.lowercase() } }</ID>
     <ID>MaxLineLength:MainNavigationChrome.kt$val visible = activity != null || status.phase == LibrarySyncPhase.SCANNING || status.phase == LibrarySyncPhase.ERROR</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp))</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Icon(Icons.Default.CollectionsBookmark, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Icon(Icons.Default.Favorite, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp))</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Icon(Icons.Default.FilterList, null, modifier = Modifier.size(14.dp), tint = if (hasAnyFilter) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$LazyRow</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Row</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Surface</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Text(coll.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).privacyBlur(BlurRadius.thumbnail, BlurState.enabled))</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled))</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).privacyBlur(BlurRadius.thumbnail, BlurState.enabled))</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Text(parentLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled))</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Text(stringResource(R.string.filter_label), style = MaterialTheme.typography.labelSmall, color = if (hasAnyFilter) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Text(stringResource(R.string.no_results), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Text(stringResource(R.string.reset), Modifier.padding(horizontal = 8.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onErrorContainer)</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Text(stringResource(R.string.search_min_chars_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Text(stringResource(R.string.searching), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Text(stringResource(R.string.show_results_count, mc), Modifier.padding(horizontal = 20.dp, vertical = 10.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$Text(tag, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).privacyBlur(BlurRadius.thumbnail, BlurState.enabled))</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$if (favoriteResults.size &gt; 8) item { Text(stringResource(R.string.plus_n_more, favoriteResults.size - 8), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp)) }</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$if (folderResults.size &gt; 5) item { Text(stringResource(R.string.plus_n_more, folderResults.size - 5), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp)) }</ID>
     <ID>MaxLineLength:MainOmniSearchPanel.kt$if (tag.lowercase().contains(qp) &amp;&amp; result.none { it.first == tag }) result.add(tag to count)</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$if (tagMatchAll) ActiveFilterChip(stringResource(R.string.filter_tags_match_all)) { onTagMatchAllChange(false) }</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$item { Text(stringResource(R.string.folders), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 4.dp)) }</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$item { Text(stringResource(R.string.media_count_paren, mc), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(vertical = 4.dp)) }</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$item { Text(stringResource(R.string.nav_collections), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 4.dp)) }</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$item { Text(stringResource(R.string.nav_favorites), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(vertical = 4.dp)) }</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$item { Text(stringResource(R.string.nav_tags), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(vertical = 4.dp)) }</ID>
     <ID>MaxLineLength:MainOmniSearchPanel.kt$label = { Text(stringResource(R.string.search_scope_everywhere), maxLines = 1, overflow = TextOverflow.Ellipsis) }</ID>
     <ID>MaxLineLength:MainOmniSearchPanel.kt$val hasAnyFilter = ratingFilter &gt; 0 || selectedTagNames.isNotEmpty() || typeFilter &gt; 0 || dateFilter &gt; 0 || minSizeFilter &gt; 0</ID>
-    <ID>MaxLineLength:MainOmniSearchPanel.kt$val hasAnyResults = hasResults || folderResults.isNotEmpty() || tagResults.isNotEmpty() || collectionResults.isNotEmpty() || favoriteResults.isNotEmpty()</ID>
     <ID>MaxLineLength:MainSheets.kt$0 -&gt; if (collectionActive) viewSettingsVM.updateCollectionMedia(v) else viewSettingsVM.updateMedia(v)</ID>
-    <ID>MaxLineLength:MainSheets.kt$1 -&gt; if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateAlbums(v) else viewSettingsVM.updateFolderMedia(v)</ID>
-    <ID>MaxLineLength:MainSheets.kt$1, 2 -&gt; listOf(stringResource(R.string.settings_scope_folders), stringResource(R.string.settings_scope_media))</ID>
     <ID>MaxLineLength:MainSheets.kt$2 -&gt; if (settingsMode == SettingsMode.ALBUMS) tabSettings.explorerAlbums else viewSettingsVM.getExplorerMediaSettingsForPath(explorerPath)</ID>
     <ID>MaxLineLength:MainSheets.kt$2 -&gt; if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateExplorerAlbums(v) else viewSettingsVM.updateExplorerMediaForPath(explorerPath, v, applyGlobally)</ID>
-    <ID>MaxLineLength:MainSheets.kt$selectedTab == 1 || selectedTab == 2 -&gt; if (settingsMode == SettingsMode.ALBUMS) stringResource(R.string.settings_scope_folders) else stringResource(R.string.settings_scope_media)</ID>
-    <ID>MaxLineLength:MainSheets.kt$val supportsFilter = selectedTab == 0 || selectedTab == 4 || (selectedTab == 2 &amp;&amp; settingsMode == SettingsMode.MEDIA)</ID>
     <ID>MaxLineLength:MainSheets.kt${ viewSettingsVM.setSettingsMode(if (settingsMode == SettingsMode.ALBUMS) SettingsMode.MEDIA else SettingsMode.ALBUMS) }</ID>
-    <ID>MaxLineLength:ManageCollectionsScreen.kt$Icon(Icons.Default.CollectionsBookmark, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))</ID>
-    <ID>MaxLineLength:ManageCollectionsScreen.kt$Icon(Icons.Default.CollectionsBookmark, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))</ID>
     <ID>MaxLineLength:ManageCollectionsScreen.kt$Icon(Icons.Default.Delete, stringResource(R.string.remove), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))</ID>
-    <ID>MaxLineLength:ManageCollectionsScreen.kt$Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))</ID>
-    <ID>MaxLineLength:ManageCollectionsScreen.kt$Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))</ID>
-    <ID>MaxLineLength:ManageCollectionsScreen.kt$Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))</ID>
     <ID>MaxLineLength:ManageCollectionsScreen.kt$IconButton</ID>
-    <ID>MaxLineLength:ManageCollectionsScreen.kt$Row</ID>
     <ID>MaxLineLength:ManageCollectionsScreen.kt$Text(p.substringAfterLast('/').take(50), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))</ID>
-    <ID>MaxLineLength:ManageCollectionsScreen.kt$Text(stringResource(R.string.excluded_folders), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)</ID>
     <ID>MaxLineLength:ManageCollectionsScreen.kt$Text(stringResource(R.string.included_folders), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)</ID>
-    <ID>MaxLineLength:ManageCollectionsScreen.kt$Text(stringResource(R.string.no_collections), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)</ID>
-    <ID>MaxLineLength:ManageCollectionsScreen.kt$Text(stringResource(R.string.tap_to_create_collection), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:ManageCollectionsScreen.kt$colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))</ID>
     <ID>MaxLineLength:ManageCollectionsScreen.kt$dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(org.fossify.commons.R.string.cancel)) } }</ID>
     <ID>MaxLineLength:ManageCollectionsScreen.kt$title = { Text(if (initial != null) stringResource(R.string.edit_collection) else stringResource(R.string.collection_create)) }</ID>
     <ID>MaxLineLength:ManageCollectionsScreen.kt$withContext(Dispatchers.Main) { ctx.toast("${res.getString(R.string.error_prefix)}: ${e.message}", Toast.LENGTH_LONG) }</ID>
@@ -1629,18 +1490,8 @@
     <ID>MaxLineLength:MediaGroupingTest.kt$MediaGroupingTest$hierarchy</ID>
     <ID>MaxLineLength:MediaGroupingTest.kt$MediaGroupingTest$val rows = buildTagGroupRows(tagged, tagsByPath, hierarchy, GroupOrder.ALPHABETICAL, onlyTopLevelTags = false, collapsedKeys = emptySet(), untaggedLabel = "untagged")</ID>
     <ID>MaxLineLength:MediaGroupingTest.kt$MediaGroupingTest$val rows = buildTagGroupRows(tagged, tagsByPath, hierarchy, GroupOrder.ALPHABETICAL, onlyTopLevelTags = false, collapsedKeys = setOf("tag:Urlaub"), untaggedLabel = "untagged")</ID>
-    <ID>MaxLineLength:MediaListRow.kt$.</ID>
-    <ID>MaxLineLength:MediaListRow.kt$HorizontalDivider(Modifier.padding(start = if (compact) 70.dp else 76.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))</ID>
-    <ID>MaxLineLength:MediaListRow.kt$Icon(Icons.AutoMirrored.Filled.Label, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))</ID>
     <ID>MaxLineLength:MediaListRow.kt$Icon(Icons.Default.Favorite, contentDescription = null, tint = FavoriteColor, modifier = Modifier.size(14.dp))</ID>
     <ID>MaxLineLength:MediaListRow.kt$Icon(Icons.Default.Star, contentDescription = null, tint = RatingStarColor, modifier = Modifier.size(12.dp))</ID>
-    <ID>MaxLineLength:MediaListRow.kt$Row</ID>
-    <ID>MaxLineLength:MediaListRow.kt$Text(medium.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled))</ID>
-    <ID>MaxLineLength:MediaListRow.kt$Text(metadataSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
-    <ID>MaxLineLength:MediaListRow.kt$else</ID>
-    <ID>MaxLineLength:MediaListRow.kt$if</ID>
-    <ID>MaxLineLength:MediaListRow.kt$if (isSelected) Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary)</ID>
-    <ID>MaxLineLength:MediaListRow.kt$val metadataSummary = if (durationText.isNotEmpty()) "$fileSizeLabel · $durationText" else fileSizeLabel</ID>
     <ID>MaxLineLength:MediaPersonScanDao.kt$MediaPersonScanDao$@Query("SELECT result, COUNT(*) AS count FROM media_person_scans WHERE (folder_path = :folderPath COLLATE NOCASE OR (:includeSubfolders = 1 AND folder_path LIKE :subfolderPattern ESCAPE '\\')) AND is_kept = 0 GROUP BY result")</ID>
     <ID>MaxLineLength:MediaPersonScanDao.kt$MediaPersonScanDao$@Query("UPDATE media_person_scans SET media_path = :newPath, folder_path = :newFolderPath WHERE media_path = :oldPath COLLATE NOCASE")</ID>
     <ID>MaxLineLength:MediaPersonScanDao.kt$MediaPersonScanDao$fun</ID>
@@ -1709,7 +1560,6 @@
     <ID>MaxLineLength:MediaRepositorySync.kt$candidates.add(Medium(null, f.name, p, f.parent ?: "", modified, modified, f.length(), if (ext in videoExts) 2 else 1, 0, false, 0L, 0L, 0))</ID>
     <ID>MaxLineLength:MediaRepositorySync.kt$private</ID>
     <ID>MaxLineLength:MediaRepositorySync.kt$result.add(Medium(null, file.name, file.absolutePath, file.parent ?: "", file.lastModified(), file.lastModified(), file.length(), if (ext in videoExts) 2 else 1, 0, false, 0L, 0L, 0))</ID>
-    <ID>MaxLineLength:MediaRepositorySync.kt$val</ID>
     <ID>MaxLineLength:MediaRepositorySync.kt$val addedCol = try { c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED) } catch (_: Exception) { -1 }</ID>
     <ID>MaxLineLength:MediaRepositorySync.kt$val args = arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())</ID>
     <ID>MaxLineLength:MediaRepositorySync.kt$val dirs = listOf(root, File(root, "DCIM"), File(root, "Pictures"), File(root, "Download"), File(root, "Movies")).filter { it.isDirectory }</ID>
@@ -1729,7 +1579,6 @@
     <ID>MaxLineLength:MediaScreen.kt$GroupBy.TAG -&gt; buildTagGroupRows(media, tagsByPath, hierarchy, groupOrder, onlyTopLevelTags, emptySet(), untaggedLabel)</ID>
     <ID>MaxLineLength:MediaScreen.kt$IconButton(onClick = { selectedPaths = emptySet() }) { Icon(Icons.Default.Close, stringResource(org.fossify.commons.R.string.cancel), tint = MaterialTheme.colorScheme.onPrimaryContainer) }</ID>
     <ID>MaxLineLength:MediaScreen.kt$LaunchedEffect</ID>
-    <ID>MaxLineLength:MediaScreen.kt$LazyColumn</ID>
     <ID>MaxLineLength:MediaScreen.kt$LazyVerticalGrid</ID>
     <ID>MaxLineLength:MediaScreen.kt$LazyVerticalStaggeredGrid</ID>
     <ID>MaxLineLength:MediaScreen.kt$Row</ID>
@@ -1792,15 +1641,11 @@
     <ID>MaxLineLength:MediaScreen.kt$when (dateRangeFilter) { 1 -&gt; add(res.getString(R.string.today)); 2 -&gt; add(res.getString(R.string.date_range_last_7_days)); 3 -&gt; add(res.getString(R.string.date_range_last_30_days)); 4 -&gt; add(res.getString(R.string.date_range_last_year)) }</ID>
     <ID>MaxLineLength:MediaScreenPagedContent.kt$FloatingSectionLabel(currentLabel, isScrolling, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))</ID>
     <ID>MaxLineLength:MediaScreenPagedContent.kt$FloatingSectionLabel(currentLabelStag, isScrollingStag, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))</ID>
-    <ID>MaxLineLength:MediaScreenPagedContent.kt$LazyColumn</ID>
     <ID>MaxLineLength:MediaScreenPagedContent.kt$LazyVerticalGrid</ID>
-    <ID>MaxLineLength:MediaScreenPagedContent.kt$LazyVerticalStaggeredGrid</ID>
     <ID>MaxLineLength:MediaScreenPagedContent.kt$MediaScrollCache.&lt;no name provided&gt;$override fun removeEldestEntry(eldest: MutableMap.MutableEntry&lt;String, MediaScrollPosition&gt;?): Boolean</ID>
-    <ID>MaxLineLength:MediaScreenPagedContent.kt$Text("$count", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp))</ID>
     <ID>MaxLineLength:MediaScreenPagedContent.kt$Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)</ID>
     <ID>MaxLineLength:MediaScreenPagedContent.kt$contentType = { i -&gt; if (rows[i] is PagedRow.Header) "header" else (safePeek(lazyPagingItems, (rows[i] as PagedRow.Item).pagingIndex)?.type ?: 0) }</ID>
     <ID>MaxLineLength:MediaScreenPagedContent.kt$internal</ID>
-    <ID>MaxLineLength:MediaScreenPagedContent.kt$is PagedRow.Header</ID>
     <ID>MaxLineLength:MediaScreenPagedContent.kt$is PagedRow.Header -&gt; PagedSectionHeader(row, pagedGroupsAreCollapsible, ::togglePagedRatingGroup)</ID>
     <ID>MaxLineLength:MediaScreenPagedContent.kt$item</ID>
     <ID>MaxLineLength:MediaScreenPagedContent.kt$item(key = "header_${headerSeq}_${row.label}", contentType = "header") { PagedSectionHeader(row, pagedGroupsAreCollapsible, ::togglePagedRatingGroup) }</ID>
@@ -1844,10 +1689,8 @@
     <ID>MaxLineLength:MediaTile.kt$Row</ID>
     <ID>MaxLineLength:MediaTile.kt$Text("★${medium.rating}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer, fontSize = if (isNarrowTile) 9.sp else 11.sp)</ID>
     <ID>MaxLineLength:MediaTile.kt$Text(typeLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, fontSize = if (isNarrowTile) 8.sp else 10.sp, modifier = Modifier.padding(horizontal = if (isNarrowTile) 3.dp else 4.dp, vertical = 1.dp))</ID>
-    <ID>MaxLineLength:MediaTile.kt$VideoThumbnail(videoPath = medium.path, modifier = Modifier.fillMaxSize().clip(cornerShape).sharedElementKey("media_${medium.path}"), contentScale = thumbScale)</ID>
     <ID>MaxLineLength:MediaTile.kt$if</ID>
     <ID>MaxLineLength:MediaTile.kt$val mediaTypeDescription = if (isVideo) stringResource(R.string.media_type_video) else stringResource(R.string.media_type_image)</ID>
-    <ID>MaxLineLength:MediaTile.kt$val scale by animateFloatAsState(if (isPressed) 0.96f else 1f, animationSpec = AppMotion.short, label = "pressScale")</ID>
     <ID>MaxLineLength:MediaTypes.kt$val MEDIA_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "avif", "bmp", "svg", "apng", "jxl") + VIDEO_EXTENSIONS</ID>
     <ID>MaxLineLength:MediaViewModel.kt$MediaFilter$val isActive: Boolean get() = rating &gt; 0 || tagNames != null || pathFilter != null || excludePaths != null || minSize &gt; 0 || dateRange &gt; 0 || typeFilter &gt; 0 || addedSince &gt; 0L || additionalPaths != null || reviewFilter != MediaReviewFilter.NONE || textQuery.isNotBlank()</ID>
     <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$(filter.addedSince &lt;= 0L || (if (item.dateSortKey &gt; 0L) item.dateSortKey else maxOf(item.dateAdded, item.modified)) &gt; filter.addedSince)</ID>
@@ -1949,16 +1792,12 @@
     <ID>MaxLineLength:PermissionSheet.kt$Modifier.size(72.dp).background(color = MaterialTheme.colorScheme.primaryContainer, shape = CircleShape)</ID>
     <ID>MaxLineLength:PersonPresenceDetector.kt$PersonPresenceDetector$coverage &lt;= NO_PERSON_COVERAGE_THRESHOLD &amp;&amp; peak &lt;= NO_PERSON_PEAK_THRESHOLD -&gt; Result(PersonPresence.NO_PERSON, coverage)</ID>
     <ID>MaxLineLength:PersonPresenceDetector.kt$PersonPresenceDetector$coverage &gt;= PERSON_COVERAGE_THRESHOLD &amp;&amp; peak &gt;= PERSON_PEAK_THRESHOLD -&gt; Result(PersonPresence.PERSON, coverage)</ID>
-    <ID>MaxLineLength:PersonReviewScreen.kt$FilledTonalButton</ID>
-    <ID>MaxLineLength:PersonReviewScreen.kt$Text(current.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
     <ID>MaxLineLength:PersonReviewScreen.kt$Text(stringResource(R.string.person_scan_local_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)</ID>
     <ID>MaxLineLength:PersonReviewScreen.kt$Text(stringResource(if (hasCompletedScan || counts.isNotEmpty()) R.string.person_scan_rescan else R.string.person_scan_start), modifier = Modifier.padding(start = 8.dp))</ID>
     <ID>MaxLineLength:PersonReviewScreen.kt$WorkManager.getInstance(context).cancelUniqueWork(PersonScanWorker.uniqueWorkName(normalizedFolderPath))</ID>
-    <ID>MaxLineLength:PersonReviewScreen.kt$colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f))</ID>
     <ID>MaxLineLength:PersonReviewScreen.kt$hasAlternateTabItems = (tab == PersonPresence.NO_PERSON &amp;&amp; uncertainCount &gt; 0) || (tab == PersonPresence.UNCERTAIN &amp;&amp; noPersonCount &gt; 0)</ID>
     <ID>MaxLineLength:PersonReviewScreen.kt$if (tab == PersonPresence.NO_PERSON) R.string.person_scan_uncertain_tab else R.string.person_scan_no_person_tab</ID>
     <ID>MaxLineLength:PersonReviewScreen.kt$null -&gt; Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }</ID>
-    <ID>MaxLineLength:PersonReviewScreen.kt$stringResource(R.string.person_scan_position_size, currentIndex + 1, items.size, current.size.formatSize())</ID>
     <ID>MaxLineLength:PersonReviewScreen.kt$stringResource(if (tab == PersonPresence.NO_PERSON) R.string.person_scan_no_person_empty else R.string.person_scan_uncertain_empty)</ID>
     <ID>MaxLineLength:PersonReviewScreen.kt$tab = if (tab == PersonPresence.NO_PERSON) PersonPresence.UNCERTAIN else PersonPresence.NO_PERSON</ID>
     <ID>MaxLineLength:PersonScanWorker.kt$PersonScanWorker$.</ID>
@@ -1993,7 +1832,6 @@
     <ID>MaxLineLength:RecycleBinCleanupWorker.kt$RecycleBinCleanupWorker$try { applicationContext.favoritesDB.deleteFavoritePath(medium.path) } catch (e: Exception) { android.util.Log.e("RecycleBinCleanup", "Failed to delete favorite path", e) }</ID>
     <ID>MaxLineLength:RecycleBinCleanupWorker.kt$RecycleBinCleanupWorker$try { applicationContext.mediaCacheDB.deleteByPathSync(medium.path) } catch (e: Exception) { android.util.Log.e("RecycleBinCleanup", "Failed to delete cache path", e) }</ID>
     <ID>MaxLineLength:RecycleBinScreen.kt$"${android.text.format.Formatter.formatFileSize(context, medium.size.coerceAtLeast(0L))} · ${recycleBinExpiryLabel(context, medium.deletedTS + RECYCLE_BIN_RETENTION_MS)}"</ID>
-    <ID>MaxLineLength:RecycleBinScreen.kt$"${android.text.format.Formatter.formatFileSize(ctx, m.size.coerceAtLeast(0L))} · ${recycleBinExpiryLabel(ctx, m.deletedTS + RECYCLE_BIN_RETENTION_MS)}"</ID>
     <ID>MaxLineLength:RecycleBinScreen.kt$Box</ID>
     <ID>MaxLineLength:RecycleBinScreen.kt$DropdownMenu</ID>
     <ID>MaxLineLength:RecycleBinScreen.kt$DropdownMenuItem(text = { Text(stringResource(R.string.images)) }, onClick = { mediaTypeFilter = 1; filterMenuOpen = false })</ID>
@@ -2009,7 +1847,6 @@
     <ID>MaxLineLength:RecycleBinScreen.kt$LoadErrorState(message = loadError, onRetry = { scope.launch { reloadItems() } }, modifier = Modifier.padding(padding))</ID>
     <ID>MaxLineLength:RecycleBinScreen.kt$Text(m.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
     <ID>MaxLineLength:RecycleBinScreen.kt$Text(medium.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
-    <ID>MaxLineLength:RecycleBinScreen.kt$Text(stringResource(R.string.recycle_bin_deleted_at, formatRecycleBinTimestamp(m.deletedTS)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
     <ID>MaxLineLength:RecycleBinScreen.kt$contentDescription = stringResource(if (largePreviews) R.string.recycle_bin_compact_list else R.string.recycle_bin_large_previews)</ID>
     <ID>MaxLineLength:RecycleBinScreen.kt$ctx.toast(if (added &gt; 0) res.getString(R.string.recycle_bin_refreshed_added, added) else res.getString(R.string.recycle_bin_refreshed))</ID>
     <ID>MaxLineLength:RecycleBinScreen.kt$detail = nearestExpiry?.let { recycleBinExpiryLabel(ctx, it) } ?: stringResource(R.string.recycle_bin_auto_cleanup)</ID>
@@ -2055,7 +1892,6 @@
     <ID>MaxLineLength:ScanResultStore.kt$ScanResultStore.DuplicateScan$data</ID>
     <ID>MaxLineLength:SectionHeader.kt$Icon(Icons.Default.SelectAll, stringResource(R.string.action_select_all), modifier = Modifier.size(20.dp))</ID>
     <ID>MaxLineLength:SectionHeader.kt$Text(label, style = textStyle, fontWeight = weight, color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha))</ID>
-    <ID>MaxLineLength:SelectableModifier.kt$fun</ID>
     <ID>MaxLineLength:SelectableModifier.kt$posY &gt; containerHeight - edgeThreshold -&gt; ((posY - (containerHeight - edgeThreshold)) / edgeThreshold * 4f).coerceIn(0f, 4f)</ID>
     <ID>MaxLineLength:SelectionRow.kt$Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, label, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), modifier = Modifier.size(20.dp))</ID>
     <ID>MaxLineLength:SelectionRow.kt$Icon(icon, label, tint = if (tint != Color.Unspecified) tint else MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))</ID>
@@ -2112,7 +1948,6 @@
     <ID>MaxLineLength:SettingsDialogs.kt$withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(R.string.favorites_exported, paths.size), Toast.LENGTH_SHORT).show() }</ID>
     <ID>MaxLineLength:SettingsDialogs.kt$withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(R.string.favorites_imported, imported), Toast.LENGTH_SHORT).show() }</ID>
     <ID>MaxLineLength:SettingsDialogs.kt$withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(org.fossify.commons.R.string.unknown_error_occurred), Toast.LENGTH_SHORT).show() }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$Card</ID>
     <ID>MaxLineLength:SettingsScreen.kt$SecurityDialog</ID>
     <ID>MaxLineLength:SettingsScreen.kt$SecurityNav</ID>
     <ID>MaxLineLength:SettingsScreen.kt$SettingsCategory(stringResource(R.string.nav_recycle_bin), settingsQuery, "bin" in expandedSections) { toggleSection("bin") }</ID>
@@ -2142,13 +1977,10 @@
     <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.set_skip_delete_confirm), conf.skipDeleteConfirmation) { conf.skipDeleteConfirmation = it }</ID>
     <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.set_swipe_close), conf.allowDownGesture) { conf.allowDownGesture = it }</ID>
     <ID>MaxLineLength:SettingsScreen.kt$SettingsSwitch(stringResource(R.string.set_video_gestures), conf.allowVideoGestures) { conf.allowVideoGestures = it }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$Text(if (enabled) stringResource(R.string.set_on) else stringResource(R.string.set_off), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
     <ID>MaxLineLength:SettingsScreen.kt$Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))</ID>
     <ID>MaxLineLength:SettingsScreen.kt$color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)</ID>
     <ID>MaxLineLength:SettingsScreen.kt$color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)</ID>
     <ID>MaxLineLength:SettingsScreen.kt$confirmButton = { TextButton(onClick = { showThemeModeDialog = false }) { Text(stringResource(R.string.cancel)) } }</ID>
-    <ID>MaxLineLength:SettingsScreen.kt$if (subtitle.isNotEmpty()) Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
     <ID>MaxLineLength:SettingsScreen.kt$navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } }</ID>
     <ID>MaxLineLength:SettingsScreen.kt$val matches = query.isBlank() || label.contains(query, ignoreCase = true) || subtitle.contains(query, ignoreCase = true)</ID>
     <ID>MaxLineLength:ShimmerEffect.kt$Icon(Icons.Default.Videocam, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))</ID>
@@ -2174,19 +2006,13 @@
     <ID>MaxLineLength:StorageAnalysisScreen.kt$LinearProgressIndicator(progress = { prog.first / prog.second.toFloat() }, modifier = Modifier.fillMaxWidth())</ID>
     <ID>MaxLineLength:StorageAnalysisScreen.kt$Row</ID>
     <ID>MaxLineLength:StorageAnalysisScreen.kt$Surface</ID>
-    <ID>MaxLineLength:StorageAnalysisScreen.kt$Text("${item.width}×${item.height} · ${formatKbps(item.bitrateKbps)} · ${formatDuration(item.durationMs)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:StorageAnalysisScreen.kt$Text("${item.width}×${item.height} · ${item.imageFormat?.uppercase()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:StorageAnalysisScreen.kt$Text("−$expectedPercent %", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)</ID>
-    <ID>MaxLineLength:StorageAnalysisScreen.kt$Text(formatBytes(item.fileSize), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
     <ID>MaxLineLength:StorageAnalysisScreen.kt$Text(if (state.isScanning) stringResource(R.string.cancel) else stringResource(R.string.analyze))</ID>
     <ID>MaxLineLength:StorageAnalysisScreen.kt$Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))</ID>
     <ID>MaxLineLength:StorageAnalysisScreen.kt$Text(reason, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 18.dp, top = 2.dp))</ID>
     <ID>MaxLineLength:StorageAnalysisScreen.kt$Text(stringResource(R.string.analyzed_no_optimization, state.totalFiles), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
     <ID>MaxLineLength:StorageAnalysisScreen.kt$Text(stringResource(R.string.estimated_savings_recycle_bin, formatBytes(selWaste)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
     <ID>MaxLineLength:StorageAnalysisScreen.kt$Text(stringResource(R.string.optimize_skipped_title), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:StorageAnalysisScreen.kt$Text(stringResource(R.string.selected_count_saving, selectedSummary.first, formatBytes(selectedSummary.second)), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))</ID>
     <ID>MaxLineLength:StorageAnalysisScreen.kt$Text(stringResource(R.string.skipped_no_lossless_option, selCount - losslessCount), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:StorageAnalysisScreen.kt$Text(stringResource(R.string.storage_files_scanned, state.scannedCount, state.totalFiles), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
     <ID>MaxLineLength:StorageAnalysisScreen.kt$TextButton(onClick = { showConfirmDialog = false; vm.executeTransforms() }, enabled = losslessCount &gt; 0) { Text(stringResource(R.string.optimize)) }</ID>
     <ID>MaxLineLength:StorageAnalysisScreen.kt$TextButton(onClick = { showConfirmDialog = true }, enabled = !state.isEnqueuingCompression) { Text(stringResource(R.string.optimize)) }</ID>
     <ID>MaxLineLength:StorageAnalysisScreen.kt$androidx.compose.ui.res.pluralStringResource(R.plurals.reasons_count, item.reasons.size, item.reasons.size)</ID>
@@ -2250,18 +2076,8 @@
     <ID>MaxLineLength:TagBrowserScreen.kt$Icon(Icons.Default.AccountTree, contentDescription = stringResource(R.string.browse_tag_hierarchy))</ID>
     <ID>MaxLineLength:TagBrowserScreen.kt$Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.view_settings_title))</ID>
     <ID>MaxLineLength:TagBrowserScreen.kt$OutlinedTextField(value = mergeTargetName, onValueChange = { mergeTargetName = it }, label = { Text(stringResource(R.string.target_tag)) }, singleLine = true, modifier = Modifier.fillMaxWidth())</ID>
-    <ID>MaxLineLength:TagBrowserScreen.kt$OutlinedTextField(value = newName, onValueChange = { newName = it }, label = { Text(stringResource(R.string.rename_numbered)) }, singleLine = true, modifier = Modifier.fillMaxWidth())</ID>
-    <ID>MaxLineLength:TagBrowserScreen.kt$Row</ID>
-    <ID>MaxLineLength:TagBrowserScreen.kt$Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.action_merge), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onTertiaryContainer) }</ID>
-    <ID>MaxLineLength:TagBrowserScreen.kt$Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.action_parent), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }</ID>
-    <ID>MaxLineLength:TagBrowserScreen.kt$Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.action_rename), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer) }</ID>
-    <ID>MaxLineLength:TagBrowserScreen.kt$Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.filter_tags_match_all), style = MaterialTheme.typography.labelSmall) }</ID>
-    <ID>MaxLineLength:TagBrowserScreen.kt$Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center) { Text(stringResource(R.string.filter_tags_match_any), style = MaterialTheme.typography.labelSmall) }</ID>
-    <ID>MaxLineLength:TagBrowserScreen.kt$Surface</ID>
     <ID>MaxLineLength:TagBrowserScreen.kt$Text(stringResource(R.string.existing_tags), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:TagBrowserScreen.kt$Text(stringResource(R.string.rename_tag_prompt, oldName, count), style = MaterialTheme.typography.bodyMedium)</ID>
     <ID>MaxLineLength:TagBrowserScreen.kt$Text(stringResource(R.string.sources_label, selectedTags.joinToString(", ")), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:TagBrowserScreen.kt$Text(t, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))</ID>
     <ID>MaxLineLength:TagBrowserScreen.kt$UndoManager.push(UndoAction(paths = affectedPaths.toSet(), type = UndoType.TAG_HIERARCHY, hierarchyBefore = hierarchyBefore))</ID>
     <ID>MaxLineLength:TagBrowserScreen.kt$UndoManager.push(UndoAction(paths = emptySet(), type = UndoType.TAG_HIERARCHY, hierarchyBefore = hierarchyBefore))</ID>
     <ID>MaxLineLength:TagBrowserScreen.kt$contentWindowInsets = if (embeddedInMainTabs) WindowInsets(0, 0, 0, 0) else androidx.compose.material3.ScaffoldDefaults.contentWindowInsets</ID>
@@ -2273,9 +2089,7 @@
     <ID>MaxLineLength:TagBrowserScreen.kt$else</ID>
     <ID>MaxLineLength:TagBrowserScreen.kt$filteredTags.map { AlbumGridItem(key = it.key, name = if (it.key in hierarchy) "↳ ${it.key}" else it.key, thumbnailPath = it.value.firstOrNull() ?: "", count = it.value.size, previewPaths = it.value.take(3)) }</ID>
     <ID>MaxLineLength:TagBrowserScreen.kt$if</ID>
-    <ID>MaxLineLength:TagBrowserScreen.kt$if (successful.isNotEmpty()) UndoManager.push(UndoAction(successful, UndoType.TAG_RESTORE_SNAPSHOT, tagSnapshots = snapshots.filterKeys { it in successful }.mapValues { it.value.toSet() }, hierarchyBefore = hierarchyBefore))</ID>
     <ID>MaxLineLength:TagBrowserScreen.kt$onLongClick = { item -&gt; selectedTags = if (item.key in selectedTags) selectedTags - item.key else selectedTags + item.key }</ID>
-    <ID>MaxLineLength:TagBrowserScreen.kt$org.fossify.gallery.compose.util.XmpBatch</ID>
     <ID>MaxLineLength:TagBrowserScreen.kt$org.fossify.gallery.helpers.RefreshBus.trigger(pathsChanged = false, collectionsChanged = false)</ID>
     <ID>MaxLineLength:TagBrowserScreen.kt$selectedTags = selectionForAll(selectedTags, visibleTagSelectionKeys, invert = false)</ID>
     <ID>MaxLineLength:TagBrowserScreen.kt$selectedTags = selectionForAll(selectedTags, visibleTagSelectionKeys, invert = true)</ID>
@@ -2327,16 +2141,12 @@
     <ID>MaxLineLength:TagInputDialog.kt$}</ID>
     <ID>MaxLineLength:Type.kt$bodyLarge = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 24.sp)</ID>
     <ID>MaxLineLength:Type.kt$bodyMedium = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 20.sp)</ID>
-    <ID>MaxLineLength:Type.kt$bodySmall = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 16.sp)</ID>
     <ID>MaxLineLength:Type.kt$displayLarge = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 57.sp, lineHeight = 64.sp)</ID>
     <ID>MaxLineLength:Type.kt$displayMedium = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 45.sp, lineHeight = 52.sp)</ID>
     <ID>MaxLineLength:Type.kt$displaySmall = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 36.sp, lineHeight = 44.sp)</ID>
     <ID>MaxLineLength:Type.kt$headlineLarge = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 32.sp, lineHeight = 40.sp)</ID>
     <ID>MaxLineLength:Type.kt$headlineMedium = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 28.sp, lineHeight = 36.sp)</ID>
     <ID>MaxLineLength:Type.kt$headlineSmall = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 24.sp, lineHeight = 32.sp)</ID>
-    <ID>MaxLineLength:Type.kt$labelLarge = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 20.sp)</ID>
-    <ID>MaxLineLength:Type.kt$labelMedium = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp)</ID>
-    <ID>MaxLineLength:Type.kt$labelSmall = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 16.sp)</ID>
     <ID>MaxLineLength:Type.kt$titleLarge = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 28.sp)</ID>
     <ID>MaxLineLength:Type.kt$titleMedium = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 24.sp)</ID>
     <ID>MaxLineLength:Type.kt$titleSmall = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp)</ID>
@@ -2360,11 +2170,6 @@
     <ID>MaxLineLength:VideoPage.kt$IconButton</ID>
     <ID>MaxLineLength:VideoPage.kt$IconButton(onClick = { isMuted = !isMuted; player.volume = if (isMuted) 0f else 1f; onInteract() }, modifier = Modifier.size(48.dp)) { Icon(if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, stringResource(R.string.set_mute_videos), tint = Color.White, modifier = Modifier.size(22.dp)) }</ID>
     <ID>MaxLineLength:VideoPage.kt$Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Scrim.a60).padding(horizontal = 12.dp, vertical = 8.dp).navigationBarsPadding()</ID>
-    <ID>MaxLineLength:VideoPage.kt$Text("%02d:%02d".format(((scrubFraction * player.duration) / 1000).toInt() / 60, ((scrubFraction * player.duration) / 1000).toInt() % 60), color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(4.dp))</ID>
-    <ID>MaxLineLength:VideoPage.kt$Text("%02d:%02d".format((endMs / 1000).toInt() / 60, (endMs / 1000).toInt() % 60), color = TrimEndColor, style = MaterialTheme.typography.labelSmall)</ID>
-    <ID>MaxLineLength:VideoPage.kt$Text("%02d:%02d".format((player.duration / 1000) / 60, (player.duration / 1000) % 60), style = MaterialTheme.typography.labelSmall, color = Color.White)</ID>
-    <ID>MaxLineLength:VideoPage.kt$Text("%02d:%02d".format((posMs / 1000).toInt() / 60, (posMs / 1000).toInt() % 60), style = MaterialTheme.typography.labelSmall, color = Color.White)</ID>
-    <ID>MaxLineLength:VideoPage.kt$Text("%02d:%02d".format((trimStartMs / 1000).toInt() / 60, (trimStartMs / 1000).toInt() % 60), color = TrimStartColor, style = MaterialTheme.typography.labelSmall)</ID>
     <ID>MaxLineLength:VideoPage.kt$Text(stringResource(R.string.trim_save), color = if (validRange) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.4f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)</ID>
     <ID>MaxLineLength:VideoPage.kt$Text(stringResource(org.fossify.commons.R.string.cancel), color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelLarge)</ID>
     <ID>MaxLineLength:VideoPage.kt$ZoomMinimap(zoom, modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 72.dp, end = 12.dp))</ID>
@@ -2398,24 +2203,6 @@
     <ID>MaxLineLength:VideoTrimmerSheet.kt$&lt;no name provided&gt;$override</ID>
     <ID>MaxLineLength:VideoTrimmerSheet.kt$MediaScannerConnection.scanFile(ctx.applicationContext, arrayOf(outFile.absolutePath), arrayOf("video/mp4"), null)</ID>
     <ID>MaxLineLength:VideoTrimmerSheet.kt$Toast.makeText(ctx, res.getString(R.string.trim_video_failed), Toast.LENGTH_SHORT).show()</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$)</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$Text(if (density == ListDensity.COMPACT) stringResource(R.string.list_density_compact) else stringResource(R.string.list_density_comfortable))</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$Text(stringResource(R.string.apply_settings_globally_hint), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$Text(stringResource(R.string.columns), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$Text(stringResource(R.string.group_order_label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$Text(stringResource(R.string.grouping_method), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$Text(stringResource(R.string.list_density), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$Text(stringResource(R.string.only_top_level_tags_hint), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$Text(stringResource(R.string.spacing), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$Text(stringResource(R.string.tile_background_label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$if (dm == DisplayMode.DARK) stringResource(R.string.tile_background_dark) else stringResource(R.string.tile_background_default)</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$onCheckedChange = { local = local.copy(onlyTopLevelTags = it); onSettingsChange(local, applyGlobally) }</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$onCheckedChange = { local = local.copy(showFileNames = it); onSettingsChange(local, applyGlobally) }</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$onCheckedChange = { local = local.copy(showFolderThumbnails = it); onSettingsChange(local, applyGlobally) }</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$onClick = { local = local.copy(listDensity = density); onSettingsChange(local, applyGlobally) }</ID>
-    <ID>MaxLineLength:ViewSettingsSheet.kt$val viewTypes = if (isAlbumMode || isContainerMode) ViewType.entries.filter { it != ViewType.MOSAIC } else ViewType.entries</ID>
-    <ID>MaxLineLength:ViewSettingsSummary.kt$ViewType.MOSAIC -&gt; "${stringResource(R.string.view_type_mosaic)} · ${settings.columnCount} ${stringResource(R.string.columns)}"</ID>
-    <ID>MaxLineLength:ViewSettingsSummary.kt$if (settings.listDensity == ListDensity.COMPACT) R.string.list_density_compact else R.string.list_density_comfortable</ID>
     <ID>MaxLineLength:ViewSettingsViewModel.kt$TabViewSettings$val collections: ViewSettings = ViewSettings(columnCount = 3, displayMode = DisplayMode.NORMAL, sortBy = SortField.COUNT)</ID>
     <ID>MaxLineLength:ViewSettingsViewModel.kt$ViewSettingsViewModel$collectionMedia = loadSurfaceSettings("collection_media", mediaDefault).sanitizeFor(ViewSettingsSurface.COLLECTION_MEDIA)</ID>
     <ID>MaxLineLength:ViewSettingsViewModel.kt$ViewSettingsViewModel$collections = loadSurfaceSettings("collections", collectionsDefault).sanitizeFor(ViewSettingsSurface.COLLECTIONS)</ID>
@@ -2430,17 +2217,10 @@
     <ID>MaxLineLength:ViewerOverlays.kt$ActionChip(Icons.Default.BurstMode, stringResource(R.string.grab_frames), onClick = onOpenFrameGrabber)</ID>
     <ID>MaxLineLength:ViewerOverlays.kt$ActionChip(Icons.Default.DriveFileRenameOutline, stringResource(R.string.action_rename), onClick = onRename)</ID>
     <ID>MaxLineLength:ViewerOverlays.kt$ActionChip(Icons.Default.PhotoCamera, stringResource(R.string.action_save_frame), onClick = onSaveFrame)</ID>
-    <ID>MaxLineLength:ViewerOverlays.kt$Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:ViewerOverlays.kt$Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)</ID>
     <ID>MaxLineLength:ViewerOverlays.kt$color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface</ID>
-    <ID>MaxLineLength:ViewerOverlays.kt$color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest</ID>
-    <ID>MaxLineLength:ViewerOverlays.kt$contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant</ID>
     <ID>MaxLineLength:ViewerOverlays.kt$exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, 0).takeIf { it &gt; 0 }?.let { height -&gt; width to height }</ID>
-    <ID>MaxLineLength:ViewerOverlays.kt$if (flags and EXT_DATE_TAKEN != 0) exif?.getAttribute(ExifInterface.TAG_DATETIME)?.take(10)?.let { lines.add(it) }</ID>
     <ID>MaxLineLength:ViewerOverlays.kt$lines.add(labelDate to DateFormat.getDateInstance(DateFormat.SHORT).format(Date(file.lastModified())))</ID>
     <ID>MaxLineLength:ViewerOverlays.kt$tint = if (i &lt;= currentRating) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)</ID>
-    <ID>MaxLineLength:ViewerOverlays.kt$tint = if (showRatingOverlay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant</ID>
-    <ID>MaxLineLength:ViewerOverlays.kt$tint = if (slideshowActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface</ID>
     <ID>MaxLineLength:ViewerOverlays.kt$val</ID>
     <ID>MaxLineLength:ViewerOverlays.kt$val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L</ID>
     <ID>MaxLineLength:ViewerOverlays.kt$val formatted = if (hours &gt; 0L) "%d:%02d:%02d".format(hours, mins, secs) else "%02d:%02d".format(mins, secs)</ID>
@@ -2508,7 +2288,6 @@
     <ID>MayBeConst:VideoPage.kt$val SCALING_FIT = 0</ID>
     <ID>MayBeConst:VideoPage.kt$val SCALING_ZOOM = 2</ID>
     <ID>ModifierComposed:SelectableModifier.kt$dragSelectionGesture</ID>
-    <ID>ModifierComposed:SelectableModifier.kt$selectableItem</ID>
     <ID>ModifierMissing:AboutScreen.kt$AboutScreen</ID>
     <ID>ModifierMissing:CleanupHubScreen.kt$CleanupHubScreen</ID>
     <ID>ModifierMissing:ComposeExplorerActivity.kt$MainScreen</ID>

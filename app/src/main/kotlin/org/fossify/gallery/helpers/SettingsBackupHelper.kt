@@ -3,6 +3,7 @@ package org.fossify.gallery.helpers
 import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.JsonParser
+import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -33,12 +34,16 @@ object SettingsBackupHelper {
     private const val T_STRING = "string"
     private const val T_STRING_SET = "stringset"
 
-    internal data class Entry(val key: String, val type: String, val value: Any?)
+    internal data class Entry(
+        @SerializedName("key") val key: String = "",
+        @SerializedName("type") val type: String = "",
+        @SerializedName("value") val value: Any? = null,
+    )
 
     internal data class BundleEnvelope(
-        val version: Int = 2,
-        val prefs: List<Entry> = emptyList(),
-        val defaultPrefs: List<Entry> = emptyList(),
+        @SerializedName("version") val version: Int = 2,
+        @SerializedName("prefs") val prefs: List<Entry> = emptyList(),
+        @SerializedName("defaultPrefs") val defaultPrefs: List<Entry> = emptyList(),
     )
 
     internal data class DecodedBackup(
