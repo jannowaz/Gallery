@@ -282,20 +282,23 @@ fun AlbumsScreen(
                     } else {
                         EmptyState(Icons.Default.Folder, stringResource(R.string.no_albums))
                     }
-                    else -> LibraryAlbumGrid(
-                        items = albumItems,
-                        viewSettings = viewSettings,
-                        onClick = { item ->
-                            if (hasSelection) selectedPaths = if (item.key in selectedPaths) selectedPaths - item.key else selectedPaths + item.key
-                            else visibleDirs.find { it.path == item.key }?.let(onFolderClick)
-                        },
-                        onLongClick = { item -> selectedPaths = selectedPaths + item.key },
-            selectedKeys = selectedPaths,
-                        pathHint = { org.fossify.gallery.compose.components.folderPathHint(it.key, ctx.getString(R.string.internal_storage)) },
-                        modifier = Modifier.weight(1f),
-                        tabIndex = tabIndex,
-                        fastScrollLabel = { index -> albumItems.getOrNull(index)?.name },
-                    )
+                    else -> {
+                        val internalStorageLabel = stringResource(R.string.internal_storage)
+                        LibraryAlbumGrid(
+                            items = albumItems,
+                            viewSettings = viewSettings,
+                            onClick = { item ->
+                                if (hasSelection) selectedPaths = if (item.key in selectedPaths) selectedPaths - item.key else selectedPaths + item.key
+                                else visibleDirs.find { it.path == item.key }?.let(onFolderClick)
+                            },
+                            onLongClick = { item -> selectedPaths = selectedPaths + item.key },
+                            selectedKeys = selectedPaths,
+                            pathHint = { org.fossify.gallery.compose.components.folderPathHint(it.key, internalStorageLabel) },
+                            modifier = Modifier.weight(1f),
+                            tabIndex = tabIndex,
+                            fastScrollLabel = { index -> albumItems.getOrNull(index)?.name },
+                        )
+                    }
                 }
             }
         }
@@ -311,13 +314,14 @@ fun AlbumsScreen(
             // favorites every not-yet-favorited folder in the batch, or un-favorites all of them
             // if the whole batch was already favorited, rather than only ever acting on one path.
             val allFav = selectedPaths.isNotEmpty() && selectedPaths.all { it in favorites }
+            val res = androidx.compose.ui.platform.LocalResources.current
             SelectionAppBar(
                 modifier = Modifier.onSizeChanged { size ->
                     if (selectionBarHeightPx != size.height) selectionBarHeightPx = size.height
                 },
                 count = selectedPaths.size,
                 onClose = { selectedPaths = emptySet() },
-                subtitle = ctx.getString(R.string.selection_scope_visible, visibleDirs.size),
+                subtitle = stringResource(R.string.selection_scope_visible, visibleDirs.size),
                 actions = {
                     // Open/Info only make sense for exactly one target folder.
                     if (isSingle) {
@@ -349,8 +353,8 @@ fun AlbumsScreen(
                         val batch = selectedPaths.toList()
                         batch.forEach { path -> MetadataSyncWorker.scheduleFolderScan(ctx, path) }
                         ctx.toast(
-                            if (batch.size == 1) ctx.getString(R.string.scan_started, File(batch.first()).name)
-                            else ctx.getString(R.string.scan_started_count, batch.size),
+                            if (batch.size == 1) res.getString(R.string.scan_started, File(batch.first()).name)
+                            else res.getString(R.string.scan_started_count, batch.size),
                             Toast.LENGTH_SHORT,
                         )
                         selectedPaths = emptySet()

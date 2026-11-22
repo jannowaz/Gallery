@@ -84,6 +84,7 @@ fun ManageCollectionsScreen(
     onCollectionClick: (MediaCollection) -> Unit
 ) {
     val ctx = LocalContext.current
+    val res = androidx.compose.ui.platform.LocalResources.current
     val repo = LocalMediaRepository.current
     val scope = rememberCoroutineScope()
     var collections by remember { mutableStateOf<List<MediaCollection>>(emptyList()) }
@@ -133,7 +134,7 @@ fun ManageCollectionsScreen(
                         collections = repo.getCollections()
                         withContext(Dispatchers.Main) { showEditDialog = false }
                     } catch (e: Exception) {
-                        withContext(Dispatchers.Main) { ctx.toast("${ctx.getString(R.string.error_prefix)}: ${e.message}", Toast.LENGTH_LONG) }
+                        withContext(Dispatchers.Main) { ctx.toast("${res.getString(R.string.error_prefix)}: ${e.message}", Toast.LENGTH_LONG) }
                     }
                 }
             }

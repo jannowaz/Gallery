@@ -189,7 +189,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
 
     // Consent (only when the app lacks all-files access) + enqueue for an already-resolved set.
     fun proceedMove(items: List<org.fossify.gallery.models.BatchJobItem>) {
-        if (items.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); return }
+        if (items.isEmpty()) { ctx.toast(R.string.no_files_found, Toast.LENGTH_SHORT); return }
         val needsAllFiles = !MediaStoreOps.hasAllFilesAccess(ctx) &&
             items.any { item ->
                 MediaStoreOps.requiresAllFilesAccessForTarget(
@@ -205,13 +205,12 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
             // With MANAGE_EXTERNAL_STORAGE (this app requires it) the app can already read/write/delete
             // any file on shared storage directly - createWriteRequest's consent dialog is redundant,
             // and requesting it anyway used to make "Move all" toast R.string.cancelled instead of
-            // moving anything (MoverWidgetProvider's "move now" enqueues the same worker with no
-            // consent step and works fine).
+            // moving anything.
             if (!MediaStoreOps.hasAllFilesAccess(ctx)) {
                 val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, items.map { it.sourcePath }) }
-                if (uris.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); return@launch }
+                if (uris.isEmpty()) { ctx.toast(R.string.no_files_found, Toast.LENGTH_SHORT); return@launch }
                 val granted = try { moverConsent.request(MediaStoreOps.writeRequest(ctx, uris.map { it.second })) } catch (_: Exception) { false }
-                if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); return@launch }
+                if (!granted) { ctx.toast(R.string.cancelled, Toast.LENGTH_SHORT); return@launch }
             }
             activeJobId = MediaBatchWorker.enqueue(ctx, BatchOperation.MOVE_COPY_DELETE, items)
         }
@@ -223,7 +222,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
         if (granted && pending != null) {
             proceedMove(pending)
         } else if (pending != null) {
-            ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT)
+            ctx.toast(R.string.cancelled, Toast.LENGTH_SHORT)
         }
     }
 
@@ -232,7 +231,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
         val snapshotPairs = pairs.toList()
         scope.launch {
             val allMoves = withContext(Dispatchers.IO) { flattenMoverPairs(snapshotPairs) }
-            if (allMoves.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); return@launch }
+            if (allMoves.isEmpty()) { ctx.toast(R.string.no_files_found, Toast.LENGTH_SHORT); return@launch }
             val items = allMoves.map { (srcPath, destPath) -> org.fossify.gallery.models.BatchJobItem(jobId = "", sourcePath = srcPath, targetPath = destPath) }
             // Ask before letting same-name collisions fail silently in the worker.
             val conflicts = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MoveConflicts.conflicting(items) }

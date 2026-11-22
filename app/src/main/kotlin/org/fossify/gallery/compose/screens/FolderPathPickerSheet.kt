@@ -476,7 +476,7 @@ fun FolderPathPickerSheet(
                             val ok = withContext(Dispatchers.IO) {
                                 runCatching { newDir.mkdirs() || newDir.isDirectory }.getOrDefault(false)
                             }
-                            if (ok) currentPath = newDir.path else ctx.toast(ctx.getString(R.string.create_folder_error))
+                            if (ok) currentPath = newDir.path else ctx.toast(R.string.create_folder_error)
                             creatingFolder = false
                             pendingCreateFolder = false
                             newFolderName = ""

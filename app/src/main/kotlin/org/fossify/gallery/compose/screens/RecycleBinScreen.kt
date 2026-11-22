@@ -117,6 +117,7 @@ fun RecycleBinScreen(
     onNavigateToViewer: (paths: List<String>, startIndex: Int) -> Unit,
 ) {
     val ctx = LocalContext.current
+    val res = androidx.compose.ui.platform.LocalResources.current
     val repo = LocalMediaRepository.current
     val scope = rememberCoroutineScope()
     val consent = rememberMediaStoreConsent()
@@ -246,7 +247,7 @@ fun RecycleBinScreen(
                         android.util.Log.e("RecycleBin", "Delete consent request failed", e)
                         false
                     }
-                    if (!granted) { deleteProgress = null; ctx.toast(ctx.getString(R.string.cancelled)); return@launch }
+                    if (!granted) { deleteProgress = null; ctx.toast(R.string.cancelled); return@launch }
                 }
             }
             val failed = withContext(Dispatchers.IO) {
@@ -260,9 +261,9 @@ fun RecycleBinScreen(
             exitSelection()
             refresh++
             if (failed > 0) {
-                ctx.toast(ctx.resources.getQuantityString(R.plurals.delete_failed_count, failed, failed))
+                ctx.toast(res.getQuantityString(R.plurals.delete_failed_count, failed, failed))
             } else {
-                ctx.toast(ctx.resources.getQuantityString(R.plurals.deleted_forever_count, paths.size, paths.size))
+                ctx.toast(res.getQuantityString(R.plurals.deleted_forever_count, paths.size, paths.size))
             }
         }
         }
@@ -275,9 +276,9 @@ fun RecycleBinScreen(
             exitSelection()
             refresh++
             if (failed == 0) {
-                ctx.toast(ctx.resources.getQuantityString(R.plurals.restored_count, paths.size, paths.size))
+                ctx.toast(res.getQuantityString(R.plurals.restored_count, paths.size, paths.size))
             } else {
-                ctx.toast(ctx.getString(R.string.restore_partial, paths.size - failed, paths.size))
+                ctx.toast(res.getString(R.string.restore_partial, paths.size - failed, paths.size))
             }
         }
     }
@@ -303,9 +304,9 @@ fun RecycleBinScreen(
                     count = selected.size,
                     onClose = { exitSelection() },
                     subtitle = if (selectionBehavior == MediaSelectionMode.RANGE) {
-                        rangeAnchorPath?.let { ctx.getString(R.string.selection_range_from, File(it).name) }
+                        rangeAnchorPath?.let { stringResource(R.string.selection_range_from, File(it).name) }
                     } else {
-                        ctx.getString(R.string.selection_scope_visible, filtered.size)
+                        stringResource(R.string.selection_scope_visible, filtered.size)
                     },
                     windowInsets = TopAppBarDefaults.windowInsets,
                     actions = {
@@ -351,7 +352,7 @@ fun RecycleBinScreen(
                                     try {
                                         val added = withContext(Dispatchers.IO) { repo.syncTrashFromMediaStore() }
                                         refresh++
-                                        ctx.toast(if (added > 0) ctx.getString(R.string.recycle_bin_refreshed_added, added) else ctx.getString(R.string.recycle_bin_refreshed))
+                                        ctx.toast(if (added > 0) res.getString(R.string.recycle_bin_refreshed_added, added) else res.getString(R.string.recycle_bin_refreshed))
                                     } catch (e: Exception) {
                                         loadError = e.message
                                     } finally {
@@ -495,7 +496,7 @@ fun RecycleBinScreen(
                                     onRestore = {
                                         scope.launch {
                                             val ok = withContext(Dispatchers.IO) { repo.restoreFromRecycleBin(medium.path) }
-                                            if (!ok) ctx.toast(ctx.getString(R.string.restore_failed)) else refresh++
+                                            if (!ok) ctx.toast(R.string.restore_failed) else refresh++
                                         }
                                     },
                                     onDelete = { pendingDelete = medium },
@@ -553,7 +554,7 @@ fun RecycleBinScreen(
                                         IconButton(onClick = {
                                             scope.launch {
                                                 val ok = withContext(Dispatchers.IO) { repo.restoreFromRecycleBin(m.path) }
-                                                if (!ok) ctx.toast(ctx.getString(R.string.restore_failed)) else refresh++
+                                                if (!ok) ctx.toast(R.string.restore_failed) else refresh++
                                             }
                                         }, enabled = deleteProgress == null) { Icon(Icons.Default.Restore, stringResource(R.string.action_restore), tint = MaterialTheme.colorScheme.primary) }
                                         IconButton(onClick = { pendingDelete = m }, enabled = deleteProgress == null) { Icon(Icons.Default.DeleteForever, stringResource(R.string.action_delete_forever), tint = MaterialTheme.colorScheme.error) }

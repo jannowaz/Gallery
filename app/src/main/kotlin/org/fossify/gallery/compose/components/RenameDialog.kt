@@ -64,6 +64,7 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<Str
     // Set once the rename job is enqueued; while non-null the dialog shows progress instead of the
     // input form. The job keeps running via MediaBatchWorker even if the user dismisses from here -
     // dismissing early just means onRenamed's selection-remap won't fire (the batch still completes).
+    val res = androidx.compose.ui.platform.LocalResources.current
     var jobId by remember { mutableStateOf<String?>(null) }
     var plannedMapping by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var collisionError by remember { mutableStateOf<String?>(null) }
@@ -92,7 +93,7 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<Str
             // to learn anything went wrong, easy to miss since renaming is a quick, in-app action
             // the user isn't expecting to check the notification shade for.
             if (failedPaths.isNotEmpty()) {
-                ctx.toast(ctx.getString(R.string.notif_batch_done_with_failures, succeededMapping.size, failedPaths.size), Toast.LENGTH_SHORT)
+                ctx.toast(res.getString(R.string.notif_batch_done_with_failures, succeededMapping.size, failedPaths.size), Toast.LENGTH_SHORT)
             }
             onRenamed(succeededMapping)
             onDismiss()
@@ -179,7 +180,7 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<Str
                             }
                         }
                         if (jobs.isEmpty()) {
-                            ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); onDismiss(); return@launch
+                            ctx.toast(res.getString(R.string.no_files_found), Toast.LENGTH_SHORT); onDismiss(); return@launch
                         }
                         // Checked BEFORE requesting consent/enqueueing anything - FolderRenameDialog
                         // already guards this for folder rename (File(newPath).exists()), file
@@ -195,14 +196,14 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<Str
                             }
                         }
                         if (collision != null) {
-                            collisionError = ctx.getString(R.string.rename_file_exists, collision.newName)
+                            collisionError = res.getString(R.string.rename_file_exists, collision.newName)
                             return@launch
                         }
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R && !MediaStoreOps.hasAllFilesAccess(ctx)) {
                             val granted = try {
                                 consent.request(MediaStoreOps.writeRequest(ctx, jobs.map { it.uri }))
                             } catch (_: Exception) { false }
-                            if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); return@launch }
+                            if (!granted) { ctx.toast(res.getString(R.string.cancelled), Toast.LENGTH_SHORT); return@launch }
                         }
                         val items = jobs.map { job ->
                             val parent = File(job.path).parent ?: ""

@@ -128,6 +128,7 @@ fun TagBrowserScreen(
     onOpenViewSettings: (() -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
+    val res = androidx.compose.ui.platform.LocalResources.current
     val scope = rememberCoroutineScope()
     val repo = LocalMediaRepository.current
 
@@ -510,7 +511,7 @@ fun TagBrowserScreen(
                         } catch (e: Exception) { android.util.Log.e("TagBrowser", "Orphaned hierarchy cleanup failed", e) }
                         val successful = mutableSetOf<String>()
                         org.fossify.gallery.compose.util.XmpBatch.run(ctx, affectedPaths,
-                            successMessage = ctx.getString(R.string.tags_removed, tagsToDelete.size, totalFiles),
+                            successMessage = res.getString(R.string.tags_removed, tagsToDelete.size, totalFiles),
                             onSuccess = { successful += it },
                         ) { path -> repo.removeTags(path, tagsToDelete) }
                         withContext(Dispatchers.Main) {
@@ -557,7 +558,7 @@ fun TagBrowserScreen(
                 }
                 val invalid = selectedParent != null && (selectedParent in tagsToAssign || tagsToAssign.any { createsCycle(it, selectedParent) })
                 if (invalid) {
-                    ctx.toast(ctx.getString(R.string.invalid_parent_cycle), Toast.LENGTH_SHORT)
+                    ctx.toast(R.string.invalid_parent_cycle, Toast.LENGTH_SHORT)
                 } else {
                     val hierarchyBefore = h.toMap()
                     tagsToAssign.forEach { child ->
@@ -573,12 +574,12 @@ fun TagBrowserScreen(
                             }
                             withContext(Dispatchers.Main) {
                                 UndoManager.push(UndoAction(paths = affectedPaths.toSet(), type = UndoType.TAG_HIERARCHY, hierarchyBefore = hierarchyBefore))
-                                ctx.toast(ctx.getString(R.string.parent_tag_set), Toast.LENGTH_SHORT)
+                                ctx.toast(R.string.parent_tag_set, Toast.LENGTH_SHORT)
                             }
                         }
                     } else {
                         UndoManager.push(UndoAction(paths = emptySet(), type = UndoType.TAG_HIERARCHY, hierarchyBefore = hierarchyBefore))
-                        ctx.toast(ctx.getString(R.string.parent_tag_set), Toast.LENGTH_SHORT)
+                        ctx.toast(R.string.parent_tag_set, Toast.LENGTH_SHORT)
                     }
                 }
             },
@@ -630,7 +631,7 @@ fun TagBrowserScreen(
                             ctx.config.tagHierarchy = renameTagInHierarchy(ctx.config.tagHierarchy, source, target)
                         }
                         val successful = mutableSetOf<String>()
-                        org.fossify.gallery.compose.util.XmpBatch.run(ctx, items, successMessage = ctx.getString(R.string.merged_into, target), onSuccess = { successful += it.first }) { (p, srcTag) ->
+                        org.fossify.gallery.compose.util.XmpBatch.run(ctx, items, successMessage = res.getString(R.string.merged_into, target), onSuccess = { successful += it.first }) { (p, srcTag) ->
                             repo.replaceTag(p, srcTag, target)
                         }
                         if (successful.isNotEmpty()) UndoManager.push(UndoAction(successful, UndoType.TAG_RESTORE_SNAPSHOT, tagSnapshots = snapshots.filterKeys { it in successful }.mapValues { it.value.toSet() }, hierarchyBefore = hierarchyBefore))
@@ -668,7 +669,7 @@ fun TagBrowserScreen(
                         val snapshots = withContext(Dispatchers.IO) { repo.getTagsForPaths(paths) }
                         ctx.config.tagHierarchy = renameTagInHierarchy(ctx.config.tagHierarchy, oldName, target)
                         val successful = mutableSetOf<String>()
-                        org.fossify.gallery.compose.util.XmpBatch.run(ctx, paths, successMessage = ctx.getString(R.string.renamed_tag_result, oldName, target, count), onSuccess = { successful += it }) { p ->
+                        org.fossify.gallery.compose.util.XmpBatch.run(ctx, paths, successMessage = res.getString(R.string.renamed_tag_result, oldName, target, count), onSuccess = { successful += it }) { p ->
                             repo.replaceTag(p, oldName, target)
                         }
                         if (successful.isNotEmpty()) UndoManager.push(UndoAction(successful, UndoType.TAG_RESTORE_SNAPSHOT, tagSnapshots = snapshots.filterKeys { it in successful }.mapValues { it.value.toSet() }, hierarchyBefore = hierarchyBefore))

@@ -135,6 +135,7 @@ private val LocalSettingsMatchTracker = androidx.compose.runtime.compositionLoca
 @Composable
 fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
     val ctx = LocalContext.current
+    val res = androidx.compose.ui.platform.LocalResources.current
     val a = ctx as? Activity
     val conf = ctx.config
     val scope = rememberCoroutineScope()
@@ -376,8 +377,8 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
                 MetadataSyncWorker.scheduleFullScan(ctx)
                 scope.launch {
                     val result = snackbarHostState.showSnackbar(
-                        message = ctx.getString(R.string.scan_started_notification),
-                        actionLabel = ctx.getString(R.string.cancel),
+                        message = res.getString(R.string.scan_started_notification),
+                        actionLabel = res.getString(R.string.cancel),
                         duration = SnackbarDuration.Short,
                     )
                     if (result == SnackbarResult.ActionPerformed) {
@@ -392,8 +393,8 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
                     MetadataSyncWorker.scheduleAdvancedScan(ctx, folder, start, end, inc, charging)
                     scope.launch {
                         val result = snackbarHostState.showSnackbar(
-                            message = ctx.getString(R.string.advanced_scan_scheduled),
-                            actionLabel = ctx.getString(R.string.cancel),
+                            message = res.getString(R.string.advanced_scan_scheduled),
+                            actionLabel = res.getString(R.string.cancel),
                             duration = SnackbarDuration.Short,
                         )
                         if (result == SnackbarResult.ActionPerformed) {
@@ -407,7 +408,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
                     MetadataSyncWorker.cancel(ctx)
                     scope.launch {
                         snackbarHostState.showSnackbar(
-                            message = ctx.getString(R.string.set_scan_cancelled),
+                            message = res.getString(R.string.set_scan_cancelled),
                             duration = SnackbarDuration.Short,
                         )
                     }

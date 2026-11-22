@@ -236,6 +236,7 @@ fun CollectionsScreen(
         )
     }
 
+    val res = androidx.compose.ui.platform.LocalResources.current
     deleteConfirm?.let { coll ->
         ConfirmDestructive(
             title = stringResource(R.string.delete_collection),
@@ -243,7 +244,7 @@ fun CollectionsScreen(
             confirmLabel = stringResource(org.fossify.commons.R.string.delete),
             onConfirm = {
                 deleteConfirm = null
-                scope.launch { try { withContext(Dispatchers.IO) { repo.deleteCollection(coll) }; reload() } catch (e: Exception) { android.util.Log.e("Collections", "Delete collection failed: ${coll.name}", e); ctx.toast(ctx.getString(R.string.error_generic, e.message), Toast.LENGTH_LONG) } }
+                scope.launch { try { withContext(Dispatchers.IO) { repo.deleteCollection(coll) }; reload() } catch (e: Exception) { android.util.Log.e("Collections", "Delete collection failed: ${coll.name}", e); ctx.toast(res.getString(R.string.error_generic, e.message), Toast.LENGTH_LONG) } }
             },
             onDismiss = { deleteConfirm = null },
         )
@@ -264,7 +265,7 @@ fun CollectionsScreen(
                         reload()
                     } catch (e: Exception) {
                         android.util.Log.e("Collections", "Bulk delete failed", e)
-                        ctx.toast(ctx.getString(R.string.error_generic, e.message), Toast.LENGTH_LONG)
+                        ctx.toast(res.getString(R.string.error_generic, e.message), Toast.LENGTH_LONG)
                     }
                 }
             },
@@ -315,7 +316,7 @@ fun CollectionsScreen(
                     showEditDialog = false
                 } catch (e: Exception) {
                     android.util.Log.e("Collections", "Save failed", e)
-                    ctx.toast(ctx.getString(R.string.error_generic, e.message), Toast.LENGTH_LONG)
+                    ctx.toast(res.getString(R.string.error_generic, e.message), Toast.LENGTH_LONG)
                 }
             }
         }

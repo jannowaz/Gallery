@@ -130,6 +130,7 @@ fun VideoTrimmerSheet(
     onTrimSaved: (String) -> Unit,
 ) {
     val ctx = LocalContext.current
+    val res = androidx.compose.ui.platform.LocalResources.current
     val scope = rememberCoroutineScope()
 
     var durationMs by remember(videoPath) { mutableLongStateOf(0L) }
@@ -353,12 +354,12 @@ fun VideoTrimmerSheet(
                             result.onSuccess { outFile ->
                                 MediaScannerConnection.scanFile(ctx.applicationContext, arrayOf(outFile.absolutePath), arrayOf("video/mp4"), null)
                                 RefreshBus.trigger(pathsChanged = true, affectedPaths = listOf(outFile.absolutePath))
-                                Toast.makeText(ctx, ctx.getString(R.string.trim_video_saved), Toast.LENGTH_SHORT).show()
+                                Toast.makeText(ctx, res.getString(R.string.trim_video_saved), Toast.LENGTH_SHORT).show()
                                 onTrimSaved(outFile.absolutePath)
                             }.onFailure { err ->
                                 if (err !is kotlinx.coroutines.CancellationException) {
                                     android.util.Log.e("VideoTrimmer", "Trim failed for $videoPath", err)
-                                    Toast.makeText(ctx, ctx.getString(R.string.trim_video_failed), Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(ctx, res.getString(R.string.trim_video_failed), Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }

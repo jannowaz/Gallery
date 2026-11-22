@@ -250,7 +250,7 @@ fun FavoritesScreen(
                             SelectionAppBar(
                                 count = selectedFolderPaths.size,
                                 onClose = { selectedFolderPaths = emptySet() },
-                                subtitle = ctx.getString(R.string.selection_scope_visible, visibleFavoriteDirs.size),
+                                subtitle = stringResource(R.string.selection_scope_visible, visibleFavoriteDirs.size),
                                 actions = {
                                     IconButton(onClick = {
                                         val cur = ctx.config.pinnedFavoriteFolders
@@ -305,13 +305,14 @@ fun FavoritesScreen(
                             val rows = ceil(favoriteDirItems.size / columns.toFloat()).toInt()
                             (rows * (tileWidth + 60f + viewSettings.spacing)).coerceAtMost(320f).dp
                         }
+                        val internalStorageLabel = stringResource(R.string.internal_storage)
                         LibraryAlbumGrid(
                             items = favoriteDirItems,
                             viewSettings = viewSettings,
                             onClick = { item -> if (hasFolderSelection) selectedFolderPaths = if (item.key in selectedFolderPaths) selectedFolderPaths - item.key else selectedFolderPaths + item.key else onFolderClick(item.key) },
                             onLongClick = { item -> selectedFolderPaths = selectedFolderPaths + item.key },
                             selectedKeys = selectedFolderPaths,
-                            pathHint = { org.fossify.gallery.compose.components.folderPathHint(it.key, ctx.getString(R.string.internal_storage)) },
+                            pathHint = { org.fossify.gallery.compose.components.folderPathHint(it.key, internalStorageLabel) },
                             modifier = Modifier.height(folderSectionHeight),
                             tabIndex = tabIndex,
                             fastScrollLabel = { index -> favoriteDirItems.getOrNull(index)?.name },

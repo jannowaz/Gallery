@@ -188,6 +188,7 @@ fun ViewerScreen(
     onClose: () -> Unit,
 ) {
     val ctx = LocalContext.current
+    val res = androidx.compose.ui.platform.LocalResources.current
     val haptic = rememberGalleryHaptics()
     val scope = rememberCoroutineScope()
     // The video brightness-drag writes screenBrightness onto the Activity window - and this is a
@@ -469,14 +470,14 @@ fun ViewerScreen(
                 if (currentPath == path) {
                     currentRating = previous
                 }
-                ctx.toast(ctx.getString(R.string.rating_write_failed), Toast.LENGTH_SHORT)
+                ctx.toast(R.string.rating_write_failed, Toast.LENGTH_SHORT)
             }
         }
     }
 
     fun saveVideoFrame(sourcePath: String, bitmap: android.graphics.Bitmap?) {
         if (bitmap == null) {
-            ctx.toast(ctx.getString(R.string.error_generic, ctx.getString(R.string.frame_capture_failed)), Toast.LENGTH_SHORT)
+            ctx.toast(res.getString(R.string.error_generic, res.getString(R.string.frame_capture_failed)), Toast.LENGTH_SHORT)
             return
         }
         scope.launch(Dispatchers.IO) {
@@ -504,12 +505,12 @@ fun ViewerScreen(
                 }
                 org.fossify.gallery.helpers.RefreshBus.trigger(affectedPaths = listOf(output.absolutePath))
                 withContext(Dispatchers.Main) {
-                    ctx.toast(ctx.getString(R.string.frame_saved, "screens/${output.name}"), Toast.LENGTH_SHORT)
+                    ctx.toast(res.getString(R.string.frame_saved, "screens/${output.name}"), Toast.LENGTH_SHORT)
                 }
             } catch (e: Exception) {
                 runCatching { bitmap.recycle() }
                 withContext(Dispatchers.Main) {
-                    ctx.toast(ctx.getString(R.string.error_generic, e.message ?: ""), Toast.LENGTH_SHORT)
+                    ctx.toast(res.getString(R.string.error_generic, e.message ?: ""), Toast.LENGTH_SHORT)
                 }
             }
         }
@@ -995,7 +996,7 @@ fun ViewerScreen(
                                     ctx.toast(R.string.no_files_found)
                                 } else {
                                     val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", targetFile)
-                                    ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, ctx.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                                    ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, res.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                                 }
                             } catch (e: Exception) {
                                 android.util.Log.e("Viewer", "Share failed for $currentPath", e)
@@ -1107,14 +1108,14 @@ fun ViewerScreen(
                     val saved = repo.addTag(editorPath, tag)
                     withContext(Dispatchers.Main) {
                         if (saved) ctx.config.rememberRecentTag(tag)
-                        else ctx.toast(ctx.getString(R.string.tag_write_failed), Toast.LENGTH_SHORT)
+                        else ctx.toast(R.string.tag_write_failed, Toast.LENGTH_SHORT)
                     }
                 }
             },
             onRemoveTag = { tag ->
                 scope.launch(Dispatchers.IO) {
                     if (!repo.removeTag(editorPath, tag)) {
-                        withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.tag_write_failed), Toast.LENGTH_SHORT) }
+                        withContext(Dispatchers.Main) { ctx.toast(R.string.tag_write_failed, Toast.LENGTH_SHORT) }
                     }
                 }
             },

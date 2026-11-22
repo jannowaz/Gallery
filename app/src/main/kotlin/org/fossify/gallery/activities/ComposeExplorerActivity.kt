@@ -888,7 +888,7 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit, onContent
                 },
                 onMarkNewMediaSeen = {
                     mainVM.markNewMediaSeen()
-                    ctx.toast(ctx.getString(R.string.new_media_marked_seen))
+                    ctx.toast(R.string.new_media_marked_seen)
                 },
                 onOpenViewSettings = { activeSheet = ActiveSheet.VIEW_SETTINGS },
             )

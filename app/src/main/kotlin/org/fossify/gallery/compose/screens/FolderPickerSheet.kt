@@ -209,7 +209,7 @@ fun FolderPickerSheet(
 
     // Consent (move only) + enqueue for an already-resolved item set.
     fun proceed(items: List<BatchJobItem>) {
-        if (items.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); onDismiss(); return }
+        if (items.isEmpty()) { ctx.toast(R.string.no_files_found, Toast.LENGTH_SHORT); onDismiss(); return }
         val needsAllFiles = !MediaStoreOps.hasAllFilesAccess(ctx) &&
             items.any { item ->
                 MediaStoreOps.requiresAllFilesAccessForTarget(
@@ -229,7 +229,7 @@ fun FolderPickerSheet(
                 val granted = try {
                     consent.request(MediaStoreOps.writeRequest(ctx, uris))
                 } catch (_: Exception) { false }
-                if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); onDismiss(); return@launch }
+                if (!granted) { ctx.toast(R.string.cancelled, Toast.LENGTH_SHORT); onDismiss(); return@launch }
             }
             activeJobId = MediaBatchWorker.enqueue(ctx, if (isMoveOperation) BatchOperation.MOVE_FAST else BatchOperation.COPY, items)
         }
@@ -241,7 +241,7 @@ fun FolderPickerSheet(
         if (granted && pending != null) {
             proceed(pending)
         } else if (pending != null) {
-            ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT)
+            ctx.toast(R.string.cancelled, Toast.LENGTH_SHORT)
         }
     }
 
@@ -262,7 +262,7 @@ fun FolderPickerSheet(
                 }
             }
             if (srcPaths.isEmpty()) {
-                ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_LONG); onDismiss(); return@launch
+                ctx.toast(R.string.no_files_found, Toast.LENGTH_LONG); onDismiss(); return@launch
             }
             val items = srcPaths.map { path -> BatchJobItem(jobId = "", sourcePath = path, targetPath = "${destPath.trimEnd('/')}/${File(path).name}") }
             // Detect same-name collisions up front: rather than let each one fail silently in the
@@ -457,7 +457,7 @@ fun FolderPickerSheet(
                             val ok = withContext(Dispatchers.IO) {
                                 runCatching { newDir.mkdirs() || newDir.isDirectory }.getOrDefault(false)
                             }
-                            if (ok) currentPath = newDir.path else ctx.toast(ctx.getString(R.string.create_folder_error))
+                            if (ok) currentPath = newDir.path else ctx.toast(R.string.create_folder_error)
                             creatingFolder = false
                             pendingCreateFolder = false
                             newFolderName = ""
@@ -570,7 +570,7 @@ fun FolderPickerSheet(
                     failedPaths = withContext(Dispatchers.IO) { ctx.batchJobItemDB.getForJob(jobId).map { it.sourcePath } }
                     if (failedPaths.isEmpty()) onDismiss() // counts said failures but rows already gone
                 } else {
-                    ctx.toast(ctx.getString(if (isMoveOperation) R.string.files_moved else R.string.files_copied), Toast.LENGTH_SHORT)
+                    ctx.toast(if (isMoveOperation) R.string.files_moved else R.string.files_copied, Toast.LENGTH_SHORT)
                     onDismiss()
                 }
             }

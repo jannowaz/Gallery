@@ -120,6 +120,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
     val vm: DuplicateFinderViewModel = viewModel()
     val state by vm.state.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
+    val res = androidx.compose.ui.platform.LocalResources.current
     var showConfirmDialog by remember { mutableStateOf(false) }
     val defaultPath = Environment.getExternalStorageDirectory().absolutePath
     var currentFolder by remember { mutableStateOf(initialFolder.ifBlank { defaultPath }) }
@@ -202,7 +203,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
     // Toast nudge shared by every auto-select path: SIMILAR matches aren't verified identical.
     fun cautionIfSimilar() {
         if (state.mode == DuplicateMode.SIMILAR) {
-            android.widget.Toast.makeText(ctx, ctx.getString(R.string.similar_select_caution), android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(ctx, res.getString(R.string.similar_select_caution), android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 

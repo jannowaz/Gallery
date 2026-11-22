@@ -249,6 +249,7 @@ fun MediaScreen(
     onConfirmPick: ((List<String>) -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
+    val res = androidx.compose.ui.platform.LocalResources.current
     val viewModel: MediaViewModel = viewModel(key = viewModelKey)
     val state by viewModel.state.collectAsStateWithLifecycle()
     val filteredSelectionCount by viewModel.filteredResultCount.collectAsStateWithLifecycle()
@@ -613,8 +614,8 @@ fun MediaScreen(
                     SnackbarResult.Dismissed
                 } else {
                     snackbarHostState.showSnackbar(
-                        message = ctx.getString(R.string.library_sync_error),
-                        actionLabel = ctx.getString(R.string.retry),
+                        message = res.getString(R.string.library_sync_error),
+                        actionLabel = res.getString(R.string.retry),
                         duration = SnackbarDuration.Long,
                     )
                 }
@@ -1179,9 +1180,9 @@ fun MediaScreen(
                 selectionMode = selectionMode,
                 onSelectionModeChange = { mode -> selectionMode = mode },
                 selectionScopeLabel = when {
-                    selectionMode == MediaSelectionMode.RANGE -> rangeAnchorPath?.let { ctx.getString(R.string.selection_range_from, java.io.File(it).name) }
-                    mediaOverride != null -> ctx.getString(R.string.selection_scope_visible, mediaOverride.size)
-                    hasFilter && filteredSelectionCount != null -> ctx.getString(R.string.selection_scope_results, filteredSelectionCount!!)
+                    selectionMode == MediaSelectionMode.RANGE -> rangeAnchorPath?.let { stringResource(R.string.selection_range_from, java.io.File(it).name) }
+                    mediaOverride != null -> stringResource(R.string.selection_scope_visible, mediaOverride.size)
+                    hasFilter && filteredSelectionCount != null -> stringResource(R.string.selection_scope_results, filteredSelectionCount!!)
                     else -> null
                 },
                 selectAllLabel = stringResource(if (hasFilter) R.string.action_select_all_results else R.string.action_select_all),
@@ -1286,8 +1287,8 @@ fun MediaScreen(
     infoDialogPath?.let { path -> MediaInfoDialog(path = path, onDismiss = { infoDialogPath = null }) }
     if (showDeleteConfirm) {
         val itemsCnt = selectedPaths.size
-        val itemsText = ctx.resources.getQuantityString(org.fossify.commons.R.plurals.delete_items, itemsCnt, itemsCnt)
-        val question = ctx.getString(if (ctx.config.useRecycleBin) org.fossify.commons.R.string.move_to_recycle_bin_confirmation else org.fossify.commons.R.string.deletion_confirmation, itemsText)
+        val itemsText = res.getQuantityString(org.fossify.commons.R.plurals.delete_items, itemsCnt, itemsCnt)
+        val question = res.getString(if (ctx.config.useRecycleBin) org.fossify.commons.R.string.move_to_recycle_bin_confirmation else org.fossify.commons.R.string.deletion_confirmation, itemsText)
         ConfirmDestructive(
             title = stringResource(org.fossify.commons.R.string.delete),
             text = question,
@@ -1334,7 +1335,7 @@ fun MediaScreen(
                                         if (added) {
                                             selectedPaths = emptySet()
                                             showAddToCollection = false
-                                            ctx.toast(ctx.getString(R.string.media_added_to_collection, batch.size, collection.name))
+                                            ctx.toast(res.getString(R.string.media_added_to_collection, batch.size, collection.name))
                                         } else {
                                             ctx.toast(R.string.collection_add_failed)
                                         }
@@ -1380,7 +1381,7 @@ fun MediaScreen(
                             if (saved) {
                                 selectedPaths = emptySet()
                                 showAddToCollection = false
-                                ctx.toast(ctx.getString(R.string.collection_saved, n))
+                                ctx.toast(res.getString(R.string.collection_saved, n))
                             } else {
                                 ctx.toast(R.string.collection_add_failed)
                             }
@@ -1403,16 +1404,16 @@ fun MediaScreen(
                 if (ratingFilter > 0) add("★$ratingFilter")
                 activeTagName?.takeIf { it.isNotBlank() }?.let { add("#$it") }
                 when (typeFilter) {
-                    org.fossify.gallery.helpers.TYPE_IMAGES -> add(ctx.getString(R.string.images))
-                    org.fossify.gallery.helpers.TYPE_VIDEOS -> add(ctx.getString(R.string.videos))
-                    org.fossify.gallery.helpers.TYPE_GIFS -> add(ctx.getString(R.string.gif))
-                    org.fossify.gallery.helpers.TYPE_RAWS -> add(ctx.getString(R.string.raw))
-                    org.fossify.gallery.helpers.TYPE_SVGS -> add(ctx.getString(R.string.svg))
+                    org.fossify.gallery.helpers.TYPE_IMAGES -> add(res.getString(R.string.images))
+                    org.fossify.gallery.helpers.TYPE_VIDEOS -> add(res.getString(R.string.videos))
+                    org.fossify.gallery.helpers.TYPE_GIFS -> add(res.getString(R.string.gif))
+                    org.fossify.gallery.helpers.TYPE_RAWS -> add(res.getString(R.string.raw))
+                    org.fossify.gallery.helpers.TYPE_SVGS -> add(res.getString(R.string.svg))
                 }
                 if (minSizeFilter > 0) add("> ${formatFileSize(minSizeFilter)}")
-                when (dateRangeFilter) { 1 -> add(ctx.getString(R.string.today)); 2 -> add(ctx.getString(R.string.date_range_last_7_days)); 3 -> add(ctx.getString(R.string.date_range_last_30_days)); 4 -> add(ctx.getString(R.string.date_range_last_year)) }
+                when (dateRangeFilter) { 1 -> add(res.getString(R.string.today)); 2 -> add(res.getString(R.string.date_range_last_7_days)); 3 -> add(res.getString(R.string.date_range_last_30_days)); 4 -> add(res.getString(R.string.date_range_last_year)) }
                 activeFolderFilterName?.let { add(it) }
-            }.joinToString(" · ").ifBlank { ctx.getString(R.string.save_as_collection) }
+            }.joinToString(" · ").ifBlank { res.getString(R.string.save_as_collection) }
         }
         var name by remember { mutableStateOf(defaultName) }
         androidx.compose.material3.AlertDialog(
@@ -1433,7 +1434,7 @@ fun MediaScreen(
                         typeFilter = typeFilter,
                         mediaPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(selectedPaths.toList()),
                     )
-                    scope.launch { withContext(Dispatchers.IO) { repo.insertCollection(coll); repo.refreshCollectionsCache() }; ctx.toast(ctx.getString(R.string.collection_saved, n)) }
+                    scope.launch { withContext(Dispatchers.IO) { repo.insertCollection(coll); repo.refreshCollectionsCache() }; ctx.toast(res.getString(R.string.collection_saved, n)) }
                     showSaveCollection = false
                 }) { Text(stringResource(org.fossify.commons.R.string.ok)) }
             },
@@ -1467,7 +1468,7 @@ fun MediaScreen(
                                 repo.refreshCollectionsCache()
                             }
                         }
-                        ctx.toast(ctx.getString(R.string.collection_updated, target))
+                        ctx.toast(res.getString(R.string.collection_updated, target))
                     }
                     showUpdateCollection = false
                 }) { Text(stringResource(org.fossify.commons.R.string.ok)) }

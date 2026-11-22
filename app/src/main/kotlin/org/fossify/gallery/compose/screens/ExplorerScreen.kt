@@ -585,7 +585,7 @@ fun ExplorerScreen(
             SelectionAppBar(
                 count = selectedFolderPaths.size,
                 onClose = { selectedFolderPaths = emptySet() },
-                subtitle = context.getString(R.string.selection_scope_visible, visibleFolderItems.size),
+                subtitle = stringResource(R.string.selection_scope_visible, visibleFolderItems.size),
                 actions = {
                     IconButton(onClick = { selectedFolderPaths.firstOrNull()?.let { p -> navStack.add(p); navigateToPath(p) }; selectedFolderPaths = emptySet() }) {
                         Icon(Icons.Default.Folder, stringResource(R.string.action_open))
@@ -697,11 +697,11 @@ fun ExplorerScreen(
                 selectionMode = fileSelectionMode,
                 onSelectionModeChange = { mode -> fileSelectionMode = mode },
                 selectionScopeLabel = if (fileSelectionMode == MediaSelectionMode.RANGE) {
-                    fileRangeAnchorPath?.let { context.getString(R.string.selection_range_from, File(it).name) }
+                    fileRangeAnchorPath?.let { stringResource(R.string.selection_range_from, File(it).name) }
                 } else {
-                    context.getString(R.string.selection_scope_visible, visibleFileItems.size)
+                    stringResource(R.string.selection_scope_visible, visibleFileItems.size)
                 },
-                selectAllLabel = context.getString(R.string.action_select_all_visible),
+                selectAllLabel = stringResource(R.string.action_select_all_visible),
             )
         } else {
             // Breadcrumb navigation bar
@@ -1666,8 +1666,9 @@ fun ExplorerScreen(
     }
     if (showFileDeleteConfirm) {
         val itemsCnt = selectedFilePaths.size
-        val itemsText = context.resources.getQuantityString(org.fossify.commons.R.plurals.delete_items, itemsCnt, itemsCnt)
-        val question = context.getString(if (context.config.useRecycleBin) org.fossify.commons.R.string.move_to_recycle_bin_confirmation else org.fossify.commons.R.string.deletion_confirmation, itemsText)
+        val res = androidx.compose.ui.platform.LocalResources.current
+        val itemsText = res.getQuantityString(org.fossify.commons.R.plurals.delete_items, itemsCnt, itemsCnt)
+        val question = res.getString(if (context.config.useRecycleBin) org.fossify.commons.R.string.move_to_recycle_bin_confirmation else org.fossify.commons.R.string.deletion_confirmation, itemsText)
         ConfirmDestructive(
             title = stringResource(org.fossify.commons.R.string.delete),
             text = question,

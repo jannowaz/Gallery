@@ -159,6 +159,7 @@ fun VideoPage(
     onCaptureFrame: (Bitmap?) -> Unit = {},
 ) {
     val ctx = LocalContext.current
+    val res = androidx.compose.ui.platform.LocalResources.current
     val scope = rememberCoroutineScope()
     val zoom = rememberZoomState()
     // All keyed on path (not just frameCache/positionMs) - the Viewer's pager can reuse the same
@@ -621,7 +622,7 @@ fun VideoPage(
                                         var succeeded = false
                                         try {
                                             if (end <= start) {
-                                                withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.trim_invalid_range), android.widget.Toast.LENGTH_SHORT) }
+                                                withContext(Dispatchers.Main) { ctx.toast(R.string.trim_invalid_range, android.widget.Toast.LENGTH_SHORT) }
                                                 return@launch
                                             }
                                             val candidate = nextUniqueTrimmedFile(File(path))
@@ -690,11 +691,11 @@ fun VideoPage(
                                             org.fossify.gallery.helpers.RefreshBus.trigger()
                                             withContext(Dispatchers.Main) {
                                                 trimMode = false
-                                                ctx.toast(ctx.getString(R.string.saved_as, candidate.name), android.widget.Toast.LENGTH_SHORT)
+                                                ctx.toast(res.getString(R.string.saved_as, candidate.name), android.widget.Toast.LENGTH_SHORT)
                                             }
                                         } catch (e: Exception) {
                                             withContext(Dispatchers.Main) {
-                                                ctx.toast(ctx.getString(R.string.error_generic, e.message ?: e.javaClass.simpleName), android.widget.Toast.LENGTH_SHORT)
+                                                ctx.toast(res.getString(R.string.error_generic, e.message ?: e.javaClass.simpleName), android.widget.Toast.LENGTH_SHORT)
                                             }
                                         } finally {
                                             if (muxerStarted) runCatching { muxer?.stop() }

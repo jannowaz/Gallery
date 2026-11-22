@@ -103,6 +103,7 @@ fun FolderSwipeScreen(
     onNavigateToViewer: ((paths: List<String>, startIndex: Int) -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
+    val res = androidx.compose.ui.platform.LocalResources.current
     val repo = LocalMediaRepository.current
     val scope = rememberCoroutineScope()
     val consent = rememberMediaStoreConsent()
@@ -168,12 +169,12 @@ fun FolderSwipeScreen(
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !MediaStoreOps.hasAllFilesAccess(ctx)) {
                     val sourceUri = withContext(Dispatchers.IO) { MediaStoreOps.uriForPath(ctx, sourcePath) }
                     if (sourceUri == null) {
-                        errorMessage = ctx.getString(R.string.swipe_mode_move_failed)
+                        errorMessage = res.getString(R.string.swipe_mode_move_failed)
                         return@launch
                     }
                     val granted = consent.request(MediaStoreOps.writeRequest(ctx, listOf(sourceUri)))
                     if (!granted) {
-                        errorMessage = ctx.getString(R.string.swipe_mode_cancelled)
+                        errorMessage = res.getString(R.string.swipe_mode_cancelled)
                         return@launch
                     }
                 }
@@ -189,7 +190,7 @@ fun FolderSwipeScreen(
                 }.firstOrNull { it.state.isFinished }
                 val succeeded = info?.state == WorkInfo.State.SUCCEEDED && info.outputData.getInt("failed", 0) == 0
                 if (!succeeded) {
-                    errorMessage = ctx.getString(R.string.swipe_mode_move_failed)
+                    errorMessage = res.getString(R.string.swipe_mode_move_failed)
                     return@launch
                 }
                 val remaining = items.orEmpty().toMutableList().apply {
@@ -200,7 +201,7 @@ fun FolderSwipeScreen(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                errorMessage = ctx.getString(R.string.swipe_mode_move_failed)
+                errorMessage = res.getString(R.string.swipe_mode_move_failed)
                 Toast.makeText(ctx, e.message ?: errorMessage, Toast.LENGTH_SHORT).show()
             } finally {
                 isMoving = false

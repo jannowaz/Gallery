@@ -505,14 +505,14 @@ internal fun LibrarySyncIndicator(modifier: Modifier = Modifier) {
                     } else {
                         LinearProgressIndicator(progress = { activity.progress ?: 0f }, modifier = Modifier.fillMaxWidth().height(2.dp), color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.surfaceVariant)
                     }
+                    val progressText = if (activity.total > 0) {
+                        stringResource(R.string.library_activity_progress, activity.done, activity.total)
+                    } else ""
+                    val matchesText = if (activity.matches > 0) {
+                        stringResource(R.string.library_activity_matches, activity.matches)
+                    } else ""
                     Text(
-                        text = buildString {
-                            if (activity.total > 0) append(ctx.getString(R.string.library_activity_progress, activity.done, activity.total))
-                            if (activity.matches > 0) {
-                                if (isNotEmpty()) append(" · ")
-                                append(ctx.getString(R.string.library_activity_matches, activity.matches))
-                            }
-                        },
+                        text = listOf(progressText, matchesText).filter { it.isNotEmpty() }.joinToString(" · "),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

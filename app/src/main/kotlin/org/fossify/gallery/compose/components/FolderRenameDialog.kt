@@ -59,6 +59,7 @@ import java.io.File
 @Composable
 fun FolderRenameDialog(folderPath: String, onDismiss: () -> Unit, onRenamed: (oldPath: String, newPath: String) -> Unit = { _, _ -> }) {
     val ctx = LocalContext.current
+    val res = androidx.compose.ui.platform.LocalResources.current
     val scope = rememberCoroutineScope()
     val consent = rememberMediaStoreConsent()
     val focusRequester = remember { FocusRequester() }
@@ -99,7 +100,7 @@ fun FolderRenameDialog(folderPath: String, onDismiss: () -> Unit, onRenamed: (ol
             // easy to miss for an in-app action - so it's surfaced here too now.
             val failedCount = withContext(Dispatchers.IO) { ctx.batchJobItemDB.getForJob(id).size }
             if (failedCount > 0) {
-                ctx.toast(ctx.getString(R.string.notif_batch_done_with_failures, plannedTotal - failedCount, failedCount))
+                ctx.toast(res.getString(R.string.notif_batch_done_with_failures, plannedTotal - failedCount, failedCount))
             }
             onRenamed(folderPath, plannedNewPath)
             onDismiss()
@@ -116,7 +117,7 @@ fun FolderRenameDialog(folderPath: String, onDismiss: () -> Unit, onRenamed: (ol
         errorRes = null
         scope.launch {
             val entries = withContext(Dispatchers.IO) { MediaStoreOps.mediaEntriesUnder(ctx, folderPath) }
-            if (entries.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found)); onDismiss(); return@launch }
+            if (entries.isEmpty()) { ctx.toast(res.getString(R.string.no_files_found)); onDismiss(); return@launch }
             val oldPrefix = folderPath.trimEnd('/')
             val items = entries.map { e -> BatchJobItem(jobId = "", sourcePath = e.path, targetPath = newPath + e.path.removePrefix(oldPrefix)) }
             val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, entries.map { it.path }) }.map { it.second }
@@ -124,7 +125,7 @@ fun FolderRenameDialog(folderPath: String, onDismiss: () -> Unit, onRenamed: (ol
                 val granted = try {
                     consent.request(MediaStoreOps.writeRequest(ctx, uris))
                 } catch (_: Exception) { false }
-                if (!granted) { ctx.toast(ctx.getString(R.string.cancelled)); onDismiss(); return@launch }
+                if (!granted) { ctx.toast(res.getString(R.string.cancelled)); onDismiss(); return@launch }
             }
             plannedNewPath = newPath
             plannedTotal = items.size

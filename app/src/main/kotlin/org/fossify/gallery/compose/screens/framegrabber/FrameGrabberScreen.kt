@@ -87,6 +87,7 @@ import org.fossify.gallery.helpers.withRecycleBinDeletePasswordCheck
 @Composable
 fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) -> Unit) {
     val ctx = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val repo = LocalMediaRepository.current
     val scope = rememberCoroutineScope()
 
@@ -172,8 +173,8 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
                                         saveProgress = null
                                         RefreshBus.trigger()
                                         ctx.toast(
-                                            if (res.failed > 0) ctx.getString(R.string.grab_frames_saved_with_failures, res.savedPaths.size, res.failed)
-                                            else ctx.resources.getQuantityString(R.plurals.grab_frames_saved, res.savedPaths.size, res.savedPaths.size)
+                                            if (res.failed > 0) resources.getString(R.string.grab_frames_saved_with_failures, res.savedPaths.size, res.failed)
+                                            else resources.getQuantityString(R.plurals.grab_frames_saved, res.savedPaths.size, res.savedPaths.size)
                                         )
                                         if (deleteOriginal && res.savedPaths.isNotEmpty()) {
                                             ctx.withRecycleBinDeletePasswordCheck {

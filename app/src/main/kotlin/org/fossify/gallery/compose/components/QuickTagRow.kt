@@ -75,7 +75,6 @@ fun QuickTagRow(
     var expanded by rememberSaveable { mutableStateOf(false) }
     val batchBusy = XmpBatch.progress != null
     val tagScrollState = rememberScrollState()
-    val context = LocalContext.current
 
     fun countFor(tag: String): Int = selectedTagCounts.entries
         .firstOrNull { it.key.equals(tag, ignoreCase = true) }
@@ -164,7 +163,7 @@ fun QuickTagRow(
                     Column(Modifier.fillMaxWidth()) {
                         Text(
                             text = if (selectionCount > 1) {
-                                context.getString(R.string.quick_tags_mixed_hint)
+                                stringResource(R.string.quick_tags_mixed_hint)
                             } else {
                                 stringResource(R.string.recent_tags)
                             },
