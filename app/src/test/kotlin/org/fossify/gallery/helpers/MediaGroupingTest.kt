@@ -2,6 +2,7 @@ package org.fossify.gallery.helpers
 
 import org.fossify.gallery.models.Medium
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,6 +19,38 @@ class MediaGroupingTest {
     )
 
     private fun headers(rows: List<GroupRow>) = rows.filterIsInstance<GroupRow.SectionHeader>()
+
+    @Test
+    fun `group expansion helpers only affect collapsible headers`() {
+        val rows = listOf(
+            GroupRow.SectionHeader("tag:travel", "Travel", 0, 1, 1, hasChildren = true, isExpanded = true),
+            GroupRow.Items("tag:travel", listOf(medium("travel.jpg"))),
+            GroupRow.SectionHeader("month:2025-01", "January", 0, 1, 1, hasChildren = false, isExpanded = true),
+        )
+
+        assertEquals(setOf("tag:travel"), collapsibleGroupKeys(rows))
+        assertEquals(setOf("tag:travel"), setGroupsExpanded(emptySet(), rows, expanded = false))
+        assertEquals(emptySet<String>(), setGroupsExpanded(setOf("tag:travel"), rows, expanded = true))
+        assertEquals(setOf("tag:travel"), toggleGroupKey(emptySet(), "tag:travel"))
+    }
+
+    @Test
+    fun `collapsed projection keeps headers and skips descendants without rebuilding rows`() {
+        val complete = listOf(
+            GroupRow.SectionHeader("tag:travel", "Travel", 0, 1, 2, hasChildren = true, isExpanded = true),
+            GroupRow.Items("tag:travel", listOf(medium("travel.jpg"))),
+            GroupRow.SectionHeader("tag:croatia", "Croatia", 1, 1, 1, hasChildren = true, isExpanded = true),
+            GroupRow.Items("tag:croatia", listOf(medium("croatia.jpg"))),
+            GroupRow.SectionHeader("untagged", "Untagged", 0, 1, 1, hasChildren = true, isExpanded = true),
+            GroupRow.Items("untagged", listOf(medium("plain.jpg"))),
+        )
+
+        val projected = applyCollapsedGroups(complete, setOf("tag:travel"))
+
+        assertEquals(listOf("tag:travel", "untagged"), headers(projected).map { it.key })
+        assertFalse((projected.first() as GroupRow.SectionHeader).isExpanded)
+        assertEquals(listOf("untagged"), projected.filterIsInstance<GroupRow.Items>().map { it.sectionKey })
+    }
 
     // --- Labels ---
 
@@ -58,12 +91,23 @@ class MediaGroupingTest {
     }
 
     @Test
-    fun `rating groups by count put the biggest bucket first`() {
+    fun `rating groups stay quality ordered even when count ordering is saved`() {
         val rows = buildRatingGroupRows(
             listOf(medium("a.jpg", rating = 5), medium("b.jpg", rating = 3), medium("c.jpg", rating = 3)),
             GroupOrder.COUNT, "unrated",
         )
-        assertEquals("★★★☆☆", headers(rows).first().label)
+        assertEquals(listOf("★★★★★", "★★★☆☆"), headers(rows).map { it.label })
+    }
+
+    @Test
+    fun `rating groups can collapse their media while keeping the header`() {
+        val rows = buildRatingGroupRows(listOf(medium("rated.jpg", rating = 5)), GroupOrder.ALPHABETICAL, "unrated")
+
+        assertEquals(setOf("rating:5"), collapsibleGroupKeys(rows))
+        val collapsed = applyCollapsedGroups(rows, setOf("rating:5"))
+        assertEquals(listOf("rating:5"), headers(collapsed).map { it.key })
+        assertTrue((collapsed.single() as GroupRow.SectionHeader).isExpanded.not())
+        assertTrue(collapsed.none { it is GroupRow.Items })
     }
 
     // --- Size groups ---
@@ -145,6 +189,36 @@ class MediaGroupingTest {
         assertTrue(headers(rows).any { it.label == "Urlaub" && !it.isExpanded })
         assertTrue(headers(rows).none { it.label == "Kroatien" })
         assertTrue(rows.filterIsInstance<GroupRow.Items>().none { it.sectionKey == "tag:Urlaub" })
+    }
+
+    @Test
+    fun `leaf tag headers and untagged header can be collapsed`() {
+        val rows = buildTagGroupRows(
+            listOf(medium("tagged.jpg"), medium("plain.jpg")),
+            mapOf("/x/tagged.jpg" to listOf("Solo")),
+            emptyMap(), GroupOrder.ALPHABETICAL, onlyTopLevelTags = false,
+            collapsedKeys = setOf("tag:Solo", "untagged"), untaggedLabel = "untagged",
+        )
+
+        assertTrue(rows.any { it is GroupRow.SectionHeader && it.key == "tag:Solo" && it.hasChildren && !it.isExpanded })
+        assertTrue(rows.any { it is GroupRow.SectionHeader && it.key == "untagged" && it.hasChildren && !it.isExpanded })
+        assertTrue(rows.filterIsInstance<GroupRow.Items>().isEmpty())
+    }
+
+    @Test
+    fun `flat top-level tag groups honor collapsed keys`() {
+        val rows = buildTagGroupRows(
+            listOf(medium("child.jpg")),
+            mapOf("/x/child.jpg" to listOf("Child")),
+            mapOf("Child" to "Root"), GroupOrder.ALPHABETICAL, onlyTopLevelTags = true,
+            collapsedKeys = setOf("tag:Root"), untaggedLabel = "untagged",
+        )
+
+        val header = rows.filterIsInstance<GroupRow.SectionHeader>().single()
+        assertEquals("Root", header.label)
+        assertFalse(header.isExpanded)
+        assertTrue(header.hasChildren)
+        assertTrue(rows.filterIsInstance<GroupRow.Items>().isEmpty())
     }
 
     @Test

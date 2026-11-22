@@ -3,6 +3,7 @@ package org.fossify.gallery.viewmodels
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.fossify.gallery.models.MediaReviewFilter
 
 /** [MediaFilter] is a plain data class with no Android dependency - these cover [MediaFilter.isActive]
  * across every filter dimension, including [MediaFilter.typeFilter] (added when the persistent grid
@@ -55,6 +56,21 @@ class MediaFilterTest {
     fun `isActive is true when typeFilter is set`() {
         assertTrue(MediaFilter(typeFilter = 1).isActive)
         assertTrue(MediaFilter(typeFilter = 2).isActive)
+    }
+
+    @Test
+    fun `isActive is true for the new media watermark`() {
+        assertTrue(MediaFilter(addedSince = 1_000L).isActive)
+    }
+
+    @Test
+    fun `isActive is true for the independent undecided review inbox`() {
+        assertTrue(MediaFilter(reviewFilter = MediaReviewFilter.UNDECIDED).isActive)
+    }
+
+    @Test
+    fun `isActive is true for database-backed text search`() {
+        assertTrue(MediaFilter(textQuery = "summer beach").isActive)
     }
 
     @Test

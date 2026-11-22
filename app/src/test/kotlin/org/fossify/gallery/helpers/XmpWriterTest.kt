@@ -53,10 +53,27 @@ class XmpWriterTest {
     }
 
     @Test
+    fun `rating is always constrained to the supported five star range`() {
+        val file = mediaFile("photo.png")
+        assertTrue(XmpWriter.write(file.absolutePath, listOf("beach"), 99))
+        assertEquals(5, XmpWriter.read(file.absolutePath).rating)
+        assertTrue(XmpWriter.write(file.absolutePath, listOf("beach"), -4))
+        assertEquals(0, XmpWriter.read(file.absolutePath).rating)
+    }
+
+    @Test
+    fun `case-only duplicate tags collapse to the first spelling`() {
+        val file = mediaFile("photo.png")
+        assertTrue(XmpWriter.write(file.absolutePath, listOf("Berlin", "berlin", "BERLIN"), 0))
+        assertEquals(listOf("Berlin"), XmpWriter.read(file.absolutePath).tags)
+    }
+
+    @Test
     fun `sidecar uses replace-style name when no sibling collides`() {
         val file = mediaFile("photo.png")
         XmpWriter.write(file.absolutePath, listOf("beach"), 0)
         assertTrue(File(tmp.root, "photo.xmp").exists())
+        assertFalse(File(tmp.root, "photo.xmp.tmp").exists())
     }
 
     @Test
@@ -195,6 +212,15 @@ class XmpWriterTest {
         val file = mediaFile("photo.png")
         assertTrue(XmpWriter.write(file.absolutePath, listOf("a"), 0, mapOf("a" to "b", "b" to "a")))
         assertTrue(XmpWriter.read(file.absolutePath).tags.contains("a"))
+    }
+
+    @Test
+    fun `renaming a tag updates parent and child links`() {
+        val hierarchy = mapOf("Berlin" to "Germany", "Germany" to "Places", "Museum" to "Berlin")
+        assertEquals(
+            mapOf("Berlin City" to "Germany", "Germany" to "Places", "Museum" to "Berlin City"),
+            renameTagInHierarchy(hierarchy, "Berlin", "Berlin City"),
+        )
     }
 
     // --- JPEG embedding ---

@@ -58,6 +58,13 @@ class RefreshBusTest {
         return seen
     }
 
+    private fun TestScope.collectPathEvents(): List<Set<String>?> {
+        val seen = mutableListOf<Set<String>?>()
+        backgroundScope.launch { RefreshBus.pathEvents.collect { seen += it } }
+        runCurrent()
+        return seen
+    }
+
     @Test
     fun `trigger in the foreground is delivered`() = runTest {
         val seen = collectEvents()
@@ -133,5 +140,24 @@ class RefreshBusTest {
         runCurrent()
 
         assertEquals(1, seen.size)
+    }
+
+    @Test
+    fun `known path changes are merged into one targeted refresh`() = runTest {
+        val seen = collectPathEvents()
+
+        RefreshBus.trigger(affectedPaths = listOf("/storage/emulated/0/DCIM/a.jpg"))
+        RefreshBus.trigger(affectedPaths = listOf("/storage/emulated/0/Pictures/b.jpg"))
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals(1, seen.size)
+        assertEquals(
+            setOf(
+                "/storage/emulated/0/DCIM/a.jpg",
+                "/storage/emulated/0/Pictures/b.jpg",
+            ),
+            seen.single(),
+        )
     }
 }

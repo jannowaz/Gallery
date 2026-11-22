@@ -3,6 +3,7 @@ package org.fossify.gallery.viewmodels
 import org.fossify.gallery.compose.screens.analysis.DuplicateFile
 import org.fossify.gallery.compose.screens.analysis.DuplicateGroup
 import org.fossify.gallery.compose.screens.analysis.DuplicateSelection
+import org.fossify.gallery.compose.screens.analysis.KeepStrategy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -72,5 +73,51 @@ class DuplicateSelectionTest {
         // g1/g2 had nothing marked -> each flips fully except its spared keeper.
         assertTrue("/DCIM/DupTest/Camera/c1.jpg" in result || "/DCIM/DupTest/WhatsApp/w1.jpg" in result)
         assertFalse("g3 must not gain new marks (b3 stays untouched)", "/DCIM/DupTest/Backup/b3.jpg" in result)
+    }
+
+    @Test
+    fun `auto-select only changes explicitly selected groups`() {
+        val first = DuplicateGroup(
+            "one",
+            listOf(file("/one/old.jpg", modified = 1), file("/one/new.jpg", modified = 2)),
+        )
+        val second = DuplicateGroup(
+            "two",
+            listOf(file("/two/old.jpg", modified = 1), file("/two/new.jpg", modified = 2)),
+        )
+        val existingMarkOutsideTarget = setOf("/two/new.jpg")
+
+        val result = DuplicateSelection.applyKeepStrategy(
+            groups = listOf(first, second),
+            selected = existingMarkOutsideTarget,
+            strategy = KeepStrategy.NEWEST,
+            targetGroupKeys = setOf(first.targetKey),
+            additive = false,
+        )
+
+        assertEquals(setOf("/one/old.jpg", "/two/new.jpg"), result)
+        assertFalse("unselected group must not be recalculated", "/two/old.jpg" in result)
+    }
+
+    @Test
+    fun `group targeting does not rely on a possibly shared hash`() {
+        val first = DuplicateGroup(
+            "same-hash",
+            listOf(file("/first/old.jpg", modified = 1), file("/first/new.jpg", modified = 2)),
+        )
+        val second = DuplicateGroup(
+            "same-hash",
+            listOf(file("/second/old.jpg", modified = 1), file("/second/new.jpg", modified = 2)),
+        )
+
+        val result = DuplicateSelection.applyKeepStrategy(
+            groups = listOf(first, second),
+            selected = emptySet(),
+            strategy = KeepStrategy.NEWEST,
+            targetGroupKeys = setOf(first.targetKey),
+            additive = false,
+        )
+
+        assertEquals(setOf("/first/old.jpg"), result)
     }
 }

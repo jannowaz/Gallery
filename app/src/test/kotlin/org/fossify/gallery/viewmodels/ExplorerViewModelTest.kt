@@ -52,12 +52,25 @@ class ExplorerViewModelTest {
     }
 
     @Test
+    fun `hasActiveFilter includes exclusion and named filters`() {
+        assertTrue(ExplorerUiState(activeExcludePathFilter = setOf("/sdcard/Screenshots")).hasActiveFilter)
+        assertTrue(ExplorerUiState(activePathName = "beach").hasActiveFilter)
+        assertTrue(ExplorerUiState(activeCollectionName = "Vacation").hasActiveFilter)
+    }
+
+    @Test
+    fun `filterReturnTab prefers the recorded origin and otherwise stays on current tab`() {
+        assertEquals(3, ExplorerUiState(selectedTab = 0, preFilterTab = 3).filterReturnTab())
+        assertEquals(4, ExplorerUiState(selectedTab = 4).filterReturnTab())
+    }
+
+    @Test
     fun `withTagToggled adds a tag and expands its descendants`() {
         val hierarchy = mapOf("berlin" to "places") // child -> parent
         val state = ExplorerUiState().withTagToggled("places", hierarchy)
         assertEquals(setOf("places"), state.activeTagFilterRaw)
         assertEquals(setOf("places", "berlin"), state.activeTagFilter)
-        assertEquals("places", state.activeTagName)
+        assertNull(state.activeTagName)
     }
 
     @Test
@@ -67,7 +80,7 @@ class ExplorerViewModelTest {
             .withTagToggled("sunset", emptyMap())
         assertEquals(setOf("beach", "sunset"), state.activeTagFilterRaw)
         assertEquals(setOf("beach", "sunset"), state.activeTagFilter)
-        assertEquals("beach, sunset", state.activeTagName)
+        assertNull(state.activeTagName)
     }
 
     @Test
@@ -78,6 +91,18 @@ class ExplorerViewModelTest {
             .withTagToggled("beach", emptyMap())
         assertEquals(setOf("sunset"), state.activeTagFilterRaw)
         assertEquals(setOf("sunset"), state.activeTagFilter)
+    }
+
+    @Test
+    fun `withTagToggled keeps all-match only while at least two tags remain`() {
+        val twoTags = ExplorerUiState()
+            .withTagToggled("beach", emptyMap())
+            .withTagToggled("sunset", emptyMap())
+            .copy(activeTagMatchAll = true)
+        assertTrue(twoTags.activeTagMatchAll)
+
+        val oneTag = twoTags.withTagToggled("beach", emptyMap())
+        assertFalse(oneTag.activeTagMatchAll)
     }
 
     @Test

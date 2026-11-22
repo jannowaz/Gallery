@@ -51,14 +51,37 @@ class SettingsBackupRoundTripTest {
     fun `legacy plain-object backup still restores its booleans and strings`() {
         // A backup produced by the OLD format (plain map, numbers already unrecoverable).
         val legacyJson = gson.toJson(mapOf("some_flag" to true, "app_password_hash" to "abc123", "column_count" to 4))
-        val entries = SettingsBackupHelper.decode(legacyJson)
-        val restored = applied(entries, replaceAll = false)
+        val decoded = SettingsBackupHelper.decodeBundle(legacyJson)
+        val restored = applied(decoded.prefs, replaceAll = false)
 
+        assertTrue(!decoded.isTypedFormat)
+        assertEquals(null, decoded.defaultPrefs)
         assertTrue(restored.containsKey("some_flag"))
         assertTrue(restored.containsKey("app_password_hash"))
         // The legacy number is (still) lost - unavoidable, its type was never recorded - but at least
         // the merge doesn't wipe the user's existing value (replaceAll=false).
         assertTrue("column_count" !in restored)
+    }
+
+    @Test
+    fun `v2 bundle round-trip preserves both primary prefs and defaultSharedPrefs`() {
+        val defaultSample: Map<String, Any?> = mapOf(
+            "mover_pairs" to """[{"source":"/a","destination":"/b"}]""",
+            "compose_view_settings_albums_v2" to "0,3,1,true",
+            "pinned_count" to 7,
+        )
+        val json = SettingsBackupHelper.encodeBundle(sample, defaultSample)
+        val decoded = SettingsBackupHelper.decodeBundle(json)
+
+        assertTrue(decoded.isTypedFormat)
+        val restoredPrimary = applied(decoded.prefs, replaceAll = true)
+        val restoredDefault = applied(decoded.defaultPrefs!!, replaceAll = true)
+
+        assertEquals(1, restoredPrimary["app_protection_type"])
+        assertEquals(1_700_000_000_000L, restoredPrimary["last_sync_ts"])
+        assertEquals("""[{"source":"/a","destination":"/b"}]""", restoredDefault["mover_pairs"])
+        assertEquals("0,3,1,true", restoredDefault["compose_view_settings_albums_v2"])
+        assertEquals(7, restoredDefault["pinned_count"])
     }
 
     /** Minimal SharedPreferences.Editor capturing writes into a map; only the calls apply() makes. */

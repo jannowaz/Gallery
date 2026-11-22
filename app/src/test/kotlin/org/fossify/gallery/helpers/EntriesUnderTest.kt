@@ -112,4 +112,30 @@ class EntriesUnderTest {
             root = "/s/0/foo",
         )
     }
+
+    @Test
+    fun `entriesUnderIgnoreCase merges case-variant folder trees without bleeding siblings`() {
+        val entries = listOf(
+            entry("/s/0/Pictures/a.jpg"),
+            entry("/s/0/pictures/b.jpg"),
+            entry("/s/0/PICTURES/sub/c.jpg"),
+            entry("/s/0/Pictures2/d.jpg"),
+            entry("/s/0/pictures0/e.jpg"),
+            entry("/s/0/Pictures"),
+        )
+        val sortedLower = entries.sortedBy { it.path.lowercase() }
+        val result = MediaStoreOps.entriesUnderIgnoreCase(sortedLower, "/s/0/Pictures").map { it.path }.toSet()
+        assertEquals(
+            setOf("/s/0/Pictures/a.jpg", "/s/0/pictures/b.jpg", "/s/0/PICTURES/sub/c.jpg"),
+            result,
+        )
+    }
+
+    @Test
+    fun `video extensions include modern webm and transport stream containers`() {
+        val required = listOf("mp4", "mkv", "webm", "m4v", "mpg", "mpeg", "ts", "m2ts", "mts", "ogv")
+        required.forEach { ext ->
+            org.junit.Assert.assertTrue("Expected $ext in VIDEO_EXTENSIONS", ext in VIDEO_EXTENSIONS)
+        }
+    }
 }
