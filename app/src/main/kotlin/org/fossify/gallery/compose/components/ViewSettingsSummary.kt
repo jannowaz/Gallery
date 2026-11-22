@@ -3,7 +3,6 @@ package org.fossify.gallery.compose.components
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
-import org.fossify.gallery.compose.screens.ListDensity
 import org.fossify.gallery.compose.screens.SortField
 import org.fossify.gallery.compose.screens.ViewSettings
 import org.fossify.gallery.compose.screens.ViewType
@@ -21,17 +20,17 @@ fun viewSettingsSummary(settings: ViewSettings, includeGrouping: Boolean = true)
         SortField.RECENT -> stringResource(R.string.sort_recently_used)
     } + if (settings.sortDesc) " ↓" else " ↑"
 
+    // Grid column count is immediately visible right below the header; keep the subtitle calm
+    // and only call out non-default layout modes (Mosaic / List).
     val view = when (settings.viewType) {
-        ViewType.GRID -> "${settings.columnCount} ${stringResource(R.string.columns)}"
-        ViewType.MOSAIC -> "${stringResource(R.string.view_type_mosaic)} · ${settings.columnCount} ${stringResource(R.string.columns)}"
-        ViewType.LIST -> stringResource(
-            if (settings.listDensity == ListDensity.COMPACT) R.string.list_density_compact else R.string.list_density_comfortable,
-        ).let { density -> "${stringResource(R.string.view_type_list)} · $density" }
+        ViewType.GRID -> null
+        ViewType.MOSAIC -> stringResource(R.string.view_type_mosaic)
+        ViewType.LIST -> stringResource(R.string.view_type_list)
     }
 
     return buildList {
         add(sort)
-        add(view)
+        if (view != null) add(view)
         if (includeGrouping && settings.groupBy != GroupBy.NONE) {
             val group = when (settings.groupBy) {
                 GroupBy.MONTH -> stringResource(R.string.group_by_month)

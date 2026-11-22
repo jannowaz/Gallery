@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.PersonSearch
@@ -200,12 +200,14 @@ fun FolderMediaScreen(
                     }
                     IconButton(onClick = { showFilters = true }) {
                         Icon(
-                            Icons.Default.Tune,
+                            Icons.Default.FilterList,
                             stringResource(R.string.filter_label),
                             tint = if (hasActiveFilter) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    IconButton(onClick = { showViewSettings = true }) { Icon(Icons.Default.GridView, stringResource(R.string.view_settings_title)) }
+                    IconButton(onClick = { showViewSettings = true }) {
+                        Icon(Icons.Default.Tune, stringResource(R.string.view_settings_title))
+                    }
                     // Keep immediate browsing controls visible. Review, people analysis and a
                     // manual refresh are useful but occasional, and a row of six equal icons made
                     // it needlessly hard to scan the top bar on a phone.

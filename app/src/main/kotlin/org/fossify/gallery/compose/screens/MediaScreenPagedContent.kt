@@ -2,6 +2,8 @@ package org.fossify.gallery.compose.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalOverscrollFactory
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -40,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -479,14 +482,24 @@ internal fun PagedContent(
                     .collect { (i, o) -> viewModel.saveScrollPosition(i, o) }
             }
             ScrollToTopEffect(tabIndex) { listState.animateScrollToItem(0) }
+            val listGap = ((viewSettings.spacing - 2) / 2).coerceAtLeast(0).dp
             Column(Modifier.padding(top = contentTopInset)) {
-                Box(Modifier.dragSelectionGesture(
-                    dragSelection,
-                    enabled = false,
-                    onSelectPath = { path -> selectedPaths = selectedPaths + path },
-                    onLongPressSelectPath = null,
-                )) {
-                    LazyColumn(state = listState, reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
+                Box(
+                    Modifier
+                        .clipToBounds()
+                        .dragSelectionGesture(
+                            dragSelection,
+                            enabled = false,
+                            onSelectPath = { path -> selectedPaths = selectedPaths + path },
+                            onLongPressSelectPath = null,
+                        ),
+                ) {
+                    LazyColumn(
+                        state = listState,
+                        reverseLayout = viewSettings.anchorBottom,
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(listGap),
+                    ) {
                         var headerSeq = 0
                         rows.forEach { row ->
                             when (row) {
@@ -525,6 +538,7 @@ internal fun PagedContent(
                                                 showRating = ThumbnailOverlayState.showRating,
                                                 showVideoDuration = ThumbnailOverlayState.showVideoDuration,
                                                 compact = viewSettings.listDensity == ListDensity.COMPACT,
+                                                roundedCorners = viewSettings.roundedCorners,
                                                 hasTag = m.path in taggedPaths,
                                                 tags = state.tagsByPath[m.path].orEmpty(),
                                                 onTagClick = if (!hasSelection && !pickMultiple) onTagClick else null,
@@ -569,19 +583,32 @@ internal fun PagedSectionHeader(
 
 @Composable
 internal fun MonthHeader(label: String, count: Int) {
-    Surface(
-        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
-        shape = RoundedCornerShape(Radius.md),
-        color = MaterialTheme.colorScheme.surfaceContainer,
+    // Opaque full-bleed backdrop prevents scrolled list rows from peeking above/behind the sticky header.
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 4.dp, vertical = 2.dp),
     ) {
-        Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Surface(
+            Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(Radius.md),
+            color = MaterialTheme.colorScheme.surfaceContainer,
         ) {
-            Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
-            Spacer(Modifier.weight(1f))
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHighest) {
-                Text("$count", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp))
+            Row(
+                Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.weight(1f))
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+                    Text(
+                        text = java.text.NumberFormat.getIntegerInstance().format(count),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                    )
+                }
             }
         }
     }

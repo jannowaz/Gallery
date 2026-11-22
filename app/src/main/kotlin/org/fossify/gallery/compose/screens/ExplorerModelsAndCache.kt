@@ -40,6 +40,8 @@ internal data class ExplorerItem(
     val previewPaths: List<String> = emptyList(),
     val sortKey: Long = 0L,
     val rating: Int = 0,
+    val videoDuration: Int = 0,
+    val isFavorite: Boolean = false,
 )
 
 internal data class ExplorerContent(
@@ -121,8 +123,8 @@ internal fun ExplorerItem.toMediumForGrouping() = Medium(
     taken = taken,
     size = size,
     type = type,
-    videoDuration = 0,
-    isFavorite = false,
+    videoDuration = videoDuration,
+    isFavorite = isFavorite,
     deletedTS = 0L,
     mediaStoreId = 0L,
     rating = rating,
@@ -293,6 +295,8 @@ internal suspend fun loadExplorerFolderContents(
             type = it.type,
             sortKey = if (it.dateSortKey > 0) it.dateSortKey else if (it.taken > 0) it.taken else it.modified,
             rating = it.rating,
+            videoDuration = it.videoDuration,
+            isFavorite = it.isFavorite,
         )
     }
     val sortedFolders = when (folderSettings.sortBy) {

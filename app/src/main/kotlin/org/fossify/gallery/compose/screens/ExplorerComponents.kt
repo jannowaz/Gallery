@@ -1,22 +1,16 @@
 package org.fossify.gallery.compose.screens
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,32 +27,47 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.R
-import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.compose.components.GroupToggleButton
 import org.fossify.gallery.compose.components.ItemCountBadge
-import org.fossify.gallery.compose.components.TagChipRow
-import org.fossify.gallery.compose.components.VideoPlayOverlay
-import org.fossify.gallery.compose.theme.BlurRadius
+import org.fossify.gallery.compose.components.MediaTile
 import org.fossify.gallery.compose.theme.Radius
-import org.fossify.gallery.compose.theme.Scrim
-import org.fossify.gallery.compose.theme.SelectionVisual
-import org.fossify.gallery.compose.util.BlurState
+import org.fossify.gallery.compose.util.ThumbnailOverlayState
 import org.fossify.gallery.compose.util.decodeImageAspect
-import org.fossify.gallery.compose.util.privacyBlur
-import org.fossify.gallery.compose.util.sharedElementKey
+import org.fossify.gallery.helpers.TYPE_VIDEOS
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
 import java.text.NumberFormat
 
-@OptIn(ExperimentalFoundationApi::class)
+private const val MIN_MOSAIC_ASPECT = 0.3f
+private const val MAX_MOSAIC_ASPECT = 3f
+
+private fun ExplorerItem.isVideoItem(): Boolean =
+    type == TYPE_VIDEOS || path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
+
+private fun distributeMosaicColumns(
+    items: List<ExplorerItem>,
+    columnCount: Int,
+    aspectCache: Map<String, Float>,
+): List<List<ExplorerItem>> {
+    val heights = FloatArray(columnCount)
+    val buckets = Array(columnCount) { mutableListOf<ExplorerItem>() }
+    items.forEach { item ->
+        val aspectRatio = if (item.isVideoItem()) 1f else (aspectCache[item.path] ?: 1f)
+        val column = (0 until columnCount).minByOrNull { heights[it] } ?: 0
+        buckets[column].add(item)
+        heights[column] += 1f / aspectRatio.coerceIn(MIN_MOSAIC_ASPECT, MAX_MOSAIC_ASPECT)
+    }
+    return buckets.map { it.toList() }
+}
+
 @Composable
 internal fun ExplorerMosaicChunk(
     items: List<ExplorerItem>,
@@ -77,19 +86,12 @@ internal fun ExplorerMosaicChunk(
 ) {
     val aspectCache = remember { mutableStateMapOf<String, Float>() }
     val imagePaths = remember(items) {
-        items.asSequence()
-            .filterNot { it.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS }
-            .map { it.path }
-            .toList()
+        items.asSequence().filterNot(ExplorerItem::isVideoItem).map { it.path }.toList()
     }
     LaunchedEffect(imagePaths) {
         val missing = imagePaths.filterNot(aspectCache::containsKey)
         if (missing.isNotEmpty()) {
-            aspectCache.putAll(
-                withContext(Dispatchers.IO) {
-                    missing.associateWith(::decodeImageAspect)
-                },
-            )
+            aspectCache.putAll(withContext(Dispatchers.IO) { missing.associateWith(::decodeImageAspect) })
         }
     }
     if (imagePaths.any { it !in aspectCache }) {
@@ -97,95 +99,98 @@ internal fun ExplorerMosaicChunk(
         return
     }
     val columns = remember(items, columnCount, aspectCache.size) {
-        val heights = FloatArray(columnCount)
-        val buckets = Array(columnCount) { mutableListOf<ExplorerItem>() }
-        items.forEach { item ->
-            val isVideo = item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
-            val aspectRatio = if (isVideo) 1f else (aspectCache[item.path] ?: 1f)
-            val column = (0 until columnCount).minByOrNull { heights[it] } ?: 0
-            buckets[column].add(item)
-            heights[column] += 1f / aspectRatio.coerceIn(0.3f, 3f)
-        }
-        buckets.map { it.toList() }
+        distributeMosaicColumns(items, columnCount, aspectCache)
     }
     val mediaBackground = when (displayMode) {
         DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant
         else -> MaterialTheme.colorScheme.surface
     }
+    val containerWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
+    val isNarrowTile = (containerWidthDp / columnCount.coerceAtLeast(1)) < 88.dp
 
     Row(Modifier.fillMaxWidth().padding(spacing / 2)) {
         columns.forEach { column ->
             Column(Modifier.weight(1f)) {
                 column.forEach { item ->
                     key(item.path) {
-                        val isVideo = item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
-                        if (!isVideo) {
-                            LaunchedEffect(item.path) {
-                                if (aspectCache[item.path] == null) {
-                                    aspectCache[item.path] = withContext(Dispatchers.IO) { decodeImageAspect(item.path) }
-                                }
-                            }
-                        }
-                        val aspectRatio = (if (isVideo) 1f else (aspectCache[item.path] ?: 1f)).coerceIn(0.3f, 3f)
-                        Column(Modifier.padding(spacing / 2)) {
-                            Box(
-                                Modifier.fillMaxWidth()
-                                    .aspectRatio(aspectRatio)
-                                    .clip(cornerShape)
-                                    .background(mediaBackground, cornerShape)
-                                    .combinedClickable(onClick = { onClick(item) }, onLongClick = { onLongClick(item) }),
-                            ) {
-                                if (isVideo) {
-                                    VideoThumbnail(
-                                        videoPath = item.path,
-                                        modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"),
-                                        contentScale = ContentScale.Crop,
-                                    )
-                                } else {
-                                    GalleryImage(
-                                        path = item.path,
-                                        contentDescription = item.name,
-                                        modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"),
-                                        contentScale = ContentScale.Crop,
-                                        placeholderIconSize = 20.dp,
-                                    )
-                                }
-                                if (isVideo) {
-                                    VideoPlayOverlay(Modifier.align(Alignment.Center))
-                                }
-                                if (hasFileSelection) {
-                                    if (item.path in selectedFilePaths) {
-                                        Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = SelectionVisual.overlayAlpha)))
-                                    }
-                                    Box(Modifier.align(Alignment.TopStart).padding(4.dp).size(24.dp), contentAlignment = Alignment.Center) {
-                                        if (item.path in selectedFilePaths) {
-                                            Box(Modifier.size(18.dp).background(Color.White, CircleShape))
-                                            Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-                                        } else {
-                                            Box(Modifier.matchParentSize().background(Scrim.a20, CircleShape))
-                                            Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(22.dp))
-                                        }
-                                    }
-                                    IconButton(
-                                        onClick = { onPreviewClick(item) },
-                                        modifier = Modifier.align(Alignment.TopEnd).size(48.dp),
-                                    ) {
-                                        Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = Color.White, modifier = Modifier.size(20.dp))
-                                    }
-                                }
-                            }
-                            if (showFileNames) {
-                                Text(item.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp).privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
-                                TagChipRow(
-                                    tags = tagsByPath[item.path].orEmpty(),
-                                    maxVisible = 2,
-                                    onTagClick = if (!hasFileSelection) onTagClick else null,
-                                    modifier = Modifier.padding(top = 2.dp),
-                                )
-                            }
-                        }
+                        ExplorerMosaicTile(
+                            item = item,
+                            aspectRatio = (if (item.isVideoItem()) 1f else (aspectCache[item.path] ?: 1f))
+                                .coerceIn(MIN_MOSAIC_ASPECT, MAX_MOSAIC_ASPECT),
+                            tags = tagsByPath[item.path].orEmpty(),
+                            spacing = spacing,
+                            cornerShape = cornerShape,
+                            mediaBackground = mediaBackground,
+                            showFileNames = showFileNames,
+                            hasFileSelection = hasFileSelection,
+                            isSelected = item.path in selectedFilePaths,
+                            isNarrowTile = isNarrowTile,
+                            onClick = { onClick(item) },
+                            onLongClick = { onLongClick(item) },
+                            onTagClick = onTagClick,
+                            onPreviewClick = { onPreviewClick(item) },
+                        )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExplorerMosaicTile(
+    item: ExplorerItem,
+    aspectRatio: Float,
+    tags: List<String>,
+    spacing: Dp,
+    cornerShape: Shape,
+    mediaBackground: Color,
+    showFileNames: Boolean,
+    hasFileSelection: Boolean,
+    isSelected: Boolean,
+    isNarrowTile: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onTagClick: (String) -> Unit,
+    onPreviewClick: () -> Unit,
+) {
+    val isVideo = item.isVideoItem()
+    val medium = remember(item) { item.toMediumForGrouping() }
+    Box(Modifier.fillMaxWidth()) {
+        MediaTile(
+            medium = medium,
+            isVideo = isVideo,
+            isSelected = isSelected,
+            isSelectionMode = hasFileSelection,
+            hasTag = tags.isNotEmpty(),
+            tags = tags,
+            onTagClick = if (!hasFileSelection) onTagClick else null,
+            showOverlays = true,
+            aspectRatio = aspectRatio,
+            cornerShape = cornerShape,
+            cardColor = mediaBackground,
+            itemSpacing = spacing,
+            showFileName = showFileNames,
+            showVideoDuration = ThumbnailOverlayState.showVideoDuration,
+            showRating = ThumbnailOverlayState.showRating,
+            markFavorite = true,
+            isNarrowTile = isNarrowTile,
+            onClick = onClick,
+            onLongClick = onLongClick,
+            onSwipeToSelect = {},
+            onBoundsChanged = {},
+        )
+        if (hasFileSelection) {
+            IconButton(
+                onClick = onPreviewClick,
+                modifier = Modifier.align(Alignment.TopEnd).size(48.dp),
+            ) {
+                Icon(
+                    Icons.Default.ZoomIn,
+                    stringResource(R.string.cd_preview),
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
     }
@@ -230,7 +235,12 @@ internal fun ExplorerSectionHeader(
             Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                label,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
             Spacer(Modifier.weight(1f))
             ItemCountBadge(NumberFormat.getIntegerInstance().format(count))
             if (showGroupToggle) {

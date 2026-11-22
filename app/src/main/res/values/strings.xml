@@ -266,7 +266,7 @@
     <string name="folder_count">%1$,d folders</string>
     <string name="albums_summary">%1$,d folders</string>
     <string name="albums_hint">storage folders</string>
-    <string name="albums_header_summary">%1$,d storage folders · %2$s</string>
+    <string name="albums_header_summary">%1$,d folders · %2$s</string>
     <string name="favorites_summary">%1$,d favorites · %2$,d folders · %3$s</string>
     <string name="favorites_summary_media_only">%1$,d favorites · %2$s</string>
     <string name="collections_summary">%1$,d collections · %2$s</string>
@@ -274,7 +274,6 @@
     <string name="favorite_folders">Favorite folders</string>
     <string name="favorite_media">Favorite media</string>
     <string name="delete_collections_confirm">Delete %d collections?</string>
-    <string name="collections_hint">virtual selections</string>
     <string name="folders_excluded">%d excluded</string>
     <string name="collection_create">Create collection</string>
     <string name="remove">Remove</string>
@@ -697,7 +696,6 @@
     <string name="settings_scope_media">Media</string>
     <string name="view_settings_scope_description">Folder and media settings are stored separately.</string>
     <string name="folder_sort_scope_hint">Applies to folders in Albums and Explorer.</string>
-    <string name="folder_media_count_hint">“Media” = number of contained items.</string>
     <string name="view_settings_help_title">View &amp; order</string>
     <string name="view_settings_help_text">Appearance changes how folders or media look. Sorting and grouping only change their order. Filters are opened next to search and never change these settings.</string>
     <string name="cd_close">Close</string>
@@ -1111,7 +1109,6 @@
     <string name="sort_by_date_modified">Last modified</string>
     <string name="sort_by_item_count">Item count</string>
     <string name="sort_by_media_count">Media count</string>
-    <string name="sort_by_media_count_short">Media</string>
     <string name="sort_recently_used">Recently used</string>
     <string name="mover_source_marker">Already a mover source</string>
     <string name="mover_tap_to_pick">Tap to choose</string>
@@ -1333,10 +1330,22 @@
     <string name="viewer_toggle_rating_bar">Rating bar</string>
     <string name="viewer_share_failed">Could not share this file</string>
     <string name="tile_background_label">Tile background</string>
+    <string name="list_background_label">Card background</string>
     <string name="tile_background_default">Standard</string>
     <string name="tile_background_dark">Dark</string>
     <string name="anchor_bottom_hint">Start with the newest items anchored at the bottom</string>
     <string name="spacing_tight">Tight</string>
     <string name="spacing_normal">Normal</string>
     <string name="spacing_airy">Airy</string>
+    <string name="sort_order_label">Order</string>
+    <string name="sort_dir_newest">Newest first</string>
+    <string name="sort_dir_oldest">Oldest first</string>
+    <string name="sort_dir_az">A → Z</string>
+    <string name="sort_dir_za">Z → A</string>
+    <string name="sort_dir_largest">Largest first</string>
+    <string name="sort_dir_smallest">Smallest first</string>
+    <string name="sort_dir_most">Most first</string>
+    <string name="sort_dir_fewest">Fewest first</string>
+    <string name="sort_dir_highest">Highest first</string>
+    <string name="sort_dir_lowest">Lowest first</string>
 </resources>

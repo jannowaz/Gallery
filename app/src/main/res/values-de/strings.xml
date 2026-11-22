@@ -216,7 +216,7 @@
     <string name="folder_count">%1$,d Ordner</string>
     <string name="albums_summary">%1$,d Ordner</string>
     <string name="albums_hint">Speicherordner</string>
-    <string name="albums_header_summary">%1$,d Speicherordner · %2$s</string>
+    <string name="albums_header_summary">%1$,d Ordner · %2$s</string>
     <string name="favorites_summary">%1$,d Favoriten · %2$,d Ordner · %3$s</string>
     <string name="favorites_summary_media_only">%1$,d Favoriten · %2$s</string>
     <string name="collections_summary">%1$,d Sammlungen · %2$s</string>
@@ -224,7 +224,6 @@
     <string name="favorite_folders">Favorisierte Ordner</string>
     <string name="favorite_media">Favorisierte Medien</string>
     <string name="delete_collections_confirm">%d Sammlungen löschen?</string>
-    <string name="collections_hint">virtuelle Auswahlen</string>
     <string name="folders_excluded">%d ausgeschlossen</string>
     <string name="collection_create">Sammlung erstellen</string>
     <string name="screenshot_save">Screenshot speichern</string>
@@ -638,7 +637,6 @@
     <string name="settings_scope_media">Medien</string>
     <string name="view_settings_scope_description">Einstellungen für Ordner und Medien werden getrennt gespeichert.</string>
     <string name="folder_sort_scope_hint">Gilt für Ordner in Alben und im Explorer.</string>
-    <string name="folder_media_count_hint">„Medien“ = Anzahl der enthaltenen Medien.</string>
     <string name="view_settings_help_title">Ansicht &amp; Sortierung</string>
     <string name="view_settings_help_text">Darstellung verändert, wie Ordner oder Medien aussehen. Sortierung und Gruppierung ändern nur ihre Reihenfolge. Filter öffnest du neben der Suche; sie ändern diese Einstellungen nicht.</string>
     <string name="cd_close">Schließen</string>
@@ -1043,7 +1041,6 @@
     <string name="sort_by_date_modified">Aktualisierungsdatum</string>
     <string name="sort_by_item_count">Anzahl</string>
     <string name="sort_by_media_count">Medienanzahl</string>
-    <string name="sort_by_media_count_short">Medien</string>
     <string name="sort_recently_used">Zuletzt verwendet</string>
     <string name="mover_source_marker">Bereits Mover-Quelle</string>
     <string name="mover_tap_to_pick">Zum Auswählen tippen</string>
@@ -1271,10 +1268,22 @@
     <string name="viewer_toggle_rating_bar">Bewertungsleiste</string>
     <string name="viewer_share_failed">Datei konnte nicht geteilt werden</string>
     <string name="tile_background_label">Kachel-Hintergrund</string>
+    <string name="list_background_label">Karten-Hintergrund</string>
     <string name="tile_background_default">Standard</string>
     <string name="tile_background_dark">Dunkel</string>
     <string name="anchor_bottom_hint">Neueste Elemente unten am Bildschirmrand beginnen</string>
     <string name="spacing_tight">Eng</string>
     <string name="spacing_normal">Normal</string>
     <string name="spacing_airy">Luftig</string>
+    <string name="sort_order_label">Reihenfolge</string>
+    <string name="sort_dir_newest">Neueste zuerst</string>
+    <string name="sort_dir_oldest">Älteste zuerst</string>
+    <string name="sort_dir_az">A → Z</string>
+    <string name="sort_dir_za">Z → A</string>
+    <string name="sort_dir_largest">Größte zuerst</string>
+    <string name="sort_dir_smallest">Kleinste zuerst</string>
+    <string name="sort_dir_most">Meiste zuerst</string>
+    <string name="sort_dir_fewest">Wenigste zuerst</string>
+    <string name="sort_dir_highest">Höchste zuerst</string>
+    <string name="sort_dir_lowest">Niedrigste zuerst</string>
 </resources>

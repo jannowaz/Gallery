@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -112,6 +113,14 @@ fun MediaTile(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(if (isPressed) 0.96f else 1f, animationSpec = AppMotion.short, label = "pressScale")
+    val rawSelectionInset by animateDpAsState(
+        targetValue = if (isSelected) (if (isNarrowTile) 4.dp else 6.dp) else 0.dp,
+        animationSpec = AppMotion.selectionInsetSpring,
+        label = "selectionInset",
+    )
+    // Low-bouncy spring can briefly overshoot below 0.dp when deselecting; padding() requires >= 0.dp.
+    val selectionInset = rawSelectionInset.coerceAtLeast(0.dp)
+    val thumbShape = if (isSelected || selectionInset > 0.dp) RoundedCornerShape(Radius.md) else cornerShape
     // Scroll state can change for every visible tile at once. Animating this alpha per tile creates
     // dozens of independent animation clocks and a coordinated fade when a fling starts/stops.
     // Keep the state change synchronous; the press scale above remains animated because it belongs
@@ -152,11 +161,20 @@ fun MediaTile(
     ) {
         Box(
             Modifier.aspectRatio(aspectRatio)
+                .clip(cornerShape)
                 // Fit mode (cropThumbnails off) leaves empty space on two sides of the image inside
                 // this still-square box - a solid black letterbox/pillarbox behind it, regardless of
                 // the current theme, rather than whatever cardColor (surfaceVariant etc.) would
-                // otherwise show through.
-                .then(if (!cropThumbnails) Modifier.background(Color.Black) else Modifier)
+                // otherwise show through. While selected, reveal a tinted primaryContainer frame
+                // around the inset thumbnail for unmistakable, tactile selection feedback.
+                .then(
+                    when {
+                        isSelected || selectionInset > 0.dp ->
+                            Modifier.background(MaterialTheme.colorScheme.primaryContainer)
+                        !cropThumbnails -> Modifier.background(Color.Black)
+                        else -> Modifier
+                    },
+                )
                 .selectableItem(
                     isSelectionMode = isSelectionMode,
                     onClick = onClick,
@@ -174,17 +192,32 @@ fun MediaTile(
                 }
         ) {
             val thumbScale = if (cropThumbnails) ContentScale.Crop else ContentScale.Fit
-            if (isVideo) {
-                VideoThumbnail(videoPath = medium.path, modifier = Modifier.fillMaxSize().clip(cornerShape).sharedElementKey("media_${medium.path}"), contentScale = thumbScale)
-            } else {
-                GalleryImage(
-                    path = medium.path,
-                    contentDescription = medium.name,
-                    modifier = Modifier.fillMaxSize().clip(cornerShape).sharedElementKey("media_${medium.path}"),
-                    contentScale = thumbScale,
-                    placeholderIconSize = 16.dp,
-                    backgroundColor = if (cropThumbnails) MaterialTheme.colorScheme.surfaceVariant else Color.Black,
-                )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(selectionInset)
+                    .clip(thumbShape)
+                    .then(if (!cropThumbnails) Modifier.background(Color.Black) else Modifier),
+            ) {
+                if (isVideo) {
+                    VideoThumbnail(
+                        videoPath = medium.path,
+                        modifier = Modifier.fillMaxSize().sharedElementKey("media_${medium.path}"),
+                        contentScale = thumbScale,
+                    )
+                } else {
+                    GalleryImage(
+                        path = medium.path,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize().sharedElementKey("media_${medium.path}"),
+                        contentScale = thumbScale,
+                        placeholderIconSize = 16.dp,
+                        backgroundColor = if (cropThumbnails) MaterialTheme.colorScheme.surfaceVariant else Color.Black,
+                    )
+                }
+                if (isSelected) {
+                    Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = SelectionVisual.overlayAlpha)))
+                }
             }
 
             if (isVideo && durationText.isEmpty()) {
@@ -285,9 +318,6 @@ fun MediaTile(
                 }
             }
 
-            if (isSelected) {
-                Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = SelectionVisual.overlayAlpha)))
-            }
             // Selection checkbox in the top-start corner — shown for every tile while selecting.
             if (isSelectionMode) {
                 val checkSize = if (isNarrowTile) 18.dp else 24.dp

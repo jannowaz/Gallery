@@ -50,13 +50,12 @@ internal fun MainSheets(
     onClearAll: () -> Unit,
 ) {
     if (activeSheet == ActiveSheet.VIEW_SETTINGS || activeSheet == ActiveSheet.FILTER) {
-        val isAlbumsTab = selectedTab == 1
         val isExplorerTab = selectedTab == 2
-        val supportsFilter = selectedTab == 0 || selectedTab == 4 || (selectedTab == 2 && settingsMode == SettingsMode.MEDIA)
+        val supportsFilter = selectedTab in setOf(0, 2, 4)
         val explorerPath = currentScanFolder
         val s = when (selectedTab) {
             0 -> if (collectionActive) tabSettings.collectionMedia else tabSettings.media
-            1 -> if (settingsMode == SettingsMode.ALBUMS) tabSettings.albums else tabSettings.folderMedia
+            1 -> tabSettings.albums
             2 -> if (settingsMode == SettingsMode.ALBUMS) tabSettings.explorerAlbums else viewSettingsVM.getExplorerMediaSettingsForPath(explorerPath)
             3 -> tabSettings.collections
             4 -> tabSettings.favorites
@@ -93,17 +92,18 @@ internal fun MainSheets(
                     settings = s,
                     panel = ViewSettingsPanel.ALL,
                     showDisplayMode = selectedTab !in setOf(3, 5),
-                    isAlbumMode = (selectedTab == 1 || selectedTab == 2) && settingsMode == SettingsMode.ALBUMS,
+                    isAlbumMode = selectedTab == 1 || (isExplorerTab && settingsMode == SettingsMode.ALBUMS),
                     supportsTagGrouping = selectedTab != 0 || collectionActive,
                     isContainerMode = selectedTab == 3 || selectedTab == 5,
                     supportsRecentTagSorting = selectedTab == 5,
                     supportsSorting = true,
-                    showApplyGloballyToggle = selectedTab == 2 && settingsMode == SettingsMode.MEDIA,
+                    supportsAnchorBottom = !isExplorerTab,
+                    showApplyGloballyToggle = isExplorerTab && settingsMode == SettingsMode.MEDIA,
                     initialApplyGlobally = !viewSettingsVM.hasCustomExplorerMediaSettings(explorerPath),
                     onSettingsChange = { v, applyGlobally ->
                         when (selectedTab) {
                             0 -> if (collectionActive) viewSettingsVM.updateCollectionMedia(v) else viewSettingsVM.updateMedia(v)
-                            1 -> if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateAlbums(v) else viewSettingsVM.updateFolderMedia(v)
+                            1 -> viewSettingsVM.updateAlbums(v)
                             2 -> if (settingsMode == SettingsMode.ALBUMS) viewSettingsVM.updateExplorerAlbums(v) else viewSettingsVM.updateExplorerMediaForPath(explorerPath, v, applyGlobally)
                             3 -> viewSettingsVM.updateCollections(v)
                             4 -> viewSettingsVM.updateFavorites(v)
@@ -111,20 +111,25 @@ internal fun MainSheets(
                         }
                     },
                     onDismiss = onDismissSheet,
-                    modeTitle = when {
-                        selectedTab == 1 || selectedTab == 2 -> if (settingsMode == SettingsMode.ALBUMS) stringResource(R.string.settings_scope_folders) else stringResource(R.string.settings_scope_media)
-                        else -> null
-                    },
-                    modeOptions = when (selectedTab) {
-                        1, 2 -> listOf(stringResource(R.string.settings_scope_folders), stringResource(R.string.settings_scope_media))
-                        else -> null
-                    },
-                    scopeDescription = if (selectedTab == 1 || selectedTab == 2) {
+                    // Scope switching (Folders vs. Media) belongs only where both coexist on screen.
+                    modeTitle = if (isExplorerTab) {
+                        val scopeRes = if (settingsMode == SettingsMode.ALBUMS) {
+                            R.string.settings_scope_folders
+                        } else {
+                            R.string.settings_scope_media
+                        }
+                        stringResource(scopeRes)
+                    } else null,
+                    modeOptions = if (isExplorerTab) {
+                        listOf(
+                            stringResource(R.string.settings_scope_folders),
+                            stringResource(R.string.settings_scope_media),
+                        )
+                    } else null,
+                    scopeDescription = if (isExplorerTab) {
                         stringResource(R.string.view_settings_scope_description)
-                    } else {
-                        null
-                    },
-                    onToggleMode = if (isAlbumsTab || isExplorerTab) {
+                    } else null,
+                    onToggleMode = if (isExplorerTab) {
                         { viewSettingsVM.setSettingsMode(if (settingsMode == SettingsMode.ALBUMS) SettingsMode.MEDIA else SettingsMode.ALBUMS) }
                     } else null,
                 )

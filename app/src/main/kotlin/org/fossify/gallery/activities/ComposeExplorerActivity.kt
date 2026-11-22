@@ -813,17 +813,13 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit, onContent
                 },
                 onSwipeUp = { activeSheet = ActiveSheet.VIEW_SETTINGS },
                 onOpenFilterAndView = {
-                    activeSheet = if (
-                        uiState.selectedTab == 0 || uiState.selectedTab == 4 ||
-                        (uiState.selectedTab == 2 && settingsMode == SettingsMode.MEDIA)
-                    ) {
+                    activeSheet = if (uiState.selectedTab in setOf(0, 2, 4)) {
                         ActiveSheet.FILTER
                     } else {
                         ActiveSheet.VIEW_SETTINGS
                     }
                 },
-                filtersAvailable = uiState.selectedTab == 0 || uiState.selectedTab == 4 ||
-                    (uiState.selectedTab == 2 && settingsMode == SettingsMode.MEDIA),
+                filtersAvailable = uiState.selectedTab in setOf(0, 2, 4),
                 hasActiveFilter = uiState.hasActiveFilter,
                 searchHintRes = if (!effectiveLocalScope) {
                     R.string.search_hint_compact

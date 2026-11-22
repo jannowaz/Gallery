@@ -141,7 +141,13 @@ fun CollectionsScreen(
     // reran from scratch on every single round trip.
     fun toAlbumItems(colls: List<MediaCollection>) = colls.map { coll ->
         val paths = repo.getCollectionMediaCached(coll.id)
-        AlbumGridItem(key = coll.id.toString(), name = coll.name, thumbnailPath = paths.firstOrNull() ?: "", count = paths.size, previewPaths = paths.take(3))
+        AlbumGridItem(
+            key = coll.id.toString(),
+            name = coll.name,
+            thumbnailPath = paths.firstOrNull() ?: "",
+            count = paths.size,
+            previewPaths = paths.take(4),
+        )
     }
     var collections by remember { mutableStateOf(repo.getCollectionsCached() ?: emptyList()) }
     var albumItems by remember { mutableStateOf(toAlbumItems(collections)) }
@@ -478,7 +484,7 @@ fun CollectionsScreen(
                         R.string.collections_summary,
                         collections.size,
                         viewSettingsSummary(viewSettings, includeGrouping = false),
-                    ) + " · " + stringResource(R.string.collections_hint)
+                    )
                 },
                 leadingIcon = Icons.Default.CollectionsBookmark,
                 actions = {

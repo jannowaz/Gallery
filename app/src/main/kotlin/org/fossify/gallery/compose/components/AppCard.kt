@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 
 /**
  * Tokenized card: M3 [MaterialTheme.shapes] medium corner radius and a tonally-elevated
@@ -17,11 +18,12 @@ import androidx.compose.ui.graphics.Color
 fun AppCard(
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.surfaceContainer,
+    shape: Shape = MaterialTheme.shapes.medium,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
         modifier = modifier,
-        shape = MaterialTheme.shapes.medium,
+        shape = shape,
         colors = CardDefaults.cardColors(containerColor = color),
         content = content,
     )

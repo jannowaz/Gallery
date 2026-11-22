@@ -118,10 +118,10 @@ fun MediaTypeCountSummary(
 private val integerNumberFormat: ThreadLocal<java.text.NumberFormat> =
     ThreadLocal.withInitial { java.text.NumberFormat.getIntegerInstance() }
 
-private fun formatIntegerCount(count: Int): String =
+internal fun formatIntegerCount(count: Int): String =
     integerNumberFormat.get()?.format(count) ?: count.toString()
 
-private fun formatCompactCount(count: Int): String = when {
+internal fun formatCompactCount(count: Int): String = when {
     count >= 1_000_000 -> "%.1fM".format(count / 1_000_000.0).replace(",0", "").replace(".0", "")
     count >= 1_000 -> "%.1fk".format(count / 1_000.0).replace(",0", "").replace(".0", "")
     else -> formatIntegerCount(count)

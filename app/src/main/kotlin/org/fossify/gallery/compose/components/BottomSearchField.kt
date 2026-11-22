@@ -2,11 +2,15 @@ package org.fossify.gallery.compose.components
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -21,7 +25,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -105,11 +108,13 @@ fun BottomSearchField(
                 }
             }
             val placeholderText = stringResource(placeholderRes)
-            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .padding(end = if (!filtersAvailable && !searching && value.isEmpty()) s.sm else 0.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
                 if (value.isEmpty()) {
-                    // maxLines/overflow needed now that the row has one more trailing icon (the
-                    // blur toggle) - the placeholder previously fit on one line at the old width,
-                    // wrapping to two otherwise, which grew this row's height right back up again.
                     Text(
                         placeholderText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -131,36 +136,50 @@ fun BottomSearchField(
                         .onFocusChanged { onFocusChanged(it.isFocused) },
                 )
             }
-            // The slot is always exactly 48dp. Crossfade has no size transform, so switching from
-            // spinner -> clear -> empty cannot remeasure the search row while the user is typing.
-            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                Crossfade(
-                    targetState = searching to value.isNotEmpty(),
-                    animationSpec = AppMotion.short,
-                    label = "searchTrailingIcon",
-                ) { (isSearching, hasValue) ->
-                    when {
-                        isSearching -> Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) }
-                        hasValue -> IconButton(onClick = onClear, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Close, stringResource(R.string.cd_clear_search), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        else -> Spacer(Modifier.size(48.dp))
+            // Only occupy space when there is a spinner or clear action to display instead of
+            // reserving a dead 48dp gap in the idle search bar on every tab.
+            AnimatedVisibility(
+                visible = searching || value.isNotEmpty(),
+                enter = fadeIn() + expandHorizontally(),
+                exit = fadeOut() + shrinkHorizontally(),
+            ) {
+                Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                    if (searching) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else if (value.isNotEmpty()) {
+                        IconButton(onClick = onClear, modifier = Modifier.size(48.dp)) {
+                            Icon(
+                                Icons.Default.Close,
+                                stringResource(R.string.cd_clear_search),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
-            // Strict 1:1 icon semantics across every screen: FilterList always opens Filters,
-            // Tune always opens View & Sort settings.
-            Box {
-                IconButton(onClick = onOpenFilterAndView, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        imageVector = if (filtersAvailable) Icons.Default.FilterList else Icons.Default.Tune,
-                        contentDescription = stringResource(if (filtersAvailable) R.string.filter_label else R.string.view_settings_title),
-                        tint = if (filtersAvailable && hasActiveFilter) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (filtersAvailable && hasActiveFilter) {
-                    Box(
-                        Modifier.align(Alignment.TopEnd).offset(x = (-6).dp, y = 6.dp).size(8.dp)
-                            .background(MaterialTheme.colorScheme.primary, CircleShape),
-                    )
+            // View & Sort always lives once in each screen's top header (Icons.Default.Tune).
+            // The search bar only exposes FilterList on tabs that actually support media filters,
+            // eliminating the duplicate Tune icon on Albums, Collections and Tags.
+            if (filtersAvailable) {
+                Box {
+                    IconButton(onClick = onOpenFilterAndView, modifier = Modifier.size(48.dp)) {
+                        val filterTint = if (hasActiveFilter) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        Icon(
+                            imageVector = Icons.Default.FilterList,
+                            contentDescription = stringResource(R.string.filter_label),
+                            tint = filterTint,
+                        )
+                    }
+                    if (hasActiveFilter) {
+                        Box(
+                            Modifier.align(Alignment.TopEnd).offset(x = (-6).dp, y = 6.dp).size(8.dp)
+                                .background(MaterialTheme.colorScheme.primary, CircleShape),
+                        )
+                    }
                 }
             }
         }

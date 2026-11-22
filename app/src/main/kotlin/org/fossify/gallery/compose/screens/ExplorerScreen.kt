@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -116,8 +115,13 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.fossify.gallery.compose.components.FolderSelectionOverlay
+import org.fossify.gallery.compose.components.MediaListRow
+import org.fossify.gallery.compose.components.MediaTile
+import org.fossify.gallery.compose.components.folderPathHint
 import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.compose.util.ThumbnailOverlayState
 import org.fossify.gallery.compose.theme.Scrim
 import org.fossify.gallery.compose.theme.SelectionVisual
 import org.fossify.gallery.compose.util.BlurState
@@ -1239,6 +1243,16 @@ fun ExplorerScreen(
             val folderTileWidthDp = explorerWindowWidthDp / folderGridColumns.coerceAtLeast(1)
             val isNarrowFolderTile = folderTileWidthDp < 88.dp
             val isUltraNarrowFolderTile = folderTileWidthDp < 84.dp
+            val mediaTileWidthDp = explorerWindowWidthDp / mediaGridColumns.coerceAtLeast(1)
+            val isNarrowMediaTile = mediaTileWidthDp < 88.dp
+            val internalStorageLabel = stringResource(R.string.internal_storage)
+            val duplicateFolderNames = remember(visibleFolderItems) {
+                visibleFolderItems.groupingBy { it.name.lowercase() }.eachCount().filterValues { it > 1 }.keys
+            }
+            val mediaBg = when (mediaSettings.displayMode) {
+                DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant
+                else -> MaterialTheme.colorScheme.surface
+            }
             Box(Modifier.weight(1f)) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(4.dp)) {
                 if (visibleFolderItems.isNotEmpty()) {
@@ -1253,6 +1267,11 @@ fun ExplorerScreen(
                             item(key = "folderrow_$rowIndex", contentType = "folder_grid_row") {
                                 Row(Modifier.fillMaxWidth().padding(folderSettings.spacing.dp / 2)) {
                                     chunk.forEach { item ->
+                                        val disambiguationHint = if (item.name.lowercase() in duplicateFolderNames) {
+                                            folderPathHint(item.path, internalStorageLabel)
+                                        } else {
+                                            null
+                                        }
                                         Box(Modifier.weight(1f).padding(folderSettings.spacing.dp / 2).combinedClickable(
                                             onClick = { if (hasFileSelection) Unit else if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); navigateToPath(item.path) } },
                                             onLongClick = { if (!hasFileSelection) { selectedFilePaths = emptySet(); selectedFolderPaths = selectedFolderPaths + item.path } }
@@ -1260,6 +1279,9 @@ fun ExplorerScreen(
                                             contentDescription = buildString {
                                                 append(item.name)
                                                 if (item.mediaCount > 0) append(", ").append(item.mediaCount)
+                                                if (!disambiguationHint.isNullOrEmpty()) {
+                                                    append(", ").append(disambiguationHint)
+                                                }
                                             }
                                             role = Role.Button
                                             selected = item.path in selectedFolderPaths
@@ -1271,6 +1293,7 @@ fun ExplorerScreen(
                                                 roundedCorners = folderSettings.roundedCorners,
                                                 containerColor = folderCardColor,
                                                 subtitle = if (item.mediaCount > 0) androidx.compose.ui.res.pluralStringResource(R.plurals.media_count_plural, item.mediaCount, item.mediaCount) else null,
+                                                pathHint = disambiguationHint,
                                                 imageCount = item.imageCount,
                                                 videoCount = item.videoCount,
                                                 isNarrow = isNarrowFolderTile,
@@ -1278,15 +1301,32 @@ fun ExplorerScreen(
                                             )
                                             if (hasFolderSelection) {
                                                 if (item.path in selectedFolderPaths) {
-                                                    Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = SelectionVisual.overlayAlpha)))
-                                                }
-                                                Box(Modifier.align(Alignment.TopStart).padding(4.dp).size(24.dp), contentAlignment = Alignment.Center) {
-                                                    if (item.path in selectedFolderPaths) {
-                                                        Box(Modifier.size(18.dp).background(Color.White, CircleShape))
-                                                        Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-                                                    } else {
-                                                        Box(Modifier.matchParentSize().background(Scrim.a20, CircleShape))
-                                                        Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(22.dp))
+                                                    FolderSelectionOverlay(
+                                                        roundedCorners = folderSettings.roundedCorners,
+                                                        modifier = Modifier.matchParentSize(),
+                                                        isNarrow = isNarrowFolderTile,
+                                                    )
+                                                } else {
+                                                    val checkSize = if (isNarrowFolderTile) 18.dp else 24.dp
+                                                    val pad = if (isNarrowFolderTile) 3.dp else 6.dp
+                                                    Box(
+                                                        Modifier
+                                                            .align(Alignment.TopStart)
+                                                            .padding(pad)
+                                                            .size(checkSize),
+                                                        contentAlignment = Alignment.Center,
+                                                    ) {
+                                                        Box(
+                                                            Modifier
+                                                                .matchParentSize()
+                                                                .background(Scrim.a35, CircleShape),
+                                                        )
+                                                        Icon(
+                                                            Icons.Default.RadioButtonUnchecked,
+                                                            stringResource(R.string.cd_not_selected),
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(checkSize - 2.dp),
+                                                        )
                                                     }
                                                 }
                                             }
@@ -1297,8 +1337,9 @@ fun ExplorerScreen(
                             }
                         }
                     } else {
-                        // Lists are always one column; density is controlled explicitly in the
-                        // shared view settings sheet and never inferred from grid columns.
+                        // Lists are always one column; density and spacing are controlled explicitly
+                        // in the shared view settings sheet and never inferred from grid columns.
+                        val folderListHalfGap = ((folderSettings.spacing / 2).coerceAtLeast(2) / 2f).dp
                         val listCols = 1
                         visibleFolderItems.chunked(listCols).forEach { chunk ->
                             item(key = "folderrow_" + chunk.joinToString { it.path }, contentType = "folder_list_row") {
@@ -1312,12 +1353,14 @@ fun ExplorerScreen(
                                                 selected = item.path in selectedFolderPaths,
                                                 showChevron = true,
                                                 showThumbnail = folderSettings.showFolderThumbnails,
+                                                roundedCorners = folderSettings.roundedCorners,
+                                                containerColor = folderCardColor,
                                                 compact = folderSettings.listDensity == ListDensity.COMPACT,
                                                 badgeSubtitle = true,
-                                                pathHint = org.fossify.gallery.compose.components.folderPathHint(item.path, stringResource(R.string.internal_storage)),
+                                                pathHint = folderPathHint(item.path, internalStorageLabel),
                                                 imageCount = item.imageCount,
                                                 videoCount = item.videoCount,
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp).combinedClickable(
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = folderListHalfGap).combinedClickable(
                                                     onClick = { if (hasFileSelection) Unit else if (hasFolderSelection) selectedFolderPaths = if (item.path in selectedFolderPaths) selectedFolderPaths - item.path else selectedFolderPaths + item.path else { navStack.add(item.path); navigateToPath(item.path) } },
                                                     onLongClick = { if (!hasFileSelection) { selectedFilePaths = emptySet(); selectedFolderPaths = selectedFolderPaths + item.path } }
                                                 ),
@@ -1360,54 +1403,36 @@ fun ExplorerScreen(
                         groupFileItems.chunked(mediaGridColumns).forEachIndexed { rowIndex, chunk ->
                             item(key = "${row.sectionKey}/gridrow_$rowIndex", contentType = "media_grid_row") {
                                 Row(Modifier.fillMaxWidth().padding(mediaSettings.spacing.dp / 2)) {
-                                        chunk.forEach { item ->
+                                    chunk.forEach { item ->
                                         val isVideo = item.type == 2 || item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
-                                        val mediaTypeDescription = if (isVideo) stringResource(R.string.media_type_video) else stringResource(R.string.media_type_image)
-                                        val mediaBg = when (mediaSettings.displayMode) { DisplayMode.DARK -> MaterialTheme.colorScheme.surfaceVariant else -> MaterialTheme.colorScheme.surface }
-                                        Box(Modifier.weight(1f).padding(mediaSettings.spacing.dp / 2).background(mediaBg, cornerShape).combinedClickable(
-                                            onClick = { onFileClick(item) },
-                                            onLongClick = { onFileLongClick(item) }
-                                        ).semantics(mergeDescendants = true) {
-                                            contentDescription = "${item.name}, $mediaTypeDescription"
-                                            role = Role.Button
-                                            selected = item.path in selectedFilePaths
-                                        }) {
-                                            Column {
-                                                Box(Modifier.aspectRatio(1f).clip(cornerShape)) {
-                                                    if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop)
-                                                    else GalleryImage(path = item.path, contentDescription = item.name, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop, placeholderIconSize = 20.dp)
-                                                    if (isVideo) {
-                                                        VideoPlayOverlay(Modifier.align(Alignment.Center))
-                                                    }
-                                                }
-                                                if (mediaSettings.showFileNames) {
-                                                    val itemTags = fileTagsByPath[item.path].orEmpty()
-                                                    Column(Modifier.fillMaxWidth().padding(top = 2.dp)) {
-                                                        Text(item.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
-                                                        if (itemTags.isNotEmpty()) {
-                                                            TagChipRow(
-                                                                tags = itemTags,
-                                                                maxVisible = 2,
-                                                                onTagClick = if (!hasFileSelection) onTagClick else null,
-                                                                modifier = Modifier.padding(top = 2.dp),
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
+                                        val medium = remember(item) { item.toMediumForGrouping() }
+                                        val itemTags = fileTagsByPath[item.path].orEmpty()
+                                        Box(Modifier.weight(1f)) {
+                                            MediaTile(
+                                                medium = medium,
+                                                isVideo = isVideo,
+                                                isSelected = item.path in selectedFilePaths,
+                                                isSelectionMode = hasFileSelection,
+                                                hasTag = itemTags.isNotEmpty(),
+                                                tags = itemTags,
+                                                onTagClick = if (!hasFileSelection) onTagClick else null,
+                                                showOverlays = true,
+                                                aspectRatio = 1f,
+                                                cornerShape = cornerShape,
+                                                cardColor = mediaBg,
+                                                itemSpacing = mediaSettings.spacing.dp,
+                                                showFileName = mediaSettings.showFileNames,
+                                                reserveGridCaptionSpace = mediaSettings.showFileNames,
+                                                showVideoDuration = ThumbnailOverlayState.showVideoDuration,
+                                                showRating = ThumbnailOverlayState.showRating,
+                                                markFavorite = true,
+                                                isNarrowTile = isNarrowMediaTile,
+                                                onClick = { onFileClick(item) },
+                                                onLongClick = { onFileLongClick(item) },
+                                                onSwipeToSelect = {},
+                                                onBoundsChanged = {},
+                                            )
                                             if (hasFileSelection) {
-                                                if (item.path in selectedFilePaths) {
-                                                    Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = SelectionVisual.overlayAlpha)))
-                                                }
-                                                Box(Modifier.align(Alignment.TopStart).padding(4.dp).size(24.dp), contentAlignment = Alignment.Center) {
-                                                    if (item.path in selectedFilePaths) {
-                                                        Box(Modifier.size(18.dp).background(Color.White, CircleShape))
-                                                        Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-                                                    } else {
-                                                        Box(Modifier.matchParentSize().background(Scrim.a20, CircleShape))
-                                                        Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(22.dp))
-                                                    }
-                                                }
                                                 IconButton(
                                                     onClick = { peekState.show(item.path, isVideo) },
                                                     modifier = Modifier.align(Alignment.TopEnd).size(48.dp),
@@ -1452,7 +1477,9 @@ fun ExplorerScreen(
                                     onLongClick = ::onFileLongClick,
                                     onTagClick = onTagClick,
                                     onPreviewClick = { item ->
-                                        peekState.show(item.path, item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS)
+                                        val video = item.type == 2 ||
+                                            item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
+                                        peekState.show(item.path, video)
                                     },
                                 )
                             }
@@ -1463,6 +1490,7 @@ fun ExplorerScreen(
                     }
                     else -> {
                         val listCompact = mediaSettings.listDensity == ListDensity.COMPACT
+                        val mediaListHalfGap = (((mediaSettings.spacing - 2) / 2).coerceAtLeast(0) / 2f).dp
                         fileGroupRows.forEach { row ->
                         when (row) {
                             is org.fossify.gallery.helpers.GroupRow.SectionHeader -> item(key = "filehdr_${row.key}", contentType = "header") {
@@ -1476,56 +1504,40 @@ fun ExplorerScreen(
                             contentType = { "explorer_media_row" },
                         ) { item ->
                             val isVideo = item.type == 2 || item.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
-                            val mediaTypeDescription = if (isVideo) stringResource(R.string.media_type_video) else stringResource(R.string.media_type_image)
-                            Surface(
-                                Modifier.fillMaxWidth().combinedClickable(
-                                    onClick = { onFileClick(item) },
-                                    onLongClick = { onFileLongClick(item) }
-                                ).semantics(mergeDescendants = true) {
-                                    contentDescription = "${item.name}, $mediaTypeDescription"
-                                    role = Role.Button
-                                    selected = item.path in selectedFilePaths
-                                },
-                                color = if (item.path in selectedFilePaths) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                            val medium = remember(item) { item.toMediumForGrouping() }
+                            val itemTags = fileTagsByPath[item.path].orEmpty()
+                            val isSelected = item.path in selectedFilePaths
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = mediaListHalfGap),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Row(Modifier.padding(horizontal = 16.dp, vertical = if (listCompact) 6.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(if (listCompact) 40.dp else 52.dp).clip(RoundedCornerShape(Radius.sm))) {
-                                        if (isVideo) VideoThumbnail(videoPath = item.path, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop, thumbnailSize = if (listCompact) 160 else 192)
-                                        else GalleryImage(path = item.path, contentDescription = item.name, modifier = Modifier.fillMaxSize().sharedElementKey("media_${item.path}"), contentScale = ContentScale.Crop, placeholderIconSize = 16.dp)
-                                        if (isVideo) {
-                                            VideoPlayOverlay(Modifier.align(Alignment.Center), size = if (listCompact) 24.dp else 28.dp)
-                                        }
-                                        if (hasFileSelection) {
-                                            Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
-                                                if (item.path in selectedFilePaths) {
-                                                    Box(Modifier.size(16.dp).background(Color.White, CircleShape))
-                                                    Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                                                } else {
-                                                    Box(Modifier.matchParentSize().background(Scrim.a20))
-                                                    Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(18.dp))
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Spacer(Modifier.width(if (listCompact) 10.dp else 12.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
-                                        Text(formatFileSize(item.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        TagChipRow(
-                                            tags = fileTagsByPath[item.path].orEmpty(),
-                                            maxVisible = 3,
-                                            onTagClick = if (!hasFileSelection) onTagClick else null,
-                                            modifier = Modifier.padding(top = 2.dp),
-                                        )
-                                    }
-                                    if (hasFileSelection) {
-                                        IconButton(onClick = { peekState.show(item.path, isVideo) }, modifier = Modifier.size(48.dp)) {
-                                            Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                                        }
+                                MediaListRow(
+                                    medium = medium,
+                                    isVideo = isVideo,
+                                    isSelected = isSelected,
+                                    hasSelection = hasFileSelection,
+                                    cardColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else mediaBg,
+                                    fileSizeLabel = remember(item.size) { formatFileSize(item.size) },
+                                    onClick = { onFileClick(item) },
+                                    onLongClick = { onFileLongClick(item) },
+                                    onSwipeToSelect = {},
+                                    onBoundsChanged = {},
+                                    modifier = Modifier.weight(1f),
+                                    showRating = ThumbnailOverlayState.showRating,
+                                    showVideoDuration = ThumbnailOverlayState.showVideoDuration,
+                                    compact = listCompact,
+                                    roundedCorners = mediaSettings.roundedCorners,
+                                    hasTag = itemTags.isNotEmpty(),
+                                    tags = itemTags,
+                                    onTagClick = if (!hasFileSelection) onTagClick else null,
+                                    markFavorite = true,
+                                )
+                                if (hasFileSelection) {
+                                    IconButton(onClick = { peekState.show(item.path, isVideo) }, modifier = Modifier.size(48.dp)) {
+                                        Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                                     }
                                 }
                             }
-                            HorizontalDivider(Modifier.padding(start = if (listCompact) 66.dp else 80.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         }
                             }
                         }

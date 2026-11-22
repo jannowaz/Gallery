@@ -29,4 +29,7 @@ object AppMotion {
 
     /** Selection-bar top-inset reveal without a visible overshoot or content wobble. */
     val insetSpring: SpringSpec<Dp> = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
+
+    /** Expressive tactile inset spring for tile selection states. */
+    val selectionInsetSpring: SpringSpec<Dp> = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium)
 }

@@ -28,13 +28,15 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.screens.VideoThumbnail
@@ -75,12 +77,7 @@ fun folderPathHint(fullPath: String, internalStorageLabel: String, maxSegments: 
 /**
  * The one list row used by every folder-style list in the app - Albums, Collections, Favorites and
  * the Explorer's folder section - so they read as a single, consistent list instead of four
- * slightly different ones (the Explorer used to hand-roll its own near-identical variant).
- *
- * Material list-item shape: a leading cover thumbnail, a title/subtitle block that takes the
- * remaining width, and a trailing affordance - a check when selected, otherwise an optional chevron
- * for rows that navigate. Folder rows may also carry a faint [pathHint] third line. Grid and mosaic
- * layouts are unaffected; this is the LIST view only.
+ * slightly different ones.
  */
 @Composable
 fun AlbumListRow(
@@ -91,76 +88,74 @@ fun AlbumListRow(
     selected: Boolean = false,
     showChevron: Boolean = false,
     showThumbnail: Boolean = true,
-    // Two-columns-side-by-side layout (see LibraryAlbumGrid): each row is only half the width, so
-    // the cover shrinks, the chevron is dropped and the name may wrap to two lines - without this
-    // the name gets clipped to "Zu..." with no room to read it.
+    roundedCorners: Boolean = true,
+    containerColor: Color? = null,
     dense: Boolean = false,
-    // Single-column compact mode keeps the row readable while reducing vertical rhythm. Unlike
-    // dense two-column rows it keeps the trailing navigation affordance.
     compact: Boolean = false,
     badgeSubtitle: Boolean = false,
-    // Faint path line for folder rows (see folderPathHint). When present the name stays on one line
-    // so the extra line doesn't stack with a two-line name; null on containers (Collections/Tags).
     pathHint: String? = null,
     imageCount: Int = 0,
     videoCount: Int = 0,
 ) {
     val s = LocalSpacing.current
     val compactLayout = dense || compact
-    val container = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
-    val spokenCount = when {
-        imageCount > 0 && videoCount > 0 -> "${pluralStringResource(R.plurals.image_count_short_plural, imageCount, imageCount)}, ${pluralStringResource(R.plurals.video_count_short_plural, videoCount, videoCount)}"
-        imageCount > 0 -> pluralStringResource(R.plurals.image_count_short_plural, imageCount, imageCount)
-        videoCount > 0 -> pluralStringResource(R.plurals.video_count_short_plural, videoCount, videoCount)
-        else -> subtitle
+    val container = if (selected) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        containerColor ?: MaterialTheme.colorScheme.surfaceContainer
     }
+    val cardShape = if (roundedCorners) MaterialTheme.shapes.medium else RoundedCornerShape(0.dp)
+    val spokenDescription = albumSpokenDescription(name, subtitle, pathHint, imageCount, videoCount)
     val isItemSelected = selected
     AppCard(
         modifier = modifier.fillMaxWidth().semantics(mergeDescendants = true) {
-            contentDescription = "$name, $spokenCount"
+            contentDescription = spokenDescription
             role = Role.Button
             this.selected = isItemSelected
         },
         color = container,
+        shape = cardShape,
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = if (compactLayout) s.sm else s.md, vertical = if (compactLayout) s.xs else s.sm),
+            Modifier
+                .fillMaxWidth()
+                .clearAndSetSemantics {}
+                .padding(
+                    horizontal = if (compactLayout) s.sm else s.md,
+                    vertical = if (compactLayout) s.xs else s.sm,
+                ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Preview off also removes the list's leading slot; titles stay aligned with compact
-            // grid cards instead of following a blank placeholder.
             if (showThumbnail) {
-                AlbumCover(coverPath = coverPath, showThumbnail = true, size = if (compactLayout) 44.dp else 56.dp)
+                AlbumCover(
+                    coverPath = coverPath,
+                    showThumbnail = true,
+                    roundedCorners = roundedCorners,
+                    size = if (compactLayout) 44.dp else 56.dp,
+                )
                 Spacer(Modifier.width(if (compactLayout) s.sm else s.md))
             }
             Column(Modifier.weight(1f)) {
                 Text(
                     name,
-                    style = if (compactLayout) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
+                    style = if (compactLayout) {
+                        MaterialTheme.typography.bodyMedium
+                    } else {
+                        MaterialTheme.typography.bodyLarge
+                    },
                     fontWeight = FontWeight.Medium,
-                    // Give regular rows room for long folder/collection names. Folder rows that
-                    // also show a path keep one line so the count and path remain visually aligned.
                     maxLines = if (!compact && pathHint == null) 2 else 1,
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                if (imageCount > 0 || videoCount > 0) {
-                    val containerWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
-                    val useCompactSummary = compactLayout || containerWidthDp < 420.dp
-                    MediaTypeCountSummary(imageCount, videoCount, compact = useCompactSummary)
-                } else if (subtitle.isNotEmpty()) {
-                    if (badgeSubtitle) {
-                        ItemCountBadge(subtitle, selected = selected)
-                    } else {
-                        Text(
-                            subtitle,
-                            style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+                AlbumListRowSubtitle(
+                    subtitle = subtitle,
+                    imageCount = imageCount,
+                    videoCount = videoCount,
+                    compactLayout = compactLayout,
+                    badgeSubtitle = badgeSubtitle,
+                    selected = selected,
+                )
                 if (!pathHint.isNullOrEmpty()) {
                     Text(
                         pathHint,
@@ -171,38 +166,137 @@ fun AlbumListRow(
                     )
                 }
             }
-            when {
-                selected -> {
-                    Spacer(Modifier.width(s.sm))
-                    Icon(Icons.Default.Check, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(if (compactLayout) 20.dp else 24.dp))
-                }
-                showChevron && !dense -> {
-                    Spacer(Modifier.width(s.xs))
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f), modifier = Modifier.size(24.dp))
-                }
-            }
+            AlbumListRowTrailing(
+                selected = selected,
+                showChevron = showChevron,
+                dense = dense,
+                compactLayout = compactLayout,
+            )
+        }
+    }
+}
+
+@Composable
+private fun albumSpokenDescription(
+    name: String,
+    subtitle: String,
+    pathHint: String?,
+    imageCount: Int,
+    videoCount: Int,
+): String {
+    val spokenCount = when {
+        imageCount > 0 && videoCount > 0 -> {
+            val imgs = pluralStringResource(R.plurals.image_count_short_plural, imageCount, imageCount)
+            val vids = pluralStringResource(R.plurals.video_count_short_plural, videoCount, videoCount)
+            "$imgs, $vids"
+        }
+        imageCount > 0 -> pluralStringResource(R.plurals.image_count_short_plural, imageCount, imageCount)
+        videoCount > 0 -> pluralStringResource(R.plurals.video_count_short_plural, videoCount, videoCount)
+        else -> subtitle
+    }
+    return buildString {
+        append(name)
+        if (spokenCount.isNotEmpty()) append(", ").append(spokenCount)
+        if (!pathHint.isNullOrEmpty()) append(", ").append(pathHint)
+    }
+}
+
+@Composable
+private fun AlbumListRowSubtitle(
+    subtitle: String,
+    imageCount: Int,
+    videoCount: Int,
+    compactLayout: Boolean,
+    badgeSubtitle: Boolean,
+    selected: Boolean,
+) {
+    when {
+        imageCount > 0 || videoCount > 0 -> {
+            val containerWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
+            MediaTypeCountSummary(imageCount, videoCount, compact = compactLayout || containerWidthDp < 420.dp)
+        }
+        subtitle.isNotEmpty() && badgeSubtitle -> ItemCountBadge(subtitle, selected = selected)
+        subtitle.isNotEmpty() -> Text(
+            subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun AlbumListRowTrailing(
+    selected: Boolean,
+    showChevron: Boolean,
+    dense: Boolean,
+    compactLayout: Boolean,
+) {
+    val s = LocalSpacing.current
+    when {
+        selected -> Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.width(s.sm))
+            Icon(
+                Icons.Default.Check,
+                stringResource(R.string.cd_selected),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(if (compactLayout) 20.dp else 24.dp),
+            )
+        }
+        showChevron && !dense -> Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.width(s.xs))
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
+                modifier = Modifier.size(24.dp),
+            )
         }
     }
 }
 
 /** Leading cover: image, video frame, or a folder-icon placeholder when no cover is available. */
 @Composable
-private fun AlbumCover(coverPath: String, showThumbnail: Boolean, size: androidx.compose.ui.unit.Dp = 56.dp) {
-    val shape = RoundedCornerShape(Radius.sm)
-    // Avoid a synchronous disk stat for every row while an Explorer/Albums list is composing.
-    // GalleryImage and VideoThumbnail both expose their own placeholder/error state.
+private fun AlbumCover(
+    coverPath: String,
+    showThumbnail: Boolean,
+    roundedCorners: Boolean = true,
+    size: Dp = 56.dp,
+) {
+    val shape = if (roundedCorners) RoundedCornerShape(Radius.sm) else RoundedCornerShape(0.dp)
     val hasThumb = showThumbnail && coverPath.isNotEmpty()
     Box(Modifier.size(size).clip(shape), contentAlignment = Alignment.Center) {
         if (hasThumb) {
             val isVideo = coverPath.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
             if (isVideo) {
-                VideoThumbnail(videoPath = coverPath, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, thumbnailSize = 160)
+                VideoThumbnail(
+                    videoPath = coverPath,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    thumbnailSize = 160,
+                )
             } else {
-                GalleryImage(path = coverPath, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholderIconSize = 16.dp, thumbnailSize = 160)
+                GalleryImage(
+                    path = coverPath,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    placeholderIconSize = 16.dp,
+                    thumbnailSize = 160,
+                )
             }
         } else {
-            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.68f), modifier = Modifier.size(24.dp))
+            Box(
+                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.68f),
+                    modifier = Modifier.size(24.dp),
+                )
             }
         }
     }

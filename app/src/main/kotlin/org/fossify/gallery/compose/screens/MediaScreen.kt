@@ -107,6 +107,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -1055,14 +1056,24 @@ fun MediaScreen(
                     }
                 }
                 ScrollToTopEffect(tabIndex) { listState.animateScrollToItem(0) }
+                val listGap = ((viewSettings.spacing - 2) / 2).coerceAtLeast(0).dp
                 Column(Modifier.padding(top = contentTopInset)) {
-                Box(Modifier.dragSelectionGesture(
-                    dragSelection,
-                    enabled = false,
-                    onSelectPath = { path -> selectedPaths = selectedPaths + path },
-                    onLongPressSelectPath = null,
-                )) {
-                LazyColumn(state = listState, reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(4.dp)) {
+                Box(
+                    Modifier
+                        .clipToBounds()
+                        .dragSelectionGesture(
+                            dragSelection,
+                            enabled = false,
+                            onSelectPath = { path -> selectedPaths = selectedPaths + path },
+                            onLongPressSelectPath = null,
+                        ),
+                ) {
+                LazyColumn(
+                    state = listState,
+                    reverseLayout = viewSettings.anchorBottom,
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(listGap),
+                ) {
                     groupRows.forEach { row ->
                         when (row) {
                             is GroupRow.SectionHeader -> stickyHeader(key = "hdr_${row.key}", contentType = "header") {
@@ -1094,6 +1105,7 @@ fun MediaScreen(
                                 showRating = org.fossify.gallery.compose.util.ThumbnailOverlayState.showRating,
                                 showVideoDuration = org.fossify.gallery.compose.util.ThumbnailOverlayState.showVideoDuration,
                                 compact = viewSettings.listDensity == ListDensity.COMPACT,
+                                roundedCorners = viewSettings.roundedCorners,
                                 hasTag = m.path in taggedPaths,
                                 tags = state.tagsByPath[m.path].orEmpty(),
                                 onTagClick = if (!hasSelection && !pickMultiple) onTagClick else null,
