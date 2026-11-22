@@ -1,6 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.jetbrains.kotlin.konan.properties.Properties
+import org.gradle.jvm.tasks.Jar
 import java.io.FileInputStream
 
 plugins {
@@ -50,6 +51,7 @@ android {
         targetSdk = project.libs.versions.app.build.targetSDK.get().toInt()
         versionName = project.property("VERSION_NAME").toString()
         versionCode = project.property("VERSION_CODE").toString().toInt()
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -109,6 +111,17 @@ android {
 
     sourceSets {
         getByName("main").java.directories.add("src/main/kotlin")
+        getByName("androidTest").java.directories.add("src/androidTest/kotlin")
+        getByName("androidTest").assets.directories.add("$projectDir/schemas")
+    }
+
+    // The upstream photo-filter artifact bundles a 4 KB native processor. Build
+    // its unchanged JNI implementation locally with the installed NDK so edits
+    // stay available on 16 KB-page devices as well.
+    externalNativeBuild {
+        ndkBuild {
+            path = file("src/main/jni/Android.mk")
+        }
     }
 
     compileOptions {
@@ -144,6 +157,13 @@ android {
     }
 
     packaging {
+        // A few of the third-party image decoders still ship 4 KB ELF segments. Keeping their
+        // native libraries compressed makes Android extract them before loading instead of trying
+        // to mmap an incompatible APK entry on 16 KB-page devices. This is the documented
+        // compatibility bridge while those upstream artifacts are replaced with 16 KB builds.
+        jniLibs {
+            useLegacyPackaging = true
+        }
         resources {
             excludes += "META-INF/library_release.kotlin_module"
         }
@@ -155,6 +175,27 @@ android {
         }
     }
 }
+
+// Keep the Java/Kotlin filter API from the upstream AAR, but strip its legacy
+// native processor. The processor is rebuilt below with the current NDK, so
+// there is exactly one implementation in every variant (including release).
+val legacyPhotoFilters = configurations.create("legacyPhotoFilters") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+
+val sanitizedPhotoFiltersAar = tasks.register<Jar>("sanitizePhotoFiltersAar") {
+    from(legacyPhotoFilters.elements.map { files -> zipTree(files.single().asFile) })
+    exclude("jni/**")
+    archiveBaseName.set("androidphotofilters-no-native")
+    archiveExtension.set("aar")
+    destinationDirectory.set(layout.buildDirectory.dir("generated/photofilters"))
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+}
+
+val sanitizedPhotoFiltersDependency = files(sanitizedPhotoFiltersAar.flatMap { it.archiveFile })
+    .builtBy(sanitizedPhotoFiltersAar)
 
 // Room writes the exact expected schema per version to app/schemas. Every migration up to v24 was
 // written without this, i.e. against a hand-reconstructed CREATE TABLE - and a mismatch there only
@@ -180,33 +221,21 @@ dependencies {
     implementation(libs.androidx.media3.effect)
     implementation(libs.androidx.print)
     implementation(libs.android.image.cropper)
-    implementation(libs.exif)
-    implementation(libs.android.gif.drawable)
     implementation(libs.androidx.lifecycle.runtime)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.process)
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.4")
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation("com.drewnoakes:metadata-extractor:2.19.0")
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.documentfile)
-    implementation(libs.androidphotofilters)
-    implementation(libs.androidx.swiperefreshlayout)
-    implementation(libs.gestureviews)
-    implementation(libs.subsamplingscaleimageview)
-    implementation(libs.androidsvg.aar)
-    implementation(libs.sanselan)
-    implementation(libs.awebp)
-    implementation(libs.apng)
-    implementation(libs.avif)
-    implementation(libs.avif.integration)
-    implementation(libs.jxl.integration)
-    implementation(libs.okio)
-    implementation(libs.picasso) {
-        exclude(group = "com.squareup.okhttp3", module = "okhttp")
+    legacyPhotoFilters(libs.androidphotofilters) {
+        isTransitive = false
     }
+    implementation(sanitizedPhotoFiltersDependency)
+    implementation(libs.subsamplingscaleimageview)
+    implementation(libs.jxl.coder)
+    implementation(libs.okio)
     compileOnly(libs.okhttp)
-
-    ksp(libs.glide.compiler)
-    implementation(libs.zjupure.webpdecoder)
 
     implementation(libs.bundles.room)
     ksp(libs.androidx.room.compiler)
@@ -221,17 +250,22 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.activity:activity-compose:1.9.3")
-    implementation("androidx.navigation:navigation-compose:2.8.5")
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.navigation.compose)
     implementation(libs.kotlinx.serialization.json)
     implementation("androidx.compose.runtime:runtime-livedata")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-video:2.7.0")
     implementation("io.coil-kt:coil-svg:2.7.0")
     implementation("io.coil-kt:coil-gif:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.work.runtime.ktx)
+    // Both models are bundled and infer entirely on-device. Face detection catches portraits;
+    // selfie segmentation adds full-body/back-view coverage for the cautious person-review scan.
+    implementation("com.google.mlkit:face-detection:16.1.7")
+    implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     baselineProfile(project(":baselineprofile"))
@@ -239,4 +273,11 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)
+
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(platform("androidx.compose:compose-bom:2025.10.01"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }

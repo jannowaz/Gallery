@@ -26,14 +26,17 @@ class BaselineProfileGenerator {
         startActivityAndWait()
     }
 
-    // Cold start + open the Medien grid + scroll it - the actual hot path this session's profiling
-    // found spending real CPU/GC time (MediaFetcher directory scan, paged grid composition).
+    // Cold start + open the Media grid + scroll it - locale-independent via testTag resource-id
+    // with text fallbacks for older builds.
     @Test
     fun mediaGridScroll() = rule.collect(
         packageName = targetPackageName,
     ) {
         startActivityAndWait()
-        device.wait(Until.findObject(By.text("Medien")), 5_000)?.click()
+        val mediaTab = device.wait(Until.findObject(By.res("nav_tab_0")), 5_000)
+            ?: device.wait(Until.findObject(By.text("Media")), 2_000)
+            ?: device.wait(Until.findObject(By.text("Medien")), 2_000)
+        mediaTab?.click()
         device.wait(Until.hasObject(By.scrollable(true)), 5_000)
         repeat(3) {
             device.findObject(By.scrollable(true))?.fling(Direction.DOWN)
@@ -41,14 +44,23 @@ class BaselineProfileGenerator {
         }
     }
 
-    // This module is a standalone :baselineprofile com.android.test module (not an androidTest
-    // source set inside :app), so InstrumentationRegistry's targetContext is NOT wired to the app
-    // under test the way it would be for a self-instrumenting module - it resolves to this test
-    // module's own package. Confirmed on-device: using targetContext.packageName here made
-    // androidx.benchmark's pre-run "force-stop" call kill its own instrumentation process instead
-    // of the target app, crashing every run before startActivityAndWait() ever executed. The
-    // baseline profile Gradle plugin already injects the real target package as an instrumentation
-    // arg, which is what to read instead.
+    // Cold start + scroll Explorer & Albums tabs so folder-tree and album-cover composition paths
+    // are also AOT-compiled into the shipped baseline profile.
+    @Test
+    fun explorerAndAlbumsScroll() = rule.collect(
+        packageName = targetPackageName,
+    ) {
+        startActivityAndWait()
+        listOf("nav_tab_1", "nav_tab_2").forEach { tabResId ->
+            device.wait(Until.findObject(By.res(tabResId)), 5_000)?.click()
+            device.wait(Until.hasObject(By.scrollable(true)), 5_000)
+            repeat(2) {
+                device.findObject(By.scrollable(true))?.fling(Direction.DOWN)
+                device.waitForIdle()
+            }
+        }
+    }
+
     private val targetPackageName: String
         get() = InstrumentationRegistry.getArguments().getString("androidx.benchmark.targetPackageName")
             ?: error("androidx.benchmark.targetPackageName missing from instrumentation arguments")
