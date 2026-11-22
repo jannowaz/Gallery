@@ -2,6 +2,7 @@ package org.fossify.gallery.compose.screens
 
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.core.net.toUri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,7 +26,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import coil.compose.AsyncImagePainter
 import coil.request.ImageRequest
 import org.fossify.gallery.compose.util.BlurState
 import org.fossify.gallery.compose.util.privacyBlur
@@ -52,30 +52,33 @@ fun LoadingIndicator(modifier: Modifier = Modifier) {
 @Composable
 fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop, thumbnailSize: Int? = 384) {
     val ctx = LocalContext.current
-    var imageState by remember(videoPath) { mutableStateOf<AsyncImagePainter.State?>(null) }
-    Box(modifier) {
+    var isError by remember(videoPath) { mutableStateOf(false) }
+    val request = remember(ctx, videoPath, thumbnailSize) {
+        val uri = if (videoPath.startsWith("content://")) videoPath.toUri() else Uri.fromFile(File(videoPath))
+        ImageRequest.Builder(ctx)
+            .data(uri)
+            // Thumbnails are short-lived while scrolling; animate only an explicitly
+            // full-size request (thumbnailSize == null). Crossfading every video frame made
+            // video-heavy grids invalidate once more for each item entering the viewport.
+            .crossfade(thumbnailSize == null)
+            // See GalleryImage: RGB_565 halves per-thumbnail memory (video frames are opaque, so
+            // no alpha to lose) - less GC/paging while scrolling video-heavy folders.
+            .bitmapConfig(Bitmap.Config.RGB_565)
+            .apply { if (thumbnailSize != null) size(thumbnailSize, thumbnailSize) }
+            .build()
+    }
+    Box(modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
         AsyncImage(
-            model = ImageRequest.Builder(ctx)
-                .data(Uri.fromFile(File(videoPath)))
-                // Thumbnails are short-lived while scrolling; animate only an explicitly
-                // full-size request (thumbnailSize == null). Crossfading every video frame made
-                // video-heavy grids invalidate once more for each item entering the viewport.
-                .crossfade(thumbnailSize == null)
-                // See GalleryImage: RGB_565 halves per-thumbnail memory (video frames are opaque, so
-                // no alpha to lose) - less GC/paging while scrolling video-heavy folders.
-                .bitmapConfig(Bitmap.Config.RGB_565)
-                .apply { if (thumbnailSize != null) size(thumbnailSize, thumbnailSize) }
-                .build(),
-            contentDescription = "Video",
+            model = request,
+            contentDescription = null,
             modifier = Modifier.fillMaxSize().privacyBlur(BlurRadius.thumbnail, BlurState.enabled),
             contentScale = contentScale,
-            onSuccess = { imageState = it },
-            onError = { imageState = it },
-            onLoading = { imageState = it },
+            onSuccess = { if (isError) isError = false },
+            onError = { if (!isError) isError = true },
         )
-        if (imageState !is AsyncImagePainter.State.Success) {
+        if (isError) {
             Box(Modifier.fillMaxSize().background(Scrim.a30), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Videocam, "Video", tint = Color.White, modifier = Modifier.size(24.dp))
+                Icon(Icons.Default.Videocam, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
             }
         }
     }

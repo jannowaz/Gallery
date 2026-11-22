@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrokenImage
-import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -51,7 +50,6 @@ fun GalleryImage(
     backgroundColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
 ) {
     val ctx = LocalContext.current
-    var isLoaded by remember(path) { mutableStateOf(false) }
     var isError by remember(path) { mutableStateOf(false) }
     // Honor "Play animated GIFs" for grid thumbnails via Compose-observable state rather than
     // hitting SharedPreferences on every tile recomposition.
@@ -74,6 +72,9 @@ fun GalleryImage(
             .build()
     }
 
+    // Use the container's tonal surface as the loading placeholder instead of composing and then
+    // removing a placeholder Icon per tile. That avoids a second recomposition and ContentCapture
+    // semantics churn on every thumbnail entering the viewport during 120 Hz scrolling.
     Box(modifier.background(backgroundColor)) {
         AsyncImage(
             model = request,
@@ -82,12 +83,10 @@ fun GalleryImage(
             contentScale = contentScale,
             onSuccess = { result ->
                 GalleryThumbnailKeyRegistry.record(path, result.result.memoryCacheKey)
-                if (!isLoaded) isLoaded = true
                 if (isError) isError = false
             },
             onError = {
                 if (!isError) isError = true
-                if (isLoaded) isLoaded = false
             },
         )
 
@@ -109,15 +108,6 @@ fun GalleryImage(
                     color = MaterialTheme.colorScheme.onErrorContainer,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                )
-            }
-        } else if (!isLoaded) {
-            Box(Modifier.fillMaxSize().background(Color.Transparent), contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.Default.Image,
-                    contentDescription,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                    modifier = Modifier.size(placeholderIconSize),
                 )
             }
         }
