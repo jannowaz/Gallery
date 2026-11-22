@@ -77,11 +77,11 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.commons.dialogs.SecurityDialog
-import org.fossify.commons.dialogs.FolderLockingNoticeDialog
 import org.fossify.commons.helpers.SHOW_ALL_TABS
 import org.fossify.gallery.compose.components.ConfirmDestructive
+import org.fossify.gallery.compose.components.FolderInfoDialog
+import org.fossify.gallery.compose.components.FolderLockingNoticeDialog
 import org.fossify.gallery.compose.components.FolderRenameDialog
 import org.fossify.gallery.compose.components.FolderTile
 import org.fossify.gallery.compose.components.LibraryAlbumGrid
@@ -161,6 +161,8 @@ fun AlbumsScreen(
     // picker (search + Explorer browse, see FolderPathPickerSheet) then decides the pair(s)' shared
     // other half, and one FolderPair per source gets created against it.
     var pendingMoverSources by remember { mutableStateOf<List<String>?>(null) }
+    var infoFolder by remember { mutableStateOf<Directory?>(null) }
+    var pendingLockTargets by remember { mutableStateOf<List<String>?>(null) }
     var renameFolderPath by remember { mutableStateOf<String?>(null) }
     var showDeleteFoldersConfirm by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -335,7 +337,14 @@ fun AlbumsScreen(
                         selectedPaths = emptySet()
                     }) { Icon(if (allFav) Icons.Default.Star else Icons.Default.StarBorder, stringResource(if (allFav) R.string.action_unfavorite else R.string.action_favorite)) }
                     if (isSingle) {
-                        IconButton(onClick = { selectedPaths.firstOrNull()?.let { (ctx as? android.app.Activity)?.let { a -> PropertiesDialog(a, it, true) } } }) { Icon(Icons.Default.Info, stringResource(R.string.action_info)) }
+                        IconButton(
+                            onClick = {
+                                val path = selectedPaths.firstOrNull()
+                                infoFolder = visibleDirs.find { it.path == path }
+                            },
+                        ) {
+                            Icon(Icons.Default.Info, stringResource(R.string.action_info))
+                        }
                     }
                     val allAlreadyMoverSources = selectedPaths.isNotEmpty() && selectedPaths.all { it in moverSourcePaths }
                     IconButton(onClick = {
@@ -403,8 +412,11 @@ fun AlbumsScreen(
                                             }
                                         }
                                         // One-time notice that the lock only hides from THIS app.
-                                        if (ctx.config.wasFolderLockingNoticeShown) doLock()
-                                        else FolderLockingNoticeDialog(activity) { doLock() }
+                                        if (ctx.config.wasFolderLockingNoticeShown) {
+                                            doLock()
+                                        } else {
+                                            pendingLockTargets = targets
+                                        }
                                     },
                                 )
                             }
@@ -442,6 +454,34 @@ fun AlbumsScreen(
         // Folder deletion is recoverable, so keep the same visible undo affordance as the media
         // and Explorer surfaces instead of making the user open the recycle bin manually.
         org.fossify.gallery.compose.components.UndoBar(modifier = Modifier.align(Alignment.BottomCenter))
+    }
+
+    infoFolder?.let { dir ->
+        FolderInfoDialog(
+            path = dir.path,
+            mediaCountHint = dir.mediaCnt,
+            totalSizeHint = dir.size,
+            onDismiss = { infoFolder = null },
+        )
+    }
+
+    pendingLockTargets?.let { targets ->
+        val activity = ctx as? android.app.Activity
+        FolderLockingNoticeDialog(
+            onConfirm = {
+                ctx.config.wasFolderLockingNoticeShown = true
+                pendingLockTargets = null
+                if (activity != null) {
+                    SecurityDialog(activity, "", SHOW_ALL_TABS) { hash, type, success ->
+                        if (success) {
+                            targets.forEach { ctx.config.addFolderProtection(it, hash, type) }
+                            selectedPaths = emptySet()
+                        }
+                    }
+                }
+            },
+            onDismiss = { pendingLockTargets = null },
+        )
     }
 
     renameFolderPath?.let { path ->

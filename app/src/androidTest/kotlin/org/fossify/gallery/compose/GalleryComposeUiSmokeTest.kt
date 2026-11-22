@@ -19,6 +19,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.components.FilterSheetContent
+import org.fossify.gallery.compose.components.FolderLockingNoticeDialog
 import org.fossify.gallery.compose.components.UndoBar
 import org.fossify.gallery.compose.screens.SortField
 import org.fossify.gallery.compose.screens.ViewSettings
@@ -389,6 +390,32 @@ class GalleryComposeUiSmokeTest {
 
         composeRule.runOnIdle {
             assertEquals(WallpaperTarget.LOCK, confirmedTarget)
+        }
+    }
+
+    @Test
+    fun folderLockingNoticeDialog_displaysNoticeAndInvokesConfirm() {
+        val ctx = composeRule.activity
+        var confirmed = false
+
+        composeRule.setContent {
+            GalleryTheme(dynamicColor = false) {
+                FolderLockingNoticeDialog(
+                    onConfirm = { confirmed = true },
+                    onDismiss = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText(ctx.getString(org.fossify.commons.R.string.lock_folder))
+            .assertIsDisplayed()
+        composeRule.onNodeWithText(ctx.getString(org.fossify.commons.R.string.lock_folder_notice))
+            .assertIsDisplayed()
+        composeRule.onNodeWithText(ctx.getString(org.fossify.commons.R.string.ok))
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertTrue(confirmed)
         }
     }
 }
