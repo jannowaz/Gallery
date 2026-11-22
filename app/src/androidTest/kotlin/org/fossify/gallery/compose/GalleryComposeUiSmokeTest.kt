@@ -7,6 +7,8 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -18,7 +20,13 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.components.FilterSheetContent
 import org.fossify.gallery.compose.components.UndoBar
+import org.fossify.gallery.compose.screens.SortField
+import org.fossify.gallery.compose.screens.ViewSettings
+import org.fossify.gallery.compose.screens.ViewSettingsContent
+import org.fossify.gallery.compose.screens.ViewType
 import org.fossify.gallery.compose.screens.about.AboutScreen
+import org.fossify.gallery.compose.screens.analysis.CleanupHubScreen
+import org.fossify.gallery.compose.screens.collections.ManageCollectionsScreen
 import org.fossify.gallery.compose.screens.folderswipe.FolderSwipeScreen
 import org.fossify.gallery.compose.screens.settings.SettingsScreen
 import org.fossify.gallery.compose.theme.AppProviders
@@ -221,5 +229,109 @@ class GalleryComposeUiSmokeTest {
         composeRule.onNodeWithText(ctx.getString(R.string.faq_5_title))
             .performScrollTo()
             .assertIsDisplayed()
+    }
+
+    @Test
+    fun viewSettingsContent_switchesDisplayAndArrangePanels_andUpdatesSettings() {
+        val ctx = composeRule.activity
+        val latest = AtomicReference(ViewSettings())
+
+        composeRule.setContent {
+            GalleryTheme(dynamicColor = false) {
+                ViewSettingsContent(
+                    settings = ViewSettings(),
+                    onSettingsChange = { updated, _ -> latest.set(updated) },
+                    onDismiss = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText(ctx.getString(R.string.view_type_list))
+            .performScrollTo()
+            .performClick()
+        composeRule.runOnIdle {
+            assertEquals(ViewType.LIST, latest.get().viewType)
+        }
+
+        composeRule.onNodeWithText(ctx.getString(R.string.arrange))
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithText(ctx.getString(R.string.sort_name))
+            .performScrollTo()
+            .performClick()
+        composeRule.runOnIdle {
+            assertEquals(SortField.NAME, latest.get().sortBy)
+        }
+    }
+
+    @Test
+    fun cleanupHubScreen_displaysAllTools_andInvokesNavigationCallbacks() {
+        val ctx = composeRule.activity
+        val repo = MediaRepository(ctx.applicationContext)
+        var storageClicked = false
+        var duplicatesClicked = false
+
+        composeRule.setContent {
+            GalleryTheme(dynamicColor = false) {
+                AppProviders(repo) {
+                    CleanupHubScreen(
+                        onBack = {},
+                        onOpenStorageAnalysis = { storageClicked = true },
+                        onOpenDuplicates = { duplicatesClicked = true },
+                        onOpenRecycleBin = {},
+                        onOpenCompressionReview = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithText(ctx.getString(R.string.cleanup_title))
+            .assertIsDisplayed()
+        composeRule.onNodeWithText(ctx.getString(R.string.cleanup_storage))
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.onNodeWithText(ctx.getString(R.string.cleanup_duplicates))
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.onNodeWithText(ctx.getString(R.string.cleanup_compression))
+            .assertIsDisplayed()
+        composeRule.onNodeWithText(ctx.getString(R.string.cleanup_recycle_bin))
+            .assertIsDisplayed()
+
+        composeRule.runOnIdle {
+            assertTrue(storageClicked)
+            assertTrue(duplicatesClicked)
+        }
+    }
+
+    @Test
+    fun manageCollectionsScreen_createDialogDisablesSaveUntilNameEntered() {
+        val ctx = composeRule.activity
+        val repo = MediaRepository(ctx.applicationContext)
+
+        composeRule.setContent {
+            GalleryTheme(dynamicColor = false) {
+                AppProviders(repo) {
+                    ManageCollectionsScreen(
+                        onBack = {},
+                        onCollectionClick = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithContentDescription(ctx.getString(R.string.new_collection))
+            .performClick()
+
+        val saveLabel = ctx.getString(org.fossify.commons.R.string.save)
+        composeRule.onNodeWithText(saveLabel)
+            .assertIsDisplayed()
+            .assertIsNotEnabled()
+
+        composeRule.onNode(hasSetTextAction())
+            .performTextInput("Urlaub")
+
+        composeRule.onNodeWithText(saveLabel)
+            .assertIsEnabled()
     }
 }
