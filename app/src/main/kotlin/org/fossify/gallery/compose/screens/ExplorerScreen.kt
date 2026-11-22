@@ -754,7 +754,12 @@ fun ExplorerScreen(
                 initialPosition.offset,
             )
         }
-        Crossfade(targetState = explorerContentState, animationSpec = AppMotion.short, label = "explorerContent") { cs ->
+        Crossfade(
+            targetState = explorerContentState,
+            modifier = Modifier.weight(1f),
+            animationSpec = AppMotion.short,
+            label = "explorerContent",
+        ) { cs ->
         if (cs == "loading") {
             Box(Modifier.fillMaxSize()) {
                 MediaSkeleton(columns = 3)
@@ -1095,7 +1100,7 @@ fun ExplorerScreen(
                     onMediaColumnCountChange = onMediaColumnCountChange,
                     onFolderColumnCountChange = onFolderColumnCountChange,
                 ),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxSize(),
             )
         }
         }

@@ -98,66 +98,68 @@ fun MediaListRow(
         hasTag = hasTag,
         tags = tags,
     )
-    Surface(
-        modifier = modifier.fillMaxWidth()
-            .background(cardColor, rowShape)
-            .throttledBoundsReporting(enabled = hasSelection, onBoundsChanged = onBoundsChanged)
-            .selectableItem(
-                isSelectionMode = hasSelection,
-                onClick = onClick,
-                onLongClick = onLongClick,
-                onSwipeToSelect = onSwipeToSelect,
-            )
-            .semantics(mergeDescendants = true) {
-                contentDescription = "${medium.name}, $spokenMetadata"
-                role = Role.Button
-                if (hasSelection) selected = isSelected
-            },
-        color = Color.Transparent,
-    ) {
-        Row(
-            Modifier.padding(horizontal = 12.dp, vertical = if (compact) 5.dp else 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    Column(modifier = modifier.fillMaxWidth()) {
+        Surface(
+            modifier = Modifier.fillMaxWidth()
+                .background(cardColor, rowShape)
+                .throttledBoundsReporting(enabled = hasSelection, onBoundsChanged = onBoundsChanged)
+                .selectableItem(
+                    isSelectionMode = hasSelection,
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                    onSwipeToSelect = onSwipeToSelect,
+                )
+                .semantics(mergeDescendants = true) {
+                    contentDescription = "${medium.name}, $spokenMetadata"
+                    role = Role.Button
+                    if (hasSelection) selected = isSelected
+                },
+            color = Color.Transparent,
         ) {
-            MediaListRowThumbnail(path = medium.path, isVideo = isVideo, compact = compact, shape = rowShape)
-            Spacer(Modifier.width(if (compact) 10.dp else 12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    medium.name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled),
-                )
-                MediaListRowMetadata(
-                    fileSizeLabel = fileSizeLabel,
-                    durationText = durationText,
-                    rating = if (showRating) medium.rating else 0,
-                    isFavorite = markFavorite && medium.isFavorite,
-                    hasTag = hasTag,
-                )
-                if (tags.isNotEmpty()) {
-                    TagChipRow(
-                        tags = tags,
-                        maxVisible = 3,
-                        onTagClick = onTagClick,
-                        modifier = Modifier.padding(top = 2.dp),
+            Row(
+                Modifier.padding(horizontal = 12.dp, vertical = if (compact) 5.dp else 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                MediaListRowThumbnail(path = medium.path, isVideo = isVideo, compact = compact, shape = rowShape)
+                Spacer(Modifier.width(if (compact) 10.dp else 12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        medium.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.privacyBlur(BlurRadius.thumbnail, BlurState.enabled),
+                    )
+                    MediaListRowMetadata(
+                        fileSizeLabel = fileSizeLabel,
+                        durationText = durationText,
+                        rating = if (showRating) medium.rating else 0,
+                        isFavorite = markFavorite && medium.isFavorite,
+                        hasTag = hasTag,
+                    )
+                    if (tags.isNotEmpty()) {
+                        TagChipRow(
+                            tags = tags,
+                            maxVisible = 3,
+                            onTagClick = onTagClick,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                }
+                if (isSelected) {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        stringResource(R.string.cd_selected),
+                        tint = MaterialTheme.colorScheme.primary,
                     )
                 }
             }
-            if (isSelected) {
-                Icon(
-                    Icons.Default.CheckCircle,
-                    stringResource(R.string.cd_selected),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-            }
         }
+        HorizontalDivider(
+            Modifier.padding(start = if (compact) 70.dp else 76.dp),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+        )
     }
-    HorizontalDivider(
-        Modifier.padding(start = if (compact) 70.dp else 76.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-    )
 }
 
 @Composable

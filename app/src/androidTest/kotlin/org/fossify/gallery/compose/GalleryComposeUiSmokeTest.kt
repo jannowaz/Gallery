@@ -1,14 +1,19 @@
 package org.fossify.gallery.compose
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -16,10 +21,12 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.components.FilterSheetContent
 import org.fossify.gallery.compose.components.FolderLockingNoticeDialog
+import org.fossify.gallery.compose.components.MediaListRow
 import org.fossify.gallery.compose.components.UndoBar
 import org.fossify.gallery.compose.screens.SortField
 import org.fossify.gallery.compose.screens.ViewSettings
@@ -40,6 +47,7 @@ import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.helpers.UndoAction
 import org.fossify.gallery.helpers.UndoManager
 import org.fossify.gallery.helpers.UndoType
+import org.fossify.gallery.models.Medium
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -416,6 +424,57 @@ class GalleryComposeUiSmokeTest {
 
         composeRule.runOnIdle {
             assertTrue(confirmed)
+        }
+    }
+
+    @Test
+    fun mediaListRow_insideWeightedRow_rendersFullWidthAndContent() {
+        var clicked = false
+        val medium = Medium(
+            id = 1L,
+            name = "explorer_sample.jpg",
+            path = "/storage/emulated/0/DCIM/explorer_sample.jpg",
+            parentPath = "/storage/emulated/0/DCIM",
+            modified = 1_700_000_000_000L,
+            taken = 1_700_000_000_000L,
+            size = 42_000L,
+            type = 1,
+            videoDuration = 0,
+            isFavorite = false,
+            deletedTS = 0L,
+            mediaStoreId = 1L,
+        )
+
+        composeRule.setContent {
+            GalleryTheme(dynamicColor = false) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    MediaListRow(
+                        medium = medium,
+                        isVideo = false,
+                        isSelected = false,
+                        hasSelection = false,
+                        cardColor = Color.Transparent,
+                        fileSizeLabel = "42 KB",
+                        onClick = { clicked = true },
+                        onLongClick = {},
+                        onSwipeToSelect = {},
+                        onBoundsChanged = {},
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("explorer_sample.jpg", useUnmergedTree = true)
+            .assertIsDisplayed()
+            .assertWidthIsAtLeast(120.dp)
+        composeRule.onNodeWithText("42 KB", useUnmergedTree = true)
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("explorer_sample.jpg", useUnmergedTree = true)
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertTrue(clicked)
         }
     }
 }
