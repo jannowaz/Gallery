@@ -263,7 +263,6 @@ class ComposeExplorerActivity : FragmentActivity() {
 
     private var mediaPermissionState by mutableStateOf(MediaPermissionState.NONE)
     private var permissionRequestAttempted = false
-    private var fullyDrawnReported = false
 
     /** Pre-Android-12 fallback for auto-PiP: 12+ uses setAutoEnterEnabled (see VideoPage), older
      * versions only get this hint when the user leaves via Home while a viewer video plays. */
@@ -387,7 +386,7 @@ class ComposeExplorerActivity : FragmentActivity() {
             Box(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
                 if (!isLocked) {
                     when (mediaPermissionState) {
-                        MediaPermissionState.FULL, MediaPermissionState.SELECTED -> GalleryNavHost(onContentReady = ::reportContentReady)
+                        MediaPermissionState.FULL, MediaPermissionState.SELECTED -> GalleryNavHost()
                         MediaPermissionState.NONE, MediaPermissionState.SETTINGS -> GalleryTheme(
                             darkTheme = resolveDarkTheme(config.forceDarkMode, config.forceLightMode),
                             dynamicColor = config.useDynamicColors,
@@ -409,10 +408,7 @@ class ComposeExplorerActivity : FragmentActivity() {
                     }
                 }
                 if (isLocked || !mediaPermissionState.hasMediaAccess) {
-                    LaunchedEffect(isLocked, mediaPermissionState) {
-                        androidx.compose.runtime.withFrameNanos { }
-                        reportContentReady()
-                    }
+                    androidx.activity.compose.ReportDrawn()
                 }
                 LockCover()
             }
@@ -463,13 +459,6 @@ class ComposeExplorerActivity : FragmentActivity() {
 
         val shouldUseSettings = permissionRequestAttempted && !shouldShowMediaPermissionRationale()
         return if (shouldUseSettings) MediaPermissionState.SETTINGS else MediaPermissionState.NONE
-    }
-
-    private fun reportContentReady() {
-        if (!fullyDrawnReported) {
-            fullyDrawnReported = true
-            reportFullyDrawn()
-        }
     }
 
     private fun shouldShowMediaPermissionRationale(): Boolean {
@@ -675,13 +664,13 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit, onContent
     }
     val allFilesAccessGranted = hasAllFilesAccess(ctx)
     val isWideWindow = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
-    LaunchedEffect(uiState.dbInitialized, uiState.dbInitError, uiState.selectedTab, albumsState.isLoading) {
-        // reportFullyDrawn is intentionally tied to a usable start state: the database has either
-        // produced the initial content/empty state or exposed a concrete error, and the default
-        // Albums tab is no longer stuck behind its first-load skeleton.
-        if ((uiState.dbInitialized || uiState.dbInitError != null) &&
-            (uiState.selectedTab != 1 || !albumsState.isLoading)
-        ) onContentReady()
+    val isStartContentReady = (uiState.dbInitialized || uiState.dbInitError != null) &&
+        (uiState.selectedTab != 1 || !albumsState.isLoading)
+    // ReportDrawnWhen hooks into FullyDrawnReporter/OnPreDraw so Android's TTFD marker aligns with
+    // the exact RenderThread frame that draws the usable initial state (required by Macrobenchmark).
+    androidx.activity.compose.ReportDrawnWhen { isStartContentReady }
+    LaunchedEffect(isStartContentReady) {
+        if (isStartContentReady) onContentReady()
     }
 
     // Picker mode (GET_CONTENT/PICK): constrain the all-media tab to the kind the caller asked for,

@@ -2,11 +2,15 @@ package org.fossify.gallery.baselineprofile
 
 import androidx.benchmark.macro.BaselineProfileMode
 import androidx.benchmark.macro.CompilationMode
+import androidx.benchmark.macro.FrameTimingMetric
 import androidx.benchmark.macro.StartupMode
 import androidx.benchmark.macro.StartupTimingMetric
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.Direction
+import androidx.test.uiautomator.Until
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -26,6 +30,33 @@ class StartupBenchmarks {
 
     @Test
     fun startupWithBaselineProfile() = benchmark(CompilationMode.Partial(baselineProfileMode = BaselineProfileMode.Require))
+
+    @Test
+    fun mediaGridScrollWithBaselineProfile() {
+        benchmarkRule.measureRepeated(
+            packageName = targetPackageName,
+            metrics = listOf(FrameTimingMetric()),
+            iterations = 5,
+            startupMode = StartupMode.WARM,
+            compilationMode = CompilationMode.Partial(baselineProfileMode = BaselineProfileMode.Require),
+            setupBlock = {
+                pressHome()
+                startActivityAndWait()
+                val mediaTab = device.wait(Until.findObject(By.res("nav_tab_0")), 5_000)
+                mediaTab?.click()
+                device.wait(Until.hasObject(By.scrollable(true)), 5_000)
+            },
+        ) {
+            repeat(3) {
+                device.findObject(By.scrollable(true))?.fling(Direction.DOWN)
+                device.waitForIdle()
+            }
+            repeat(2) {
+                device.findObject(By.scrollable(true))?.fling(Direction.UP)
+                device.waitForIdle()
+            }
+        }
+    }
 
     private fun benchmark(compilationMode: CompilationMode) {
         benchmarkRule.measureRepeated(

@@ -23,9 +23,9 @@ paging = "3.3.6"
 commons = "6.1.6"
 #Gradle4
 gradlePlugins-agp = "9.2.0"
-gradlePlugins-baselineprofile = "1.5.0-alpha06"
+gradlePlugins-baselineprofile = "1.5.0"
 #Baseline Profile
-androidx-benchmark-macro = "1.4.1"
+androidx-benchmark-macro = "1.5.0"
 androidx-test-ext-junit = "1.3.0"
 androidx-test-runner = "1.7.0"
 androidx-test-uiautomator = "2.4.0"

@@ -22,6 +22,7 @@ class BaselineProfileGenerator {
     @Test
     fun startup() = rule.collect(
         packageName = targetPackageName,
+        includeInStartupProfile = true,
     ) {
         startActivityAndWait()
     }
