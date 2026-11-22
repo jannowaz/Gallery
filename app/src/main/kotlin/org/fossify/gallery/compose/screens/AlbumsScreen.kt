@@ -1,6 +1,8 @@
 package org.fossify.gallery.compose.screens
 
-import androidx.activity.compose.BackHandler
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.fadeIn
@@ -148,7 +150,12 @@ fun AlbumsScreen(
     var selectedPaths by rememberSaveable(stateSaver = albumSelectionSaver) { mutableStateOf<Set<String>>(emptySet()) }
     val hasSelection = selectedPaths.isNotEmpty()
     LaunchedEffect(hasSelection) { onSelectionActiveChanged(hasSelection) }
-    BackHandler(enabled = hasSelection) { selectedPaths = emptySet() }
+    val selectionBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = selectionBackState,
+        isBackEnabled = hasSelection,
+        onBackCompleted = { selectedPaths = emptySet() },
+    )
     // Set once "Use as mover source" is tapped (can be several folders at once) - the destination
     // picker (search + Explorer browse, see FolderPathPickerSheet) then decides the pair(s)' shared
     // other half, and one FolderPair per source gets created against it.

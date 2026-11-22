@@ -1,8 +1,10 @@
 package org.fossify.gallery.compose.screens
 import org.fossify.gallery.compose.theme.Radius
 
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.PredictiveBackHandler
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.NavigationEventTransitionState
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -395,22 +397,28 @@ fun ExplorerScreen(
     // folder sees stale (false) state and incorrectly falls through to the tab-switch behavior.
     SideEffect { onCanGoUpChanged(canGoUp) }
 
-    var backGestureProgress by remember { mutableFloatStateOf(0f) }
-    PredictiveBackHandler(enabled = canGoUp && !externalBackHandlerActive && !hasFolderSelection && !hasFileSelection) { progress ->
-        try {
-            progress.collect { backEvent -> backGestureProgress = backEvent.progress }
-            backGestureProgress = 0f
-            goUpOneLevel()
-        } catch (_: CancellationException) {
-            // A cancelled edge swipe must leave the current folder exactly where it was.
-            backGestureProgress = 0f
-        }
+    val explorerBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    val canPredictivelyGoUp = canGoUp && !externalBackHandlerActive && !hasFolderSelection && !hasFileSelection && !isNameFiltering
+    val backGestureProgress = if (canPredictivelyGoUp) {
+        (explorerBackState.transitionState as? NavigationEventTransitionState.InProgress)?.latestEvent?.progress ?: 0f
+    } else {
+        0f
     }
-    BackHandler(enabled = isNameFiltering && !hasFolderSelection && !hasFileSelection) {
-        onClearNameFilter()
-    }
-    BackHandler(enabled = hasFolderSelection) { selectedFolderPaths = emptySet() }
-    BackHandler(enabled = hasFileSelection) { selectedFilePaths = emptySet(); fileRangeAnchorPath = null }
+    NavigationBackHandler(
+        state = explorerBackState,
+        isBackEnabled = hasFileSelection || hasFolderSelection || isNameFiltering || (canGoUp && !externalBackHandlerActive),
+        onBackCompleted = {
+            when {
+                hasFileSelection -> {
+                    selectedFilePaths = emptySet()
+                    fileRangeAnchorPath = null
+                }
+                hasFolderSelection -> selectedFolderPaths = emptySet()
+                isNameFiltering -> onClearNameFilter()
+                canGoUp && !externalBackHandlerActive -> goUpOneLevel()
+            }
+        },
+    )
 
     // Re-tapping the already-selected Explorer bottom-nav tab jumps back to the Explorer's start
     // point (the bottom of the nav stack = the storage root, or the search-entry base) instead of
@@ -1541,7 +1549,8 @@ fun ExplorerScreen(
                 modifier = Modifier.align(Alignment.CenterEnd).padding(vertical = 10.dp),
             )
             peekState.path?.let { peekPath ->
-                BackHandler(enabled = true) { peekState.hide() }
+                val peekBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+                NavigationBackHandler(state = peekBackState, isBackEnabled = true, onBackCompleted = { peekState.hide() })
                 Box(
                     Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.86f)).clickable { peekState.hide() },
                     contentAlignment = Alignment.Center,

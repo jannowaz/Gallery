@@ -4,7 +4,9 @@ import org.fossify.gallery.compose.theme.Radius
 import java.text.DateFormat
 import java.util.Date
 import java.io.File
-import androidx.activity.compose.BackHandler
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,8 +16,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -67,6 +73,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -275,14 +282,19 @@ fun RecycleBinScreen(
         }
     }
 
-    BackHandler(enabled = showEmptyConfirm || pendingDelete != null || showDeleteSelectedConfirm || selectionMode) {
-        when {
-            showEmptyConfirm -> showEmptyConfirm = false
-            pendingDelete != null -> pendingDelete = null
-            showDeleteSelectedConfirm -> showDeleteSelectedConfirm = false
-            else -> exitSelection()
-        }
-    }
+    val recycleBinBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = recycleBinBackState,
+        isBackEnabled = showEmptyConfirm || pendingDelete != null || showDeleteSelectedConfirm || selectionMode,
+        onBackCompleted = {
+            when {
+                showEmptyConfirm -> showEmptyConfirm = false
+                pendingDelete != null -> pendingDelete = null
+                showDeleteSelectedConfirm -> showDeleteSelectedConfirm = false
+                else -> exitSelection()
+            }
+        },
+    )
 
     Scaffold(
         topBar = {
@@ -412,7 +424,18 @@ fun RecycleBinScreen(
         } else if (items.isEmpty()) {
             EmptyState(Icons.Default.DeleteForever, stringResource(R.string.recycle_bin_empty), modifier = Modifier.padding(padding))
         } else {
-            Column(Modifier.fillMaxSize().padding(padding)) {
+            val layoutDirection = LocalLayoutDirection.current
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(
+                        top = padding.calculateTopPadding(),
+                        start = padding.calculateStartPadding(layoutDirection),
+                        end = padding.calculateEndPadding(layoutDirection),
+                    )
+                    .consumeWindowInsets(padding)
+                    .imePadding(),
+            ) {
                 if (loadError != null) LoadErrorBanner(message = loadError, onRetry = { scope.launch { reloadItems() } })
                 LibrarySearchField(
                     value = query,
@@ -451,7 +474,12 @@ fun RecycleBinScreen(
                         LazyVerticalGrid(
                             columns = GridCells.Adaptive(minSize = 152.dp),
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(12.dp),
+                            contentPadding = PaddingValues(
+                                start = 12.dp,
+                                top = 12.dp,
+                                end = 12.dp,
+                                bottom = 12.dp + padding.calculateBottomPadding(),
+                            ),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
@@ -475,7 +503,15 @@ fun RecycleBinScreen(
                             }
                         }
                     } else {
-                        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(8.dp)) {
+                        LazyColumn(
+                            Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(
+                                start = 8.dp,
+                                top = 8.dp,
+                                end = 8.dp,
+                                bottom = 8.dp + padding.calculateBottomPadding(),
+                            ),
+                        ) {
                             items(filtered, key = { it.path }) { m ->
                                 val isChecked = m.path in selected
                                 Row(

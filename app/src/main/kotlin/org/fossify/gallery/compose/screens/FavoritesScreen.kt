@@ -1,6 +1,8 @@
 package org.fossify.gallery.compose.screens
 
-import androidx.activity.compose.BackHandler
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -118,7 +120,12 @@ fun FavoritesScreen(
     LaunchedEffect(hasFolderSelection, hasMediaSelection) {
         onSelectionActiveChanged(hasFolderSelection || hasMediaSelection)
     }
-    BackHandler(enabled = hasFolderSelection) { selectedFolderPaths = emptySet() }
+    val selectionBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = selectionBackState,
+        isBackEnabled = hasFolderSelection,
+        onBackCompleted = { selectedFolderPaths = emptySet() },
+    )
     // Seed from the repo-level cache instead of empty lists - the whole FavoritesScreen composable is
     // disposed and recreated whenever the user opens a photo (navigates to Viewer) and comes back, and
     // without this the favorites/dirs queries reran from scratch on every single round trip.

@@ -1,6 +1,8 @@
 package org.fossify.gallery.compose.screens.framegrabber
 
-import androidx.activity.compose.BackHandler
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -113,12 +115,17 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
     // Free the preview bitmaps when the screen leaves.
     DisposableEffect(videoPath) { onDispose { candidates.forEach { runCatching { it.preview.recycle() } } } }
 
-    BackHandler {
-        when {
-            peekFrame != null -> peekFrame = null
-            saveProgress == null -> onDismiss(false)
-        }
-    }
+    val grabberBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = grabberBackState,
+        isBackEnabled = true,
+        onBackCompleted = {
+            when {
+                peekFrame != null -> peekFrame = null
+                saveProgress == null -> onDismiss(false)
+            }
+        },
+    )
 
     val shown = remember(candidates, onlySharp, recommended, sortBySharp) {
         val filtered = if (onlySharp) candidates.filter { it.timeMs in recommended } else candidates

@@ -5,7 +5,9 @@ import org.fossify.gallery.compose.theme.Radius
 import org.fossify.gallery.compose.theme.Scrim
 
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.fadeIn
@@ -513,18 +515,23 @@ fun ViewerScreen(
         }
     }
 
-    BackHandler(enabled = slideshowActive || showSlideshowDialog || infoDialogPath != null || showActionSheet || showRateAndTagSheet || showVideoSettings || showFolderPicker || showRenameDialog) {
-        when {
-            slideshowActive -> { slideshowActive = false; showUI = true }
-            showSlideshowDialog -> showSlideshowDialog = false
-            infoDialogPath != null -> infoDialogPath = null
-            showRenameDialog -> showRenameDialog = false
-            showFolderPicker -> showFolderPicker = false
-            showRateAndTagSheet -> showRateAndTagSheet = false
-            showVideoSettings -> showVideoSettings = false
-            showActionSheet -> showActionSheet = false
-        }
-    }
+    val viewerBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = viewerBackState,
+        isBackEnabled = slideshowActive || showSlideshowDialog || infoDialogPath != null || showActionSheet || showRateAndTagSheet || showVideoSettings || showFolderPicker || showRenameDialog,
+        onBackCompleted = {
+            when {
+                slideshowActive -> { slideshowActive = false; showUI = true }
+                showSlideshowDialog -> showSlideshowDialog = false
+                infoDialogPath != null -> infoDialogPath = null
+                showRenameDialog -> showRenameDialog = false
+                showFolderPicker -> showFolderPicker = false
+                showRateAndTagSheet -> showRateAndTagSheet = false
+                showVideoSettings -> showVideoSettings = false
+                showActionSheet -> showActionSheet = false
+            }
+        },
+    )
 
     var dragOffset by remember { mutableFloatStateOf(0f) }
     // Tracks whether the drag is currently past either dismiss threshold, so the haptic tick fires

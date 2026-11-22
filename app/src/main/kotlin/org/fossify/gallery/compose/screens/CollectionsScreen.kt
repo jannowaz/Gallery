@@ -5,7 +5,9 @@ import org.fossify.gallery.compose.theme.Radius
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.BackHandler
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.clickable
@@ -155,9 +157,12 @@ fun CollectionsScreen(
     var selectedCollectionIds by rememberSaveable(stateSaver = collectionSelectionSaver) { mutableStateOf<Set<String>>(emptySet()) }
     var deleteConfirmCollections by remember { mutableStateOf<Set<MediaCollection>>(emptySet()) }
 
-    BackHandler(enabled = selectedCollectionIds.isNotEmpty()) {
-        selectedCollectionIds = emptySet()
-    }
+    val selectionBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = selectionBackState,
+        isBackEnabled = selectedCollectionIds.isNotEmpty(),
+        onBackCompleted = { selectedCollectionIds = emptySet() },
+    )
 
     val visibleCollections = remember(collections, externalSearchQuery) {
         val query = externalSearchQuery.trim()

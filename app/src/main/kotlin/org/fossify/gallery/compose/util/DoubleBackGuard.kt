@@ -1,6 +1,8 @@
 package org.fossify.gallery.compose.util
 
-import androidx.activity.compose.BackHandler
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,7 +37,12 @@ fun rememberDoubleBackGuard(
             if (!currentEnabled) currentOnExit() else showExitDialog = true
         }
     }
-    BackHandler(enabled = enabled) { guarded() }
+    val guardBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = guardBackState,
+        isBackEnabled = enabled,
+        onBackCompleted = { guarded() },
+    )
 
     if (showExitDialog) {
         AlertDialog(

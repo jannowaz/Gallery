@@ -11,9 +11,14 @@ import android.os.Environment
 import android.os.Bundle
 import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
+import androidx.navigationevent.compose.rememberNavigationEventState
 import org.fossify.commons.extensions.handleAppPasswordProtection
 import org.fossify.commons.extensions.handleLockedFolderOpening
 import androidx.activity.enableEdgeToEdge
@@ -356,6 +361,9 @@ class ComposeExplorerActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
         updateSecureWindowFlag()
         mediaPermissionState = readMediaPermissionState()
         // Cover the very first frame when a launch lock is armed, so the gallery never flashes before
@@ -715,23 +723,28 @@ fun MainScreen(navController: NavHostController, onFinish: () -> Unit, onContent
         }
     }
 
-    BackHandler(enabled = uiState.hasActiveFilter || searchActive || suspendedSearchOriginTab >= 0 || uiState.tabHistory.isNotEmpty() || (uiState.selectedTab != 1 && !isMediaSelectionActive && !(uiState.selectedTab == 2 && explorerCanGoUp))) {
-        when {
-            searchActive -> closeSearch()
-            suspendedSearchOriginTab >= 0 -> {
-                val originTab = suspendedSearchOriginTab
-                suspendedSearchOriginTab = -1
-                if (!mainVM.navigateBackToPreviousTab()) mainVM.setSelectedTab(originTab, addToHistory = false)
+    val mainBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = mainBackState,
+        isBackEnabled = uiState.hasActiveFilter || searchActive || suspendedSearchOriginTab >= 0 || uiState.tabHistory.isNotEmpty() || (uiState.selectedTab != 1 && !isMediaSelectionActive && !(uiState.selectedTab == 2 && explorerCanGoUp)),
+        onBackCompleted = {
+            when {
+                searchActive -> closeSearch()
+                suspendedSearchOriginTab >= 0 -> {
+                    val originTab = suspendedSearchOriginTab
+                    suspendedSearchOriginTab = -1
+                    if (!mainVM.navigateBackToPreviousTab()) mainVM.setSelectedTab(originTab, addToHistory = false)
+                }
+                uiState.hasActiveFilter -> {
+                    val backTab = uiState.filterReturnTab()
+                    mainVM.clearFilters()
+                    mainVM.setSelectedTab(backTab, addToHistory = false)
+                }
+                uiState.tabHistory.isNotEmpty() -> mainVM.navigateBackToPreviousTab()
+                else -> onFinish()
             }
-            uiState.hasActiveFilter -> {
-                val backTab = uiState.filterReturnTab()
-                mainVM.clearFilters()
-                mainVM.setSelectedTab(backTab, addToHistory = false)
-            }
-            uiState.tabHistory.isNotEmpty() -> mainVM.navigateBackToPreviousTab()
-            else -> onFinish()
-        }
-    }
+        },
+    )
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -1151,6 +1164,8 @@ private fun MainTabContent(
             }
         }
         HorizontalPager(state = pagerState, beyondViewportPageCount = adjacentPageCount, modifier = Modifier.fillMaxSize().nestedScroll(edgeToDrawer)) { tab ->
+            val tabDispatcherOwner = rememberNavigationEventDispatcherOwner(enabled = pagerState.currentPage == tab)
+            CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides tabDispatcherOwner) {
             tabStateHolder.SaveableStateProvider("main-tab-$tab") {
             when (tab) {
         0 -> MediaScreen(
@@ -1260,6 +1275,7 @@ private fun MainTabContent(
             onTagClick = { tag -> applyTagFilter(tag, mainVM, ctx, 2) },
             tabIndex = 2,
         )
+            }
             }
             }
         }

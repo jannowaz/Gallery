@@ -6,6 +6,9 @@ import org.fossify.gallery.compose.theme.Radius
 
 import android.net.Uri
 import android.view.LayoutInflater
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -268,7 +271,12 @@ private fun CompareViewerPager(
     }
     // System back closes only this compare overlay (back to the still-pending review list) instead of
     // propagating out of the whole review screen and stranding the results.
-    androidx.activity.compose.BackHandler(onBack = onDismiss)
+    val compareBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = compareBackState,
+        isBackEnabled = true,
+        onBackCompleted = onDismiss,
+    )
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(
         initialPage = initialIndex.coerceIn(0, doneItems.lastIndex),
     ) { doneItems.size }

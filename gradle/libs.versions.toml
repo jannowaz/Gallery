@@ -11,8 +11,9 @@ androidx-lifecycle = "2.10.0"
 androidx-print = "1.1.0"
 androidx-constraintlayout = "2.2.1"
 androidx-documentfile = "1.1.0"
-androidx-activity-compose = "1.10.1"
+androidx-activity-compose = "1.13.0"
 androidx-navigation-compose = "2.9.7"
+androidx-navigationevent = "1.2.0"
 androidx-work = "2.10.1"
 #Room
 room = "2.8.4"
@@ -65,6 +66,8 @@ androidx-print = { module = "androidx.print:print", version.ref = "androidx-prin
 androidx-documentfile = { module = "androidx.documentfile:documentfile", version.ref = "androidx-documentfile" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity-compose" }
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "androidx-navigation-compose" }
+androidx-navigationevent = { module = "androidx.navigationevent:navigationevent", version.ref = "androidx-navigationevent" }
+androidx-navigationevent-compose = { module = "androidx.navigationevent:navigationevent-compose", version.ref = "androidx-navigationevent" }
 #Room
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }

@@ -5,7 +5,9 @@ import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.Radius
 
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -178,14 +180,23 @@ fun TagBrowserScreen(
         if (selectedTags.size < 2 && tagMatchAll) tagMatchAll = false
     }
 
-    BackHandler(enabled = selectedTags.isNotEmpty()) {
-        selectedTags = emptySet()
-        tagMatchAll = false
-    }
-    BackHandler(enabled = !embeddedInMainTabs && searchOpen && selectedTags.isEmpty()) {
-        searchOpen = false
-        tagSearchQuery = ""
-    }
+    val tagBrowserBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = tagBrowserBackState,
+        isBackEnabled = selectedTags.isNotEmpty() || (!embeddedInMainTabs && searchOpen),
+        onBackCompleted = {
+            when {
+                selectedTags.isNotEmpty() -> {
+                    selectedTags = emptySet()
+                    tagMatchAll = false
+                }
+                !embeddedInMainTabs && searchOpen -> {
+                    searchOpen = false
+                    tagSearchQuery = ""
+                }
+            }
+        },
+    )
 
     suspend fun refreshTags(showLoading: Boolean) {
         if (showLoading && allTags.isEmpty()) scanning = true

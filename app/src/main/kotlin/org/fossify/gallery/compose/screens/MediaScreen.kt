@@ -5,7 +5,9 @@ import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.compose.theme.Radius
 
-import androidx.activity.compose.BackHandler
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.spring
@@ -633,7 +635,12 @@ fun MediaScreen(
     val canShowToolbar = showToolbar && !hasSelection && !pickMultiple
     val refreshIndicatorTopPadding = if (canShowToolbar) 64.dp else 0.dp
     val mediaContent: @Composable BoxScope.() -> Unit = {
-        BackHandler(enabled = hasSelection) { selectedPaths = emptySet() }
+        val selectionBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+        NavigationBackHandler(
+            state = selectionBackState,
+            isBackEnabled = hasSelection,
+            onBackCompleted = { selectedPaths = emptySet() },
+        )
         Box(modifier = modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             androidx.compose.animation.AnimatedVisibility(
@@ -1203,10 +1210,11 @@ fun MediaScreen(
         // composes and updates state fine but never becomes visible, since it isn't laid out as part
         // of this stack at all.
         peekState.path?.let { peekPath ->
-            // Registered after (so it takes priority over) the selection-clearing BackHandler above -
+            // Registered after (so it takes priority over) the selection-clearing handler above -
             // otherwise system back while peeking fell through to that one and wiped the selection
             // instead of just closing the preview.
-            BackHandler(enabled = true) { peekState.hide() }
+            val peekBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+            NavigationBackHandler(state = peekBackState, isBackEnabled = true, onBackCompleted = { peekState.hide() })
             Box(
                 Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.85f)).clickable(
                     interactionSource = remember { MutableInteractionSource() },
