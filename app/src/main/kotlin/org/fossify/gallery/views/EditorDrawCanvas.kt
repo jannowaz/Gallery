@@ -9,7 +9,10 @@ import org.fossify.commons.extensions.getProperPrimaryColor
 import org.fossify.gallery.R
 import org.fossify.gallery.models.PaintOptions
 
-class EditorDrawCanvas(context: Context, attrs: AttributeSet) : View(context, attrs) {
+class EditorDrawCanvas @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+) : View(context, attrs) {
     private var mCurX = 0f
     private var mCurY = 0f
     private var mStartX = 0f
@@ -23,6 +26,7 @@ class EditorDrawCanvas(context: Context, attrs: AttributeSet) : View(context, at
     private var mPaintOptions = PaintOptions()
 
     private var backgroundBitmap: Bitmap? = null
+    var onHistoryChange: ((canUndo: Boolean) -> Unit)? = null
 
     init {
         mColor = context.getProperPrimaryColor()
@@ -108,6 +112,7 @@ class EditorDrawCanvas(context: Context, attrs: AttributeSet) : View(context, at
         mPaths[mPath] = mPaintOptions
         mPath = Path()
         mPaintOptions = PaintOptions(mPaintOptions.color, mPaintOptions.strokeWidth)
+        onHistoryChange?.invoke(mPaths.isNotEmpty())
     }
 
     private fun changePaint(paintOptions: PaintOptions) {
@@ -143,6 +148,7 @@ class EditorDrawCanvas(context: Context, attrs: AttributeSet) : View(context, at
 
         val lastKey = mPaths.keys.lastOrNull()
         mPaths.remove(lastKey)
+        onHistoryChange?.invoke(mPaths.isNotEmpty())
         invalidate()
     }
 }
