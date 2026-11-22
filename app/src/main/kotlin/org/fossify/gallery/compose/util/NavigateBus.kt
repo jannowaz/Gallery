@@ -19,7 +19,14 @@ object NavigateBus {
     private val _events = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val events = _events.asSharedFlow()
 
+    private val _folderEvents = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val folderEvents = _folderEvents.asSharedFlow()
+
     fun trigger(target: String) {
         _events.tryEmit(target)
+    }
+
+    fun triggerFolder(folderPath: String) {
+        if (folderPath.isNotBlank()) _folderEvents.tryEmit(folderPath)
     }
 }

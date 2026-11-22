@@ -1,41 +1,61 @@
 package org.fossify.gallery.compose.util
 
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
 
 /**
  * Guards a screen whose state is expensive to rebuild (a long storage/duplicate scan, a running
- * swipe session) against accidental exits: while [enabled], the first back press only shows a
- * "press again" toast and the second within the grace window actually leaves. Returns the guarded
- * exit action - wire it to the top-bar back arrow too, so both exit paths behave identically.
+ * swipe session) against accidental exits. A real dialog makes the available choice explicit and
+ * avoids a timed toast that is especially easy to miss with TalkBack or large text.
  */
 @Composable
-fun rememberDoubleBackGuard(enabled: Boolean, onExit: () -> Unit): () -> Unit {
-    val ctx = LocalContext.current
-    var lastBackMs by remember { mutableLongStateOf(0L) }
+fun rememberDoubleBackGuard(
+    enabled: Boolean,
+    onExit: () -> Unit,
+    running: Boolean = enabled,
+    onCancel: (() -> Unit)? = null,
+): () -> Unit {
+    var showExitDialog by remember { mutableStateOf(false) }
     val currentEnabled by rememberUpdatedState(enabled)
     val currentOnExit by rememberUpdatedState(onExit)
+    val currentRunning by rememberUpdatedState(running)
+    val currentOnCancel by rememberUpdatedState(onCancel)
     val guarded = remember {
         {
-            val now = System.currentTimeMillis()
-            if (!currentEnabled || now - lastBackMs < GRACE_MS) {
-                currentOnExit()
-            } else {
-                lastBackMs = now
-                Toast.makeText(ctx, ctx.getString(R.string.back_again_to_exit), Toast.LENGTH_SHORT).show()
-            }
+            if (!currentEnabled) currentOnExit() else showExitDialog = true
         }
     }
     BackHandler(enabled = enabled) { guarded() }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            title = { Text(stringResource(if (currentRunning) R.string.analysis_exit_running_title else R.string.analysis_exit_title)) },
+            text = { Text(stringResource(if (currentRunning) R.string.analysis_exit_running_body else R.string.analysis_exit_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showExitDialog = false
+                    (if (currentRunning) currentOnCancel ?: currentOnExit else currentOnExit)()
+                }) {
+                    Text(stringResource(if (currentRunning && currentOnCancel != null) R.string.analysis_cancel_and_exit else R.string.leave))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) {
+                    Text(stringResource(R.string.stay_here))
+                }
+            },
+        )
+    }
     return guarded
 }
-
-private const val GRACE_MS = 2500L

@@ -2,6 +2,7 @@ package org.fossify.gallery.compose.screens
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.theme.Radius
+import org.fossify.gallery.extensions.defaultSharedPrefs
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Numbers
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -57,18 +59,25 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.compose.components.EmptyState
+import org.fossify.gallery.compose.components.LibrarySearchField
+import org.fossify.gallery.compose.components.LibrarySheetHeader
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.helpers.loadMoverPairs
 import java.io.File
@@ -114,7 +123,7 @@ fun FolderPathPickerSheet(
     val ctx = LocalContext.current
     val repo = LocalMediaRepository.current
     val conf = ctx.config
-    val defPrefs = remember { android.preference.PreferenceManager.getDefaultSharedPreferences(ctx) }
+    val defPrefs = remember { ctx.defaultSharedPrefs() }
     val rootPath = conf.internalStoragePath.ifBlank { android.os.Environment.getExternalStorageDirectory().absolutePath }
     val startPath = initialPath.takeIf { it.isNotBlank() && runCatching { Files.isDirectory(Paths.get(it)) }.getOrDefault(false) } ?: rootPath
     var currentPath by remember { mutableStateOf(startPath) }
@@ -124,6 +133,7 @@ fun FolderPathPickerSheet(
     var isSearching by remember { mutableStateOf(false) }
     var pendingCreateFolder by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
+    var creatingFolder by remember { mutableStateOf(false) }
     var sortMode by remember {
         mutableStateOf(runCatching { BrowseSortMode.valueOf(defPrefs.getString(BROWSE_SORT_PREF_KEY, BrowseSortMode.DATE.name)!!) }.getOrDefault(BrowseSortMode.DATE))
     }
@@ -133,6 +143,7 @@ fun FolderPathPickerSheet(
     // choice rather than an accident while browsing.
     val moverSourcePaths = remember { loadMoverPairs(ctx).map { it.source }.toSet() }
     val selectedPaths = remember { mutableStateListOf<String>().apply { addAll(initialSelectedPaths) } }
+    val scope = rememberCoroutineScope()
 
     fun toggleSelected(path: String) {
         if (path in selectedPaths) selectedPaths.remove(path) else selectedPaths.add(path)
@@ -219,14 +230,10 @@ fun FolderPathPickerSheet(
     ) {
         // Capped to a fraction of screen height instead of a flat 480dp - on short/landscape
         // screens a fixed 480dp could push the confirm button below the visible area.
-        val screenHeightDp = LocalConfiguration.current.screenHeightDp
+        val screenHeightDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp().value }
         val sheetHeight = minOf(480, (screenHeightDp * 0.85f).toInt()).dp
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(sheetHeight)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            }
+            LibrarySheetHeader(title = title, onDismiss = onDismiss)
             if (multiSelect) {
                 Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -242,26 +249,10 @@ fun FolderPathPickerSheet(
             }
             Spacer(Modifier.height(8.dp))
 
-            OutlinedTextField(
+            LibrarySearchField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text(stringResource(R.string.search_folders_hint)) },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Search, stringResource(R.string.cd_search), modifier = Modifier.size(20.dp)) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(40.dp)) {
-                            Icon(Icons.Default.Close, stringResource(R.string.action_empty), modifier = Modifier.size(16.dp))
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = MaterialTheme.typography.bodyMedium,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
-                ),
-                shape = RoundedCornerShape(Radius.md),
+                placeholderRes = R.string.search_folders_hint,
             )
             Spacer(Modifier.height(4.dp))
 
@@ -271,13 +262,18 @@ fun FolderPathPickerSheet(
                         Text(stringResource(R.string.searching), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else if (searchResults.isEmpty()) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(stringResource(R.string.no_folders_found), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    EmptyState(
+                        Icons.Default.SearchOff,
+                        stringResource(R.string.no_folders_found),
+                        subtitle = stringResource(R.string.no_results_hint),
+                        actionLabel = stringResource(R.string.clear_filter),
+                        onAction = { searchQuery = "" },
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 } else {
                     Text(stringResource(R.string.folders_found, searchResults.size), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 4.dp))
                     LazyColumn(modifier = Modifier.weight(1f)) {
-                        items(searchResults, key = { it.path }) { item ->
+                        items(searchResults, key = { it.path }, contentType = { "folder_search_row" }) { item ->
                             Surface(
                                 modifier = Modifier.fillMaxWidth().clickable { if (multiSelect) toggleSelected(item.path) else choose(item.path) },
                                 color = Color.Transparent,
@@ -310,7 +306,7 @@ fun FolderPathPickerSheet(
                 }
             } else {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { currentPath = rootPath }, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = { currentPath = rootPath }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.Home, null, tint = if (currentPath == rootPath) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     }
                     // Always offered (not just after drilling in from here) as a plain "go to parent
@@ -321,7 +317,7 @@ fun FolderPathPickerSheet(
                         IconButton(onClick = {
                             val parent = File(currentPath).parent
                             currentPath = if (parent != null && parent.length >= rootPath.length && parent.startsWith(rootPath)) parent else rootPath
-                        }, modifier = Modifier.size(40.dp)) {
+                        }, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                         }
                     }
@@ -331,7 +327,7 @@ fun FolderPathPickerSheet(
                         Text(if (parts.isEmpty()) stringResource(R.string.internal_storage) else parts.joinToString(" › "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     }
                     Box {
-                        IconButton(onClick = { showSortMenu = true }, modifier = Modifier.size(40.dp)) {
+                        IconButton(onClick = { showSortMenu = true }, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.AutoMirrored.Filled.Sort, stringResource(R.string.sort_folders_by), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                         }
                         DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
@@ -349,21 +345,23 @@ fun FolderPathPickerSheet(
                             )
                         }
                     }
-                    IconButton(onClick = { pendingCreateFolder = true }, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = { pendingCreateFolder = true }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.CreateNewFolder, stringResource(R.string.new_folder), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     }
                 }
                 Spacer(Modifier.height(4.dp))
                 LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(folders, key = { it.path }) { folder ->
+                        items(folders, key = { it.path }, contentType = { "folder_browse_row" }) { folder ->
                         Surface(
-                            modifier = Modifier.fillMaxWidth().clickable { currentPath = folder.path },
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                if (multiSelect) toggleSelected(folder.path) else currentPath = folder.path
+                            },
                             color = Color.Transparent,
                             shape = RoundedCornerShape(Radius.sm),
                         ) {
                             Row(Modifier.padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (multiSelect) {
-                                    IconButton(onClick = { toggleSelected(folder.path) }, modifier = Modifier.size(40.dp)) {
+                                    Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                                         Icon(
                                             if (folder.path in selectedPaths) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
                                             stringResource(if (folder.path in selectedPaths) R.string.cd_selected else R.string.cd_not_selected),
@@ -454,21 +452,30 @@ fun FolderPathPickerSheet(
 
     if (pendingCreateFolder) {
         AlertDialog(
-            onDismissRequest = { pendingCreateFolder = false; newFolderName = "" },
+            onDismissRequest = { if (!creatingFolder) { pendingCreateFolder = false; newFolderName = "" } },
             title = { Text(stringResource(R.string.create_folder_title)) },
             text = {
                 OutlinedTextField(value = newFolderName, onValueChange = { newFolderName = it }, label = { Text(stringResource(R.string.folder_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             },
             confirmButton = {
-                TextButton(onClick = {
-                    if (newFolderName.isNotBlank()) {
-                        val newDir = File(currentPath, newFolderName)
-                        try { newDir.mkdirs(); currentPath = newDir.path } catch (e: Exception) { android.util.Log.e("FolderPicker", "Create folder failed: ${newDir.path}", e) }
-                        pendingCreateFolder = false; newFolderName = ""
+                TextButton(enabled = !creatingFolder, onClick = {
+                    val folderName = newFolderName.trim()
+                    if (folderName.isNotBlank() && folderName != "." && folderName != ".." && !folderName.contains('/') && !folderName.contains('\\')) {
+                        creatingFolder = true
+                        scope.launch {
+                            val newDir = File(currentPath, folderName)
+                            val ok = withContext(Dispatchers.IO) {
+                                runCatching { newDir.mkdirs() || newDir.isDirectory }.getOrDefault(false)
+                            }
+                            if (ok) currentPath = newDir.path else ctx.toast(ctx.getString(R.string.create_folder_error))
+                            creatingFolder = false
+                            pendingCreateFolder = false
+                            newFolderName = ""
+                        }
                     }
                 }) { Text(stringResource(R.string.action_create)) }
             },
-            dismissButton = { TextButton(onClick = { pendingCreateFolder = false; newFolderName = "" }) { Text(stringResource(R.string.cancel)) } }
+            dismissButton = { TextButton(enabled = !creatingFolder, onClick = { pendingCreateFolder = false; newFolderName = "" }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 }

@@ -9,6 +9,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -61,19 +64,24 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.R
+import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.compose.theme.RatingStarColor
+import org.fossify.gallery.compose.util.BlurState
+import org.fossify.gallery.compose.util.privacyBlur
 import org.fossify.gallery.helpers.RefreshBus
 import org.fossify.gallery.helpers.UndoAction
 import org.fossify.gallery.helpers.UndoManager
 import org.fossify.gallery.helpers.UndoType
 import org.fossify.gallery.helpers.VideoFrameExtractor
+import org.fossify.gallery.helpers.withRecycleBinDeletePasswordCheck
 
 /**
  * "Grab frames" from a video: samples candidate frames, marks/ pre-selects the sharpest, lets the
  * user pick which to keep, and saves them as full-resolution JPEGs. Optionally moves the source
  * video into the recycle bin afterwards. Rendered as a full-screen overlay from the Viewer.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) -> Unit) {
     val ctx = LocalContext.current
@@ -105,7 +113,12 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
     // Free the preview bitmaps when the screen leaves.
     DisposableEffect(videoPath) { onDispose { candidates.forEach { runCatching { it.preview.recycle() } } } }
 
-    BackHandler { if (saveProgress == null) onDismiss(false) }
+    BackHandler {
+        when {
+            peekFrame != null -> peekFrame = null
+            saveProgress == null -> onDismiss(false)
+        }
+    }
 
     val shown = remember(candidates, onlySharp, recommended, sortBySharp) {
         val filtered = if (onlySharp) candidates.filter { it.timeMs in recommended } else candidates
@@ -125,14 +138,22 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
                 if (candidates.isNotEmpty()) {
                     Surface(tonalElevation = 3.dp) {
                         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
                                 FilterChip(selected = onlySharp, onClick = { onlySharp = !onlySharp }, label = { Text(stringResource(R.string.grab_frames_only_sharp)) })
-                                androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
                                 FilterChip(selected = sortBySharp, onClick = { sortBySharp = !sortBySharp }, label = { Text(stringResource(R.string.grab_frames_sort_sharp)) })
-                                Row(Modifier.weight(1f).clickable { deleteOriginal = !deleteOriginal }.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = deleteOriginal, onCheckedChange = { deleteOriginal = it })
-                                    Text(stringResource(R.string.grab_frames_delete_video), style = MaterialTheme.typography.bodySmall)
-                                }
+                            }
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { deleteOriginal = !deleteOriginal }
+                                    .padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(checked = deleteOriginal, onCheckedChange = { deleteOriginal = it })
+                                Text(stringResource(R.string.grab_frames_delete_video), style = MaterialTheme.typography.bodySmall)
                             }
                             Button(
                                 onClick = {
@@ -148,9 +169,13 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
                                             else ctx.resources.getQuantityString(R.plurals.grab_frames_saved, res.savedPaths.size, res.savedPaths.size)
                                         )
                                         if (deleteOriginal && res.savedPaths.isNotEmpty()) {
-                                            withContext(Dispatchers.IO) { repo.moveToRecycleBin(videoPath) }
-                                            UndoManager.push(UndoAction(paths = setOf(videoPath), type = UndoType.DELETE))
-                                            onDismiss(true)
+                                            ctx.withRecycleBinDeletePasswordCheck {
+                                                scope.launch {
+                                                    withContext(Dispatchers.IO) { repo.moveToRecycleBin(videoPath) }
+                                                    UndoManager.push(UndoAction(paths = setOf(videoPath), type = UndoType.DELETE))
+                                                    onDismiss(true)
+                                                }
+                                            }
                                         } else {
                                             onDismiss(false)
                                         }
@@ -174,7 +199,7 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
                         }
                     }
                     candidates.isEmpty() -> Text(stringResource(R.string.grab_frames_none), Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    else -> LazyVerticalGrid(columns = GridCells.Adaptive(140.dp), contentPadding = padding.let { androidx.compose.foundation.layout.PaddingValues(4.dp) }) {
+                    else -> LazyVerticalGrid(columns = GridCells.Adaptive(140.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
                         items(shown, key = { it.timeMs }) { c ->
                             val isSel = c.timeMs in selected
                             val isRec = c.timeMs in recommended
@@ -185,7 +210,7 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
                                         onLongClick = { peekFrame = c },
                                     ),
                             ) {
-                                Image(c.preview.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                Image(c.preview.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize().privacyBlur(BlurRadius.thumbnail, BlurState.enabled), contentScale = ContentScale.Crop)
                                 // Selection tick
                                 Icon(
                                     if (isSel) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
@@ -195,7 +220,7 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
                                 )
                                 // Sharp badge
                                 if (isRec) Row(Modifier.align(Alignment.TopStart).padding(4.dp).clip(RoundedCornerShape(4.dp)).background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 4.dp, vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Star, null, tint = Color(0xFFFFD54F), modifier = Modifier.size(12.dp))
+                                    Icon(Icons.Default.Star, null, tint = RatingStarColor, modifier = Modifier.size(12.dp))
                                 }
                                 val secs = c.timeMs / 1000
                                 Text(
@@ -220,8 +245,21 @@ fun FrameGrabberScreen(videoPath: String, onDismiss: (deletedOriginal: Boolean) 
                 // Long-press a frame to peek it large; tap anywhere to dismiss, top-right toggles select.
                 peekFrame?.let { pf ->
                     val isSel = pf.timeMs in selected
-                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.92f)).clickable { peekFrame = null }, contentAlignment = Alignment.Center) {
-                        Image(pf.preview.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f), contentScale = ContentScale.Fit)
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.92f))
+                            .statusBarsPadding()
+                            .navigationBarsPadding()
+                            .clickable { peekFrame = null },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            pf.preview.asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).privacyBlur(BlurRadius.viewer, BlurState.enabled),
+                            contentScale = ContentScale.Fit,
+                        )
                         val secs = pf.timeMs / 1000
                         Text("%d:%02d".format(secs / 60, secs % 60), color = Color.White, style = MaterialTheme.typography.titleMedium, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp))
                         IconButton(onClick = { selected = if (isSel) selected - pf.timeMs else selected + pf.timeMs }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)) {

@@ -150,7 +150,7 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Per group, marks every file except the single one [strategy] keeps.
      *
-     * [targetHashes] limits which groups are affected (null = every group). When a subset is
+     * [targetGroupKeys] limits which groups are affected (null = every group). When a subset is
      * given the marks are added to the current selection ([additive]); over the whole set they
      * replace it - so "all groups · newest" is a clean one-shot, while "next 25 · smallest" from
      * the scroll position stacks batch after batch as the user works down a long list.
@@ -158,41 +158,18 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
      * Deliberately allowed in SIMILAR mode too (that's where the size-based strategies are
      * actually meaningful, since EXACT duplicates are byte-identical): the screen shows a caution
      * toast there, and deletion still goes through the confirm dialog into the recycle bin. */
-    fun applyKeepStrategy(strategy: KeepStrategy, targetHashes: Set<String>? = null, additive: Boolean = targetHashes != null, restrictToFolder: String? = null) {
+    fun applyKeepStrategy(strategy: KeepStrategy, targetGroupKeys: Set<String>? = null, additive: Boolean = targetGroupKeys != null, restrictToFolder: String? = null) {
         _state.update { s ->
-            val targets = if (targetHashes == null) s.groups else s.groups.filter { it.hash in targetHashes }
-            // The keeper is always chosen from the WHOLE group (so "smallest" means smallest overall
-            // and a copy always survives), but under a folder filter only the files that live in that
-            // folder are actually marked - filtering to a folder means "clean up THIS folder", so a
-            // strategy must never mark a copy sitting in some other, unshown folder. This is why a
-            // filtered "all groups · smallest" marks far fewer files than the grand total.
-            fun inFolder(path: String) = restrictToFolder == null || File(path).parent == restrictToFolder
-            val toDelete = targets.flatMap { g ->
-                val keeper = when (strategy) {
-                    KeepStrategy.NEWEST -> g.files.maxWithOrNull(compareBy({ it.modified }, { it.size }))
-                    KeepStrategy.OLDEST -> g.files.minWithOrNull(compareBy({ it.modified }, { it.path }))
-                    KeepStrategy.LARGEST -> g.files.maxWithOrNull(compareBy({ it.size }, { it.modified }))
-                    KeepStrategy.SMALLEST -> g.files.minWithOrNull(compareBy({ it.size }, { it.modified }))
-                    KeepStrategy.SHORTEST_NAME -> g.files.minWithOrNull(compareBy({ it.name.length }, { it.name }))
-                    KeepStrategy.SHORTEST_PATH -> g.files.minWithOrNull(compareBy({ it.path.length }, { it.path }))
-                    // Keep the copy the user cares about most: favorite first, then highest rating,
-                    // then newest/largest - so an auto-select never marks away a starred/favorited version.
-                    KeepStrategy.HIGHEST_RATED -> g.files.maxWithOrNull(compareBy({ if (it.isFavorite) 1 else 0 }, { it.rating }, { it.modified }, { it.size }))
-                }
-                g.files.filter { it.path != keeper?.path && inFolder(it.path) }
-            }.map { it.path }.toSet()
-            val newSelection = when {
-                targetHashes == null -> toDelete                       // whole set: replace outright
-                additive -> s.selectedForDeletion + toDelete           // batch "next N": stack on top
-                else -> {
-                    // Scoped replace (folder filter active): recompute marks only for the visible
-                    // groups' files in the filtered folder and leave every other mark untouched -
-                    // WYSIWYG, so a filtered strategy never touches a file you can't see.
-                    val scopePaths = targets.flatMap { it.files }.filter { inFolder(it.path) }.map { it.path }.toSet()
-                    (s.selectedForDeletion - scopePaths) + toDelete
-                }
-            }
-            s.copy(selectedForDeletion = newSelection)
+            s.copy(
+                selectedForDeletion = DuplicateSelection.applyKeepStrategy(
+                    groups = s.groups,
+                    selected = s.selectedForDeletion,
+                    strategy = strategy,
+                    targetGroupKeys = targetGroupKeys,
+                    additive = additive,
+                    restrictToFolder = restrictToFolder,
+                )
+            )
         }
     }
 
@@ -259,6 +236,7 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
         if (selected.isEmpty()) return
         val filesByPath = _state.value.groups.flatMap { it.files }.associateBy { it.path }
         viewModelScope.launch {
+            var moved = emptySet<String>()
             withContext(Dispatchers.IO) {
                 // Move to the in-app recycle bin instead of permanently deleting. This is
                 // recoverable and never destroys the file, even for SIMILAR matches.
@@ -266,16 +244,27 @@ class DuplicateFinderViewModel(app: Application) : AndroidViewModel(app) {
                     val f = filesByPath[path] ?: return@mapNotNull null
                     Medium(null, f.name, path, File(path).parent ?: "", f.modified, f.modified, f.size, f.mediaType, 0, false, 0L, 0L, f.rating)
                 }
-                try { if (media.isNotEmpty()) getApplication<Application>().mediaDB.insertAllKeepingExisting(media) } catch (e: Exception) { android.util.Log.e("DuplicateFinder", "Recycle-bin DB insert failed", e) }
-                selected.forEach { repo.moveToRecycleBin(it) }
+                val app = getApplication<Application>()
+                val registered = try {
+                    if (media.isNotEmpty()) app.mediaDB.insertAllKeepingExisting(media)
+                    app.mediaDB.getMediaByPaths(media.map { it.path }).map { it.path }.toSet()
+                } catch (e: Exception) {
+                    android.util.Log.e("DuplicateFinder", "Recycle-bin DB insert failed; no file will be trashed", e)
+                    emptySet()
+                }
+                // A MediaStore trash without a Room recycle-bin row is not recoverable from this app.
+                // Only trash paths that were successfully registered and re-read from Room.
+                moved = selected.intersect(registered)
+                moved.forEach { repo.moveToRecycleBin(it) }
             }
-            UndoManager.push(UndoAction(paths = selected, type = UndoType.DELETE))
-            RefreshBus.trigger()
+            if (moved.isEmpty()) return@launch
+            UndoManager.push(UndoAction(paths = moved, type = UndoType.DELETE))
+            RefreshBus.trigger(affectedPaths = moved)
             _state.update { s ->
                 val remaining = s.groups
-                    .map { g -> g.copy(files = g.files.filter { it.path !in selected }) }
+                    .map { g -> g.copy(files = g.files.filter { it.path !in moved }) }
                     .filter { it.files.size > 1 }
-                s.copy(groups = remaining, selectedForDeletion = emptySet())
+                s.copy(groups = remaining, selectedForDeletion = s.selectedForDeletion - moved)
             }
             // Keep the persisted scan in step with what's now on screen, so a later app restart
             // doesn't resurrect the just-deleted entries from the remembered scan.

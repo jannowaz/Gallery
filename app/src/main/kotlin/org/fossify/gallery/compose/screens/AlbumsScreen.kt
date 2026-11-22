@@ -38,9 +38,10 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.automirrored.filled.Label
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,6 +55,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -64,7 +66,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -83,8 +85,14 @@ import org.fossify.gallery.compose.components.FolderTile
 import org.fossify.gallery.compose.components.LibraryAlbumGrid
 import org.fossify.gallery.compose.components.AlbumGridItem
 import org.fossify.gallery.compose.components.SelectionAppBar
+import org.fossify.gallery.compose.components.LibraryScreenHeader
+import org.fossify.gallery.compose.components.RefreshActionButton
+import org.fossify.gallery.compose.components.viewSettingsSummary
 import org.fossify.gallery.compose.components.EmptyState
 import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.compose.components.InlineRefreshIndicator
+import org.fossify.gallery.compose.components.LoadErrorBanner
+import org.fossify.gallery.compose.components.LoadErrorState
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.LocalMediaRepository
@@ -97,17 +105,25 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.helpers.UndoAction
 import org.fossify.gallery.helpers.UndoManager
-import org.fossify.gallery.helpers.withDeletePasswordCheck
+import org.fossify.gallery.helpers.withRecycleBinDeletePasswordCheck
 import org.fossify.gallery.helpers.UndoType
+import org.fossify.gallery.helpers.selectionForAll
 import org.fossify.gallery.models.Directory
 import org.fossify.gallery.viewmodels.AlbumsViewModel
 import org.fossify.gallery.workers.MetadataSyncWorker
 import android.widget.Toast
 import org.fossify.commons.extensions.toast
 import java.io.File
+
+private val albumSelectionSaver = listSaver<Set<String>, String>(
+    save = { it.toList() },
+    restore = { it.toSet() },
+)
 
 /** How many thumbnails the list-mode album row shows. Also the SQL LIMIT for fetching them. */
 private const val ALBUM_PREVIEW_COUNT = 4
@@ -119,14 +135,17 @@ fun AlbumsScreen(
     onFolderClick: (Directory) -> Unit,
     modifier: Modifier = Modifier,
     viewSettings: ViewSettings = ViewSettings(),
+    externalSearchQuery: String = "",
+    onClearExternalSearch: () -> Unit = {},
+    onOpenViewSettings: (() -> Unit)? = null,
     onSelectionActiveChanged: (Boolean) -> Unit = {},
     tabIndex: Int? = null,
 ) {
     val ctx = LocalContext.current
     val repo = LocalMediaRepository.current
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     var favorites by remember { mutableStateOf(ctx.config.favoriteFolders) }
-    var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedPaths by rememberSaveable(stateSaver = albumSelectionSaver) { mutableStateOf<Set<String>>(emptySet()) }
     val hasSelection = selectedPaths.isNotEmpty()
     LaunchedEffect(hasSelection) { onSelectionActiveChanged(hasSelection) }
     BackHandler(enabled = hasSelection) { selectedPaths = emptySet() }
@@ -141,9 +160,22 @@ fun AlbumsScreen(
     // and not left stale from the previous session) - mirrors FolderPathPickerSheet's own "already a
     // mover source" marker (same tertiary-tinted DriveFileMove icon), just applied to the selection
     // toolbar's action icon instead of a per-row badge.
-    val moverSourcePaths = remember(hasSelection) { org.fossify.gallery.helpers.loadMoverPairs(ctx).map { it.source }.toSet() }
-    var selectionBarHeightPx by remember { mutableIntStateOf(0) }
+    val moverSourcePaths by androidx.compose.runtime.produceState(initialValue = emptySet<String>(), hasSelection) {
+        value = if (!hasSelection) {
+            emptySet()
+        } else {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                org.fossify.gallery.helpers.loadMoverPairs(ctx).map { it.source }.toSet()
+            }
+        }
+    }
     val density = androidx.compose.ui.platform.LocalDensity.current
+    // TopAppBar has a stable Material height. Starting with that known value prevents the first
+    // selected frame from drawing at 0px and then visibly correcting itself after measurement.
+    // Keep the measured value for accessibility font scales or a future custom toolbar height.
+    var selectionBarHeightPx by remember(density) {
+        mutableIntStateOf(with(density) { androidx.compose.material3.TopAppBarDefaults.TopAppBarExpandedHeight.roundToPx() })
+    }
     // Bouncy spring can transiently overshoot past 0 while animating the inset closed, and
     // Modifier.padding() throws on a negative value - coerce here, mirroring MediaScreen.kt.
     val rawContentTopInset by androidx.compose.animation.core.animateDpAsState(
@@ -154,17 +186,20 @@ fun AlbumsScreen(
     val contentTopInset = rawContentTopInset.coerceAtLeast(0.dp)
 
     val sortedDirs = remember(state.directories, viewSettings.sortBy, viewSettings.sortDesc) {
-        val sorted = when (viewSettings.sortBy) {
-            SortField.NAME -> state.directories.sortedBy { it.name.lowercase() }
-            SortField.DATE -> state.directories.sortedBy { it.modified }
-            SortField.SIZE -> state.directories.sortedBy { it.size }
-            SortField.RATING -> state.directories.sortedBy { it.name.lowercase() }
-            SortField.COUNT -> state.directories.sortedBy { it.mediaCnt }
+        when (viewSettings.sortBy) {
+            SortField.NAME, SortField.RATING, SortField.RECENT -> if (viewSettings.sortDesc) state.directories.sortedWith(compareByDescending<Directory> { it.name.lowercase() }.thenBy { it.path.lowercase() }) else state.directories.sortedWith(compareBy<Directory> { it.name.lowercase() }.thenBy { it.path.lowercase() })
+            SortField.DATE -> if (viewSettings.sortDesc) state.directories.sortedWith(compareByDescending<Directory> { it.modified }.thenBy { it.path.lowercase() }) else state.directories.sortedWith(compareBy<Directory> { it.modified }.thenBy { it.path.lowercase() })
+            SortField.SIZE -> if (viewSettings.sortDesc) state.directories.sortedWith(compareByDescending<Directory> { it.size }.thenBy { it.path.lowercase() }) else state.directories.sortedWith(compareBy<Directory> { it.size }.thenBy { it.path.lowercase() })
+            SortField.COUNT -> if (viewSettings.sortDesc) state.directories.sortedWith(compareByDescending<Directory> { it.mediaCnt }.thenBy { it.path.lowercase() }) else state.directories.sortedWith(compareBy<Directory> { it.mediaCnt }.thenBy { it.path.lowercase() })
         }
-        if (viewSettings.sortDesc) sorted.reversed() else sorted
     }
-
-    val isGrid = viewSettings.viewType == ViewType.GRID
+    val normalizedSearchQuery = externalSearchQuery.trim()
+    val visibleDirs = remember(sortedDirs, normalizedSearchQuery) {
+        if (normalizedSearchQuery.isBlank()) sortedDirs
+        else sortedDirs.filter { it.name.contains(normalizedSearchQuery, ignoreCase = true) || it.path.contains(normalizedSearchQuery, ignoreCase = true) }
+    }
+    LaunchedEffect(normalizedSearchQuery) { selectedPaths = emptySet() }
+    val isGrid = viewSettings.viewType != ViewType.LIST
     val itemSpacing = viewSettings.spacing.dp
     val containerColor = when (viewSettings.displayMode) {
         // Not colorScheme.surface - this app's custom ColorScheme sets background == surface, so a
@@ -175,7 +210,7 @@ fun AlbumsScreen(
     }
 
     var albumPreviews by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
-    LaunchedEffect(sortedDirs, isGrid) {
+    LaunchedEffect(visibleDirs, isGrid) {
         if (!isGrid) {
             albumPreviews = withContext(Dispatchers.IO) {
                 // Capped in SQL, not after the fact. This runs once per folder, and getMediaFromPath
@@ -184,33 +219,75 @@ fun AlbumsScreen(
                 // media table per pass. Measured on a 163k-item/~2.8k-folder device: this was the
                 // cold-start CPU burn, ~85% of all on-CPU samples sitting in this one query, one
                 // core pegged for minutes (several, in fact - the passes overlap).
-                sortedDirs.associate { dir -> dir.path to repo.getPreviewPathsFromPath(dir.path, ALBUM_PREVIEW_COUNT) }
+                visibleDirs.associate { dir -> dir.path to repo.getPreviewPathsFromPath(dir.path, ALBUM_PREVIEW_COUNT) }
             }
         }
     }
-    val albumItems = remember(sortedDirs, albumPreviews) {
-        sortedDirs.map { AlbumGridItem(key = it.path, name = it.name, thumbnailPath = it.tmb, count = it.mediaCnt, previewPaths = albumPreviews[it.path] ?: emptyList()) }
+    val albumItems = remember(visibleDirs, albumPreviews) {
+        visibleDirs.map { AlbumGridItem(key = it.path, name = it.name, thumbnailPath = it.tmb, count = it.mediaCnt, imageCount = it.imageCount, videoCount = it.videoCount, previewPaths = albumPreviews[it.path] ?: emptyList()) }
     }
 
     Box(Modifier.fillMaxSize()) {
         Column(modifier = modifier.fillMaxSize().padding(top = contentTopInset)) {
+            LibraryScreenHeader(
+                title = stringResource(R.string.albums),
+                subtitle = stringResource(R.string.albums_header_summary, visibleDirs.size, viewSettingsSummary(viewSettings, includeGrouping = false)),
+                leadingIcon = Icons.Default.Folder,
+                actions = {
+                    if (onOpenViewSettings != null) {
+                        IconButton(onClick = onOpenViewSettings) {
+                            Icon(Icons.Default.Tune, stringResource(R.string.view_settings_title))
+                        }
+                    }
+                    RefreshActionButton(isRefreshing = state.isRefreshing, onRefresh = viewModel::load)
+                },
+            )
+            InlineRefreshIndicator(
+                visible = state.isRefreshing,
+                contentAvailable = state.directories.isNotEmpty(),
+            )
+            state.error?.let { errorMessage ->
+                if (state.directories.isNotEmpty() && !state.isLoading) {
+                    LoadErrorBanner(
+                        message = errorMessage,
+                        onRetry = viewModel::load,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+            }
             // Crossfade instead of an instant swap - see MediaScreen's paged content for why.
-            Crossfade(targetState = if (state.isLoading) "loading" else if (state.directories.isEmpty()) "empty" else "content", animationSpec = AppMotion.short, label = "albumsContent") { s ->
+            Crossfade(
+                targetState = when {
+                    visibleDirs.isNotEmpty() -> "content"
+                    state.isLoading -> "loading"
+                    state.error != null -> "error"
+                    else -> "empty"
+                },
+                animationSpec = AppMotion.short,
+                label = "albumsContent",
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            ) { s ->
                 when (s) {
-                    "loading" -> MediaSkeleton(columns = viewSettings.columnCount)
-                    "empty" -> EmptyState(Icons.Default.Folder, stringResource(R.string.no_albums))
+                    "loading" -> FolderSkeleton(viewSettings = viewSettings)
+                    "error" -> LoadErrorState(message = state.error, onRetry = viewModel::load)
+                    "empty" -> if (normalizedSearchQuery.isNotBlank() && state.directories.isNotEmpty()) {
+                        EmptyState(Icons.Default.SearchOff, stringResource(R.string.no_results), subtitle = stringResource(R.string.no_results_hint), actionLabel = stringResource(R.string.clear_filter), onAction = onClearExternalSearch)
+                    } else {
+                        EmptyState(Icons.Default.Folder, stringResource(R.string.no_albums))
+                    }
                     else -> LibraryAlbumGrid(
                         items = albumItems,
                         viewSettings = viewSettings,
                         onClick = { item ->
                             if (hasSelection) selectedPaths = if (item.key in selectedPaths) selectedPaths - item.key else selectedPaths + item.key
-                            else sortedDirs.find { it.path == item.key }?.let(onFolderClick)
+                            else visibleDirs.find { it.path == item.key }?.let(onFolderClick)
                         },
                         onLongClick = { item -> selectedPaths = selectedPaths + item.key },
-                        selectedKeys = selectedPaths,
-                        pathHint = { org.fossify.gallery.compose.components.folderPathHint(it.key) },
+            selectedKeys = selectedPaths,
+                        pathHint = { org.fossify.gallery.compose.components.folderPathHint(it.key, ctx.getString(R.string.internal_storage)) },
                         modifier = Modifier.weight(1f),
                         tabIndex = tabIndex,
+                        fastScrollLabel = { index -> albumItems.getOrNull(index)?.name },
                     )
                 }
             }
@@ -228,13 +305,16 @@ fun AlbumsScreen(
             // if the whole batch was already favorited, rather than only ever acting on one path.
             val allFav = selectedPaths.isNotEmpty() && selectedPaths.all { it in favorites }
             SelectionAppBar(
-                modifier = Modifier.onGloballyPositioned { selectionBarHeightPx = it.size.height },
+                modifier = Modifier.onSizeChanged { size ->
+                    if (selectionBarHeightPx != size.height) selectionBarHeightPx = size.height
+                },
                 count = selectedPaths.size,
                 onClose = { selectedPaths = emptySet() },
+                subtitle = ctx.getString(R.string.selection_scope_visible, visibleDirs.size),
                 actions = {
                     // Open/Info only make sense for exactly one target folder.
                     if (isSingle) {
-                        IconButton(onClick = { selectedPaths.firstOrNull()?.let { p -> sortedDirs.find { it.path == p }?.let { d -> onFolderClick(d) } }; selectedPaths = emptySet() }) { Icon(Icons.Default.Folder, stringResource(R.string.action_open)) }
+                        IconButton(onClick = { selectedPaths.firstOrNull()?.let { p -> visibleDirs.find { it.path == p }?.let { d -> onFolderClick(d) } }; selectedPaths = emptySet() }) { Icon(Icons.Default.Folder, stringResource(R.string.action_open)) }
                     }
                     IconButton(onClick = {
                         selectedPaths.forEach { p -> if (allFav) ctx.config.removeFavoriteFolder(p) else ctx.config.addFavoriteFolder(p) }
@@ -277,6 +357,15 @@ fun AlbumsScreen(
                         IconButton(onClick = { folderMenuOpen = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions)) }
                         val activity = ctx as? android.app.Activity
                         DropdownMenu(expanded = folderMenuOpen, onDismissRequest = { folderMenuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_select_all)) },
+                                onClick = { folderMenuOpen = false; selectedPaths = selectionForAll(selectedPaths, visibleDirs.map { it.path }, invert = false) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_invert_selection)) },
+                                onClick = { folderMenuOpen = false; selectedPaths = selectionForAll(selectedPaths, visibleDirs.map { it.path }, invert = true) },
+                            )
+                            HorizontalDivider()
                             if (isSingle) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.action_rename)) },
@@ -337,6 +426,9 @@ fun AlbumsScreen(
                 },
             )
         }
+        // Folder deletion is recoverable, so keep the same visible undo affordance as the media
+        // and Explorer surfaces instead of making the user open the recycle bin manually.
+        org.fossify.gallery.compose.components.UndoBar(modifier = Modifier.align(Alignment.BottomCenter))
     }
 
     renameFolderPath?.let { path ->
@@ -355,7 +447,7 @@ fun AlbumsScreen(
             onConfirm = {
                 showDeleteFoldersConfirm = false
                 val folders = selectedPaths
-                ctx.withDeletePasswordCheck {
+                ctx.withRecycleBinDeletePasswordCheck {
                     selectedPaths = emptySet()
                     scope.launch {
                         val paths = withContext(Dispatchers.IO) { repo.mediaPathsUnderFolders(folders) }

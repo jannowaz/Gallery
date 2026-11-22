@@ -18,6 +18,49 @@ object DuplicateSelection {
     private fun keeperOf(files: List<DuplicateFile>): DuplicateFile? =
         files.maxWithOrNull(compareBy({ if (it.isFavorite) 1 else 0 }, { it.rating }, { it.modified }, { it.size }))
 
+    /**
+     * Applies [strategy] to either every group or the groups identified by [targetGroupKeys]. A
+     * targeted, non-additive application replaces marks only inside those groups, preserving every
+     * mark outside them. This lets the UI select arbitrary group cards and run auto-select without
+     * changing unselected groups.
+     */
+    fun applyKeepStrategy(
+        groups: List<DuplicateGroup>,
+        selected: Set<String>,
+        strategy: KeepStrategy,
+        targetGroupKeys: Set<String>? = null,
+        additive: Boolean = targetGroupKeys != null,
+        restrictToFolder: String? = null,
+    ): Set<String> {
+        val targets = if (targetGroupKeys == null) groups else groups.filter { it.targetKey in targetGroupKeys }
+        fun inFolder(path: String) = restrictToFolder == null || File(path).parent == restrictToFolder
+
+        val toDelete = targets.flatMap { group ->
+            val keeper = when (strategy) {
+                KeepStrategy.NEWEST -> group.files.maxWithOrNull(compareBy({ it.modified }, { it.size }))
+                KeepStrategy.OLDEST -> group.files.minWithOrNull(compareBy({ it.modified }, { it.path }))
+                KeepStrategy.LARGEST -> group.files.maxWithOrNull(compareBy({ it.size }, { it.modified }))
+                KeepStrategy.SMALLEST -> group.files.minWithOrNull(compareBy({ it.size }, { it.modified }))
+                KeepStrategy.SHORTEST_NAME -> group.files.minWithOrNull(compareBy({ it.name.length }, { it.name }))
+                KeepStrategy.SHORTEST_PATH -> group.files.minWithOrNull(compareBy({ it.path.length }, { it.path }))
+                KeepStrategy.HIGHEST_RATED -> keeperOf(group.files)
+            }
+            group.files.filter { it.path != keeper?.path && inFolder(it.path) }
+        }.map { it.path }.toSet()
+
+        return when {
+            targetGroupKeys == null -> toDelete
+            additive -> selected + toDelete
+            else -> {
+                val scopePaths = targets.flatMap { it.files }
+                    .filter { inFolder(it.path) }
+                    .map { it.path }
+                    .toSet()
+                (selected - scopePaths) + toDelete
+            }
+        }
+    }
+
     /** Marks files whose full path [contains] (or, when false, does NOT contain) [query], across the
      * shown groups, never marking a group's last survivor. Replaces the marks in the shown scope
      * (outright when no folder filter, else only over the shown groups' files). */

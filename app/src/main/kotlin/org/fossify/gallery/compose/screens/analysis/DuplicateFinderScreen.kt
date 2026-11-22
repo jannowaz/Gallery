@@ -11,6 +11,7 @@ import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,13 +37,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlaylistAddCheck
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.PlaylistAddCheck
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -76,6 +78,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -85,11 +88,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.fossify.gallery.compose.components.GalleryImage
+import org.fossify.gallery.compose.components.LibrarySearchField
 import org.fossify.gallery.compose.util.sharedElementKey
 import org.fossify.gallery.compose.theme.RatingStarColor
 import java.io.File
@@ -100,11 +105,20 @@ import kotlin.math.roundToInt
  * space; SIZE by total group size; COUNT by how many copies a group holds. */
 private enum class DuplicateSort { SAVINGS, SIZE, COUNT }
 
+/** Which result groups receive the next auto-selection strategy. */
+private enum class AutoSelectScope(val nextCount: Int? = null) {
+    SELECTED,
+    ALL,
+    NEXT_10(10),
+    NEXT_25(25),
+    NEXT_50(50),
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavigateToViewer: (List<String>, Int) -> Unit = { _, _ -> }) {
     val vm: DuplicateFinderViewModel = viewModel()
-    val state by vm.state.collectAsState()
+    val state by vm.state.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     var showConfirmDialog by remember { mutableStateOf(false) }
     val defaultPath = Environment.getExternalStorageDirectory().absolutePath
@@ -115,6 +129,9 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
     }
 
     val listState = rememberLazyListState()
+    // Automatic cleanup is the common, low-effort path. The detailed ways of marking
+    // individual groups stay available, but do not compete with it on first glance.
+    var manualToolsExpanded by remember { mutableStateOf(false) }
 
     // Folder breakdown of the results: how many groups touch each folder. Drives the filter row
     // so a device-wide scan can be worked through folder by folder. Sorted by count so the busiest
@@ -140,6 +157,16 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
             DuplicateSort.SIZE -> shown.sortedByDescending { it.files.sumOf { f2 -> f2.size } }
             DuplicateSort.COUNT -> shown.sortedByDescending { it.files.size }
         }
+    }
+
+    // Group selection is deliberately separate from the file marks that will be deleted. It only
+    // defines the target of the next auto-select action and is limited to what is currently shown,
+    // so changing the folder filter can never leave an invisible group selected by surprise.
+    var selectedGroupKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val visibleGroupKeys = remember(filteredGroups) { filteredGroups.map { it.targetKey }.toSet() }
+    val selectedVisibleGroupKeys = selectedGroupKeys intersect visibleGroupKeys
+    LaunchedEffect(visibleGroupKeys) {
+        selectedGroupKeys = selectedGroupKeys intersect visibleGroupKeys
     }
 
     // A filter can go stale after a delete empties its folder - fall back to "all" so the user
@@ -168,6 +195,8 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
     val guardedBack = org.fossify.gallery.compose.util.rememberDoubleBackGuard(
         enabled = state.isScanning || state.groups.isNotEmpty(),
         onExit = onBack,
+        running = state.isScanning,
+        onCancel = { vm.cancelScan(); onBack() },
     )
 
     // Toast nudge shared by every auto-select path: SIMILAR matches aren't verified identical.
@@ -183,34 +212,8 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                 title = { Text(stringResource(R.string.nav_find_duplicates), fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = guardedBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
                 actions = {
-                    if (state.groups.isNotEmpty()) {
-                        AutoSelectAction(
-                            folderFiltered = state.folderFilter != null,
-                            onApplyAll = { strategy ->
-                                // "All groups" honors the folder filter: with a filter active it means
-                                // all *shown* groups, and only their files in that folder are marked
-                                // (scoped replace, other marks preserved) - it can never mark a copy the
-                                // current filter is hiding, so the count matches what you see.
-                                if (state.folderFilter != null) vm.applyKeepStrategy(strategy, filteredGroups.map { it.hash }.toSet(), additive = false, restrictToFolder = state.folderFilter)
-                                else vm.applyKeepStrategy(strategy)
-                                cautionIfSimilar()
-                            },
-                            onApplyNext = { strategy, n ->
-                                // "Next N groups" counts from the group currently at the top of the
-                                // viewport downward, over the *filtered* list, and stacks onto the
-                                // current marks so long lists get worked in batches. Under a folder
-                                // filter it too marks only that folder's files.
-                                val start = listState.firstVisibleItemIndex.coerceIn(0, (filteredGroups.size - 1).coerceAtLeast(0))
-                                val hashes = filteredGroups.subList(start, min(start + n, filteredGroups.size)).map { it.hash }.toSet()
-                                vm.applyKeepStrategy(strategy, hashes, additive = true, restrictToFolder = state.folderFilter)
-                                cautionIfSimilar()
-                            },
-                            onSelectShownFolder = { state.folderFilter?.let { vm.selectFolder(it) } },
-                            onInvert = { vm.invertSelection(); cautionIfSimilar() },
-                            hasSelection = state.selectedForDeletion.isNotEmpty(),
-                            onClear = { vm.clearSelection() },
-                        )
-                    }
+                    // The cleanup helper lives with the result summary, where its scope is visible.
+                    // Keep the app bar reserved for navigation and result-level controls.
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
             )
@@ -228,13 +231,13 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                 val fullyMarked = remember(affected, sel) { affected.count { g -> g.files.all { it.path in sel } } }
                 val keepingCopy = affected.size - fullyMarked
                 Surface(color = MaterialTheme.colorScheme.secondaryContainer, tonalElevation = 3.dp, shadowElevation = 8.dp) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(stringResource(R.string.duplicate_marked_count, sel.size, formatBytes(selSize)), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
                             if (fullyMarked > 0) {
                                 Text(stringResource(R.string.dup_confirm_all_deleted, fullyMarked), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Medium)
                             } else if (keepingCopy > 0) {
-                                Text(stringResource(R.string.dup_confirm_keeps_copies, keepingCopy), style = MaterialTheme.typography.labelSmall, color = Color(0xFF43A047))
+                                Text(stringResource(R.string.dup_confirm_keeps_copies, keepingCopy), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                             }
                         }
                         TextButton(onClick = { vm.clearSelection() }) { Text(stringResource(R.string.action_empty)) }
@@ -251,7 +254,7 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                 }
             } else {
                 // No selection: surface the recycle-bin safety net as a visible "Undo" after a delete.
-                org.fossify.gallery.compose.components.UndoBar()
+                org.fossify.gallery.compose.components.UndoBar(Modifier.navigationBarsPadding())
             }
         },
     ) { padding ->
@@ -260,18 +263,12 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
             if (state.groups.isNotEmpty()) {
                 val totalWasted = remember(state.groups) { state.groups.sumOf { it.wastedBytes } }
                 val totalDupes = remember(state.groups) { state.groups.sumOf { it.files.size - 1 } }
-                Surface(color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)) {
-                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(stringResource(R.string.duplicate_scan_summary, state.groups.size, totalDupes, formatBytes(totalWasted)), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                            state.restoredAt?.let { ts ->
-                                Text(
-                                    stringResource(R.string.restored_scan_from, java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(ts))),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
+                org.fossify.gallery.compose.components.AnalysisResultHeader(
+                    summary = stringResource(R.string.duplicate_scan_summary, state.groups.size, totalDupes, formatBytes(totalWasted)),
+                    detail = state.restoredAt?.let { ts ->
+                        stringResource(R.string.restored_scan_from, java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(ts)))
+                    },
+                ) {
                         Box {
                             var sortMenu by remember { mutableStateOf(false) }
                             IconButton(onClick = { sortMenu = true }) {
@@ -298,6 +295,50 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AutoSelectAction(
+                        folderFiltered = state.folderFilter != null,
+                        selectedGroupCount = selectedVisibleGroupKeys.size,
+                        emphasized = true,
+                        onApplySelected = { strategy ->
+                            vm.applyKeepStrategy(
+                                strategy = strategy,
+                                targetGroupKeys = selectedVisibleGroupKeys,
+                                additive = false,
+                                restrictToFolder = state.folderFilter,
+                            )
+                            cautionIfSimilar()
+                        },
+                        onApplyAll = { strategy ->
+                            // "All groups" honors the folder filter: with a filter active it means
+                            // all shown groups, and only their files in that folder are marked.
+                            if (state.folderFilter != null) vm.applyKeepStrategy(strategy, visibleGroupKeys, additive = false, restrictToFolder = state.folderFilter)
+                            else vm.applyKeepStrategy(strategy)
+                            cautionIfSimilar()
+                        },
+                        onApplyNext = { strategy, n ->
+                            val start = listState.firstVisibleItemIndex.coerceIn(0, (filteredGroups.size - 1).coerceAtLeast(0))
+                            val groupKeys = filteredGroups.subList(start, min(start + n, filteredGroups.size)).map { it.targetKey }.toSet()
+                            vm.applyKeepStrategy(strategy, groupKeys, additive = true, restrictToFolder = state.folderFilter)
+                            cautionIfSimilar()
+                        },
+                        onSelectShownFolder = { state.folderFilter?.let { vm.selectFolder(it) } },
+                        onInvert = { vm.invertSelection(); cautionIfSimilar() },
+                        hasSelection = state.selectedForDeletion.isNotEmpty(),
+                        onClear = { vm.clearSelection() },
+                    )
+                    TextButton(onClick = { manualToolsExpanded = !manualToolsExpanded }) {
+                        Text(stringResource(R.string.dup_manual_selection))
+                        Icon(
+                            if (manualToolsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            modifier = Modifier.padding(start = 4.dp).size(18.dp),
+                        )
                     }
                 }
             }
@@ -471,7 +512,8 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
             // "delete every copy under /WhatsApp/" or "keep only the ones named IMG_*". A group is
             // never fully marked (the VM always spares one copy), so this can't wipe a whole group.
             if (state.groups.isNotEmpty()) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
+                AnimatedVisibility(visible = manualToolsExpanded || selectedVisibleGroupKeys.isNotEmpty()) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
                     // One-tap for the active folder chip: mark, across every shown pair, the copy that
                     // sits in this filtered folder - so a whole "area" of junk copies goes in one tap
                     // while the originals in other folders stay as keepers. Scoped to the filter (the VM
@@ -485,26 +527,17 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                             modifier = Modifier.padding(bottom = 4.dp),
                         )
                     }
-                    OutlinedTextField(
+                    LibrarySearchField(
                         value = substringQuery,
                         onValueChange = { substringQuery = it },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        textStyle = MaterialTheme.typography.bodyMedium,
-                        placeholder = { Text(stringResource(R.string.dup_select_by_name_hint), style = MaterialTheme.typography.bodyMedium) },
-                        leadingIcon = { Icon(Icons.Default.Search, null, Modifier.size(20.dp)) },
-                        trailingIcon = {
-                            if (substringQuery.isNotEmpty()) {
-                                IconButton(onClick = { substringQuery = "" }) { Icon(Icons.Default.Close, stringResource(R.string.action_empty), Modifier.size(20.dp)) }
-                            }
-                        },
+                        placeholderRes = R.string.dup_select_by_name_hint,
                     )
                     val q = substringQuery.trim()
                     Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         AssistChip(
                             enabled = q.isNotEmpty(),
                             onClick = { vm.selectBySubstring(q, contains = true); cautionIfSimilar() },
-                            leadingIcon = { Icon(Icons.Default.PlaylistAddCheck, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.PlaylistAddCheck, null, Modifier.size(AssistChipDefaults.IconSize)) },
                             label = { Text(stringResource(R.string.dup_select_matching)) },
                         )
                         AssistChip(
@@ -514,20 +547,38 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                             label = { Text(stringResource(R.string.dup_select_not_matching)) },
                         )
                     }
+                    }
                 }
             }
 
             if (state.groups.isNotEmpty()) {
+                AnimatedVisibility(visible = manualToolsExpanded || selectedVisibleGroupKeys.isNotEmpty()) {
+                    GroupSelectionBar(
+                        selectedCount = selectedVisibleGroupKeys.size,
+                        allVisibleSelected = visibleGroupKeys.isNotEmpty() && selectedVisibleGroupKeys.size == visibleGroupKeys.size,
+                        onSelectVisible = { selectedGroupKeys = selectedGroupKeys + visibleGroupKeys },
+                        onClear = { selectedGroupKeys = emptySet() },
+                    )
+                }
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp)) {
                     // Key by the group's first file path, not its hash: a file lives in exactly one
                     // group so this is always unique, whereas two groups can share a hash (SIMILAR
                     // clustering, or a partial-hash collision) - a duplicate LazyColumn key makes
                     // Compose reuse one card's composition (incl. checkbox state) for the other.
-                    items(filteredGroups, key = { it.files.firstOrNull()?.path ?: it.hash }) { group ->
+                    items(filteredGroups, key = { it.targetKey }) { group ->
+                        val groupKey = group.targetKey
                         DuplicateGroupCard(
                             group = group,
                             similar = state.mode == DuplicateMode.SIMILAR,
                             selected = state.selectedForDeletion,
+                            groupSelected = groupKey in selectedVisibleGroupKeys,
+                            onToggleGroup = {
+                                selectedGroupKeys = if (groupKey in selectedGroupKeys) {
+                                    selectedGroupKeys - groupKey
+                                } else {
+                                    selectedGroupKeys + groupKey
+                                }
+                            },
                             onToggle = { vm.toggleSelection(it) },
                             onView = onNavigateToViewer,
                             onSelectFolder = { path -> vm.selectAllInFolder(path) },
@@ -551,6 +602,8 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
                     title = stringResource(R.string.dup_empty_title),
                     subtitle = stringResource(R.string.dup_empty_subtitle),
                     note = stringResource(R.string.dup_safety_note),
+                    actionLabel = stringResource(R.string.cd_search),
+                    onAction = { vm.startScan(currentFolder) },
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             }
@@ -621,15 +674,17 @@ fun DuplicateFinderScreen(onBack: () -> Unit, initialFolder: String = "", onNavi
 }
 
 /**
- * The top-bar "Auto-select" menu. Beyond picking which file each group keeps, it carries a batch
- * scope: apply the strategy to *all* groups (a clean one-shot that replaces the selection), or to
- * only the next 10/25/50 groups from the current scroll position (stacked on top, so a long list
- * is marked-and-deleted area by area). "Mark all shown" appears when a folder filter is active,
- * clearing that one folder's copies in a tap.
+ * The top-bar "Auto-select" menu. Beyond picking which file each group keeps, it carries a target
+ * scope: explicitly selected group cards, all groups, or the next 10/25/50 groups from the current
+ * scroll position. "Mark all shown" appears when a folder filter is active, clearing that one
+ * folder's copies in a tap.
  */
 @Composable
 private fun AutoSelectAction(
     folderFiltered: Boolean,
+    selectedGroupCount: Int,
+    emphasized: Boolean = false,
+    onApplySelected: (KeepStrategy) -> Unit,
     onApplyAll: (KeepStrategy) -> Unit,
     onApplyNext: (KeepStrategy, Int) -> Unit,
     onSelectShownFolder: () -> Unit,
@@ -638,16 +693,34 @@ private fun AutoSelectAction(
     onClear: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    // 0 = every group; otherwise the batch size counted from the scroll position.
-    var batchCount by remember { mutableStateOf(0) }
+    var scope by remember { mutableStateOf(AutoSelectScope.ALL) }
+
+    // As soon as group cards are selected, make that safer, narrower scope the default. An explicit
+    // switch back to "all" remains sticky while the selected set merely grows or shrinks.
+    LaunchedEffect(selectedGroupCount > 0) {
+        if (selectedGroupCount > 0) scope = AutoSelectScope.SELECTED
+        else if (scope == AutoSelectScope.SELECTED) scope = AutoSelectScope.ALL
+    }
 
     fun apply(strategy: KeepStrategy) {
-        if (batchCount == 0) onApplyAll(strategy) else onApplyNext(strategy, batchCount)
+        when (scope) {
+            AutoSelectScope.SELECTED -> if (selectedGroupCount > 0) onApplySelected(strategy) else onApplyAll(strategy)
+            AutoSelectScope.ALL -> onApplyAll(strategy)
+            else -> onApplyNext(strategy, requireNotNull(scope.nextCount))
+        }
         expanded = false
     }
 
     Box {
-        TextButton(onClick = { expanded = true }) { Text(stringResource(R.string.auto_select)) }
+        if (emphasized) {
+            Button(onClick = { expanded = true }) {
+                Icon(Icons.AutoMirrored.Filled.PlaylistAddCheck, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.auto_select))
+            }
+        } else {
+            TextButton(onClick = { expanded = true }) { Text(stringResource(R.string.auto_select)) }
+        }
         androidx.compose.material3.DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             Text(
                 stringResource(R.string.keep_scope_hint),
@@ -659,9 +732,17 @@ private fun AutoSelectAction(
                 Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                FilterChip(selected = batchCount == 0, onClick = { batchCount = 0 }, label = { Text(stringResource(R.string.dup_batch_all)) })
-                listOf(10, 25, 50).forEach { n ->
-                    FilterChip(selected = batchCount == n, onClick = { batchCount = n }, label = { Text(stringResource(R.string.dup_batch_next, n)) })
+                if (selectedGroupCount > 0) {
+                    FilterChip(
+                        selected = scope == AutoSelectScope.SELECTED,
+                        onClick = { scope = AutoSelectScope.SELECTED },
+                        label = { Text(stringResource(R.string.dup_batch_selected, selectedGroupCount)) },
+                    )
+                }
+                FilterChip(selected = scope == AutoSelectScope.ALL, onClick = { scope = AutoSelectScope.ALL }, label = { Text(stringResource(R.string.dup_batch_all)) })
+                listOf(AutoSelectScope.NEXT_10, AutoSelectScope.NEXT_25, AutoSelectScope.NEXT_50).forEach { nextScope ->
+                    val n = requireNotNull(nextScope.nextCount)
+                    FilterChip(selected = scope == nextScope, onClick = { scope = nextScope }, label = { Text(stringResource(R.string.dup_batch_next, n)) })
                 }
             }
             androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 4.dp))
@@ -702,12 +783,63 @@ private fun AutoSelectAction(
     }
 }
 
+@Composable
+private fun GroupSelectionBar(
+    selectedCount: Int,
+    allVisibleSelected: Boolean,
+    onSelectVisible: () -> Unit,
+    onClear: () -> Unit,
+) {
+    val hasSelection = selectedCount > 0
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(Radius.md),
+        color = if (hasSelection) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.PlaylistAddCheck,
+                contentDescription = null,
+                tint = if (hasSelection) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (hasSelection) {
+                    pluralStringResource(R.plurals.dup_groups_selected, selectedCount, selectedCount)
+                } else {
+                    stringResource(R.string.dup_group_selection_hint)
+                },
+                style = MaterialTheme.typography.labelMedium,
+                color = if (hasSelection) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (!allVisibleSelected) {
+                TextButton(onClick = onSelectVisible) { Text(stringResource(R.string.dup_select_visible_groups)) }
+            }
+            if (hasSelection) {
+                IconButton(onClick = onClear) {
+                    Icon(Icons.Default.Close, stringResource(R.string.dup_clear_group_selection))
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DuplicateGroupCard(
     group: DuplicateGroup,
     similar: Boolean,
     selected: Set<String>,
+    groupSelected: Boolean,
+    onToggleGroup: () -> Unit,
     onToggle: (String) -> Unit,
     onView: (List<String>, Int) -> Unit,
     onSelectFolder: (String) -> Unit,
@@ -731,56 +863,69 @@ private fun DuplicateGroupCard(
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
         shape = RoundedCornerShape(Radius.md),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+        colors = CardDefaults.cardColors(
+            containerColor = if (groupSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        ),
+        border = if (groupSelected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
     ) {
         Column(Modifier.padding(12.dp)) {
-            Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }, verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        stringResource(
-                            R.string.dup_group_header,
-                            group.files.size,
-                            if (similar) stringResource(R.string.similar) else stringResource(R.string.identical),
-                            formatBytes(totalSize),
-                            formatBytes(group.wastedBytes),
-                        ),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.tertiary,
-                    )
-                    if (!similar) {
-                        // EXACT groups are a real byte-for-byte hash match, not a guess - say so, so
-                        // deleting a "duplicate" feels safe rather than like trusting a heuristic.
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CheckCircle, null, tint = keepGreen, modifier = Modifier.size(11.dp))
-                            Spacer(Modifier.width(3.dp))
-                            Text(stringResource(R.string.dup_verified_exact), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = groupSelected,
+                    onCheckedChange = { onToggleGroup() },
+                )
+                Row(
+                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(Radius.sm)).clickable { expanded = !expanded },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(
+                                R.string.dup_group_header,
+                                group.files.size,
+                                if (similar) stringResource(R.string.similar) else stringResource(R.string.identical),
+                                formatBytes(totalSize),
+                                formatBytes(group.wastedBytes),
+                            ),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                        if (!similar) {
+                            // EXACT groups are a real byte-for-byte hash match, not a guess - say so, so
+                            // deleting a "duplicate" feels safe rather than like trusting a heuristic.
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.CheckCircle, null, tint = keepGreen, modifier = Modifier.size(11.dp))
+                                Spacer(Modifier.width(3.dp))
+                                Text(stringResource(R.string.dup_verified_exact), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
-                    }
-                    if (allMarked) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(13.dp))
-                            Spacer(Modifier.width(4.dp))
+                        if (allMarked) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(13.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    stringResource(R.string.dup_group_all_marked),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        } else if (markedInGroup > 0) {
                             Text(
-                                stringResource(R.string.dup_group_all_marked),
+                                stringResource(R.string.dup_group_marked_count, markedInGroup),
                                 style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.error,
+                                color = MaterialTheme.colorScheme.primary,
                             )
                         }
-                    } else if (markedInGroup > 0) {
-                        Text(
-                            stringResource(R.string.dup_group_marked_count, markedInGroup),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
                     }
+                    Icon(
+                        if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                Icon(
-                    if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
 
             if (!expanded) {

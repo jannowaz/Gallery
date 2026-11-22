@@ -16,21 +16,17 @@ import androidx.compose.ui.unit.Dp
  */
 object AppMotion {
     /** Small state toggles: press feedback, icon swaps, chip selection. */
-    val short: TweenSpec<Float> = tween(150, easing = FastOutSlowInEasing)
+    val short: TweenSpec<Float> = tween(120, easing = FastOutSlowInEasing)
 
     /** Default cross-screen / content transitions. */
-    val medium: TweenSpec<Float> = tween(300, easing = FastOutSlowInEasing)
+    val medium: TweenSpec<Float> = tween(240, easing = FastOutSlowInEasing)
 
     /** Larger surface transitions (sheets, full-screen morphs). */
-    val long: TweenSpec<Float> = tween(400, easing = FastOutSlowInEasing)
+    val long: TweenSpec<Float> = tween(320, easing = FastOutSlowInEasing)
 
-    /** Gesture-driven snaps (zoom-to-level, drag release) - one consistent springy feel everywhere. */
-    val gestureSpring: SpringSpec<Float> = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium)
+    /** Gesture-driven snaps (zoom-to-level, drag release) with a calm, non-overshooting settle. */
+    val gestureSpring: SpringSpec<Float> = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
 
-    /**
-     * Selection-bar top-inset reveal (content sliding down/up as a selection toolbar appears).
-     * Bouncy, so it can transiently overshoot past its target - callers must coerce the animated
-     * Dp to a valid range (e.g. `.coerceAtLeast(0.dp)`) before feeding it to `Modifier.padding()`.
-     */
-    val insetSpring: SpringSpec<Dp> = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
+    /** Selection-bar top-inset reveal without a visible overshoot or content wobble. */
+    val insetSpring: SpringSpec<Dp> = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
 }

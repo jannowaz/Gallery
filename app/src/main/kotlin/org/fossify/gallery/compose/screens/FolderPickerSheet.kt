@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -55,7 +56,8 @@ import androidx.work.WorkManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -71,6 +73,11 @@ import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
+import org.fossify.gallery.compose.components.AllFilesAccessSheet
+import org.fossify.gallery.compose.components.EmptyState
+import org.fossify.gallery.compose.components.LibrarySearchField
+import org.fossify.gallery.compose.components.LibrarySheetHeader
+import org.fossify.gallery.compose.components.rememberAllFilesAccessRequester
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.batchJobItemDB
@@ -103,8 +110,8 @@ fun FolderPickerSheet(
     val repo = LocalMediaRepository.current
     val conf = ctx.config
     val rootPath = conf.internalStoragePath.ifBlank { android.os.Environment.getExternalStorageDirectory().absolutePath }
-    val startPath = conf.lastCopyMoveDestination.takeIf { it.isNotBlank() && Files.isDirectory(Paths.get(it)) } ?: rootPath
-    var currentPath by remember { mutableStateOf(startPath) }
+    val configuredStartPath = conf.lastCopyMoveDestination
+    var currentPath by remember { mutableStateOf(rootPath) }
     var folders by remember { mutableStateOf<List<FolderItem>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<FolderItem>>(emptyList()) }
@@ -112,17 +119,34 @@ fun FolderPickerSheet(
     var confirmTarget by remember { mutableStateOf<String?>(null) }
     var pendingCreateFolder by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
+    var creatingFolder by remember { mutableStateOf(false) }
     // Non-null while the name-collision dialog is up: the built batch whose targets collide with
     // existing files, held until the user picks keep-both / skip / cancel.
     var pendingConflict by remember { mutableStateOf<List<BatchJobItem>?>(null) }
     // Source paths of items a finished batch could not move/copy - shown before the sheet closes so a
     // partial failure isn't just a fleeting "N failed" toast.
     var failedPaths by remember { mutableStateOf<List<String>>(emptyList()) }
+    // Held when the chosen destination is outside MediaStore's DCIM/Pictures/Movies roots and the
+    // app does not yet hold All Files Access: shows AllFilesAccessSheet and auto-resumes on grant.
+    var pendingAllFilesItems by remember { mutableStateOf<List<BatchJobItem>?>(null) }
     val scope = rememberCoroutineScope()
     val consent = rememberMediaStoreConsent()
     // Set once a copy/move job is enqueued; while non-null the sheet shows progress instead of the
     // folder browser. The job keeps running via MediaBatchWorker even if the sheet is dismissed.
     var activeJobId by remember { mutableStateOf<String?>(null) }
+    var recentDestinations by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    LaunchedEffect(rootPath, configuredStartPath) {
+        val validStart = configuredStartPath.takeIf { it.isNotBlank() }?.let { candidate ->
+            withContext(Dispatchers.IO) { Files.isDirectory(Paths.get(candidate)) }
+        } == true
+        if (validStart) currentPath = configuredStartPath
+    }
+    LaunchedEffect(Unit) {
+        recentDestinations = withContext(Dispatchers.IO) {
+            conf.recentCopyMoveDestinations.filter { Files.isDirectory(Paths.get(it)) }
+        }
+    }
 
     suspend fun loadFolders(path: String): List<FolderItem> = withContext(Dispatchers.IO) {
         val dir = Paths.get(path)
@@ -184,10 +208,21 @@ fun FolderPickerSheet(
     // Consent (move only) + enqueue for an already-resolved item set.
     fun proceed(items: List<BatchJobItem>) {
         if (items.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); onDismiss(); return }
+        val needsAllFiles = !MediaStoreOps.hasAllFilesAccess(ctx) &&
+            items.any { item ->
+                MediaStoreOps.requiresAllFilesAccessForTarget(
+                    File(item.targetPath).parent ?: "",
+                    MediaStoreOps.isVideoPath(item.sourcePath),
+                )
+            }
+        if (needsAllFiles) {
+            pendingAllFilesItems = items
+            return
+        }
         scope.launch {
             // Moving someone else's media requires user consent via the system dialog. Copying
             // creates a new app-owned file, which needs no consent.
-            if (isMoveOperation) {
+            if (isMoveOperation && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R && !MediaStoreOps.hasAllFilesAccess(ctx)) {
                 val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, items.map { it.sourcePath }) }.map { it.second }
                 val granted = try {
                     consent.request(MediaStoreOps.writeRequest(ctx, uris))
@@ -195,6 +230,16 @@ fun FolderPickerSheet(
                 if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); onDismiss(); return@launch }
             }
             activeJobId = MediaBatchWorker.enqueue(ctx, if (isMoveOperation) BatchOperation.MOVE_FAST else BatchOperation.COPY, items)
+        }
+    }
+
+    val requestAllFilesAccess = rememberAllFilesAccessRequester { granted ->
+        val pending = pendingAllFilesItems
+        pendingAllFilesItems = null
+        if (granted && pending != null) {
+            proceed(pending)
+        } else if (pending != null) {
+            ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT)
         }
     }
 
@@ -207,7 +252,13 @@ fun FolderPickerSheet(
         conf.lastCopyMoveDestination = destPath
         conf.pushRecentCopyMoveDestination(destPath)
         scope.launch {
-            val srcPaths = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, sourcePaths) }.map { it.first }
+            val srcPaths = withContext(Dispatchers.IO) {
+                if (MediaStoreOps.hasAllFilesAccess(ctx)) {
+                    sourcePaths.filter { File(it).isFile }
+                } else {
+                    MediaStoreOps.urisForPaths(ctx, sourcePaths).map { it.first }
+                }
+            }
             if (srcPaths.isEmpty()) {
                 ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_LONG); onDismiss(); return@launch
             }
@@ -228,30 +279,24 @@ fun FolderPickerSheet(
     ) {
         // Capped to a fraction of screen height instead of a flat 480dp - on short/landscape
         // screens a fixed 480dp could push the confirm button below the visible area.
-        val screenHeightDp = LocalConfiguration.current.screenHeightDp
+        val screenHeightDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp().value }
         val sheetHeight = minOf(480, (screenHeightDp * 0.85f).toInt()).dp
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(sheetHeight)) {
-            // Header with title and action type
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    if (isMoveOperation) Icons.AutoMirrored.Filled.DriveFileMove else Icons.Default.ContentCopy,
-                    null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    stringResource(if (isMoveOperation) R.string.folder_picker_move_title else R.string.folder_picker_copy_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(stringResource(R.string.files_count, sourcePaths.size), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            LibrarySheetHeader(
+                title = stringResource(if (isMoveOperation) R.string.folder_picker_move_title else R.string.folder_picker_copy_title),
+                onDismiss = onDismiss,
+                trailing = {
+                    Text(
+                        stringResource(R.string.files_count, sourcePaths.size),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+            )
             Spacer(Modifier.height(8.dp))
 
             // Recent destinations: one tap re-uses a folder the user moved/copied to lately.
-            val recents = remember { conf.recentCopyMoveDestinations.filter { Files.isDirectory(Paths.get(it)) } }
+            val recents = recentDestinations
             if (recents.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     recents.forEach { path ->
@@ -265,27 +310,10 @@ fun FolderPickerSheet(
                 Spacer(Modifier.height(8.dp))
             }
 
-            // Search bar
-            OutlinedTextField(
+            LibrarySearchField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text(stringResource(R.string.search_folders_hint)) },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Search, stringResource(R.string.cd_search), modifier = Modifier.size(20.dp)) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(40.dp)) {
-                            Icon(Icons.Default.Close, stringResource(R.string.action_empty), modifier = Modifier.size(16.dp))
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = MaterialTheme.typography.bodyMedium,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
-                ),
-                shape = RoundedCornerShape(Radius.md),
+                placeholderRes = R.string.search_folders_hint,
             )
             Spacer(Modifier.height(4.dp))
 
@@ -296,13 +324,18 @@ fun FolderPickerSheet(
                         Text(stringResource(R.string.searching), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else if (searchResults.isEmpty()) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(stringResource(R.string.no_folders_found), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    EmptyState(
+                        Icons.Default.SearchOff,
+                        stringResource(R.string.no_folders_found),
+                        subtitle = stringResource(R.string.no_results_hint),
+                        actionLabel = stringResource(R.string.clear_filter),
+                        onAction = { searchQuery = "" },
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 } else {
                     Text(stringResource(R.string.folders_found, searchResults.size), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 4.dp))
                     LazyColumn(modifier = Modifier.weight(1f)) {
-                        items(searchResults, key = { it.path }) { item ->
+                        items(searchResults, key = { it.path }, contentType = { "folder_search_row" }) { item ->
                             FolderResultRow(
                                 item = item,
                                 query = searchQuery,
@@ -314,7 +347,7 @@ fun FolderPickerSheet(
             } else {
                 // Breadcrumb + directory listing
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { currentPath = rootPath }, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = { currentPath = rootPath }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.Home, null, tint = if (currentPath == rootPath) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     }
                     // Always offered (not just after drilling in from here) as a plain "go to parent
@@ -325,7 +358,7 @@ fun FolderPickerSheet(
                         IconButton(onClick = {
                             val parent = File(currentPath).parent
                             currentPath = if (parent != null && parent.length >= rootPath.length && parent.startsWith(rootPath)) parent else rootPath
-                        }, modifier = Modifier.size(40.dp)) {
+                        }, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                         }
                     }
@@ -334,13 +367,13 @@ fun FolderPickerSheet(
                         val parts = currentPath.removePrefix(rootPath).split("/").filter { it.isNotBlank() }
                         Text(if (parts.isEmpty()) stringResource(R.string.internal_storage) else parts.joinToString(" › "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     }
-                    IconButton(onClick = { pendingCreateFolder = true }, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = { pendingCreateFolder = true }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.CreateNewFolder, stringResource(R.string.new_folder), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     }
                 }
                 Spacer(Modifier.height(4.dp))
                 LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(folders, key = { it.path }) { folder ->
+                    items(folders, key = { it.path }, contentType = { "folder_browse_row" }) { folder ->
                         Surface(
                             modifier = Modifier.fillMaxWidth().clickable {
                                 currentPath = folder.path
@@ -400,22 +433,30 @@ fun FolderPickerSheet(
 
     if (pendingCreateFolder) {
         AlertDialog(
-            onDismissRequest = { pendingCreateFolder = false; newFolderName = "" },
+            onDismissRequest = { if (!creatingFolder) { pendingCreateFolder = false; newFolderName = "" } },
             title = { Text(stringResource(R.string.create_folder_title)) },
             text = {
                 OutlinedTextField(value = newFolderName, onValueChange = { newFolderName = it }, label = { Text(stringResource(R.string.folder_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             },
             confirmButton = {
-                TextButton(onClick = {
-                    if (newFolderName.isNotBlank()) {
-                        val newDir = File(currentPath, newFolderName)
-                        val ok = try { newDir.mkdirs() || newDir.isDirectory } catch (_: Exception) { false }
-                        if (ok) currentPath = newDir.path else ctx.toast(ctx.getString(R.string.create_folder_error))
-                        pendingCreateFolder = false; newFolderName = ""
+                TextButton(enabled = !creatingFolder, onClick = {
+                    val folderName = newFolderName.trim()
+                    if (folderName.isNotBlank() && folderName != "." && folderName != ".." && !folderName.contains('/') && !folderName.contains('\\')) {
+                        creatingFolder = true
+                        scope.launch {
+                            val newDir = File(currentPath, folderName)
+                            val ok = withContext(Dispatchers.IO) {
+                                runCatching { newDir.mkdirs() || newDir.isDirectory }.getOrDefault(false)
+                            }
+                            if (ok) currentPath = newDir.path else ctx.toast(ctx.getString(R.string.create_folder_error))
+                            creatingFolder = false
+                            pendingCreateFolder = false
+                            newFolderName = ""
+                        }
                     }
                 }) { Text(stringResource(R.string.action_create)) }
             },
-            dismissButton = { TextButton(onClick = { pendingCreateFolder = false; newFolderName = "" }) { Text(stringResource(R.string.cancel)) } }
+            dismissButton = { TextButton(enabled = !creatingFolder, onClick = { pendingCreateFolder = false; newFolderName = "" }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 
@@ -427,6 +468,13 @@ fun FolderPickerSheet(
             onReplace = { pendingConflict = null; scope.launch { MoveConflicts.freeTargetsForReplace(ctx, items); proceed(items) } },
             onSkip = { pendingConflict = null; proceed(MoveConflicts.withoutConflicts(items)) },
             onCancel = { pendingConflict = null },
+        )
+    }
+
+    if (pendingAllFilesItems != null) {
+        AllFilesAccessSheet(
+            onAllow = { requestAllFilesAccess() },
+            onLater = { pendingAllFilesItems = null },
         )
     }
 
@@ -461,11 +509,16 @@ fun FolderPickerSheet(
                     Text(dest, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
                     // Pre-warn about name collisions so the user isn't surprised by the resolution
                     // dialog after confirming - the count of files that already exist at the target.
-                    val collisions = remember(dest) { sourcePaths.count { File(dest.trimEnd('/'), File(it).name).exists() } }
-                    if (collisions > 0) {
+                    var collisions by remember(dest) { mutableStateOf<Int?>(null) }
+                    LaunchedEffect(dest) {
+                        collisions = withContext(Dispatchers.IO) {
+                            sourcePaths.count { File(dest.trimEnd('/'), File(it).name).exists() }
+                        }
+                    }
+                    if (collisions != null && collisions!! > 0) {
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            stringResource(R.string.move_conflict_prewarn, collisions),
+                            stringResource(R.string.move_conflict_prewarn, collisions!!),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.error,
                         )

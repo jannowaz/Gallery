@@ -2,13 +2,15 @@ package org.fossify.gallery.compose.components
 import org.fossify.gallery.compose.theme.Radius
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -16,15 +18,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -46,12 +49,16 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import org.fossify.gallery.compose.screens.VideoThumbnail
 import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.theme.FavoriteColor
 import org.fossify.gallery.compose.theme.RatingStarColor
 import org.fossify.gallery.compose.theme.Scrim
+import org.fossify.gallery.compose.theme.SelectionVisual
 import org.fossify.gallery.compose.util.BlurState
 import org.fossify.gallery.compose.util.privacyBlur
 import org.fossify.gallery.compose.util.selectableItem
@@ -75,31 +82,60 @@ fun MediaTile(
     isSelected: Boolean,
     isSelectionMode: Boolean,
     hasTag: Boolean,
+    tags: List<String> = emptyList(),
+    onTagClick: ((String) -> Unit)? = null,
     showOverlays: Boolean,
     aspectRatio: Float,
     cornerShape: Shape,
     cardColor: Color,
     itemSpacing: Dp,
     showFileName: Boolean,
+    // A regular grid must keep each row on a common baseline. Masonry deliberately does not use
+    // this, because its varying item heights are the point of that layout.
+    reserveGridCaptionSpace: Boolean = false,
     showVideoDuration: Boolean,
     cropThumbnails: Boolean = true,
     showRating: Boolean = true,
     showFileType: Boolean = true,
     markFavorite: Boolean = true,
+    isNarrowTile: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onSwipeToSelect: () -> Unit,
-    onPreviewClick: () -> Unit = {},
     onBoundsChanged: (Rect) -> Unit,
+    onBoundsRemoved: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    DisposableEffect(medium.path, isSelectionMode) {
+        onDispose { onBoundsRemoved?.invoke() }
+    }
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(if (isPressed) 0.96f else 1f, animationSpec = AppMotion.short, label = "pressScale")
+    // Scroll state can change for every visible tile at once. Animating this alpha per tile creates
+    // dozens of independent animation clocks and a coordinated fade when a fling starts/stops.
+    // Keep the state change synchronous; the press scale above remains animated because it belongs
+    // to one directly touched tile and does not affect list layout.
+    val overlayAlpha = if (showOverlays) 1f else 0f
+    // The image is the primary content. Rating, tag and file-type badges are secondary metadata;
+    // keep the default grid quiet and reveal them when the user has entered selection mode or
+    // explicitly enabled file names/detail-oriented tiles.
+    val showSecondaryMetadata = isSelectionMode || showFileName
 
     val durationText = remember(medium.videoDuration, isVideo, showVideoDuration) {
         if (showVideoDuration && isVideo && medium.videoDuration > 0)
             "%02d:%02d".format(medium.videoDuration / 60, medium.videoDuration % 60) else ""
+    }
+    val mediaTypeDescription = if (isVideo) stringResource(R.string.media_type_video) else stringResource(R.string.media_type_image)
+    val ratingDescription = if (medium.rating > 0) stringResource(R.string.filter_rating, medium.rating) else null
+    val favoriteDescription = if (markFavorite && medium.isFavorite) stringResource(R.string.favorite) else null
+    val tagDescription = if (hasTag) stringResource(R.string.action_tags) else null
+    val tileDescription = buildString {
+        append(medium.name)
+        append(", ").append(mediaTypeDescription)
+        if (ratingDescription != null) append(", ").append(ratingDescription)
+        if (favoriteDescription != null) append(", ").append(favoriteDescription)
+        if (tagDescription != null) append(", ").append(tagDescription)
     }
 
     Column(
@@ -128,7 +164,14 @@ fun MediaTile(
                     onSwipeToSelect = onSwipeToSelect,
                     interactionSource = interactionSource,
                 )
-                .semantics { if (isSelectionMode) selected = isSelected }
+                .semantics {
+                    // The image itself is intentionally descriptive, but the clickable tile also
+                    // needs a single, stable announcement for TalkBack when the thumbnail is
+                    // hidden behind a loading/error placeholder.
+                    contentDescription = tileDescription
+                    role = Role.Button
+                    if (isSelectionMode) selected = isSelected
+                }
         ) {
             val thumbScale = if (cropThumbnails) ContentScale.Crop else ContentScale.Fit
             if (isVideo) {
@@ -144,79 +187,118 @@ fun MediaTile(
                 )
             }
 
-            if (isVideo) {
-                Box(Modifier.align(Alignment.Center).size(32.dp).background(Scrim.a35, CircleShape), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.PlayArrow, null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(22.dp))
-                }
+            if (isVideo && durationText.isEmpty()) {
+                VideoPlayOverlay(
+                    Modifier.align(Alignment.Center),
+                    size = if (isNarrowTile) 20.dp else 32.dp,
+                )
             }
 
-            if (showOverlays) {
-                if (showRating && medium.rating > 0) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-                        Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(bottom = 3.dp).background(Scrim.a40, RoundedCornerShape(Radius.xs)).padding(horizontal = 4.dp, vertical = 1.dp)) {
-                            repeat(medium.rating) {
-                                Icon(Icons.Default.Star, contentDescription = null, tint = RatingStarColor, modifier = Modifier.size(11.dp))
+            // Keep the identity cues that matter while a fast scroll is in progress. Decorative
+            // metadata can disappear temporarily, but a video duration and favorite marker should
+            // not blink away and make the grid feel visually unstable.
+            if (overlayAlpha > 0f || (isVideo && durationText.isNotEmpty()) || (markFavorite && medium.isFavorite)) {
+                // Decorative metadata fades out while scrolling instead of disappearing in one
+                // frame. Duration and favorite stay visible as stable identity cues.
+                if (overlayAlpha > 0f) Box(Modifier.fillMaxSize().graphicsLayer { alpha = overlayAlpha }) {
+                    if (showSecondaryMetadata && showRating && medium.rating > 0) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+                            Surface(
+                                modifier = Modifier.padding(bottom = 3.dp),
+                                color = MaterialTheme.colorScheme.tertiaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                                shape = RoundedCornerShape(Radius.xs),
+                            ) {
+                                Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)) {
+                                // A compact numeric badge stays legible on 5–6 column grids where five
+                                // individual stars would overflow into the duration badge.
+                                    Text("★${medium.rating}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer, fontSize = if (isNarrowTile) 9.sp else 11.sp)
+                                }
                             }
                         }
                     }
-                }
-                if (hasTag) {
-                    Box(Modifier.align(Alignment.TopEnd).padding(4.dp).background(Scrim.a50, RoundedCornerShape(Radius.xs)).padding(horizontal = 4.dp, vertical = 1.dp)) {
-                        Icon(Icons.Default.Label, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(10.dp))
+                    if (showSecondaryMetadata && hasTag) {
+                        Surface(
+                            modifier = Modifier.align(Alignment.TopEnd).padding(if (isNarrowTile) 2.dp else 4.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            shape = RoundedCornerShape(Radius.xs),
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(horizontal = if (isNarrowTile) 2.dp else 4.dp, vertical = 1.dp).size(if (isNarrowTile) 9.dp else 10.dp))
+                        }
+                    }
+                    if (showSecondaryMetadata && showFileType && (medium.type == TYPE_GIFS || medium.type == TYPE_RAWS || medium.type == TYPE_SVGS)) {
+                        val typeLabel = stringResource(
+                            when (medium.type) {
+                                TYPE_GIFS -> R.string.gif
+                                TYPE_RAWS -> R.string.raw
+                                else -> R.string.svg
+                            }
+                        )
+                        Surface(
+                            modifier = Modifier.align(Alignment.TopStart).padding(if (isNarrowTile) 2.dp else 4.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            shape = RoundedCornerShape(Radius.xs),
+                        ) {
+                            Text(typeLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, fontSize = if (isNarrowTile) 8.sp else 10.sp, modifier = Modifier.padding(horizontal = if (isNarrowTile) 3.dp else 4.dp, vertical = 1.dp))
+                        }
                     }
                 }
                 if (isVideo && durationText.isNotEmpty()) {
-                    Box(Modifier.align(Alignment.BottomEnd).padding(4.dp).background(Scrim.a60, RoundedCornerShape(Radius.xs)).padding(horizontal = 4.dp, vertical = 1.dp)) {
-                        Text(durationText, style = MaterialTheme.typography.labelSmall, color = Color.White, fontSize = 11.sp)
+                    Surface(
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(if (isNarrowTile) 2.dp else 4.dp),
+                        color = MaterialTheme.colorScheme.inverseSurface,
+                        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                        shape = RoundedCornerShape(Radius.xs),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            modifier = Modifier.padding(horizontal = if (isNarrowTile) 3.dp else 4.dp, vertical = 1.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.inverseOnSurface,
+                                modifier = Modifier.size(if (isNarrowTile) 10.dp else 12.dp),
+                            )
+                            Text(
+                                durationText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.inverseOnSurface,
+                                fontSize = if (isNarrowTile) 9.sp else 11.sp,
+                                lineHeight = if (isNarrowTile) 11.sp else 14.sp,
+                            )
+                        }
                     }
                 }
                 if (markFavorite && medium.isFavorite) {
-                    Box(Modifier.align(Alignment.BottomStart).padding(4.dp).background(Scrim.a50, RoundedCornerShape(Radius.xs)).padding(3.dp)) {
-                        Icon(Icons.Default.Favorite, null, tint = FavoriteColor, modifier = Modifier.size(11.dp))
-                    }
-                }
-                if (showFileType && !isSelectionMode && medium.type in intArrayOf(TYPE_GIFS, TYPE_RAWS, TYPE_SVGS)) {
-                    val typeLabel = stringResource(
-                        when (medium.type) {
-                            TYPE_GIFS -> R.string.gif
-                            TYPE_RAWS -> R.string.raw
-                            else -> R.string.svg
-                        }
-                    )
-                    Box(Modifier.align(Alignment.TopStart).padding(4.dp).background(Scrim.a50, RoundedCornerShape(Radius.xs)).padding(horizontal = 4.dp, vertical = 1.dp)) {
-                        Text(typeLabel, style = MaterialTheme.typography.labelSmall, color = Color.White, fontSize = 10.sp)
+                    Surface(
+                        modifier = Modifier.align(Alignment.BottomStart).padding(if (isNarrowTile) 2.dp else 4.dp),
+                        color = MaterialTheme.colorScheme.inverseSurface,
+                        contentColor = FavoriteColor,
+                        shape = RoundedCornerShape(Radius.xs),
+                    ) {
+                        Icon(Icons.Default.Favorite, null, tint = FavoriteColor, modifier = Modifier.padding(if (isNarrowTile) 2.dp else 3.dp).size(if (isNarrowTile) 9.dp else 11.dp))
                     }
                 }
             }
 
             if (isSelected) {
-                Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)))
+                Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = SelectionVisual.overlayAlpha)))
             }
             // Selection checkbox in the top-start corner — shown for every tile while selecting.
             if (isSelectionMode) {
-                Box(Modifier.align(Alignment.TopStart).padding(4.dp).size(24.dp), contentAlignment = Alignment.Center) {
+                val checkSize = if (isNarrowTile) 18.dp else 24.dp
+                Box(Modifier.align(Alignment.TopStart).padding(if (isNarrowTile) 2.dp else 4.dp).size(checkSize), contentAlignment = Alignment.Center) {
                     if (isSelected) {
-                        Box(Modifier.size(18.dp).background(Color.White, CircleShape))
-                        Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                        Box(Modifier.size(checkSize - 6.dp).background(Color.White, CircleShape))
+                        Icon(Icons.Default.CheckCircle, stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(checkSize))
                     } else {
-                        // a20 read as near-invisible behind bright photos (sky, snow, ...) - the
-                        // white ring had almost nothing to contrast against. a35 keeps the badge
-                        // legible on any thumbnail without turning it into a solid dark disc.
                         Box(Modifier.matchParentSize().background(Scrim.a35, CircleShape))
-                        Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Default.RadioButtonUnchecked, stringResource(R.string.cd_not_selected), tint = Color.White, modifier = Modifier.size(checkSize - 2.dp))
                     }
-                }
-                // Lets the user check a large preview of this exact item before deciding to select
-                // it, without the tap toggling selection or a long-press triggering range-select -
-                // a dedicated tap target sidesteps both existing selection gestures entirely instead
-                // of racing them.
-                Box(
-                    Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp)
-                        .background(Scrim.a35, CircleShape)
-                        .clickable(onClick = onPreviewClick),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = Color.White, modifier = Modifier.size(15.dp))
                 }
             }
         }
@@ -225,7 +307,27 @@ fun MediaTile(
             // the frame - see PrivacyBlur.kt) - the filename sitting right next to it stayed fully
             // legible, defeating a fair amount of the point when "blur all media" is on to hide what
             // a file actually shows.
-            Text(medium.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp).privacyBlur(BlurRadius.thumbnail, BlurState.enabled))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (reserveGridCaptionSpace) Modifier.heightIn(min = 20.dp) else Modifier),
+            ) {
+                Text(
+                    medium.name,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp).privacyBlur(BlurRadius.thumbnail, BlurState.enabled),
+                )
+                if (tags.isNotEmpty()) {
+                    TagChipRow(
+                        tags = tags,
+                        maxVisible = 2,
+                        onTagClick = onTagClick,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
         }
     }
 }

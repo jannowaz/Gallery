@@ -32,6 +32,11 @@ data class DuplicateGroup(
     val hash: String,
     val files: List<DuplicateFile>,
 ) {
+    /**
+     * Stable identity inside the current result set. Hashes are not guaranteed to be unique for
+     * perceptual groups, while a file can only belong to one duplicate group.
+     */
+    val targetKey: String get() = files.firstOrNull()?.path ?: hash
     val size: Long get() = files.maxOfOrNull { it.size } ?: 0L
     val wastedBytes: Long get() = (files.sumOf { it.size } - size).coerceAtLeast(0)
 }
@@ -204,11 +209,18 @@ class DuplicateScanner(private val context: Context) {
         val cache = HashCache(files)
         val hashes = LongArray(total)
         val valid = BooleanArray(total)
+        var lastPublishedPercent = -1
+        var lastPublishedAt = 0L
         for (i in 0 until total) {
             val h = cache.phash(files[i])
             if (h != null) { hashes[i] = h; valid[i] = true }
             val percent = ((i + 1) * 100) / total
-            emit(DuplicateProgress.Hashing(percent, i + 1, total))
+            val now = System.currentTimeMillis()
+            if (i == 0 || percent == 100 || (percent != lastPublishedPercent && now - lastPublishedAt >= 120L)) {
+                lastPublishedPercent = percent
+                lastPublishedAt = now
+                emit(DuplicateProgress.Hashing(percent, i + 1, total))
+            }
         }
 
         // Anchor-based (not transitive-chain) clustering: each cluster is anchored to one seed
@@ -217,20 +229,19 @@ class DuplicateScanner(private val context: Context) {
         // A~B and B~C merges A+B+C even when A and C aren't themselves similar) let one large,
         // thematically-similar-but-not-actually-duplicate folder collapse into a single cluster
         // spanning most of the folder (1087 files observed on a real device) - which then hung the
-        // UI trying to render one card with 1087 rows. Same O(n^2) comparison cost as before.
+        // UI trying to render one card with 1087 rows. A BK-tree keeps this exact Hamming-radius
+        // rule but prunes impossible branches instead of comparing every pair in the folder.
+        val hashIndex = PerceptualHashIndex(hashes, valid)
         val used = BooleanArray(total)
         val clusters = mutableListOf<MutableList<Int>>()
         for (i in 0 until total) {
             if (!valid[i] || used[i]) continue
-            val cluster = mutableListOf(i)
-            used[i] = true
-            for (j in i + 1 until total) {
-                if (!valid[j] || used[j]) continue
-                if (java.lang.Long.bitCount(hashes[i] xor hashes[j]) <= threshold) {
-                    cluster.add(j)
-                    used[j] = true
-                }
-            }
+            val cluster = hashIndex.within(i, threshold)
+                .asSequence()
+                .filter { valid[it] && !used[it] }
+                .sorted()
+                .toMutableList()
+            cluster.forEach { used[it] = true }
             clusters.add(cluster)
         }
 

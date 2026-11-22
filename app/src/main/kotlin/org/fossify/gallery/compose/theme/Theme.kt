@@ -177,7 +177,11 @@ fun GalleryTheme(
         // top of that fights edge-to-edge (and the API is deprecated as of API 35). Only the icon
         // appearance (light vs dark glyphs) still needs to track the theme explicitly.
         SideEffect {
-            val window = (view.context as Activity).window
+            var c = view.context
+            while (c is android.content.ContextWrapper && c !is Activity) {
+                c = c.baseContext
+            }
+            val window = (c as? Activity)?.window ?: return@SideEffect
             val controller = WindowCompat.getInsetsController(window, view)
             controller.isAppearanceLightStatusBars = !darkTheme
             controller.isAppearanceLightNavigationBars = !darkTheme

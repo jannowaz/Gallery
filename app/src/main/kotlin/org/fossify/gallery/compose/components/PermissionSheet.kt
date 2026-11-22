@@ -1,5 +1,11 @@
 package org.fossify.gallery.compose.components
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,11 +28,41 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.fossify.gallery.R
+import org.fossify.gallery.helpers.MediaStoreOps
+
+/**
+ * Launches Android's "All files access" settings screen for this app and invokes [onResult] with
+ * the updated grant status when the user returns.
+ */
+@Composable
+fun rememberAllFilesAccessRequester(onResult: (granted: Boolean) -> Unit): () -> Unit {
+    val ctx = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        onResult(MediaStoreOps.hasAllFilesAccess(ctx))
+    }
+    return {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                launcher.launch(
+                    Intent(
+                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:${ctx.packageName}"),
+                    ),
+                )
+            } catch (_: Exception) {
+                runCatching { launcher.launch(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
+            }
+        } else {
+            onResult(true)
+        }
+    }
+}
 
 /**
  * Rationale screen for the "All files access" permission, shown instead of a bare system-style

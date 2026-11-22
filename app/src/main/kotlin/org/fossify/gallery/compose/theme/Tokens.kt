@@ -7,11 +7,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/**
- * Fixed brand accent for the rating stars. Kept as one token (not a per-file hex literal) so the
- * "filled star" colour is identical everywhere and independent of the dynamic colour scheme.
- */
-val RatingStarColor = Color(0xFFFFD700)
+/** Stable amber rating accent. Ratings remain recognizable even when dynamic colors change. */
+val RatingStarColor = Color(0xFFFFB300)
 
 /**
  * Fixed brand accent for the "favorited" state (filled heart). Kept as one token instead of a
@@ -20,6 +17,11 @@ val RatingStarColor = Color(0xFFFFD700)
  * depending on which screen shows it or what the current dynamic colour scheme happens to be.
  */
 val FavoriteColor = Color(0xFFE91E63)
+
+/** Shared visual strength for the translucent selection wash over thumbnails. */
+object SelectionVisual {
+    const val overlayAlpha = 0.18f
+}
 
 /**
  * Fixed accent colours for the video trim handles (start/end). Kept as tokens for the same reason

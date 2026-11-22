@@ -26,11 +26,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -43,11 +46,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BrightnessMedium
-import androidx.compose.material.icons.filled.BrokenImage
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Edit
@@ -61,11 +67,13 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.BurstMode
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Icon
@@ -77,10 +85,13 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -89,6 +100,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
@@ -98,9 +110,21 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -112,7 +136,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
 import org.fossify.commons.extensions.updateBrightness
-import org.fossify.commons.dialogs.PropertiesDialog
 import org.fossify.gallery.helpers.EXT_NAME
 import org.fossify.gallery.helpers.EXT_PATH
 import org.fossify.gallery.helpers.EXT_SIZE
@@ -123,56 +146,43 @@ import org.fossify.gallery.helpers.EXT_CAMERA_MODEL
 import org.fossify.gallery.helpers.EXT_EXIF_PROPERTIES
 import org.fossify.gallery.helpers.EXT_GPS
 import org.fossify.gallery.compose.components.ConfirmDestructive
+import org.fossify.gallery.compose.components.MediaInfoDialog
 import org.fossify.gallery.compose.components.SelectionRow
+import org.fossify.gallery.compose.components.LibrarySheetHeader
 import org.fossify.gallery.compose.util.rememberGalleryHaptics
 import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.FavoriteColor
 import org.fossify.gallery.compose.theme.RatingStarColor
 import org.fossify.gallery.compose.components.RenameDialog
+import org.fossify.gallery.compose.components.RateAndTagSheet
 import org.fossify.gallery.compose.components.TagInputDialog
+import org.fossify.gallery.compose.components.TagHierarchyPickerDialog
 import org.fossify.gallery.compose.components.UndoBar
 import org.fossify.gallery.compose.screens.FolderPickerSheet
 import org.fossify.gallery.compose.theme.LocalMediaRepository
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.extensions.getDecodedImageDimensions
 import org.fossify.gallery.extensions.openEditor
 import org.fossify.gallery.helpers.VIDEO_EXTENSIONS
+import org.fossify.gallery.helpers.MAX_RECENT_TAGS
 import org.fossify.gallery.helpers.UndoAction
 import org.fossify.gallery.helpers.UndoManager
-import org.fossify.gallery.helpers.withDeletePasswordCheck
+import org.fossify.gallery.helpers.withRecycleBinDeletePasswordCheck
 import org.fossify.gallery.helpers.UndoType
+import org.fossify.gallery.helpers.QuickTagsBus
+import org.fossify.gallery.helpers.ViewerLoadDirection
 import java.io.File
 import kotlin.math.abs
 
 private fun isVideo(path: String) = path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
-
-/** Small uppercase caption grouping a block of controls in the action sheet - Bewertung/Aktionen/Tags
- * were previously separated only by dividers, which reads as one long wall of controls. */
-@Composable
-private fun SheetSectionLabel(text: String) {
-    Text(
-        text.uppercase(),
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        letterSpacing = 0.6.sp,
-        modifier = Modifier.padding(bottom = 6.dp),
-    )
-}
-
-@Composable
-private fun ActionChip(icon: ImageVector, label: String, tint: Color = MaterialTheme.colorScheme.onSurface, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(4.dp).clip(RoundedCornerShape(Radius.md)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp)) {
-        Icon(icon, label, tint = tint, modifier = Modifier.size(22.dp))
-        Spacer(Modifier.height(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = tint, maxLines = 1)
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ViewerScreen(
     paths: List<String>,
     startIndex: Int = 0,
+    startPath: String? = null,
+    onLoadMore: (suspend (ViewerLoadDirection, String) -> Unit)? = null,
     onClose: () -> Unit,
 ) {
     val ctx = LocalContext.current
@@ -185,15 +195,61 @@ fun ViewerScreen(
     // making the override viewer-scoped.
     DisposableEffect(Unit) {
         onDispose {
-            (ctx as? android.app.Activity)?.window?.let { w ->
-                val attrs = w.attributes
+            (ctx as? android.app.Activity)?.let { act ->
+                val attrs = act.window.attributes
                 attrs.screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-                w.attributes = attrs
+                act.window.attributes = attrs
+                org.fossify.gallery.helpers.ColorModeHelper.resetColorMode(act)
             }
         }
     }
     val items = remember { paths.toMutableStateList() }
-    val pagerState = rememberPagerState(initialPage = startIndex.coerceIn(0, (paths.size - 1).coerceAtLeast(0)), pageCount = { items.size })
+    val initialPage = startPath?.let { path -> paths.indexOf(path).takeIf { it >= 0 } }
+        ?: startIndex.coerceIn(0, (paths.size - 1).coerceAtLeast(0))
+    val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { items.size })
+    LaunchedEffect(paths) {
+        val visiblePath = items.getOrNull(pagerState.currentPage)
+        if (items != paths) {
+            items.clear()
+            items.addAll(paths)
+        }
+        // Keep the currently visible path anchored when a continuation page is prepended or
+        // appended. Re-selecting startPath here would snap every later update back to the original
+        // image after the user had already swiped away from it.
+        val targetPage = visiblePath?.let { items.indexOf(it).takeIf { index -> index >= 0 } }
+        if (targetPage != null && targetPage != pagerState.currentPage) {
+            pagerState.scrollToPage(targetPage)
+        }
+    }
+    LaunchedEffect(pagerState, onLoadMore) {
+        snapshotFlow { pagerState.currentPage }.collect { page ->
+            val anchor = items.getOrNull(page) ?: return@collect
+            if (page <= 2) onLoadMore?.invoke(ViewerLoadDirection.BEFORE, anchor)
+            if (items.lastIndex - page <= 2) onLoadMore?.invoke(ViewerLoadDirection.AFTER, anchor)
+        }
+    }
+    // Prefetch 2-ahead neighbor images into Coil's memory cache (beyondViewportPageCount = 1 already
+    // composes +/-1) using ImagePage's exact viewer cache key so rapid swiping hits RAM instead of disk.
+    LaunchedEffect(pagerState, items.size) {
+        snapshotFlow { pagerState.currentPage }.collect { page ->
+            val loader = coil.Coil.imageLoader(ctx)
+            val animateGifs = org.fossify.gallery.compose.util.ThumbnailOverlayState.animateGifs
+            listOf(page + 2, page - 2).forEach { targetIndex ->
+                val targetPath = items.getOrNull(targetIndex) ?: return@forEach
+                if (isVideo(targetPath)) return@forEach
+                val file = File(targetPath)
+                val ext = targetPath.substringAfterLast('.', "").lowercase()
+                val forceStatic = (ext == "gif" || ext == "webp") && !animateGifs
+                val req = coil.request.ImageRequest.Builder(ctx)
+                    .data(android.net.Uri.fromFile(file))
+                    .size(2560)
+                    .memoryCacheKey("viewer:${file.absolutePath}:0")
+                    .apply { if (forceStatic) decoderFactory(coil.decode.BitmapFactoryDecoder.Factory()) }
+                    .build()
+                loader.enqueue(req)
+            }
+        }
+    }
     // Always starts visible, videos included - a video used to open with no chrome at all (no
     // visible exit, no context) since this used to special-case `!isVideo(...)`. The existing
     // auto-hide effect below (keyed on showUI/uiInteractionTick) already hides it again after a few
@@ -201,23 +257,87 @@ fun ViewerScreen(
     // stuck on-screen - it just gives a video the same brief, visible-on-open moment a photo gets.
     var showUI by remember { mutableStateOf(true) }
     var showActionSheet by remember { mutableStateOf(false) }
+    var showRateAndTagSheet by remember { mutableStateOf(false) }
+    var slideshowActive by remember { mutableStateOf(false) }
+    var showSlideshowDialog by remember { mutableStateOf(false) }
     val currentPath = items.getOrNull(pagerState.currentPage) ?: ""
     val currentIsVideo = isVideo(currentPath)
+    LaunchedEffect(currentIsVideo) {
+        if (currentIsVideo) {
+            org.fossify.gallery.helpers.ColorModeHelper.resetColorMode(ctx as? android.app.Activity)
+        }
+    }
+    DisposableEffect(slideshowActive) {
+        val window = (ctx as? android.app.Activity)?.window
+        if (slideshowActive) {
+            showUI = false
+            window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            if (slideshowActive && !ctx.config.keepScreenOn) {
+                window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
+    }
+    LaunchedEffect(slideshowActive, pagerState.currentPage, items.size) {
+        if (!slideshowActive || items.size <= 1) return@LaunchedEffect
+        val intervalMs = ctx.config.slideshowInterval.coerceIn(1, 60) * 1000L
+        delay(intervalMs)
+        if (!slideshowActive || items.size <= 1) return@LaunchedEffect
+        val nextPage = if (ctx.config.slideshowRandomOrder) {
+            val candidates = items.indices.filter { it != pagerState.currentPage }
+            candidates.randomOrNull()
+        } else {
+            val sequential = pagerState.currentPage + 1
+            when {
+                sequential < items.size -> sequential
+                ctx.config.loopSlideshow -> 0
+                else -> null
+            }
+        }
+        if (nextPage != null) {
+            pagerState.animateScrollToPage(nextPage)
+        } else {
+            slideshowActive = false
+            showUI = true
+            ctx.toast(R.string.slideshow_ended)
+        }
+    }
     val repo = LocalMediaRepository.current
     var isFavorite by remember { mutableStateOf(false) }
-    var showTagsDialog by remember { mutableStateOf(false) }
     var showFolderPicker by remember { mutableStateOf(false) }
     var pendingFolderPickerIsMove by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
-    var showRatingOverlay by remember { mutableStateOf(ctx.config.viewerShowRatingBar) }
+    var infoDialogPath by remember { mutableStateOf<String?>(null) }
     var showQuickTags by remember { mutableStateOf(false) }
     var showPersistentTags by remember { mutableStateOf(true) }
     var tagRefreshTrigger by remember { mutableIntStateOf(0) }
-    val quickTags = remember { ctx.config.quickTags.toList() }
+    val quickTagsVersion by QuickTagsBus.version.collectAsStateWithLifecycle()
+    val quickTags = remember(quickTagsVersion) { ctx.config.quickTags.toList() }
+    val recentTags = remember(quickTagsVersion) { ctx.config.recentTags }
     var currentRating by remember { mutableIntStateOf(0) }
+    var editorTags by remember(currentPath) { mutableStateOf<Set<String>>(emptySet()) }
+    var editorTagSuggestions by remember(currentPath) { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
+    LaunchedEffect(showRateAndTagSheet, currentPath) {
+        if (showRateAndTagSheet) {
+            val (tags, suggestions) = withContext(Dispatchers.IO) {
+                repo.getTags(currentPath) to repo.getTagSuggestions(48)
+            }
+            editorTags = tags
+            editorTagSuggestions = suggestions
+        }
+    }
+    // Keep rating one tap away in the viewer. The preference only controls whether the compact
+    // rail is shown; the rating itself remains available in the action sheet as a fallback.
+    var showRatingOverlay by remember { mutableStateOf(ctx.config.viewerShowRatingBar) }
     var videoScalingMode by remember { mutableIntStateOf(0) }
     var showVideoSettings by remember { mutableStateOf(false) }
+    var showVideoTrimmer by remember { mutableStateOf(false) }
     var showFrameGrabber by remember { mutableStateOf(false) }
+    var captureFrameRequest by remember { mutableIntStateOf(0) }
+    var captureFramePath by remember { mutableStateOf<String?>(null) }
+    var volumePreview by remember { mutableStateOf<Int?>(null) }
+    val viewerBgColor = if (ctx.config.blackBackground) Color.Black else MaterialTheme.colorScheme.background
     // Inside the tiny PiP window every overlay is noise - chrome is forced hidden and the
     // persistent overlays below gate on !inPip.
     val inPip = org.fossify.gallery.compose.util.PipState.inPip
@@ -251,7 +371,6 @@ fun ViewerScreen(
             currentRating = try { repo.getRating(currentPath) } catch (_: Exception) { 0 }
         }
     }
-
     var extendedDetailsText by remember { mutableStateOf("") }
     LaunchedEffect(currentPath, currentIsVideo) {
         extendedDetailsText = if (ctx.config.showExtendedDetails) withContext(Dispatchers.IO) { buildExtendedDetailsText(ctx, currentPath, currentIsVideo) } else ""
@@ -296,7 +415,9 @@ fun ViewerScreen(
                 if (ctx.config.keepScreenOn) window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 if (ctx.config.maxBrightness) window.updateBrightness(false, originalBrightness)
                 if (ctx.config.hideSystemUI) androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-                if (originalCutoutMode != null) window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = originalCutoutMode }
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P && originalCutoutMode != null) {
+                    window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = originalCutoutMode }
+                }
             }
         }
     }
@@ -305,7 +426,7 @@ fun ViewerScreen(
     fun performDelete() {
         val idx = pagerState.currentPage
         val p = items.getOrNull(idx) ?: return
-        ctx.withDeletePasswordCheck {
+        ctx.withRecycleBinDeletePasswordCheck {
             ctx.config.lastViewedPath = p
             scope.launch(Dispatchers.IO) { repo.moveToRecycleBin(p) }
             UndoManager.push(UndoAction(paths = setOf(p), type = UndoType.DELETE))
@@ -319,11 +440,87 @@ fun ViewerScreen(
         if (ctx.config.skipDeleteConfirmation) performDelete() else showDeleteConfirm = true
     }
 
-    BackHandler(enabled = showActionSheet || showVideoSettings || showTagsDialog || showFolderPicker || showRenameDialog) {
+    fun toggleFavorite() {
+        val path = currentPath
+        val next = !isFavorite
+        isFavorite = next
+        scope.launch(Dispatchers.IO) {
+            val ok = repo.toggleFavorite(path, next)
+            if (!ok) withContext(Dispatchers.Main) {
+                if (currentPath == path) isFavorite = !next
+            }
+        }
+    }
+
+    // The viewer rail and the action sheet share the same immediate rating operation. A failed
+    // write rolls the optimistic UI back instead of showing a rating that was never stored.
+    fun rateCurrent(rating: Int) {
+        haptic(HapticFeedbackType.Confirm)
+        uiInteractionTick++
+        val path = currentPath
+        val previous = currentRating
+        currentRating = if (currentRating == rating) 0 else rating
+        val next = currentRating
+        scope.launch(Dispatchers.IO) {
+            val ratingSaved = repo.updateRating(path, next)
+            if (!ratingSaved) withContext(Dispatchers.Main) {
+                if (currentPath == path) {
+                    currentRating = previous
+                }
+                ctx.toast(ctx.getString(R.string.rating_write_failed), Toast.LENGTH_SHORT)
+            }
+        }
+    }
+
+    fun saveVideoFrame(sourcePath: String, bitmap: android.graphics.Bitmap?) {
+        if (bitmap == null) {
+            ctx.toast(ctx.getString(R.string.error_generic, ctx.getString(R.string.frame_capture_failed)), Toast.LENGTH_SHORT)
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            try {
+                val sourceFile = File(sourcePath)
+                val parent = sourceFile.parentFile ?: error("Video has no parent directory")
+                val screensDir = File(parent, "screens")
+                if (!screensDir.isDirectory && !screensDir.mkdirs() && !screensDir.isDirectory) {
+                    error("Could not create ${screensDir.absolutePath}")
+                }
+                val stem = sourceFile.nameWithoutExtension.ifBlank { "video" }
+                var suffix = 0
+                var output: File
+                do {
+                    val suffixText = if (suffix == 0) "" else "_$suffix"
+                    output = File(screensDir, "${stem}_screen_${System.currentTimeMillis()}$suffixText.jpg")
+                    suffix++
+                } while (output.exists())
+                output.outputStream().use { stream ->
+                    check(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, stream)) { "Could not encode screenshot" }
+                }
+                bitmap.recycle()
+                runCatching {
+                    android.media.MediaScannerConnection.scanFile(ctx, arrayOf(output.absolutePath), arrayOf("image/jpeg"), null)
+                }
+                org.fossify.gallery.helpers.RefreshBus.trigger(affectedPaths = listOf(output.absolutePath))
+                withContext(Dispatchers.Main) {
+                    ctx.toast(ctx.getString(R.string.frame_saved, "screens/${output.name}"), Toast.LENGTH_SHORT)
+                }
+            } catch (e: Exception) {
+                runCatching { bitmap.recycle() }
+                withContext(Dispatchers.Main) {
+                    ctx.toast(ctx.getString(R.string.error_generic, e.message ?: ""), Toast.LENGTH_SHORT)
+                }
+            }
+        }
+    }
+
+    BackHandler(enabled = slideshowActive || showSlideshowDialog || infoDialogPath != null || showActionSheet || showRateAndTagSheet || showVideoSettings || showFolderPicker || showRenameDialog) {
         when {
+            slideshowActive -> { slideshowActive = false; showUI = true }
+            showSlideshowDialog -> showSlideshowDialog = false
+            infoDialogPath != null -> infoDialogPath = null
             showRenameDialog -> showRenameDialog = false
             showFolderPicker -> showFolderPicker = false
-            showTagsDialog -> showTagsDialog = false
+            showRateAndTagSheet -> showRateAndTagSheet = false
             showVideoSettings -> showVideoSettings = false
             showActionSheet -> showActionSheet = false
         }
@@ -345,15 +542,66 @@ fun ViewerScreen(
     var brightnessPreview by remember { mutableStateOf<Float?>(null) }
     val audioManager = remember { ctx.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager }
 
+    val viewerFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        runCatching { viewerFocusRequester.requestFocus() }
+    }
+    val hasModalOpen = showActionSheet || showRateAndTagSheet || showRenameDialog || showFolderPicker || infoDialogPath != null || showDeleteConfirm
+
     // dragScale/dragAlpha used to be composable-body vals derived from dragOffset - reading
     // dragOffset there recomposed the whole ViewerScreen (top bar, bottom controls, everything) on
     // every touch-move frame of the swipe-up/-down gesture, even though dragScale was only ever
     // consumed inside graphicsLayer{} and dragAlpha only inside a draw call. Both are now computed
     // directly inside their respective draw-phase lambdas below, so a drag only triggers a redraw.
-    Box(Modifier.fillMaxSize().drawBehind {
-        val dragAlpha = (1f - (abs(dragOffset) / 600f)).coerceIn(0.5f, 1f)
-        drawRect(Color.Black.copy(alpha = dragAlpha))
-    }) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .focusRequester(viewerFocusRequester)
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                if (hasModalOpen || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (event.key) {
+                    Key.DirectionLeft -> {
+                        val prev = pagerState.currentPage - 1
+                        if (prev >= 0) scope.launch { pagerState.animateScrollToPage(prev) }
+                        true
+                    }
+                    Key.DirectionRight -> {
+                        val next = pagerState.currentPage + 1
+                        if (next < items.size) scope.launch { pagerState.animateScrollToPage(next) }
+                        true
+                    }
+                    Key.Escape -> {
+                        ctx.config.lastViewedPath = currentPath
+                        onClose()
+                        true
+                    }
+                    Key.F -> {
+                        uiInteractionTick++
+                        toggleFavorite()
+                        true
+                    }
+                    Key.One -> { rateCurrent(1); true }
+                    Key.Two -> { rateCurrent(2); true }
+                    Key.Three -> { rateCurrent(3); true }
+                    Key.Four -> { rateCurrent(4); true }
+                    Key.Five -> { rateCurrent(5); true }
+                    Key.Zero -> {
+                        if (currentRating > 0) rateCurrent(currentRating)
+                        true
+                    }
+                    Key.Delete, Key.Backspace -> {
+                        deleteCurrent()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            .drawBehind {
+                val dragAlpha = (1f - (abs(dragOffset) / 600f)).coerceIn(0.5f, 1f)
+                drawRect(viewerBgColor.copy(alpha = dragAlpha))
+            }
+    ) {
         HorizontalPager(
             state = pagerState,
             userScrollEnabled = !isCurrentZoomed,
@@ -389,21 +637,27 @@ fun ViewerScreen(
                             onDragEnd = {
                                 when (dragMode) {
                                     0 -> {
-                                        // The action-sheet branch must spring the offset back too - it used to
-                                        // leave dragOffset at wherever the finger stopped, so after dismissing
-                                        // the sheet the image stayed shrunken/shifted until the next drag.
-                                        if (dragOffset < -180f) showActionSheet = true
-                                        else if (dragOffset > 240f) { ctx.config.lastViewedPath = currentPath; onClose(); return@detectVerticalDragGestures }
-                                        scope.launch { animate(dragOffset, 0f, animationSpec = org.fossify.gallery.compose.theme.AppMotion.gestureSpring) { v, _ -> dragOffset = v } }
+                                        val openSheetAfterSettle = dragOffset < -180f
+                                        if (ctx.config.allowDownGesture && dragOffset > 240f) {
+                                            ctx.config.lastViewedPath = currentPath
+                                            onClose()
+                                            return@detectVerticalDragGestures
+                                        }
+                                        scope.launch {
+                                            animate(dragOffset, 0f, animationSpec = AppMotion.gestureSpring) { v, _ -> dragOffset = v }
+                                            if (openSheetAfterSettle) showActionSheet = true
+                                        }
                                     }
                                     1 -> brightnessPreview = null
+                                    2 -> volumePreview = null
                                 }
                             },
                             onVerticalDrag = { _, drag ->
                                 when (dragMode) {
                                     0 -> {
-                                        dragOffset += drag
-                                        val crossed = dragOffset < -180f || dragOffset > 240f
+                                        val nextOffset = dragOffset + drag
+                                        dragOffset = if (ctx.config.allowDownGesture) nextOffset else nextOffset.coerceAtMost(0f)
+                                        val crossed = dragOffset < -180f || (ctx.config.allowDownGesture && dragOffset > 240f)
                                         if (crossed && !dismissThresholdCrossed) haptic(HapticFeedbackType.GestureThresholdActivate)
                                         dismissThresholdCrossed = crossed
                                     }
@@ -419,16 +673,18 @@ fun ViewerScreen(
                                         }
                                     }
                                     2 -> audioManager?.let { am ->
-                                        val maxVol = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
-                                        // Accumulate fractional steps - a single small drag event's share of the
-                                        // full swipe range often rounds to 0 volume steps on its own, which would
-                                        // make slow drags do nothing.
+                                        val maxVol = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)
                                         volumeAccum += -drag / size.height * maxVol
                                         if (abs(volumeAccum) >= 1f) {
                                             val step = volumeAccum.toInt()
                                             val curVol = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
-                                            am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, (curVol + step).coerceIn(0, maxVol), android.media.AudioManager.FLAG_SHOW_UI)
+                                            val newVol = (curVol + step).coerceIn(0, maxVol)
+                                            am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, newVol, 0)
+                                            volumePreview = ((newVol * 100) / maxVol).coerceIn(0, 100)
                                             volumeAccum -= step
+                                        } else if (volumePreview == null) {
+                                            val curVol = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+                                            volumePreview = ((curVol * 100) / maxVol).coerceIn(0, 100)
                                         }
                                     }
                                 }
@@ -439,40 +695,55 @@ fun ViewerScreen(
         ) { page ->
             val path = items.getOrNull(page) ?: ""
             val file = remember(path) { File(path) }
-            // file.exists() is a synchronous disk stat; this pager composes/measures every visible and
-            // prefetched neighbor page repeatedly (each recomposition, drag, and Compose measure pass),
-            // and StrictMode measured this call blocking the main thread for up to ~560ms on a real
-            // device under load. remember(path) means every page pays that cost once, not on every pass.
-            val exists = remember(path) { file.exists() }
-            if (isVideo(path)) VideoPage(
-                path = path, scalingMode = videoScalingMode,
-                onScalingModeChange = { videoScalingMode = it },
-                onToggleUi = { showUI = !showUI },
-                showUi = showUI,
-                onInteract = { uiInteractionTick++ },
-                onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
-                isCurrentPage = page == pagerState.currentPage,
-            )
-            else if (exists) ImagePage(
-                path = path, file = file, onClose = onClose,
-                onToggleUi = { showUI = !showUI },
-                onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
-                isCurrentPage = page == pagerState.currentPage,
-            )
-            // A path whose file vanished (deleted externally, unmounted SD card) used to render as
-            // a plain black page with no feedback - show the same broken-media state ImagePage
-            // shows for undecodable files.
-            else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.BrokenImage, file.name, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(48.dp))
-                    Text(stringResource(R.string.error_loading_media), color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(top = 12.dp))
-                    Text(file.name, color = Color.White.copy(alpha = 0.5f), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
+            var exists by remember(path) { mutableStateOf<Boolean?>(null) }
+            var availabilityRetryNonce by remember(path) { mutableIntStateOf(0) }
+            LaunchedEffect(path, availabilityRetryNonce) {
+                exists = null
+                exists = withContext(Dispatchers.IO) { file.exists() }
+            }
+            when {
+                exists == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
                 }
+                exists == false -> ViewerMediaErrorState(
+                    file = file,
+                    isAvailable = false,
+                    onRetry = { availabilityRetryNonce++ },
+                )
+                isVideo(path) -> VideoPage(
+                    path = path, scalingMode = videoScalingMode,
+                    onScalingModeChange = { videoScalingMode = it },
+                    onToggleUi = {
+                        if (slideshowActive) { slideshowActive = false; showUI = true }
+                        else showUI = !showUI
+                    },
+                    showUi = showUI,
+                    onInteract = { uiInteractionTick++ },
+                    onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
+                    isCurrentPage = page == pagerState.currentPage,
+                    captureFrameRequest = if (page == pagerState.currentPage && path == captureFramePath) captureFrameRequest else 0,
+                    onCaptureFrame = { bitmap ->
+                        if (captureFramePath == path) {
+                            captureFramePath = null
+                            saveVideoFrame(path, bitmap)
+                        } else {
+                            // The pager may have moved on while the fallback decoder was working.
+                            bitmap?.recycle()
+                        }
+                    },
+                )
+                else -> ImagePage(
+                    path = path, file = file, onClose = onClose,
+                    onToggleUi = {
+                        if (slideshowActive) { slideshowActive = false; showUI = true }
+                        else showUI = !showUI
+                    },
+                    onZoomChange = { if (page == pagerState.currentPage) isCurrentZoomed = it },
+                    isCurrentPage = page == pagerState.currentPage,
+                )
             }
         }
 
-        // Volume has the system's own overlay (FLAG_SHOW_UI); brightness has no OS-level equivalent
-        // so it gets a small custom readout while the left-third drag is actually in progress.
         brightnessPreview?.let { level ->
             Surface(modifier = Modifier.align(Alignment.Center), shape = RoundedCornerShape(Radius.md), color = Scrim.a60) {
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -482,23 +753,60 @@ fun ViewerScreen(
                 }
             }
         }
+        volumePreview?.let { pct ->
+            Surface(modifier = Modifier.align(Alignment.Center), shape = RoundedCornerShape(Radius.md), color = Scrim.a60) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.VolumeUp, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("$pct%", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
 
         // Top bar
-        AnimatedVisibility(visible = showUI, enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium)) {
-            Box(Modifier.fillMaxSize()) {
+        // The main viewer chrome is one stable state. It appears/disappears as a single layer so
+        // the top bar, bottom actions and scrim cannot drift through separate fade timelines.
+        AnimatedVisibility(
+            visible = showUI && !inPip,
+            enter = fadeIn(AppMotion.medium),
+            exit = fadeOut(AppMotion.medium),
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+        ) {
+            // The viewer is edge-to-edge. Keep the interactive chrome below the system status
+            // icons instead of letting the close/title/favorite controls sit underneath them.
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
                 IconButton(
                     onClick = { ctx.config.lastViewedPath = currentPath; onClose() },
-                    modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
-                        .background(Scrim.a40, CircleShape).size(44.dp)
+                    modifier = Modifier.align(Alignment.CenterStart)
+                        .background(Scrim.a40, CircleShape).size(48.dp)
                 ) { Icon(Icons.Default.Close, stringResource(R.string.cd_close), tint = Color.White) }
-                if (items.size > 1) Text(
-                    "${pagerState.currentPage + 1} / ${items.size}",
-                    color = Color.White,
-                    style = LocalTextStyle.current.copy(fontFeatureSettings = "tnum"),
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp)
-                        .background(Scrim.a40, CircleShape)
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                )
+                if (currentPath.isNotBlank()) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.Center).padding(horizontal = 52.dp).widthIn(max = 280.dp),
+                        shape = RoundedCornerShape(Radius.lg),
+                        color = Scrim.a40,
+                    ) {
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                File(currentPath).name,
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (items.size > 1) Text(
+                                "${pagerState.currentPage + 1} / ${items.size}",
+                                color = Color.White.copy(alpha = 0.8f),
+                                style = LocalTextStyle.current.copy(fontFeatureSettings = "tnum"),
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -506,17 +814,19 @@ fun ViewerScreen(
         // state as the top/bottom bars; turning it off keeps the details on screen even in
         // fullscreen (mirrors the legacy Views viewer's identical `!hideExtendedDetails ||
         // !isFullscreen` alpha logic in PhotoFragment/VideoFragment).
-        AnimatedVisibility(
-            visible = extendedDetailsText.isNotEmpty() && !inPip && (showUI || !ctx.config.hideExtendedDetails),
-            enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium),
-            modifier = Modifier.align(Alignment.TopStart).padding(top = 72.dp, start = 16.dp, end = 16.dp),
-        ) {
-            Surface(shape = RoundedCornerShape(Radius.md), color = Scrim.a40) {
+        if (extendedDetailsText.isNotEmpty() && !inPip && (showUI || !ctx.config.hideExtendedDetails)) {
+            Surface(
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp, start = 16.dp, end = 16.dp),
+                shape = RoundedCornerShape(Radius.md),
+                color = Scrim.a40,
+            ) {
                 Text(
                     extendedDetailsText,
                     color = Color.White,
                     style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 300.dp).padding(horizontal = 10.dp, vertical = 6.dp),
                 )
             }
         }
@@ -530,7 +840,11 @@ fun ViewerScreen(
             exit = fadeOut(AppMotion.medium),
             modifier = Modifier.align(Alignment.Center),
         ) {
-            Surface(shape = RoundedCornerShape(Radius.lg), color = Scrim.a60) {
+            Surface(
+                shape = RoundedCornerShape(Radius.lg),
+                color = Scrim.a60,
+                modifier = Modifier.clickable { dismissGestureHint() },
+            ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.KeyboardArrowUp, null, tint = Color.White, modifier = Modifier.size(18.dp))
@@ -543,6 +857,8 @@ fun ViewerScreen(
                         Spacer(Modifier.width(4.dp))
                         Text(stringResource(R.string.viewer_gesture_hint_down), color = Color.White, style = MaterialTheme.typography.bodySmall)
                     }
+                    Spacer(Modifier.height(6.dp))
+                    Text(stringResource(R.string.viewer_gesture_hint_tap), color = Color.White, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -579,37 +895,85 @@ fun ViewerScreen(
         // Soft bottom scrim for control legibility, anchored to the screen bottom so it never floats
         // with a hard edge even when the controls are lifted above the video seek bar.
         AnimatedVisibility(
-            visible = showUI,
-            modifier = Modifier.align(Alignment.BottomCenter),
-            enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium),
+            visible = showUI && !inPip,
+            enter = fadeIn(AppMotion.medium),
+            exit = fadeOut(AppMotion.medium),
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
         ) {
-            Box(Modifier.fillMaxWidth().height(200.dp).background(Brush.verticalGradient(0f to Color.Transparent, 1f to Scrim.a60)))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .background(Brush.verticalGradient(0f to Color.Transparent, 1f to Scrim.a60)),
+            )
         }
 
-        // Bottom overlays in one column: rating bar (persistent) above the action bar (with the UI),
-        // so they never overlap and the rating bar slides smoothly when the UI is toggled. For videos
-        // the group sits permanently above the seek bar (constant offset) so they never overlap even
-        // mid-animation.
+        // Bottom overlays in one column: direct rating rail above the action bar (with the UI), so
+        // rating and actions never overlap and the rail slides smoothly with the viewer chrome. For
+        // videos the group sits permanently above the seek bar (constant offset).
         val bottomGroupOffset = if (currentIsVideo) 64.dp else 0.dp
         Column(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = bottomGroupOffset),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            AnimatedVisibility(visible = showRatingOverlay && !inPip, enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium)) {
-                Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
-                    Surface(shape = RoundedCornerShape(Radius.xl), color = Scrim.a32) {
-                        Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 6.dp)) {
-                            for (i in 1..5) {
-                                IconButton(onClick = { haptic(HapticFeedbackType.Confirm); uiInteractionTick++; val path = currentPath; val prev = currentRating; val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { val ok = repo.updateRating(path, r); if (!ok) withContext(Dispatchers.Main) { if (currentPath == path) currentRating = prev } } }, modifier = Modifier.size(40.dp)) {
-                                    Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))
-                                }
+            if (showUI && !inPip) {
+                // A quiet, persistent handle makes the swipe-up action sheet discoverable without
+                // adding another text label to the already dense viewer chrome.
+                Box(
+                    Modifier.padding(bottom = 2.dp).width(32.dp).height(4.dp).clip(RoundedCornerShape(2.dp))
+                    .background(Color.White.copy(alpha = 0.58f))
+                )
+            }
+            AnimatedVisibility(
+                visible = showRatingOverlay && showUI && !inPip,
+                enter = fadeIn(AppMotion.medium),
+                exit = fadeOut(AppMotion.medium),
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(Radius.xl),
+                    color = Scrim.a40,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    ) {
+                        for (i in 1..5) {
+                            IconButton(
+                                onClick = { rateCurrent(i) },
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Icon(
+                                    imageVector = if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder,
+                                    contentDescription = stringResource(R.string.cd_rating_star, i),
+                                    tint = if (i <= currentRating) RatingStarColor else Color.White.copy(alpha = 0.72f),
+                                    modifier = Modifier.size(28.dp),
+                                )
                             }
-                            IconButton(onClick = { showRatingOverlay = false; ctx.config.viewerShowRatingBar = false }, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Close, stringResource(R.string.action_hide), tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
+                        }
+                        IconButton(
+                            onClick = {
+                                uiInteractionTick++
+                                toggleFavorite()
+                            },
+                            modifier = Modifier.size(48.dp),
+                        ) {
+                            Icon(
+                                if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                stringResource(R.string.favorite),
+                                tint = if (isFavorite) FavoriteColor else Color.White.copy(alpha = 0.72f),
+                                modifier = Modifier.size(26.dp),
+                            )
                         }
                     }
                 }
             }
-            AnimatedVisibility(visible = showUI, enter = fadeIn(AppMotion.medium), exit = fadeOut(AppMotion.medium)) {
+            AnimatedVisibility(
+                visible = showUI && !inPip,
+                enter = fadeIn(AppMotion.medium),
+                exit = fadeOut(AppMotion.medium),
+            ) {
                 Box(Modifier.fillMaxWidth()) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
@@ -618,103 +982,147 @@ fun ViewerScreen(
                     ) {
                         IconButton(onClick = {
                             uiInteractionTick++
-                            val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath))
-                            ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, ctx.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                            try {
+                                val targetFile = File(currentPath)
+                                if (!targetFile.exists()) {
+                                    ctx.toast(R.string.no_files_found)
+                                } else {
+                                    val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", targetFile)
+                                    ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, ctx.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("Viewer", "Share failed for $currentPath", e)
+                                ctx.toast(R.string.viewer_share_failed)
+                            }
                         }) { Icon(Icons.Default.Share, stringResource(R.string.action_share), tint = Color.White) }
                         IconButton(onClick = {
                             uiInteractionTick++
-                            val path = currentPath; val f = !isFavorite; isFavorite = f
-                            scope.launch(Dispatchers.IO) { val ok = repo.toggleFavorite(path, f); if (!ok) withContext(Dispatchers.Main) { if (currentPath == path) isFavorite = !f } }
-                        }) { Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), tint = if (isFavorite) FavoriteColor else Color.White) }
-                        if (!currentIsVideo) {
-                            IconButton(onClick = { uiInteractionTick++; (ctx as? android.app.Activity)?.openEditor(currentPath) }) { Icon(Icons.Default.Edit, stringResource(R.string.edit), tint = Color.White) }
+                            showRateAndTagSheet = true
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.Label, stringResource(R.string.action_tags), tint = Color.White)
                         }
-                        IconButton(onClick = { uiInteractionTick++; deleteCurrent() }) { Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = Color.White) }
+                        if (!showRatingOverlay) {
+                            IconButton(onClick = {
+                                uiInteractionTick++
+                                toggleFavorite()
+                            }) {
+                                Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), tint = if (isFavorite) FavoriteColor else Color.White)
+                            }
+                        }
+                        // Rating and favorite already have their dedicated rail above. Keep this
+                        // row for the frequent actions and move edit/frame capture into More;
+                        // six equally weighted icons made it hard to find the next action.
+                        IconButton(onClick = { uiInteractionTick++; deleteCurrent() }) {
+                            Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = Color(0xFFFFB4AB))
+                        }
                         IconButton(onClick = { uiInteractionTick++; showActionSheet = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions), tint = Color.White) }
                     }
                 }
             }
         }
 
-        if (!inPip) UndoBar(modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
+        // Keep the undo affordance above the viewer action row AND rating rail so it never
+        // covers either the delete button or the rating stars.
+        if (!inPip) {
+            val undoClearance = if (showUI) {
+                if (showRatingOverlay) 128.dp else 72.dp
+            } else 0.dp
+            UndoBar(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = bottomGroupOffset + undoClearance),
+            )
+        }
     }
 
     if (showActionSheet) {
-        var exifLines by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
-        var tagSuggestions by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
-        var currentTags by remember { mutableStateOf<Set<String>>(emptySet()) }
-        var tagInput by remember { mutableStateOf("") }
-        LaunchedEffect(showActionSheet) {
-            if (showActionSheet) {
-                currentTags = withContext(Dispatchers.IO) { repo.getTags(currentPath) }
-                tagSuggestions = withContext(Dispatchers.IO) { repo.getTagSuggestions(24) }
-            }
-            if (showActionSheet && !currentIsVideo) {
-                exifLines = withContext(Dispatchers.IO) {
-                    val lines = mutableListOf<Pair<String, String>>()
-                    try {
-                        val exif = android.media.ExifInterface(currentPath)
-                        exif.getAttribute(android.media.ExifInterface.TAG_DATETIME)?.let { lines.add(ctx.getString(R.string.sort_date) to it.take(10)) }
-                        exif.getAttribute(android.media.ExifInterface.TAG_IMAGE_WIDTH)?.let { w -> exif.getAttribute(android.media.ExifInterface.TAG_IMAGE_LENGTH)?.let { h -> lines.add(ctx.getString(R.string.exif_resolution) to "$w × $h") } }
-                        val make = exif.getAttribute(android.media.ExifInterface.TAG_MAKE) ?: ""
-                        val model = exif.getAttribute(android.media.ExifInterface.TAG_MODEL) ?: ""
-                        if (make.isNotBlank() || model.isNotBlank()) lines.add(ctx.getString(R.string.exif_camera) to "$make $model".trim())
-                        exif.getAttribute(android.media.ExifInterface.TAG_FOCAL_LENGTH)?.let { lines.add(ctx.getString(R.string.exif_focal_length) to it) }
-                        exif.getAttribute(android.media.ExifInterface.TAG_F_NUMBER)?.let { lines.add(ctx.getString(R.string.exif_aperture) to "f/$it") }
-                        exif.getAttribute(android.media.ExifInterface.TAG_EXPOSURE_TIME)?.let { lines.add(ctx.getString(R.string.exif_exposure) to "${it}s") }
-                        exif.getAttribute(android.media.ExifInterface.TAG_ISO)?.let { lines.add("ISO" to it) }
-                        lines.add(ctx.getString(R.string.sort_size) to if (File(currentPath).length() > 1_000_000) "${File(currentPath).length() / 1_000_000} MB" else "${File(currentPath).length() / 1_000} KB")
-                    } catch (_: Exception) { }
-                    lines
-                }
-            }
-        }
-        val filteredSuggestions = if (tagInput.isBlank()) tagSuggestions.filter { it.first !in currentTags }.take(8) else tagSuggestions.filter { it.first.contains(tagInput, ignoreCase = true) && it.first !in currentTags }.take(12)
-        // Same optimistic-with-revert pattern as the rating stars right below: the chip updates
-        // instantly, but if the XMP write fails the chip snaps back and a toast says so - before
-        // this the Boolean result was dropped and a failed write left a permanent phantom tag.
-        fun addTag(tag: String) {
-            val t = tag.trim().replace(",", "").replace(";", "")
-            if (t.isNotBlank() && t !in currentTags) {
-                val path = currentPath
-                currentTags = currentTags + t
-                tagInput = ""
+        ViewerActionSheet(
+            currentPath = currentPath,
+            currentIsVideo = currentIsVideo,
+            currentRating = currentRating,
+            showRatingOverlay = showRatingOverlay,
+            slideshowActive = slideshowActive,
+            canRunSlideshow = items.size > 1,
+            onRate = ::rateCurrent,
+            onToggleRatingOverlay = {
+                showRatingOverlay = !showRatingOverlay
+                ctx.config.viewerShowRatingBar = showRatingOverlay
+                showActionSheet = false
+            },
+            onRename = { showRenameDialog = true; showActionSheet = false },
+            onCopy = { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false },
+            onMove = { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false },
+            onInfo = { infoDialogPath = currentPath; showActionSheet = false },
+            onTrimVideo = { showVideoTrimmer = true; showActionSheet = false },
+            onVideoDisplaySettings = { showVideoSettings = true; showActionSheet = false },
+            onSaveFrame = { captureFramePath = currentPath; captureFrameRequest++; showActionSheet = false },
+            onOpenFrameGrabber = { showFrameGrabber = true; showActionSheet = false },
+            onEditImage = {
+                (ctx as? android.app.Activity)?.openEditor(currentPath)
+                showActionSheet = false
+            },
+            onToggleSlideshow = {
+                showActionSheet = false
+                if (slideshowActive) slideshowActive = false else showSlideshowDialog = true
+            },
+            onOpenTags = {
+                showActionSheet = false
+                showRateAndTagSheet = true
+            },
+            onDismiss = { showActionSheet = false },
+        )
+    }
+
+    if (showSlideshowDialog) {
+        ViewerSlideshowDialog(
+            onStart = { intervalSec, loopEnabled, randomEnabled ->
+                ctx.config.slideshowInterval = intervalSec
+                ctx.config.loopSlideshow = loopEnabled
+                ctx.config.slideshowRandomOrder = randomEnabled
+                showSlideshowDialog = false
+                slideshowActive = true
+            },
+            onDismiss = { showSlideshowDialog = false },
+        )
+    }
+
+    if (showRateAndTagSheet) {
+        val editorPath = currentPath
+        val isJpeg = editorPath.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg")
+        RateAndTagSheet(
+            batchCount = 1,
+            currentRating = currentRating,
+            onRate = ::rateCurrent,
+            initialTags = editorTags,
+            onAddTag = { tag ->
                 scope.launch(Dispatchers.IO) {
-                    val ok = repo.addTag(path, t)
-                    if (!ok) withContext(Dispatchers.Main) { if (currentPath == path) currentTags = currentTags - t; ctx.toast(ctx.getString(R.string.tag_write_failed), Toast.LENGTH_SHORT) }
+                    val saved = repo.addTag(editorPath, tag)
+                    withContext(Dispatchers.Main) {
+                        if (saved) ctx.config.rememberRecentTag(tag)
+                        else ctx.toast(ctx.getString(R.string.tag_write_failed), Toast.LENGTH_SHORT)
+                    }
                 }
-            }
-        }
-        fun removeTag(tag: String) {
-            val path = currentPath
-            currentTags = currentTags - tag
-            scope.launch(Dispatchers.IO) {
-                val ok = repo.removeTag(path, tag)
-                if (!ok) withContext(Dispatchers.Main) { if (currentPath == path) currentTags = currentTags + tag; ctx.toast(ctx.getString(R.string.tag_write_failed), Toast.LENGTH_SHORT) }
-            }
-        }
-        ModalBottomSheet(onDismissRequest = { showActionSheet = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).verticalScroll(rememberScrollState())) {
-                Text(File(currentPath).name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (exifLines.isNotEmpty()) { Spacer(Modifier.height(2.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) { exifLines.take(8).forEach { (label, value) -> Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface); Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } } }
-                Spacer(Modifier.height(12.dp))
-                SheetSectionLabel(stringResource(R.string.rating_title))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { for (i in 1..5) { IconButton(onClick = { haptic(HapticFeedbackType.Confirm); val path = currentPath; val prev = currentRating; val r = if (currentRating == i) 0 else i; currentRating = r; scope.launch(Dispatchers.IO) { val ok = repo.updateRating(path, r); if (!ok) withContext(Dispatchers.Main) { if (currentPath == path) currentRating = prev } } }, modifier = Modifier.size(40.dp)) { Icon(if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder, stringResource(R.string.cd_rating_star, i), tint = if (i <= currentRating) RatingStarColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f), modifier = Modifier.size(28.dp)) } } }
-                HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                SheetSectionLabel(stringResource(R.string.video_actions))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Share, stringResource(R.string.action_share)) { val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", File(currentPath)); ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, ctx.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); showActionSheet = false }; ActionChip(Icons.Default.Edit, stringResource(R.string.edit)) { (ctx as? android.app.Activity)?.openEditor(currentPath); showActionSheet = false }; ActionChip(Icons.Default.DriveFileRenameOutline, stringResource(R.string.action_rename)) { showRenameDialog = true; showActionSheet = false }; ActionChip(Icons.Default.ContentCopy, stringResource(R.string.action_copy)) { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false }; ActionChip(Icons.AutoMirrored.Filled.DriveFileMove, stringResource(R.string.action_move)) { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false } }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.Info, stringResource(R.string.action_info)) { try { (ctx as? android.app.Activity)?.let { org.fossify.commons.dialogs.PropertiesDialog(it, currentPath, false) } } catch (e: Exception) { ctx.toast(ctx.getString(R.string.info_error, e.message), android.widget.Toast.LENGTH_SHORT) }; showActionSheet = false }; ActionChip(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), MaterialTheme.colorScheme.error) { showActionSheet = false; deleteCurrent() }; ActionChip(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), if (isFavorite) FavoriteColor else MaterialTheme.colorScheme.onSurfaceVariant) { val path = currentPath; val f = !isFavorite; isFavorite = f; scope.launch(Dispatchers.IO) { val ok = repo.toggleFavorite(path, f); if (!ok) withContext(Dispatchers.Main) { if (currentPath == path) isFavorite = !f } }; showActionSheet = false }; ActionChip(Icons.Default.Star, stringResource(R.string.action_rate), if (showRatingOverlay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) { showRatingOverlay = !showRatingOverlay; ctx.config.viewerShowRatingBar = showRatingOverlay; showActionSheet = false } }
-                if (currentIsVideo) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { ActionChip(Icons.Default.AspectRatio, stringResource(R.string.video_display)) { showVideoSettings = true; showActionSheet = false }; ActionChip(Icons.Default.PhotoCamera, stringResource(R.string.action_save_frame)) { scope.launch(Dispatchers.IO) { val r = android.media.MediaMetadataRetriever(); try { r.setDataSource(currentPath); val bmp = r.frameAtTime ?: return@launch; val parentDir = File(currentPath).parentFile ?: ctx.cacheDir; val outFile = File(parentDir, "frame_${System.currentTimeMillis()}.jpg"); outFile.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }; bmp.recycle(); runCatching { android.media.MediaScannerConnection.scanFile(ctx, arrayOf(outFile.absolutePath), null, null) }; org.fossify.gallery.helpers.RefreshBus.trigger(); withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.frame_saved, outFile.name), android.widget.Toast.LENGTH_SHORT) } } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.error_generic, e.message), android.widget.Toast.LENGTH_SHORT) } } finally { runCatching { r.release() } } }; showActionSheet = false }; ActionChip(Icons.Default.BurstMode, stringResource(R.string.grab_frames)) { showFrameGrabber = true; showActionSheet = false } } }
-                HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                SheetSectionLabel(stringResource(R.string.action_tags))
-                if (currentTags.isNotEmpty()) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { currentTags.forEach { tag -> InputChip(selected = true, onClick = {}, label = { Text(tag, style = MaterialTheme.typography.labelSmall) }, trailingIcon = { Icon(Icons.Default.Close, stringResource(R.string.action_remove), Modifier.size(14.dp).clickable { removeTag(tag) }) }, shape = RoundedCornerShape(Radius.sm), colors = InputChipDefaults.inputChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer, labelColor = MaterialTheme.colorScheme.onPrimaryContainer)) } }; Spacer(Modifier.height(8.dp)) }
-                OutlinedTextField(value = tagInput, onValueChange = { tagInput = it }, placeholder = { Text(stringResource(R.string.add_tag)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(Radius.md), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { addTag(tagInput) }))
-                if (filteredSuggestions.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Text(stringResource(R.string.suggestions), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(4.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { filteredSuggestions.forEach { (tag, count) -> Surface(onClick = { addTag(tag) }, shape = RoundedCornerShape(Radius.lg), color = MaterialTheme.colorScheme.surfaceVariant) { Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) { Text(tag, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.width(4.dp)); Text("$count", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) } } } } }
-                if (tagInput.isNotBlank() && filteredSuggestions.none { it.first.equals(tagInput, ignoreCase = true) }) { Spacer(Modifier.height(6.dp)); TextButton(onClick = { addTag(tagInput) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.add_new_tag, tagInput.trim())) } }
-                if (quickTags.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { quickTags.forEach { tag -> val hasTag = currentTags.contains(tag); Surface(onClick = { if (hasTag) removeTag(tag) else addTag(tag) }, shape = RoundedCornerShape(Radius.lg), color = if (hasTag) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant) { Text(tag, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, color = if (hasTag) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) } } } }
-                Spacer(Modifier.height(16.dp))
-            }
-        }
+            },
+            onRemoveTag = { tag ->
+                scope.launch(Dispatchers.IO) {
+                    if (!repo.removeTag(editorPath, tag)) {
+                        withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.tag_write_failed), Toast.LENGTH_SHORT) }
+                    }
+                }
+            },
+            suggestedTags = (quickTags + editorTagSuggestions.map { it.first }).distinct(),
+            suggestedTagCounts = editorTagSuggestions.toMap(),
+            recentTags = recentTags,
+            tagHierarchy = ctx.config.tagHierarchy,
+            metadataStorageHint = if (isJpeg) null else stringResource(R.string.metadata_sidecar_hint),
+            onSetTagParent = { child, parent ->
+                val hierarchy = ctx.config.tagHierarchy.toMutableMap()
+                if (parent.isNullOrBlank()) hierarchy.remove(child) else hierarchy[child] = parent
+                ctx.config.tagHierarchy = hierarchy
+            },
+            onDismiss = { showRateAndTagSheet = false },
+        )
     }
 
     if (showFrameGrabber) {
@@ -732,20 +1140,24 @@ fun ViewerScreen(
         }
     }
 
-    if (showVideoSettings) {
-        AlertDialog(onDismissRequest = { showVideoSettings = false }, title = { Text(stringResource(R.string.display_mode)) }, text = { Column { listOf(stringResource(R.string.video_scale_fit) to 0, stringResource(R.string.video_scale_zoom) to 4, stringResource(R.string.video_scale_stretch) to 3).forEach { (l, m) -> TextButton(onClick = { videoScalingMode = m; showVideoSettings = false }, modifier = Modifier.fillMaxWidth()) { Text(l, color = if (videoScalingMode == m) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) } } } }, confirmButton = { TextButton(onClick = { showVideoSettings = false }) { Text(stringResource(R.string.cd_close)) } })
+    if (showVideoTrimmer) {
+        VideoTrimmerSheet(
+            videoPath = currentPath,
+            onDismiss = { showVideoTrimmer = false },
+            onTrimSaved = { savedPath ->
+                showVideoTrimmer = false
+                val insertAt = (pagerState.currentPage + 1).coerceAtMost(items.size)
+                items.add(insertAt, savedPath)
+                scope.launch { pagerState.animateScrollToPage(insertAt) }
+            },
+        )
     }
 
-    if (showTagsDialog) {
-        var allTags by remember { mutableStateOf<List<String>>(emptyList()) }
-        LaunchedEffect(Unit) {
-            allTags = withContext(Dispatchers.IO) { repo.getAllTags() }
-        }
-        TagInputDialog(
-            initialTags = repo.getTags(currentPath), suggestedTags = allTags,
-            onAddTag = { scope.launch(Dispatchers.IO) { repo.addTag(currentPath, it) } },
-            onRemoveTag = { scope.launch(Dispatchers.IO) { repo.removeTag(currentPath, it) } },
-            onDismiss = { showTagsDialog = false },
+    if (showVideoSettings) {
+        ViewerVideoScalingDialog(
+            currentMode = videoScalingMode,
+            onSelectMode = { videoScalingMode = it },
+            onDismiss = { showVideoSettings = false },
         )
     }
 
@@ -771,6 +1183,13 @@ fun ViewerScreen(
         )
     }
 
+    infoDialogPath?.let { path ->
+        MediaInfoDialog(
+            path = path,
+            onDismiss = { infoDialogPath = null },
+        )
+    }
+
     if (showDeleteConfirm) {
         val question = stringResource(if (ctx.config.useRecycleBin) org.fossify.commons.R.string.are_you_sure_recycle_bin else org.fossify.commons.R.string.are_you_sure_delete)
         ConfirmDestructive(
@@ -781,50 +1200,4 @@ fun ViewerScreen(
             onDismiss = { showDeleteConfirm = false },
         )
     }
-}
-
-/** Builds the on-screen extended-details overlay text per [org.fossify.gallery.helpers.Config.extendedDetails]'s
- * bitmask - a persistent-on-photo readout, distinct from (and less detailed than) the action
- * sheet's own tap-to-open EXIF strip/Properties dialog above. Mirrors the field set and bit
- * semantics of the legacy Views viewer's ViewPagerFragment.getMediumExtendedDetails(), reusing the
- * same android.media.ExifInterface tag reads already used for this screen's info-sheet strip
- * (line ~546) rather than introducing the androidx EXIF library the legacy Fragment used. */
-private fun buildExtendedDetailsText(ctx: android.content.Context, path: String, isVideo: Boolean): String {
-    val file = File(path)
-    if (!file.exists()) return ""
-    val flags = ctx.config.extendedDetails
-    val lines = mutableListOf<String>()
-    if (flags and EXT_NAME != 0) lines.add(file.name)
-    if (flags and EXT_PATH != 0) lines.add("${file.parent?.trimEnd('/') ?: ""}/")
-    if (flags and EXT_SIZE != 0) lines.add(if (file.length() > 1_000_000) "${file.length() / 1_000_000} MB" else "${file.length() / 1_000} KB")
-    if (!isVideo) {
-        val exif = try { android.media.ExifInterface(path) } catch (_: Exception) { null }
-        if (flags and EXT_RESOLUTION != 0) {
-            val w = exif?.getAttribute(android.media.ExifInterface.TAG_IMAGE_WIDTH)
-            val h = exif?.getAttribute(android.media.ExifInterface.TAG_IMAGE_LENGTH)
-            if (w != null && h != null) lines.add("$w × $h")
-        }
-        if (flags and EXT_LAST_MODIFIED != 0) lines.add(java.text.DateFormat.getDateInstance().format(java.util.Date(file.lastModified())))
-        if (flags and EXT_DATE_TAKEN != 0) exif?.getAttribute(android.media.ExifInterface.TAG_DATETIME)?.take(10)?.let { lines.add(it) }
-        if (flags and EXT_CAMERA_MODEL != 0) {
-            val make = exif?.getAttribute(android.media.ExifInterface.TAG_MAKE) ?: ""
-            val model = exif?.getAttribute(android.media.ExifInterface.TAG_MODEL) ?: ""
-            if (make.isNotBlank() || model.isNotBlank()) lines.add("$make $model".trim())
-        }
-        if (flags and EXT_EXIF_PROPERTIES != 0) {
-            val props = mutableListOf<String>()
-            exif?.getAttribute(android.media.ExifInterface.TAG_FOCAL_LENGTH)?.let { props.add(it) }
-            exif?.getAttribute(android.media.ExifInterface.TAG_F_NUMBER)?.let { props.add("f/$it") }
-            exif?.getAttribute(android.media.ExifInterface.TAG_EXPOSURE_TIME)?.let { props.add("${it}s") }
-            exif?.getAttribute(android.media.ExifInterface.TAG_ISO)?.let { props.add("ISO$it") }
-            if (props.isNotEmpty()) lines.add(props.joinToString("  "))
-        }
-        if (flags and EXT_GPS != 0) {
-            val latLon = FloatArray(2)
-            if (exif != null && exif.getLatLong(latLon)) lines.add("${latLon[0]}, ${latLon[1]}")
-        }
-    } else if (flags and EXT_LAST_MODIFIED != 0) {
-        lines.add(java.text.DateFormat.getDateInstance().format(java.util.Date(file.lastModified())))
-    }
-    return lines.joinToString("\n")
 }

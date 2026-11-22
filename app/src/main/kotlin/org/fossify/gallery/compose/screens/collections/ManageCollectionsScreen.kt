@@ -104,8 +104,13 @@ fun ManageCollectionsScreen(
                 val c = showDeleteConfirm!!
                 showDeleteConfirm = null
                 scope.launch(Dispatchers.IO) {
-                    try { repo.deleteCollection(c); withContext(Dispatchers.Main) { refresh() } }
-                    catch (_: Exception) { withContext(Dispatchers.Main) { ctx.toast(R.string.delete_error) } }
+                    try {
+                        repo.deleteCollection(c)
+                        org.fossify.gallery.helpers.RefreshBus.trigger(pathsChanged = false, collectionsChanged = true)
+                        withContext(Dispatchers.Main) { refresh() }
+                    } catch (_: Exception) {
+                        withContext(Dispatchers.Main) { ctx.toast(R.string.delete_error) }
+                    }
                 }
             },
             onDismiss = { showDeleteConfirm = null },
@@ -120,6 +125,7 @@ fun ManageCollectionsScreen(
                 scope.launch(Dispatchers.IO) {
                     try {
                         repo.insertCollection(col)
+                        org.fossify.gallery.helpers.RefreshBus.trigger(pathsChanged = false, collectionsChanged = true)
                         collections = repo.getCollections()
                         withContext(Dispatchers.Main) { showEditDialog = false }
                     } catch (e: Exception) {
@@ -200,10 +206,10 @@ fun ManageCollectionsScreen(
                                     )
                                 }
                             }
-                            IconButton(onClick = { editingColl = coll; showEditDialog = true }, modifier = Modifier.size(44.dp)) {
+                            IconButton(onClick = { editingColl = coll; showEditDialog = true }, modifier = Modifier.size(48.dp)) {
                                 Icon(Icons.Default.Edit, stringResource(R.string.edit), modifier = Modifier.size(20.dp))
                             }
-                            IconButton(onClick = { showDeleteConfirm = coll }, modifier = Modifier.size(44.dp)) {
+                            IconButton(onClick = { showDeleteConfirm = coll }, modifier = Modifier.size(48.dp)) {
                                 Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                             }
                         }
@@ -271,7 +277,7 @@ private fun EditCollectionDialog(
                 includedPaths.forEach { p ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(p.substringAfterLast('/').take(50), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        IconButton(onClick = { includedPaths = includedPaths - p }, modifier = Modifier.size(40.dp)) {
+                            IconButton(onClick = { includedPaths = includedPaths - p }, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Default.Delete, stringResource(R.string.remove), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                         }
                     }
@@ -293,7 +299,7 @@ private fun EditCollectionDialog(
                 excludedPaths.forEach { p ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(p.substringAfterLast('/').take(50), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        IconButton(onClick = { excludedPaths = excludedPaths - p }, modifier = Modifier.size(40.dp)) {
+                            IconButton(onClick = { excludedPaths = excludedPaths - p }, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Default.Delete, stringResource(R.string.remove), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                         }
                     }

@@ -1,21 +1,16 @@
 package org.fossify.gallery.compose.screens.viewer
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BrokenImage
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -25,7 +20,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
@@ -34,12 +28,14 @@ import coil.request.ImageRequest
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.fossify.gallery.R
+import org.fossify.gallery.compose.components.GalleryThumbnailKeyRegistry
 import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.util.BlurState
+import org.fossify.gallery.compose.util.ThumbnailOverlayState
 import org.fossify.gallery.compose.util.privacyBlur
 import org.fossify.gallery.compose.util.sharedElementKey
 import org.fossify.gallery.extensions.config
+import org.fossify.gallery.helpers.ColorModeHelper
 import java.io.File
 
 @Composable
@@ -58,6 +54,17 @@ fun ImagePage(
     // an API <28 device without a HEIF codec, an unsupported RAW variant) used to leave the Viewer
     // showing nothing but a blank/black screen with no feedback at all.
     var imageState by remember(path) { mutableStateOf<AsyncImagePainter.State?>(null) }
+    var retryNonce by remember(path) { mutableIntStateOf(0) }
+    var loadedBitmap by remember(path) { mutableStateOf<android.graphics.Bitmap?>(null) }
+
+    // Enable Ultra HDR / wide-gamut window rendering on Android 14+ when the visible page's
+    // decoded bitmap carries a gainmap or wide color space.
+    LaunchedEffect(isCurrentPage, loadedBitmap) {
+        if (isCurrentPage && loadedBitmap != null) {
+            val activity = ctx as? android.app.Activity ?: return@LaunchedEffect
+            ColorModeHelper.setColorModeForImage(activity, loadedBitmap, ctx.config.ultraHdrRendering)
+        }
+    }
 
     // Coil's AsyncImage is capped at 2560px (memory-bounded, fine at rest/fit-to-screen), so zooming
     // in past ~1x on anything shot at real camera resolution just magnifies an already-soft bitmap.
@@ -77,40 +84,56 @@ fun ImagePage(
     // dead here. When it's off, force a plain BitmapFactory decode of these formats, which yields the
     // first frame as a static image (matches the legacy PhotoFragment's "decode as bitmap" path).
     val ext = remember(path) { path.substringAfterLast('.', "").lowercase() }
-    val forceStaticFrame = (ext == "gif" || ext == "webp") && !ctx.config.animateGifs
+    val forceStaticFrame = (ext == "gif" || ext == "webp") && !ThumbnailOverlayState.animateGifs
+    val thumbPlaceholderKey = remember(path) { GalleryThumbnailKeyRegistry.get(path) }
+    val viewerImageRequest = remember(ctx, file.absolutePath, retryNonce, forceStaticFrame, thumbPlaceholderKey) {
+        ImageRequest.Builder(ctx)
+            .data(android.net.Uri.fromFile(file))
+            .size(2560)
+            // When the grid thumbnail is already in Coil's memory cache, show it immediately on
+            // frame 0 and upgrade seamlessly without crossfading through a blank frame.
+            .placeholderMemoryCacheKey(thumbPlaceholderKey)
+            .crossfade(thumbPlaceholderKey == null)
+            .memoryCacheKey("viewer:${file.absolutePath}:$retryNonce")
+            .apply { if (forceStaticFrame) decoderFactory(coil.decode.BitmapFactoryDecoder.Factory()) }
+            .build()
+    }
 
+    var exifOrientation by remember(path) { mutableIntStateOf(0) }
     LaunchedEffect(isCurrentPage) { if (!isCurrentPage) { zoom.reset(); useNativeZoom = false } }
     LaunchedEffect(zoom.isZoomed, useNativeZoom, isCurrentPage) { if (isCurrentPage) onZoomChange(zoom.isZoomed || useNativeZoom) }
     LaunchedEffect(path) {
-        val a = withContext(Dispatchers.IO) {
-            try {
+        val (a, orient) = withContext(Dispatchers.IO) {
+            val aspect = try {
                 val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 android.graphics.BitmapFactory.decodeFile(file.absolutePath, o)
                 if (o.outWidth > 0 && o.outHeight > 0) o.outWidth.toFloat() / o.outHeight else 0f
             } catch (_: Exception) { 0f }
+            val deg = try {
+                when (android.media.ExifInterface(file.absolutePath).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)) {
+                    android.media.ExifInterface.ORIENTATION_ROTATE_90,
+                    android.media.ExifInterface.ORIENTATION_TRANSPOSE -> 90
+                    android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                    android.media.ExifInterface.ORIENTATION_ROTATE_270,
+                    android.media.ExifInterface.ORIENTATION_TRANSVERSE -> 270
+                    else -> 0
+                }
+            } catch (_: Exception) { 0 }
+            aspect to deg
         }
+        exifOrientation = orient
         if (a > 0f) zoom.updateContentAspect(a)
     }
 
-    Box(Modifier.fillMaxSize().clipToBounds().then(modifier).privacyBlur(BlurRadius.viewer, BlurState.enabled)) {
+    Box(Modifier.fillMaxSize().clipToBounds().then(modifier)) {
         if (useNativeZoom) {
-            val view = remember(path) {
+            val view = remember(path, exifOrientation) {
                 SubsamplingScaleImageView(ctx).apply {
                     setMaxTileSize(4096)
                     setMinimumTileDpi(160)
                     maxScale = ZOOM_MAX
-                    // This fork does NOT apply EXIF rotation on its own (the legacy PhotoFragment
-                    // sets `orientation` from EXIF explicitly for the same reason) - without this a
-                    // portrait phone photo rendered sideways the instant pinch-zoom handed off from
-                    // the EXIF-aware Coil image to this native view.
-                    orientation = try {
-                        when (android.media.ExifInterface(file.absolutePath).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)) {
-                            android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90
-                            android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180
-                            android.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270
-                            else -> 0
-                        }
-                    } catch (_: Exception) { 0 }
+                    orientation = exifOrientation
+                    setOnClickListener { onToggleUi() }
                     setImage("file://${file.absolutePath}")
                 }
             }
@@ -132,17 +155,16 @@ fun ImagePage(
                         }
                     }
                 },
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().privacyBlur(BlurRadius.viewer, BlurState.enabled),
             )
         } else {
             AsyncImage(
-                model = ImageRequest.Builder(ctx).data(android.net.Uri.fromFile(file)).size(2560).crossfade(true)
-                    .apply { if (forceStaticFrame) decoderFactory(coil.decode.BitmapFactoryDecoder.Factory()) }
-                    .build(),
+                model = viewerImageRequest,
                 contentDescription = file.name,
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxSize()
+                    .privacyBlur(BlurRadius.viewer, BlurState.enabled)
                     .onSizeChanged { }
                     .then(if (isCurrentPage) Modifier.sharedElementKey("media_$path") else Modifier)
                     .graphicsLayer {
@@ -164,23 +186,30 @@ fun ImagePage(
                         onDoubleTap = { pos, sz -> zoom.cycleZoom(pos, sz) },
                         onZoomGestureStart = { useNativeZoom = true },
                     ),
-                onSuccess = { imageState = it },
+                onSuccess = {
+                    imageState = it
+                    loadedBitmap = (it.result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+                },
                 onError = { imageState = it },
                 onLoading = { imageState = it },
             )
 
             when (imageState) {
-                is AsyncImagePainter.State.Error -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.BrokenImage, file.name, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp))
-                        Text(stringResource(R.string.error_loading_media), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
-                    }
-                }
+                is AsyncImagePainter.State.Error -> ViewerMediaErrorState(
+                    file = file,
+                    isAvailable = file.exists(),
+                    onRetry = {
+                        imageState = null
+                        retryNonce++
+                    },
+                )
                 is AsyncImagePainter.State.Success -> { }
-                else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                else -> if (thumbPlaceholderKey == null) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                }
             }
 
-            ZoomMinimap(zoom, modifier = Modifier.align(Alignment.TopEnd).padding(top = 72.dp, end = 12.dp))
+            ZoomMinimap(zoom, modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 72.dp, end = 12.dp))
         }
     }
 }

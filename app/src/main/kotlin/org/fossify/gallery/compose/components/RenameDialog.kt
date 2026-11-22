@@ -198,10 +198,12 @@ fun RenameDialog(paths: List<String>, onDismiss: () -> Unit, onRenamed: (Map<Str
                             collisionError = ctx.getString(R.string.rename_file_exists, collision.newName)
                             return@launch
                         }
-                        val granted = try {
-                            consent.request(MediaStoreOps.writeRequest(ctx, jobs.map { it.uri }))
-                        } catch (_: Exception) { false }
-                        if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); return@launch }
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R && !MediaStoreOps.hasAllFilesAccess(ctx)) {
+                            val granted = try {
+                                consent.request(MediaStoreOps.writeRequest(ctx, jobs.map { it.uri }))
+                            } catch (_: Exception) { false }
+                            if (!granted) { ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT); return@launch }
+                        }
                         val items = jobs.map { job ->
                             val parent = File(job.path).parent ?: ""
                             val newPath = File(parent, job.newName).absolutePath

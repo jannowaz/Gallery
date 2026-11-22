@@ -43,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -83,10 +84,10 @@ import java.io.File
 @Composable
 fun CompressionSwipeScreen(onBack: () -> Unit) {
     val vm: CompressionSwipeViewModel = viewModel()
-    val phase by vm.phase.collectAsState()
-    val stats by vm.stats.collectAsState()
-    val position by vm.position.collectAsState()
-    val error by vm.error.collectAsState()
+    val phase by vm.phase.collectAsStateWithLifecycle()
+    val stats by vm.stats.collectAsStateWithLifecycle()
+    val position by vm.position.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
 
     LaunchedEffect(error) {
@@ -98,6 +99,7 @@ fun CompressionSwipeScreen(onBack: () -> Unit) {
     val guardedBack = org.fossify.gallery.compose.util.rememberDoubleBackGuard(
         enabled = phase !is SwipePhase.Finished && vm.total > 0,
         onExit = onBack,
+        running = phase is SwipePhase.Converting,
     )
 
     Scaffold(
@@ -442,4 +444,3 @@ private fun SinglePlayer(path: String, modifier: Modifier = Modifier) {
     DisposableEffect(Unit) { onDispose { player.release() } }
     AndroidView(factory = { playerView }, modifier = modifier)
 }
-

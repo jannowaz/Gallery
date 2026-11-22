@@ -17,6 +17,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.theme.Radius
@@ -31,33 +34,54 @@ import org.fossify.gallery.compose.theme.Radius
  */
 object XmpBatch {
 
+    // There is one global progress indicator. Serializing batches also prevents two read-modify-write
+    // loops from racing and makes the progress/toast belong to exactly one operation at a time.
+    private val batchMutex = Mutex()
+
     /** Non-null while a batch runs (done/total). Single slot - these ops are user-triggered one
      * at a time from a modal surface. */
     var progress by mutableStateOf<Pair<Int, Int>?>(null)
         private set
 
+    val isBusy: Boolean get() = progress != null
+
     /** Runs [op] per item on IO. Returns the failure count. [successMessage] overrides the
      * default "N files updated" toast on a clean run. */
-    suspend fun <T> run(context: Context, items: List<T>, successMessage: String? = null, op: (T) -> Boolean): Int {
+    suspend fun <T> run(
+        context: Context,
+        items: List<T>,
+        successMessage: String? = null,
+        onSuccess: (T) -> Unit = {},
+        op: (T) -> Boolean,
+    ): Int {
         if (items.isEmpty()) return 0
-        var failed = 0
-        try {
-            progress = 0 to items.size
-            withContext(Dispatchers.IO) {
-                items.forEachIndexed { i, item ->
-                    if (!op(item)) failed++
-                    progress = (i + 1) to items.size
+        return batchMutex.withLock {
+            var failed = 0
+            try {
+                    progress = 0 to items.size
+                withContext(Dispatchers.IO) {
+                    items.forEachIndexed { i, item ->
+                        val succeeded = try {
+                            op(item)
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            android.util.Log.e("XmpBatch", "Metadata operation failed for item $item", e)
+                            false
+                        }
+                        if (succeeded) onSuccess(item) else failed++
+                        progress = (i + 1) to items.size
+                    }
                 }
+            } finally {
+                progress = null
             }
-        } finally {
-            progress = null
+            withContext(Dispatchers.Main) {
+                val msg = if (failed > 0) context.getString(R.string.notif_batch_done_with_failures, items.size - failed, failed)
+                else successMessage ?: context.getString(R.string.applied_to_count, items.size)
+                Toast.makeText(context, msg, if (failed > 0) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
+            }
+            failed
         }
-        withContext(Dispatchers.Main) {
-            val msg = if (failed > 0) context.getString(R.string.notif_batch_done_with_failures, items.size - failed, failed)
-            else successMessage ?: context.getString(R.string.applied_to_count, items.size)
-            Toast.makeText(context, msg, if (failed > 0) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
-        }
-        return failed
     }
 }
 

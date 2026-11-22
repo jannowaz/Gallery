@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -51,6 +52,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -85,6 +87,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.launch
+import org.fossify.gallery.compose.components.ConfirmDestructive
 import org.fossify.gallery.compose.components.GalleryImage
 import org.fossify.gallery.models.CompressionReviewItem
 import java.io.File
@@ -93,7 +96,7 @@ import java.io.File
 @Composable
 fun CompressionReviewScreen(onBack: () -> Unit) {
     val vm: CompressionReviewViewModel = viewModel()
-    val items by vm.items.collectAsState()
+    val items by vm.items.collectAsStateWithLifecycle()
     var openedIndex by remember { mutableStateOf<Int?>(null) }
 
     val done = items.filter { it.status == CompressionReviewItem.STATUS_DONE }
@@ -147,10 +150,24 @@ fun CompressionReviewScreen(onBack: () -> Unit) {
                         }
                     }
                 }
+                var pendingBulkAction by remember { mutableStateOf<String?>(null) }
+                if (pendingBulkAction != null) {
+                    val isKeepNew = pendingBulkAction == "keep_new"
+                    ConfirmDestructive(
+                        title = stringResource(if (isKeepNew) R.string.action_keep_all_new else R.string.action_keep_all_original),
+                        text = "${visibleDone.size} ${stringResource(if (isKeepNew) R.string.action_keep_all_new else R.string.action_keep_all_original)}?",
+                        confirmLabel = stringResource(if (isKeepNew) R.string.action_keep_all_new else R.string.action_keep_all_original),
+                        onConfirm = {
+                            pendingBulkAction = null
+                            if (isKeepNew) vm.keepAllNew(folderFilter) else vm.keepAllOriginal(folderFilter)
+                        },
+                        onDismiss = { pendingBulkAction = null },
+                    )
+                }
                 if (visibleDone.size > 1) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { vm.keepAllNew(folderFilter) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_all_new)) }
-                        OutlinedButton(onClick = { vm.keepAllOriginal(folderFilter) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_all_original)) }
+                        OutlinedButton(onClick = { pendingBulkAction = "keep_new" }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_all_new)) }
+                        OutlinedButton(onClick = { pendingBulkAction = "keep_original" }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_keep_all_original)) }
                     }
                 }
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(8.dp)) {
@@ -161,7 +178,7 @@ fun CompressionReviewScreen(onBack: () -> Unit) {
                 }
             }
         }
-        org.fossify.gallery.compose.components.UndoBar(Modifier.align(Alignment.BottomCenter))
+        org.fossify.gallery.compose.components.UndoBar(Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
         }
     }
 
@@ -245,7 +262,10 @@ private fun CompareViewerPager(
     onKeepNew: (CompressionReviewItem) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    if (doneItems.isEmpty()) { onDismiss(); return }
+    if (doneItems.isEmpty()) {
+        LaunchedEffect(Unit) { onDismiss() }
+        return
+    }
     // System back closes only this compare overlay (back to the still-pending review list) instead of
     // propagating out of the whole review screen and stranding the results.
     androidx.activity.compose.BackHandler(onBack = onDismiss)
@@ -517,4 +537,3 @@ internal fun ComparePlayer(pathA: String, pathB: String, showB: Boolean, modifie
     DisposableEffect(Unit) { onDispose { player.release() } }
     AndroidView(factory = { playerView }, modifier = modifier)
 }
-

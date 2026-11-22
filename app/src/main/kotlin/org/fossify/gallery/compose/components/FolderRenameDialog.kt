@@ -120,10 +120,12 @@ fun FolderRenameDialog(folderPath: String, onDismiss: () -> Unit, onRenamed: (ol
             val oldPrefix = folderPath.trimEnd('/')
             val items = entries.map { e -> BatchJobItem(jobId = "", sourcePath = e.path, targetPath = newPath + e.path.removePrefix(oldPrefix)) }
             val uris = withContext(Dispatchers.IO) { MediaStoreOps.urisForPaths(ctx, entries.map { it.path }) }.map { it.second }
-            val granted = try {
-                consent.request(MediaStoreOps.writeRequest(ctx, uris))
-            } catch (_: Exception) { false }
-            if (!granted) { ctx.toast(ctx.getString(R.string.cancelled)); onDismiss(); return@launch }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R && !MediaStoreOps.hasAllFilesAccess(ctx)) {
+                val granted = try {
+                    consent.request(MediaStoreOps.writeRequest(ctx, uris))
+                } catch (_: Exception) { false }
+                if (!granted) { ctx.toast(ctx.getString(R.string.cancelled)); onDismiss(); return@launch }
+            }
             plannedNewPath = newPath
             plannedTotal = items.size
             jobId = MediaBatchWorker.enqueue(ctx, BatchOperation.MOVE_FAST, items)

@@ -1,7 +1,9 @@
 package org.fossify.gallery.compose.screens.analysis
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,6 +12,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.fossify.gallery.R
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.helpers.UndoAction
@@ -18,12 +22,40 @@ import org.fossify.gallery.helpers.UndoType
 import java.io.File
 
 /**
- * Transient handoff for the swipe flow's candidate list - same pattern (and reason) as
+ * Handoff for the swipe flow's candidate list - same reason as
  * [org.fossify.gallery.navigation.ViewerArgs]: serialising hundreds of paths into a typed route
- * URL overflows and fails to match.
+ * URL overflows and fails to match. Backed by a small JSON snapshot in `cacheDir` so the session
+ * survives Android process death cleanly.
  */
 object CompressionSwipeArgs {
+    private const val SNAPSHOT_FILE = "compression_swipe_queue.json"
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @Volatile
     var results: List<AnalysisResult> = emptyList()
+
+    fun save(context: Context, items: List<AnalysisResult>) {
+        results = items
+        runCatching {
+            File(context.applicationContext.cacheDir, SNAPSHOT_FILE)
+                .writeText(json.encodeToString(items))
+        }
+    }
+
+    fun load(context: Context): List<AnalysisResult> {
+        val inMem = results
+        if (inMem.isNotEmpty()) return inMem
+        val file = File(context.applicationContext.cacheDir, SNAPSHOT_FILE)
+        if (!file.exists()) return emptyList()
+        return runCatching {
+            json.decodeFromString<List<AnalysisResult>>(file.readText()).also { results = it }
+        }.getOrDefault(emptyList())
+    }
+
+    fun clear(context: Context) {
+        results = emptyList()
+        runCatching { File(context.applicationContext.cacheDir, SNAPSHOT_FILE).delete() }
+    }
 }
 
 sealed interface SwipePhase {
@@ -54,17 +86,26 @@ data class SwipeStats(
  * list-based review uses. The original is never touched before the compare decision, and accepting
  * only ever soft-deletes it into the recycle bin.
  */
-class CompressionSwipeViewModel(app: Application) : AndroidViewModel(app) {
+class CompressionSwipeViewModel(
+    app: Application,
+    private val savedStateHandle: SavedStateHandle,
+) : AndroidViewModel(app) {
+
+    companion object {
+        private const val KEY_INDEX = "swipe_index"
+    }
 
     private val engine = CompressionEngine(app)
-    private val queue: List<AnalysisResult> = CompressionSwipeArgs.results
+    private val queue: List<AnalysisResult> = CompressionSwipeArgs.load(app)
     val total = queue.size
-    private var index = 0
+    private var index = (savedStateHandle.get<Int>(KEY_INDEX) ?: 0).coerceIn(0, queue.size)
 
-    private val _phase = MutableStateFlow<SwipePhase>(queue.firstOrNull()?.let { SwipePhase.Triage(it) } ?: SwipePhase.Finished)
+    private val _phase = MutableStateFlow<SwipePhase>(
+        queue.getOrNull(index)?.let { SwipePhase.Triage(it) } ?: SwipePhase.Finished
+    )
     val phase: StateFlow<SwipePhase> = _phase.asStateFlow()
 
-    private val _position = MutableStateFlow(1)
+    private val _position = MutableStateFlow((index + 1).coerceAtMost(total.coerceAtLeast(1)))
     val position: StateFlow<Int> = _position.asStateFlow()
 
     private val _stats = MutableStateFlow(SwipeStats())
@@ -158,8 +199,14 @@ class CompressionSwipeViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun advance() {
         index++
+        savedStateHandle[KEY_INDEX] = index
         _position.value = (index + 1).coerceAtMost(total.coerceAtLeast(1))
-        _phase.value = if (index >= queue.size) SwipePhase.Finished else SwipePhase.Triage(queue[index])
+        if (index >= queue.size) {
+            CompressionSwipeArgs.clear(getApplication())
+            _phase.value = SwipePhase.Finished
+        } else {
+            _phase.value = SwipePhase.Triage(queue[index])
+        }
     }
 
     override fun onCleared() {

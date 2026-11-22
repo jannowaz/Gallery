@@ -29,13 +29,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -47,7 +51,14 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -55,7 +66,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDatePickerState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -63,10 +76,14 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -80,28 +97,14 @@ import org.fossify.commons.helpers.PROTECTION_FINGERPRINT
 import org.fossify.commons.helpers.SHOW_ALL_TABS
 import org.fossify.commons.helpers.VIEW_TYPE_GRID
 import org.fossify.commons.helpers.VIEW_TYPE_LIST
-import org.fossify.gallery.activities.IncludedFoldersActivity
-import org.fossify.gallery.activities.ExcludedFoldersActivity
-import org.fossify.gallery.activities.SettingsActivity
 import org.fossify.gallery.compose.theme.LocalMediaRepository
+import org.fossify.gallery.compose.components.LibrarySearchField
+import org.fossify.gallery.compose.components.LibrarySectionHeader
+import org.fossify.gallery.helpers.LibraryActivityKind
+import org.fossify.gallery.helpers.LibraryActivityPhase
+import org.fossify.gallery.helpers.LibraryActivityStatus
 import org.fossify.gallery.helpers.MediaRepository
 import org.fossify.gallery.extensions.config
-import org.fossify.gallery.helpers.BOTTOM_ACTION_CHANGE_ORIENTATION
-import org.fossify.gallery.helpers.BOTTOM_ACTION_COPY
-import org.fossify.gallery.helpers.BOTTOM_ACTION_DELETE
-import org.fossify.gallery.helpers.BOTTOM_ACTION_EDIT
-import org.fossify.gallery.helpers.BOTTOM_ACTION_MOVE
-import org.fossify.gallery.helpers.BOTTOM_ACTION_PROPERTIES
-import org.fossify.gallery.helpers.BOTTOM_ACTION_RATING
-import org.fossify.gallery.helpers.BOTTOM_ACTION_RENAME
-import org.fossify.gallery.helpers.BOTTOM_ACTION_RESIZE
-import org.fossify.gallery.helpers.BOTTOM_ACTION_ROTATE
-import org.fossify.gallery.helpers.BOTTOM_ACTION_SET_AS
-import org.fossify.gallery.helpers.BOTTOM_ACTION_SHARE
-import org.fossify.gallery.helpers.BOTTOM_ACTION_SHOW_ON_MAP
-import org.fossify.gallery.helpers.BOTTOM_ACTION_SLIDESHOW
-import org.fossify.gallery.helpers.BOTTOM_ACTION_TOGGLE_FAVORITE
-import org.fossify.gallery.helpers.BOTTOM_ACTION_TOGGLE_VISIBILITY
 import org.fossify.gallery.helpers.EXT_CAMERA_MODEL
 import org.fossify.gallery.helpers.EXT_DATE_TAKEN
 import org.fossify.gallery.helpers.EXT_EXIF_PROPERTIES
@@ -117,6 +120,12 @@ import org.fossify.gallery.compose.util.BlurState
 import org.fossify.gallery.helpers.ROTATE_BY_SYSTEM_SETTING
 import java.util.Locale
 
+private val LocalSettingsQuery = androidx.compose.runtime.compositionLocalOf { "" }
+private class SettingsMatchTracker {
+    var matchedCount = 0
+}
+private val LocalSettingsMatchTracker = androidx.compose.runtime.compositionLocalOf<SettingsMatchTracker?> { null }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
@@ -125,11 +134,23 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
     val conf = ctx.config
     val scope = rememberCoroutineScope()
     var showExtendedDialog by remember { mutableStateOf(false) }
-    var showBottomActionsDialog by remember { mutableStateOf(false) }
     var showThemeModeDialog by remember { mutableStateOf(false) }
+    var showFolderTypeDialog by remember { mutableStateOf(false) }
+    var manageFoldersMode by remember { mutableStateOf<String?>(null) }
+    var settingsQuery by rememberSaveable { mutableStateOf("") }
     var settingsVersion by remember { mutableStateOf(0) }
+    var expandedSections by rememberSaveable { mutableStateOf(setOf("general")) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val activityStates by LibraryActivityStatus.states.collectAsStateWithLifecycle()
+    val isMetadataScanRunning = activityStates.any {
+        it.kind == LibraryActivityKind.METADATA_SCAN && it.phase == LibraryActivityPhase.RUNNING
+    }
+    fun toggleSection(key: String) {
+        expandedSections = if (key in expandedSections) expandedSections - key else expandedSections + key
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(title = { Text(stringResource(R.string.nav_settings), fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } },
@@ -137,40 +158,21 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+            LibrarySearchField(
+                value = settingsQuery,
+                onValueChange = { settingsQuery = it },
+                placeholderRes = R.string.settings_search_hint,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            val matchTracker = SettingsMatchTracker()
+            CompositionLocalProvider(
+                LocalSettingsQuery provides settingsQuery.trim(),
+                LocalSettingsMatchTracker provides matchTracker,
+            ) {
             @Suppress("UNUSED_EXPRESSION") settingsVersion // re-read config-derived labels after a change
 
-            // App version + when the current build was installed - handy while iterating on debug builds.
-            val pkgInfo = remember { runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0) }.getOrNull() }
-            val installedText = remember(pkgInfo) {
-                val t = pkgInfo?.lastUpdateTime ?: 0L
-                if (t > 0L) java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(t)) else ""
-            }
-            Surface(
-                shape = RoundedCornerShape(Radius.md),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            stringResource(R.string.settings_version, pkgInfo?.versionName ?: "–"),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        if (installedText.isNotEmpty()) {
-                            Text(
-                                stringResource(R.string.settings_installed_on, installedText),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-
-            SectionLabel(stringResource(R.string.set_general))
+            SettingsCategory(stringResource(R.string.set_general), settingsQuery, "general" in expandedSections) { toggleSection("general") }
+            if ("general" in expandedSections || settingsQuery.isNotBlank()) {
             val themeModeLabel = when {
                 conf.forceDarkMode -> stringResource(R.string.theme_mode_dark)
                 conf.forceLightMode -> stringResource(R.string.theme_mode_light)
@@ -184,66 +186,94 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             // password mirrors the legacy viewer, where revealing hidden media asked for it first;
             // the Compose switch flipped it with no prompt at all.
             var showHiddenChecked by remember { mutableStateOf(conf.showHiddenMedia) }
+            fun applyShowHidden(enabled: Boolean) {
+                showHiddenChecked = enabled
+                conf.showHiddenMedia = enabled
+                org.fossify.gallery.helpers.RefreshBus.trigger()
+                org.fossify.gallery.workers.MediaSyncWorker.scheduleIncrementalSync(ctx)
+            }
             SettingsSwitchControlled(stringResource(R.string.set_show_hidden), showHiddenChecked) { want ->
                 when {
-                    !want -> { showHiddenChecked = false; conf.showHiddenMedia = false }
+                    !want -> applyShowHidden(false)
                     a != null && conf.isHiddenPasswordProtectionOn ->
-                        a.handleHiddenFolderPasswordProtection { showHiddenChecked = true; conf.showHiddenMedia = true }
-                    else -> { showHiddenChecked = true; conf.showHiddenMedia = true }
+                        a.handleHiddenFolderPasswordProtection { applyShowHidden(true) }
+                    else -> applyShowHidden(true)
                 }
             }
-            SettingsSwitch(stringResource(R.string.set_animate_gifs), conf.animateGifs) { conf.animateGifs = it }
+            SettingsSwitch(stringResource(R.string.set_animate_gifs), conf.animateGifs) {
+                conf.animateGifs = it
+                org.fossify.gallery.compose.util.ThumbnailOverlayState.animateGifs = it
+            }
             SettingsSwitch(stringResource(R.string.set_max_brightness), conf.maxBrightness) { conf.maxBrightness = it }
-            SettingsSwitch(stringResource(R.string.set_search_all_files), conf.searchAllFilesByDefault) { conf.searchAllFilesByDefault = it }
-            // Hidden, not deleted: needs an alternate horizontal-scrolling grid layout in Compose
-            // (the legacy Views grid supports it via StaggeredGridLayoutManager.HORIZONTAL) that
-            // doesn't exist yet - showing the toggle with no effect was worse than not showing it.
+            // Legacy-only toggles (searchAllFilesByDefault, scrollHorizontally) are intentionally
+            // omitted in Compose settings because OmniSearch always searches globally and Compose
+            // grids scroll vertically.
             SettingsSwitch(stringResource(R.string.set_pull_refresh), conf.enablePullToRefresh) { conf.enablePullToRefresh = it }
-            SettingsNav(stringResource(R.string.set_folder_type), getViewTypeLabel(ctx, conf.viewTypeFolders)) { conf.viewTypeFolders = if (conf.viewTypeFolders == VIEW_TYPE_GRID) VIEW_TYPE_LIST else VIEW_TYPE_GRID; settingsVersion++ }
-            SettingsNav(stringResource(R.string.set_included_folders)) { a?.startActivity(Intent(a, IncludedFoldersActivity::class.java)) }
-            SettingsNav(stringResource(R.string.set_excluded_folders)) { a?.startActivity(Intent(a, ExcludedFoldersActivity::class.java)) }
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            SettingsNav(stringResource(R.string.set_folder_type), getViewTypeLabel(ctx, conf.viewTypeFolders)) { showFolderTypeDialog = true }
+            val includedCount = conf.includedFolders.size
+            val excludedCount = conf.excludedFolders.size
+            SettingsNav(
+                stringResource(R.string.set_included_folders),
+                if (includedCount > 0) includedCount.toString() else "",
+            ) { manageFoldersMode = "included" }
+            SettingsNav(
+                stringResource(R.string.set_excluded_folders),
+                if (excludedCount > 0) excludedCount.toString() else "",
+            ) {
+                if (a != null && conf.isExcludedPasswordProtectionOn) {
+                    SecurityDialog(a, conf.excludedPasswordHash, conf.excludedProtectionType) { _, _, success ->
+                        if (success) manageFoldersMode = "excluded"
+                    }
+                } else {
+                    manageFoldersMode = "excluded"
+                }
+            }
+            SettingsDivider()
+            }
 
-            SectionLabel(stringResource(R.string.set_video))
+            SettingsCategory(stringResource(R.string.set_video), settingsQuery, "video" in expandedSections) { toggleSection("video") }
+            if ("video" in expandedSections || settingsQuery.isNotBlank()) {
             SettingsSwitch(stringResource(R.string.set_autoplay), conf.autoplayVideos) { conf.autoplayVideos = it }
             SettingsSwitch(stringResource(R.string.set_loop_videos), conf.loopVideos) { conf.loopVideos = it }
             SettingsSwitch(stringResource(R.string.set_mute_videos), conf.muteVideos) { conf.muteVideos = it }
-            SettingsSwitch(stringResource(R.string.set_separate_player), conf.gestureVideoPlayer) { conf.gestureVideoPlayer = it }
             SettingsSwitch(stringResource(R.string.set_remember_position), conf.rememberLastVideoPosition) { conf.rememberLastVideoPosition = it }
             SettingsSwitch(stringResource(R.string.set_video_gestures), conf.allowVideoGestures) { conf.allowVideoGestures = it }
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            SettingsDivider()
+            }
 
-            SectionLabel(stringResource(R.string.set_fullscreen))
+            SettingsCategory(stringResource(R.string.set_fullscreen), settingsQuery, "fullscreen" in expandedSections) { toggleSection("fullscreen") }
+            if ("fullscreen" in expandedSections || settingsQuery.isNotBlank()) {
             SettingsSwitch(stringResource(R.string.set_black_bg), conf.blackBackground) { conf.blackBackground = it }
             SettingsSwitch(stringResource(R.string.set_hide_system_ui), conf.hideSystemUI) { conf.hideSystemUI = it }
             SettingsSwitch(stringResource(R.string.set_keep_screen_on), conf.keepScreenOn) { conf.keepScreenOn = it }
             SettingsSwitch(stringResource(R.string.set_show_notch), conf.showNotch) { conf.showNotch = it }
             SettingsSwitch(stringResource(R.string.set_swipe_close), conf.allowDownGesture) { conf.allowDownGesture = it }
-            // Hidden, not deleted: the legacy Views viewer maps this to left/right edge-tap zones
-            // for instant prev/next. The Compose Viewer's pager already uses edge-thirds for the
-            // video brightness/volume drag gestures and center-vs-edge for drag-to-dismiss/action
-            // sheet - adding another tap zone on top needs a dedicated gesture-conflict pass, not a
-            // quick wire (this screen has repeatedly needed exactly that kind of dedicated pass).
-            SettingsNav(stringResource(R.string.set_screen_rotation), getRotationLabel(ctx, conf.screenRotation)) {
-                conf.screenRotation = when (conf.screenRotation) {
-                    ROTATE_BY_SYSTEM_SETTING -> ROTATE_BY_DEVICE_ROTATION
-                    ROTATE_BY_DEVICE_ROTATION -> ROTATE_BY_ASPECT_RATIO
-                    else -> ROTATE_BY_SYSTEM_SETTING
-                }
-                settingsVersion++
+            if (org.fossify.gallery.helpers.ColorModeHelper.isGainmapSupported()) {
+                SettingsSwitch(stringResource(R.string.render_ultra_hdr_photos), conf.ultraHdrRendering) { conf.ultraHdrRendering = it }
             }
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            SettingsDivider()
+            }
 
-            SectionLabel(stringResource(R.string.set_thumbnails))
+            SettingsCategory(stringResource(R.string.set_thumbnails), settingsQuery, "thumbnails" in expandedSections) { toggleSection("thumbnails") }
+            if ("thumbnails" in expandedSections || settingsQuery.isNotBlank()) {
             SettingsSwitch(stringResource(R.string.set_crop_thumbnails), conf.cropThumbnails) { conf.cropThumbnails = it }
-            SettingsSwitch(stringResource(R.string.show_video_duration), conf.showThumbnailVideoDuration) { conf.showThumbnailVideoDuration = it }
+            // Compose grids consume the observable overlay state; use the same persisted flags as
+            // the view screens so this global setting has one source of truth everywhere.
+            SettingsSwitch(stringResource(R.string.show_video_duration), conf.showVideoDurationOnThumbnails) {
+                conf.showVideoDurationOnThumbnails = it
+                org.fossify.gallery.compose.util.ThumbnailOverlayState.showVideoDuration = it
+            }
             SettingsSwitch(stringResource(R.string.set_show_file_type), conf.showThumbnailFileTypes) { conf.showThumbnailFileTypes = it }
             SettingsSwitch(stringResource(R.string.set_mark_favorites), conf.markFavoriteItems) { conf.markFavoriteItems = it }
-            SettingsSwitch(stringResource(R.string.show_rating), conf.showRatingOnThumbnails) { conf.showRatingOnThumbnails = it }
+            SettingsSwitch(stringResource(R.string.show_rating), conf.showRatingOnThumbnails) {
+                conf.showRatingOnThumbnails = it
+                org.fossify.gallery.compose.util.ThumbnailOverlayState.showRating = it
+            }
             SettingsSwitch(stringResource(R.string.blur_all_media), BlurState.enabled) {
                 conf.blurAllMedia = it
                 BlurState.enabled = it
                 org.fossify.gallery.helpers.MyWidgetProvider.requestImmediateUpdate(ctx)
+                org.fossify.gallery.helpers.MoverWidgetProvider.requestImmediateUpdate(ctx)
             }
             if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
                 Text(
@@ -253,119 +283,151 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp),
                 )
             }
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
-
-            SectionLabel(stringResource(R.string.nav_recycle_bin))
-            SettingsSwitch(stringResource(R.string.set_use_recycle_bin), conf.useRecycleBin) { conf.useRecycleBin = it }
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
-
-            SectionLabel(stringResource(R.string.set_files))
-            SettingsSwitch(stringResource(R.string.set_delete_empty), conf.deleteEmptyFolders) { conf.deleteEmptyFolders = it }
-            SettingsSwitch(stringResource(R.string.set_keep_modified), conf.keepLastModified) { conf.keepLastModified = it }
-            SettingsSwitch(stringResource(R.string.set_skip_delete_confirm), conf.skipDeleteConfirmation) { conf.skipDeleteConfirmation = it }
-            SettingsNav(stringResource(R.string.set_load_files), getFileLoadingLabel(ctx, conf.fileLoadingPriority)) {
-                conf.fileLoadingPriority = (conf.fileLoadingPriority + 1) % 3
-                settingsVersion++
+            SettingsDivider()
             }
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
-            SectionLabel(stringResource(R.string.set_extended_details))
+            SettingsCategory(stringResource(R.string.nav_recycle_bin), settingsQuery, "bin" in expandedSections) { toggleSection("bin") }
+            if ("bin" in expandedSections || settingsQuery.isNotBlank()) {
+            SettingsSwitch(stringResource(R.string.set_use_recycle_bin), conf.useRecycleBin) { conf.useRecycleBin = it }
+            SettingsDivider()
+            }
+
+            SettingsCategory(stringResource(R.string.set_files), settingsQuery, "files" in expandedSections) { toggleSection("files") }
+            if ("files" in expandedSections || settingsQuery.isNotBlank()) {
+            SettingsSwitch(stringResource(R.string.set_skip_delete_confirm), conf.skipDeleteConfirmation) { conf.skipDeleteConfirmation = it }
+            SettingsDivider()
+            }
+
+            SettingsCategory(stringResource(R.string.set_extended_details), settingsQuery, "details" in expandedSections) { toggleSection("details") }
+            if ("details" in expandedSections || settingsQuery.isNotBlank()) {
             SettingsSwitch(stringResource(R.string.set_show_details), conf.showExtendedDetails) { conf.showExtendedDetails = it }
-            SettingsSwitch(stringResource(R.string.set_hide_details), conf.hideExtendedDetails) { conf.hideExtendedDetails = it }
+            SettingsSwitch(stringResource(R.string.set_hide_details), conf.hideExtendedDetails, enabled = conf.showExtendedDetails) { conf.hideExtendedDetails = it }
             SettingsNav(stringResource(R.string.set_manage_details), getExtendedDetailsSummary(ctx, conf.extendedDetails)) { showExtendedDialog = true }
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            SettingsDivider()
+            }
 
-            // Not wired into the Compose Viewer: the legacy Views viewer renders this bitmask as a
-            // persistent bottom action bar, but the Compose Viewer already uses a different,
-            // deliberate design (swipe-up action sheet, see showActionSheet below) - mapping a
-            // bitmask onto that shape is an information-architecture decision, not a quick wire, so
-            // left as a documented gap rather than rushed. Kept visible (unlike the two toggles
-            // hidden above) since it's a real Settings feature for the legacy viewer, just inert
-            // for the Compose one.
-            SectionLabel(stringResource(R.string.set_screen_actions))
-            SettingsSwitch(stringResource(R.string.set_show_actions), conf.bottomActions) { conf.bottomActions = it }
-            SettingsNav(stringResource(R.string.set_manage_actions), getBottomActionsSummary(ctx, conf.visibleBottomActions)) { showBottomActionsDialog = true }
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
-
-            SectionLabel(stringResource(R.string.set_security))
+            SettingsCategory(stringResource(R.string.set_security), settingsQuery, "security" in expandedSections) { toggleSection("security") }
+            if ("security" in expandedSections || settingsQuery.isNotBlank()) {
             // conf reads aren't reactive, so bump this after each toggle so the On/Off labels below
             // refresh immediately instead of showing stale state until the screen is re-entered.
             var securityTick by remember { mutableIntStateOf(0) }
             SecurityNav(stringResource(R.string.set_app_password), securityTick.let { conf.isAppPasswordProtectionOn }) {
-                SecurityDialog(a!!, conf.appPasswordHash, if (conf.isAppPasswordProtectionOn) conf.appProtectionType else SHOW_ALL_TABS) { hash, type, success ->
-                    if (success) {
-                        val wasOn = conf.isAppPasswordProtectionOn
-                        conf.isAppPasswordProtectionOn = !wasOn
-                        conf.appPasswordHash = if (wasOn) "" else hash
-                        conf.appProtectionType = type
-                        securityTick++
+                a?.let { act ->
+                    SecurityDialog(act, conf.appPasswordHash, if (conf.isAppPasswordProtectionOn) conf.appProtectionType else SHOW_ALL_TABS) { hash, type, success ->
+                        if (success) {
+                            val wasOn = conf.isAppPasswordProtectionOn
+                            conf.isAppPasswordProtectionOn = !wasOn
+                            conf.appPasswordHash = if (wasOn) "" else hash
+                            conf.appProtectionType = type
+                            securityTick++
+                        }
                     }
                 }
             }
             SecurityNav(stringResource(R.string.set_hidden_password), securityTick.let { conf.isHiddenPasswordProtectionOn }) {
-                SecurityDialog(a!!, conf.hiddenPasswordHash, if (conf.isHiddenPasswordProtectionOn) conf.hiddenProtectionType else SHOW_ALL_TABS) { hash, type, success ->
-                    if (success) {
-                        val wasOn = conf.isHiddenPasswordProtectionOn
-                        conf.isHiddenPasswordProtectionOn = !wasOn
-                        conf.hiddenPasswordHash = if (wasOn) "" else hash
-                        conf.hiddenProtectionType = type
-                        securityTick++
-                    }
-                }
-            }
-            SecurityNav(stringResource(R.string.set_excluded_password), securityTick.let { conf.isExcludedPasswordProtectionOn }) {
-                SecurityDialog(a!!, conf.excludedPasswordHash, if (conf.isExcludedPasswordProtectionOn) conf.excludedProtectionType else SHOW_ALL_TABS) { hash, type, success ->
-                    if (success) {
-                        val wasOn = conf.isExcludedPasswordProtectionOn
-                        conf.isExcludedPasswordProtectionOn = !wasOn
-                        conf.excludedPasswordHash = if (wasOn) "" else hash
-                        conf.excludedProtectionType = type
-                        securityTick++
+                a?.let { act ->
+                    SecurityDialog(act, conf.hiddenPasswordHash, if (conf.isHiddenPasswordProtectionOn) conf.hiddenProtectionType else SHOW_ALL_TABS) { hash, type, success ->
+                        if (success) {
+                            val wasOn = conf.isHiddenPasswordProtectionOn
+                            conf.isHiddenPasswordProtectionOn = !wasOn
+                            conf.hiddenPasswordHash = if (wasOn) "" else hash
+                            conf.hiddenProtectionType = type
+                            securityTick++
+                        }
                     }
                 }
             }
             SecurityNav(stringResource(R.string.set_delete_password), securityTick.let { conf.isDeletePasswordProtectionOn }) {
-                SecurityDialog(a!!, conf.deletePasswordHash, if (conf.isDeletePasswordProtectionOn) conf.deleteProtectionType else SHOW_ALL_TABS) { hash, type, success ->
-                    if (success) {
-                        val wasOn = conf.isDeletePasswordProtectionOn
-                        conf.isDeletePasswordProtectionOn = !wasOn
-                        conf.deletePasswordHash = if (wasOn) "" else hash
-                        conf.deleteProtectionType = type
-                        securityTick++
+                a?.let { act ->
+                    SecurityDialog(act, conf.deletePasswordHash, if (conf.isDeletePasswordProtectionOn) conf.deleteProtectionType else SHOW_ALL_TABS) { hash, type, success ->
+                        if (success) {
+                            val wasOn = conf.isDeletePasswordProtectionOn
+                            conf.isDeletePasswordProtectionOn = !wasOn
+                            conf.deletePasswordHash = if (wasOn) "" else hash
+                            conf.deleteProtectionType = type
+                            securityTick++
+                        }
                     }
                 }
             }
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            SettingsDivider()
+            }
 
-            SectionLabel(stringResource(R.string.set_tags_ratings))
-            SettingsNav(stringResource(R.string.set_read_metadata)) { MetadataSyncWorker.scheduleFullScan(ctx); Toast.makeText(ctx, ctx.getString(R.string.scan_started_notification), Toast.LENGTH_SHORT).show() }
+            SettingsCategory(stringResource(R.string.set_tags_ratings), settingsQuery, "metadata" in expandedSections) { toggleSection("metadata") }
+            if ("metadata" in expandedSections || settingsQuery.isNotBlank()) {
+            SettingsNav(stringResource(R.string.set_read_metadata)) {
+                MetadataSyncWorker.scheduleFullScan(ctx)
+                scope.launch {
+                    val result = snackbarHostState.showSnackbar(
+                        message = ctx.getString(R.string.scan_started_notification),
+                        actionLabel = ctx.getString(R.string.cancel),
+                        duration = SnackbarDuration.Short,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        MetadataSyncWorker.cancel(ctx)
+                    }
+                }
+            }
             var showAdvancedScan by remember { mutableStateOf(false) }
             SettingsNav(stringResource(R.string.advanced_metadata_scan), stringResource(R.string.advanced_metadata_scan_subtitle)) { showAdvancedScan = true }
             if (showAdvancedScan) {
                 AdvancedScanDialog(onDismiss = { showAdvancedScan = false }) { folder, start, end, inc, charging ->
                     MetadataSyncWorker.scheduleAdvancedScan(ctx, folder, start, end, inc, charging)
-                    Toast.makeText(ctx, ctx.getString(R.string.advanced_scan_scheduled), Toast.LENGTH_SHORT).show()
+                    scope.launch {
+                        val result = snackbarHostState.showSnackbar(
+                            message = ctx.getString(R.string.advanced_scan_scheduled),
+                            actionLabel = ctx.getString(R.string.cancel),
+                            duration = SnackbarDuration.Short,
+                        )
+                        if (result == SnackbarResult.ActionPerformed) {
+                            MetadataSyncWorker.cancel(ctx)
+                        }
+                    }
                 }
             }
-            SettingsNav(stringResource(R.string.set_cancel_scan)) { MetadataSyncWorker.cancel(ctx); Toast.makeText(ctx, ctx.getString(R.string.set_scan_cancelled), Toast.LENGTH_SHORT).show() }
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            if (isMetadataScanRunning) {
+                SettingsNav(stringResource(R.string.set_cancel_scan)) {
+                    MetadataSyncWorker.cancel(ctx)
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = ctx.getString(R.string.set_scan_cancelled),
+                            duration = SnackbarDuration.Short,
+                        )
+                    }
+                }
+            }
+            SettingsDivider()
+            }
 
-            SectionLabel(stringResource(R.string.set_manage_data))
+            SettingsCategory(stringResource(R.string.set_manage_data), settingsQuery, "data" in expandedSections) { toggleSection("data") }
+            if ("data" in expandedSections || settingsQuery.isNotBlank()) {
             FavoritesExportNav(ctx, conf, scope)
             FavoritesImportNav(ctx, conf, scope)
             FullBackupExportNav(ctx, scope)
             FullBackupImportNav(ctx, scope)
-            SettingsNav(stringResource(R.string.set_export_settings)) { a?.startActivity(Intent(a, SettingsActivity::class.java).putExtra("open_section", "export_settings")) }
-            SettingsNav(stringResource(R.string.set_import_settings)) { a?.startActivity(Intent(a, SettingsActivity::class.java).putExtra("open_section", "import_settings")) }
             LibraryHealthNav(ctx, scope)
             ClearCacheNav(ctx, scope)
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            SettingsDivider()
+            }
 
-            SectionLabel(stringResource(R.string.set_information))
+            SettingsCategory(stringResource(R.string.set_information), settingsQuery, "information" in expandedSections) { toggleSection("information") }
+            if ("information" in expandedSections || settingsQuery.isNotBlank()) {
             SettingsNav(stringResource(R.string.set_about), onClick = onNavigateToAbout)
             CrashLogNav(ctx)
+            }
+
+            if (settingsQuery.isNotBlank() && matchTracker.matchedCount == 0) {
+                Text(
+                    text = stringResource(R.string.no_results),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
 
             Spacer(Modifier.height(32.dp))
+            }
         }
     }
 
@@ -374,14 +436,6 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
             current = conf.extendedDetails,
             onDismiss = { showExtendedDialog = false },
             onSave = { conf.extendedDetails = it }
-        )
-    }
-
-    if (showBottomActionsDialog) {
-        BottomActionsDialog(
-            current = conf.visibleBottomActions,
-            onDismiss = { showBottomActionsDialog = false },
-            onSave = { conf.visibleBottomActions = it }
         )
     }
 
@@ -423,6 +477,27 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToAbout: () -> Unit = {}) {
                 }
             },
             confirmButton = { TextButton(onClick = { showThemeModeDialog = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
+    if (showFolderTypeDialog) {
+        SettingsChoiceDialog(
+            title = stringResource(R.string.set_folder_type),
+            selectedValue = conf.viewTypeFolders,
+            options = listOf(
+                VIEW_TYPE_GRID to stringResource(R.string.view_type_grid),
+                VIEW_TYPE_LIST to stringResource(R.string.view_type_list),
+            ),
+            onSelected = { value -> conf.viewTypeFolders = value; settingsVersion++; showFolderTypeDialog = false },
+            onDismiss = { showFolderTypeDialog = false },
+        )
+    }
+
+    manageFoldersMode?.let { mode ->
+        ManageFoldersDialog(
+            isExcluded = mode == "excluded",
+            onChanged = { settingsVersion++ },
+            onDismiss = { manageFoldersMode = null },
         )
     }
 }
@@ -474,18 +549,75 @@ internal fun CrashLogNav(ctx: Context) {
 
 @Composable
 internal fun SectionLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 20.dp, bottom = 8.dp))
+    if (LocalSettingsQuery.current.isNotBlank()) return
+    LibrarySectionHeader(
+        title = text,
+        showDivider = false,
+        topPadding = 20.dp,
+        bottomPadding = 8.dp,
+    )
+}
+
+/** Collapsed by default to keep the settings landing page scannable. A text search deliberately
+ * reveals every matching category, so a setting never becomes harder to find. */
+@Composable
+private fun SettingsCategory(
+    title: String,
+    query: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
+    if (query.isNotBlank()) {
+        SectionLabel(title)
+        return
+    }
+    Surface(
+        onClick = onToggle,
+        shape = RoundedCornerShape(Radius.md),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Icon(
+                Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.rotate(if (expanded) 180f else 0f),
+            )
+        }
+    }
 }
 
 @Composable
-internal fun SettingsSwitch(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun SettingsDivider() {
+    if (LocalSettingsQuery.current.isBlank()) {
+        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+    }
+}
+
+@Composable
+internal fun SettingsSwitch(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    if (!settingsMatches(label)) return
     var internalChecked by remember(checked) { mutableStateOf(checked) }
-    Card(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(Radius.sm),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
+    val toggle: (Boolean) -> Unit = { value -> internalChecked = value; onChange(value) }
+    Card(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .toggleable(value = internalChecked, enabled = enabled, role = Role.Switch, onValueChange = toggle),
+        shape = RoundedCornerShape(Radius.sm),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(0.dp),
+    ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Switch(checked = internalChecked, onCheckedChange = { internalChecked = it; onChange(it) })
+            Text(label, style = MaterialTheme.typography.bodyMedium,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                modifier = Modifier.weight(1f))
+            Switch(checked = internalChecked, enabled = enabled, onCheckedChange = null)
         }
     }
 }
@@ -494,28 +626,38 @@ internal fun SettingsSwitch(label: String, checked: Boolean, onChange: (Boolean)
  * (e.g. when a password prompt behind the switch is cancelled). */
 @Composable
 internal fun SettingsSwitchControlled(label: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
-    Card(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(Radius.sm),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
+    if (!settingsMatches(label)) return
+    Card(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onToggle),
+        shape = RoundedCornerShape(Radius.sm),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(0.dp),
+    ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Switch(checked = checked, onCheckedChange = onToggle)
+            Switch(checked = checked, onCheckedChange = null)
         }
     }
 }
 
 @Composable
 internal fun SettingsNav(label: String, onClick: () -> Unit) {
+    if (!settingsMatches(label)) return
     Card(Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(onClick = onClick), shape = RoundedCornerShape(Radius.sm),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
 internal fun SettingsNav(label: String, subtitle: String, onClick: () -> Unit) {
+    if (!settingsMatches(label, subtitle)) return
     Card(Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(onClick = onClick), shape = RoundedCornerShape(Radius.sm),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -523,380 +665,30 @@ internal fun SettingsNav(label: String, subtitle: String, onClick: () -> Unit) {
                 Text(label, style = MaterialTheme.typography.bodyMedium)
                 if (subtitle.isNotEmpty()) Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
 internal fun SecurityNav(label: String, enabled: Boolean, onClick: () -> Unit) {
+    if (!settingsMatches(label)) return
     Card(Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(onClick = onClick), shape = RoundedCornerShape(Radius.sm),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Text(if (enabled) stringResource(R.string.set_on) else stringResource(R.string.set_off), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
-internal fun ExtendedDetailsDialog(current: Int, onDismiss: () -> Unit, onSave: (Int) -> Unit) {
-    var result by remember { mutableStateOf(current) }
-    val items = listOf(
-        EXT_NAME to stringResource(R.string.sort_name), EXT_PATH to stringResource(R.string.path), EXT_SIZE to stringResource(R.string.sort_size),
-        EXT_RESOLUTION to stringResource(R.string.exif_resolution), EXT_LAST_MODIFIED to stringResource(R.string.last_modified),
-        EXT_DATE_TAKEN to stringResource(R.string.date_taken_full), EXT_CAMERA_MODEL to stringResource(R.string.exif_camera),
-        EXT_EXIF_PROPERTIES to "EXIF", EXT_GPS to "GPS"
-    )
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.set_detail_items)) },
-        text = {
-            Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-                items.forEach { (flag, label) ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = result and flag != 0, onCheckedChange = { if (it) result += flag else result -= flag })
-                        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.clickable { if (result and flag == 0) result += flag else result -= flag })
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = { onSave(result); onDismiss() }) { Text(stringResource(org.fossify.commons.R.string.ok)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
-    )
-}
-
-@Composable
-internal fun BottomActionsDialog(current: Int, onDismiss: () -> Unit, onSave: (Int) -> Unit) {
-    var result by remember { mutableStateOf(current) }
-    val items = listOf(
-        BOTTOM_ACTION_TOGGLE_FAVORITE to stringResource(R.string.favorite), BOTTOM_ACTION_EDIT to stringResource(R.string.edit),
-        BOTTOM_ACTION_SHARE to stringResource(R.string.action_share), BOTTOM_ACTION_DELETE to stringResource(org.fossify.commons.R.string.delete),
-        BOTTOM_ACTION_ROTATE to stringResource(R.string.action_rotate), BOTTOM_ACTION_PROPERTIES to stringResource(R.string.action_properties),
-        BOTTOM_ACTION_CHANGE_ORIENTATION to stringResource(R.string.action_change_orientation), BOTTOM_ACTION_SLIDESHOW to stringResource(R.string.action_slideshow),
-        BOTTOM_ACTION_SHOW_ON_MAP to stringResource(R.string.action_show_on_map), BOTTOM_ACTION_TOGGLE_VISIBILITY to stringResource(R.string.action_toggle_visibility),
-        BOTTOM_ACTION_RENAME to stringResource(R.string.action_rename), BOTTOM_ACTION_SET_AS to stringResource(R.string.action_set_as),
-        BOTTOM_ACTION_COPY to stringResource(R.string.action_copy), BOTTOM_ACTION_MOVE to stringResource(R.string.action_move),
-        BOTTOM_ACTION_RESIZE to stringResource(R.string.action_resize), BOTTOM_ACTION_RATING to stringResource(R.string.rating_title)
-    )
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.set_screen_actions)) },
-        text = {
-            Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-                items.forEach { (flag, label) ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = result and flag != 0, onCheckedChange = { if (it) result += flag else result -= flag })
-                        Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.clickable { if (result and flag == 0) result += flag else result -= flag })
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = { onSave(result); onDismiss() }) { Text(stringResource(org.fossify.commons.R.string.ok)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
-    )
-}
-
-// Plain integer division (bytes/1000, bytes/1_000_000) truncated anything under 1000 bytes/1MB
-// down to "0 KB"/"N KB" with no decimal - misleading since it read as "the cache is empty" even
-// when it wasn't. Formats with one decimal and a dedicated Bytes tier instead.
-private fun formatCacheSize(bytes: Long): String = when {
-    bytes >= 1_000_000 -> String.format(Locale.US, "%.1f MB", bytes / 1_000_000.0)
-    bytes >= 1_000 -> String.format(Locale.US, "%.1f KB", bytes / 1_000.0)
-    bytes > 0 -> "$bytes B"
-    else -> "0 KB"
-}
-
-/**
- * Compares MediaStore's count against the library table's and offers a full rescan when they
- * diverge. Deliberately tap-to-check rather than automatic: counting a six-figure library costs a
- * couple of seconds, and paying that on every Settings open to answer a question that is almost
- * always "fine" would be the wrong trade.
- *
- * Exists because a sync bug left 3,761 files permanently invisible with nothing in the UI hinting
- * at it - the app looked healthy, and only counting files on the device by hand revealed it.
- */
-@Composable
-internal fun LibraryHealthNav(ctx: Context, scope: CoroutineScope) {
-    val repo = LocalMediaRepository.current
-    var subtitle by remember { mutableStateOf("") }
-    var checking by remember { mutableStateOf(false) }
-    var gap by remember { mutableStateOf<org.fossify.gallery.helpers.MediaRepository.LibraryHealth?>(null) }
-
-    SettingsNav(
-        stringResource(R.string.library_health),
-        if (checking) stringResource(R.string.library_health_checking) else subtitle,
-    ) {
-        if (checking) return@SettingsNav
-        checking = true
-        scope.launch {
-            val health = withContext(Dispatchers.IO) { repo.libraryHealth() }
-            checking = false
-            subtitle = if (health.isSignificant) {
-                ctx.getString(R.string.library_health_gap, health.missing)
-            } else {
-                ctx.getString(R.string.library_health_ok, health.inLibrary)
-            }
-            if (health.isSignificant) gap = health
-        }
+private fun settingsMatches(label: String, subtitle: String = ""): Boolean {
+    val query = LocalSettingsQuery.current
+    val matches = query.isBlank() || label.contains(query, ignoreCase = true) || subtitle.contains(query, ignoreCase = true)
+    if (matches && query.isNotBlank()) {
+        LocalSettingsMatchTracker.current?.let { it.matchedCount++ }
     }
-
-    gap?.let { health ->
-        AlertDialog(
-            onDismissRequest = { gap = null },
-            title = { Text(stringResource(R.string.library_health_dialog_title)) },
-            text = { Text(stringResource(R.string.library_health_dialog_msg, health.inMediaStore, health.inLibrary)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    MediaSyncWorker.scheduleFullRescan(ctx)
-                    Toast.makeText(ctx, R.string.library_health_started, Toast.LENGTH_SHORT).show()
-                    gap = null
-                }) { Text(stringResource(R.string.library_health_rescan)) }
-            },
-            dismissButton = { TextButton(onClick = { gap = null }) { Text(stringResource(R.string.cancel)) } },
-        )
-    }
-}
-
-@Composable
-internal fun ClearCacheNav(ctx: Context, scope: CoroutineScope) {
-    val a = ctx as? Activity
-    var cacheSize by remember { mutableStateOf("") }
-    LaunchedEffect(Unit) { cacheSize = withContext(Dispatchers.IO) { a?.cacheDir?.let { dir -> if (dir.exists()) formatCacheSize(dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }) else "" } ?: "" } }
-    SettingsNav(stringResource(R.string.set_clear_cache), cacheSize.ifEmpty { "0 KB" }) {
-        scope.launch(Dispatchers.IO) { a?.cacheDir?.deleteRecursively(); withContext(Dispatchers.Main) { cacheSize = "0 KB" } }
-    }
-}
-
-@Composable
-internal fun FavoritesExportNav(ctx: Context, conf: org.fossify.gallery.helpers.Config, scope: CoroutineScope) {
-    val repo = LocalMediaRepository.current
-    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
-        if (uri != null) scope.launch(Dispatchers.IO) {
-            try {
-                val paths = repo.getValidFavoritePaths()
-                ctx.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { w -> paths.forEach { w.write("$it\n") } }
-                withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(R.string.favorites_exported, paths.size), Toast.LENGTH_SHORT).show() }
-            } catch (e: Exception) {
-                android.util.Log.e("Settings", "Favorites export failed", e)
-                withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(org.fossify.commons.R.string.unknown_error_occurred), Toast.LENGTH_SHORT).show() }
-            }
-        }
-    }
-    SettingsNav(stringResource(R.string.set_export_favorites)) { exportLauncher.launch("gallery-favorites_${java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US).format(java.util.Date())}.txt") }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun AdvancedScanDialog(
-    onDismiss: () -> Unit,
-    onStart: (folder: String?, start: Long, end: Long, incremental: Boolean, chargingOnly: Boolean) -> Unit
-) {
-    var folderPath by remember { mutableStateOf<String?>(null) }
-    var startDate by remember { mutableLongStateOf(0L) }
-    var endDate by remember { mutableLongStateOf(Long.MAX_VALUE) }
-    var incremental by remember { mutableStateOf(false) }
-    var chargingOnly by remember { mutableStateOf(false) }
-    var showFolderPicker by remember { mutableStateOf(false) }
-    var showStartDatePicker by remember { mutableStateOf(false) }
-    var showEndDatePicker by remember { mutableStateOf(false) }
-    val ctx = LocalContext.current
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.advanced_scan_title)) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text(stringResource(R.string.select_folder), style = MaterialTheme.typography.labelSmall)
-                Surface(
-                    onClick = { showFolderPicker = true },
-                    shape = RoundedCornerShape(Radius.sm),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                ) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Folder, null, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(folderPath ?: stringResource(R.string.entire_device), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-                Text(stringResource(R.string.date_range), style = MaterialTheme.typography.labelSmall)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Surface(onClick = { showStartDatePicker = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(Radius.sm), color = MaterialTheme.colorScheme.surfaceVariant) {
-                        Text(if (startDate == 0L) stringResource(R.string.from_beginning) else java.text.DateFormat.getDateInstance().format(java.util.Date(startDate)), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
-                    }
-                    Surface(onClick = { showEndDatePicker = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(Radius.sm), color = MaterialTheme.colorScheme.surfaceVariant) {
-                        Text(if (endDate == Long.MAX_VALUE) stringResource(R.string.until_today) else java.text.DateFormat.getDateInstance().format(java.util.Date(endDate)), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = incremental, onValueChange = { incremental = it })
-                    Text(stringResource(R.string.only_new_files_since_last_scan), style = MaterialTheme.typography.bodyMedium)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = chargingOnly, onValueChange = { chargingOnly = it })
-                    Text(stringResource(R.string.only_while_charging), style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = { onStart(folderPath, startDate, endDate, incremental, chargingOnly); onDismiss() }) { Text(stringResource(R.string.start)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
-    )
-
-    if (showFolderPicker) {
-        org.fossify.gallery.compose.screens.FolderPickerSheet(
-            isMoveOperation = false,
-            sourcePaths = emptyList(),
-            onDismiss = { showFolderPicker = false },
-            onTargetSelected = { path ->
-                folderPath = path
-                showFolderPicker = false
-            }
-        )
-    }
-
-    if (showStartDatePicker) {
-        val datePickerState = androidx.compose.material3.rememberDatePickerState(initialSelectedDateMillis = if (startDate > 0) startDate else System.currentTimeMillis())
-        androidx.compose.material3.DatePickerDialog(
-            onDismissRequest = { showStartDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    startDate = datePickerState.selectedDateMillis ?: 0L
-                    showStartDatePicker = false
-                }) { Text(stringResource(org.fossify.commons.R.string.ok)) }
-            }
-        ) {
-            androidx.compose.material3.DatePicker(state = datePickerState)
-        }
-    }
-
-    if (showEndDatePicker) {
-        val datePickerState = androidx.compose.material3.rememberDatePickerState(initialSelectedDateMillis = if (endDate < Long.MAX_VALUE) endDate else System.currentTimeMillis())
-        androidx.compose.material3.DatePickerDialog(
-            onDismissRequest = { showEndDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    endDate = datePickerState.selectedDateMillis ?: Long.MAX_VALUE
-                    showEndDatePicker = false
-                }) { Text(stringResource(org.fossify.commons.R.string.ok)) }
-            }
-        ) {
-            androidx.compose.material3.DatePicker(state = datePickerState)
-        }
-    }
-}
-
-@Composable
-internal fun Checkbox(checked: Boolean, onValueChange: (Boolean) -> Unit) {
-    androidx.compose.material3.Checkbox(checked = checked, onCheckedChange = onValueChange)
-}
-
-@Composable
-internal fun FavoritesImportNav(ctx: Context, conf: org.fossify.gallery.helpers.Config, scope: CoroutineScope) {
-    val repo = LocalMediaRepository.current
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) scope.launch(Dispatchers.IO) {
-            try {
-                val lines = ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.readLines() ?: emptyList()
-                var imported = 0
-                lines.forEach { line ->
-                    if (java.io.File(line).exists()) { repo.addFavoriteByPath(line); imported++ }
-                }
-                withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(R.string.favorites_imported, imported), Toast.LENGTH_SHORT).show() }
-            } catch (e: Exception) {
-                android.util.Log.e("Settings", "Favorites import failed", e)
-                withContext(Dispatchers.Main) { Toast.makeText(ctx, ctx.getString(org.fossify.commons.R.string.unknown_error_occurred), Toast.LENGTH_SHORT).show() }
-            }
-        }
-    }
-    SettingsNav(stringResource(R.string.set_import_favorites)) { importLauncher.launch(arrayOf("text/plain")) }
-}
-
-@Composable
-internal fun FullBackupExportNav(ctx: Context, scope: CoroutineScope) {
-    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        if (uri != null) scope.launch {
-            val out = ctx.contentResolver.openOutputStream(uri)
-            if (out != null) {
-                val success = SettingsBackupHelper.exportSettings(ctx, out)
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(ctx, ctx.getString(if (success) R.string.backup_created else R.string.export_failed), Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-    SettingsNav(stringResource(R.string.export_full_backup), stringResource(R.string.export_full_backup_subtitle)) {
-        exportLauncher.launch("gallery-full-backup_${java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US).format(java.util.Date())}.json")
-    }
-}
-
-@Composable
-internal fun FullBackupImportNav(ctx: Context, scope: CoroutineScope) {
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) scope.launch {
-            val ins = ctx.contentResolver.openInputStream(uri)
-            if (ins != null) {
-                val success = SettingsBackupHelper.importSettings(ctx, ins)
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(ctx, ctx.getString(if (success) R.string.backup_restored else R.string.import_failed), Toast.LENGTH_LONG).show()
-                    if (success) {
-                        (ctx as? Activity)?.let {
-                            it.finish()
-                            it.startActivity(it.intent)
-                        }
-                    }
-                }
-            }
-        }
-    }
-    SettingsNav(stringResource(R.string.import_full_backup), stringResource(R.string.import_full_backup_subtitle)) {
-        importLauncher.launch(arrayOf("application/json", "application/octet-stream"))
-    }
-}
-
-internal fun getViewTypeLabel(ctx: Context, viewType: Int): String = when {
-    viewType == VIEW_TYPE_GRID -> ctx.getString(R.string.view_type_grid)
-    viewType == 2 -> ctx.getString(R.string.view_type_mosaic)
-    else -> ctx.getString(R.string.view_type_list)
-}
-internal fun getRotationLabel(ctx: Context, rotation: Int): String = when (rotation) {
-    ROTATE_BY_SYSTEM_SETTING -> ctx.getString(R.string.rot_system)
-    ROTATE_BY_DEVICE_ROTATION -> ctx.getString(R.string.rot_device)
-    ROTATE_BY_ASPECT_RATIO -> ctx.getString(R.string.rot_aspect)
-    else -> ctx.getString(R.string.rot_system)
-}
-internal fun getFileLoadingLabel(ctx: Context, priority: Int): String = when (priority) {
-    0 -> ctx.getString(R.string.load_speed)
-    1 -> ctx.getString(R.string.load_compromise)
-    else -> ctx.getString(R.string.load_validity)
-}
-
-internal fun getBottomActionsSummary(ctx: Context, actions: Int): String {
-    val labels = mutableListOf<String>()
-    if (actions and BOTTOM_ACTION_SHARE != 0) labels.add(ctx.getString(R.string.action_share))
-    if (actions and BOTTOM_ACTION_DELETE != 0) labels.add(ctx.getString(org.fossify.commons.R.string.delete))
-    if (actions and BOTTOM_ACTION_EDIT != 0) labels.add(ctx.getString(R.string.edit))
-    if (actions and BOTTOM_ACTION_ROTATE != 0) labels.add(ctx.getString(R.string.action_rotate))
-    if (actions and BOTTOM_ACTION_TOGGLE_FAVORITE != 0) labels.add(ctx.getString(R.string.favorite))
-    if (actions and BOTTOM_ACTION_RATING != 0) labels.add(ctx.getString(R.string.rating_title))
-    return if (labels.isEmpty()) ctx.getString(R.string.none_label) else labels.take(3).joinToString(", ") + if (labels.size > 3) "..." else ""
-}
-
-internal fun getExtendedDetailsSummary(ctx: Context, details: Int): String {
-    val labels = mutableListOf<String>()
-    if (details and EXT_NAME != 0) labels.add(ctx.getString(R.string.sort_name))
-    if (details and EXT_PATH != 0) labels.add(ctx.getString(R.string.path))
-    if (details and EXT_SIZE != 0) labels.add(ctx.getString(R.string.sort_size))
-    if (details and EXT_RESOLUTION != 0) labels.add(ctx.getString(R.string.exif_resolution))
-    if (details and EXT_LAST_MODIFIED != 0) labels.add(ctx.getString(R.string.sort_date))
-    if (details and EXT_DATE_TAKEN != 0) labels.add(ctx.getString(R.string.date_taken_short))
-    if (details and EXT_CAMERA_MODEL != 0) labels.add(ctx.getString(R.string.exif_camera))
-    if (details and EXT_EXIF_PROPERTIES != 0) labels.add("EXIF")
-    if (details and EXT_GPS != 0) labels.add("GPS")
-    return if (labels.isEmpty()) ctx.getString(R.string.default_value) else labels.take(3).joinToString(", ") + if (labels.size > 3) "..." else ""
+    return matches
 }

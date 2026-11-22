@@ -2,10 +2,7 @@ package org.fossify.gallery.compose.components
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -22,10 +19,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,14 +37,14 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.LocalSpacing
 import org.fossify.gallery.compose.theme.Radius
-import org.fossify.gallery.compose.util.rememberGalleryHaptics
 
 /**
  * Editable, thumb-reachable search field shown at the bottom (above the nav bar / keyboard).
@@ -70,38 +66,52 @@ fun BottomSearchField(
     onSearch: () -> Unit = {},
     modifier: Modifier = Modifier,
     searching: Boolean = false,
-    blurEnabled: Boolean = false,
-    onToggleBlur: () -> Unit = {},
     onOpenFilterAndView: () -> Unit = {},
+    filtersAvailable: Boolean = true,
     hasActiveFilter: Boolean = false,
+    placeholderRes: Int = R.string.search_hint_compact,
 ) {
     val s = LocalSpacing.current
-    val haptic = rememberGalleryHaptics()
     Surface(
         modifier = modifier.fillMaxWidth().padding(horizontal = s.md, vertical = s.xs),
         shape = RoundedCornerShape(Radius.xl),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        border = if (isActive) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
-        tonalElevation = 2.dp,
+        // Keep the persistent chrome visually quiet. The search field is a dock above the
+        // navigation bar, not a second content card; the outline supplies its edge after the
+        // fill moved down one tonal step. This keeps the large pill from becoming the brightest
+        // object on every screen.
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = if (isActive) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+        else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.52f)),
+        tonalElevation = 1.dp,
     ) {
-        // IconButtons below are explicitly sized to 40dp, not Material's 48dp default - a deliberate
-        // trade-off (below the recommended a11y touch target) to save a few dp of row height, per
-        // Jannik's request to make the combined bottom chrome (this + the nav bar) less tall.
+        // Keep every action at Material's recommended 48dp touch target. The blur action already
+        // establishes this row height, so the other controls gain usability without making the
+        // bottom chrome any taller.
         Row(Modifier.padding(horizontal = s.xs, vertical = s.xs), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = if (isActive) onClear else onMenuClick, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    if (isActive) Icons.AutoMirrored.Filled.ArrowBack else Icons.Default.Menu,
-                    contentDescription = stringResource(if (isActive) R.string.cd_close else R.string.nav_more),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            IconButton(onClick = if (isActive) onClear else onMenuClick, modifier = Modifier.size(48.dp)) {
+                // Keep the button's 48dp slot fixed. Crossfade only the glyph; AnimatedContent
+                // made this slot participate in content measurement whenever focus or text state
+                // changed, which was visible as a tiny horizontal/vertical hitch in the whole row.
+                Crossfade(
+                    targetState = isActive,
+                    animationSpec = AppMotion.short,
+                    label = "searchLeadingIcon",
+                ) { active ->
+                    Icon(
+                        if (active) Icons.AutoMirrored.Filled.ArrowBack else Icons.Default.Menu,
+                        contentDescription = stringResource(if (active) R.string.cd_close else R.string.nav_menu_open),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
+            val placeholderText = stringResource(placeholderRes)
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                 if (value.isEmpty()) {
                     // maxLines/overflow needed now that the row has one more trailing icon (the
                     // blur toggle) - the placeholder previously fit on one line at the old width,
                     // wrapping to two otherwise, which grew this row's height right back up again.
                     Text(
-                        stringResource(R.string.search_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        placeholderText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -113,47 +123,45 @@ fun BottomSearchField(
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { onSearch() }),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 20.dp).focusRequester(focusRequester).onFocusChanged { onFocusChanged(it.isFocused) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 20.dp)
+                        .semantics { contentDescription = placeholderText }
+                        .focusRequester(focusRequester)
+                        .onFocusChanged { onFocusChanged(it.isFocused) },
                 )
             }
-            AnimatedContent(targetState = searching to value.isNotEmpty(), transitionSpec = { fadeIn(AppMotion.short) togetherWith fadeOut(AppMotion.short) }, label = "searchTrailingIcon") { (isSearching, hasValue) ->
-                when {
-                    isSearching -> Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) }
-                    hasValue -> IconButton(onClick = onClear, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Close, stringResource(R.string.action_empty), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    else -> Spacer(Modifier.size(40.dp))
+            // The slot is always exactly 48dp. Crossfade has no size transform, so switching from
+            // spinner -> clear -> empty cannot remeasure the search row while the user is typing.
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                Crossfade(
+                    targetState = searching to value.isNotEmpty(),
+                    animationSpec = AppMotion.short,
+                    label = "searchTrailingIcon",
+                ) { (isSearching, hasValue) ->
+                    when {
+                        isSearching -> Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) }
+                        hasValue -> IconButton(onClick = onClear, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Close, stringResource(R.string.cd_clear_search), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        else -> Spacer(Modifier.size(48.dp))
+                    }
                 }
             }
-            // Compact entry point for the persistent grid filter + view/grouping settings (see
-            // ComposeExplorerActivity's MainSheets) - previously only reachable via the drawer or
-            // an undocumented swipe-up gesture on the whole bottom chrome. A small dot badge (no
-            // count - just presence) instead of a wider label keeps this a 40dp icon like its
-            // navigational siblings above, not a full extra row.
+            // Strict 1:1 icon semantics across every screen: FilterList always opens Filters,
+            // Tune always opens View & Sort settings.
             Box {
-                IconButton(onClick = onOpenFilterAndView, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.filter_label), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                IconButton(onClick = onOpenFilterAndView, modifier = Modifier.size(48.dp)) {
+                    Icon(
+                        imageVector = if (filtersAvailable) Icons.Default.FilterList else Icons.Default.Tune,
+                        contentDescription = stringResource(if (filtersAvailable) R.string.filter_label else R.string.view_settings_title),
+                        tint = if (filtersAvailable && hasActiveFilter) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                if (hasActiveFilter) {
+                if (filtersAvailable && hasActiveFilter) {
                     Box(
                         Modifier.align(Alignment.TopEnd).offset(x = (-6).dp, y = 6.dp).size(8.dp)
                             .background(MaterialTheme.colorScheme.primary, CircleShape),
                     )
                 }
-            }
-            // Quick, unlabeled privacy-blur toggle - lives in this always-visible row instead of its
-            // own dedicated strip (an earlier version added a separate row for it, which stacked on
-            // top of the search field and nav bar and visibly ate into the content area; this adds
-            // width to an existing row instead of a whole new row, so it costs no extra height).
-            // Deliberately kept at the full 48dp a11y touch target (unlike its 40dp siblings above) -
-            // a mis-tap here toggles whether real media is visible, so it doesn't get the same
-            // compactness trade-off as purely navigational icons; the row grows by 8dp for this one
-            // button. Haptic confirmation on top since there's no other visible feedback besides the
-            // icon swap for a toggle whose whole point is "did that actually register".
-            IconButton(onClick = { haptic(HapticFeedbackType.Confirm); onToggleBlur() }, modifier = Modifier.size(48.dp)) {
-                Icon(
-                    if (blurEnabled) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                    contentDescription = stringResource(R.string.cd_toggle_blur),
-                    tint = if (blurEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
     }

@@ -1,5 +1,6 @@
 package org.fossify.gallery.compose.screens
 
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -56,7 +57,13 @@ fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier, contentScal
         AsyncImage(
             model = ImageRequest.Builder(ctx)
                 .data(Uri.fromFile(File(videoPath)))
-                .crossfade(true)
+                // Thumbnails are short-lived while scrolling; animate only an explicitly
+                // full-size request (thumbnailSize == null). Crossfading every video frame made
+                // video-heavy grids invalidate once more for each item entering the viewport.
+                .crossfade(thumbnailSize == null)
+                // See GalleryImage: RGB_565 halves per-thumbnail memory (video frames are opaque, so
+                // no alpha to lose) - less GC/paging while scrolling video-heavy folders.
+                .bitmapConfig(Bitmap.Config.RGB_565)
                 .apply { if (thumbnailSize != null) size(thumbnailSize, thumbnailSize) }
                 .build(),
             contentDescription = "Video",

@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+
 package org.fossify.gallery.compose.screens.viewer
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
@@ -11,6 +13,7 @@ import org.fossify.gallery.compose.theme.TrimStartColor
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -25,12 +28,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCut
-import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
@@ -39,6 +43,8 @@ import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -71,11 +77,14 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 import org.fossify.commons.extensions.toast
 import org.fossify.gallery.compose.util.BlurState
 import org.fossify.gallery.compose.util.privacyBlur
@@ -91,6 +100,49 @@ val SCALING_FILL_WIDTH = 3
 // closes still runs; each job is short-lived.
 private val mmrReleaseScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
 
+private const val SCRUB_FRAME_COUNT = 24
+private const val SCRUB_FRAME_WIDTH = 256
+private const val SCRUB_FRAME_HEIGHT = 144
+private const val SCRUB_FRAME_BUDGET_BYTES = 8 * 1024 * 1024
+
+/** API 26 has no scaled retriever API. Decode one frame, immediately scale it, and release the
+ * decoder-sized bitmap before retaining anything in the scrub cache. */
+private fun decodeScrubFrame(retriever: MediaMetadataRetriever, timeUs: Long): Bitmap? {
+    val decoded = try {
+        if (Build.VERSION.SDK_INT >= 27) {
+            retriever.getScaledFrameAtTime(
+                timeUs,
+                MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                SCRUB_FRAME_WIDTH,
+                SCRUB_FRAME_HEIGHT,
+            )
+        } else {
+            retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+        }
+    } catch (_: Exception) {
+        null
+    } ?: return null
+
+    if (Build.VERSION.SDK_INT >= 27) return decoded
+    val scale = minOf(
+        SCRUB_FRAME_WIDTH.toFloat() / decoded.width.coerceAtLeast(1),
+        SCRUB_FRAME_HEIGHT.toFloat() / decoded.height.coerceAtLeast(1),
+        1f,
+    )
+    val width = (decoded.width * scale).toInt().coerceAtLeast(1)
+    val height = (decoded.height * scale).toInt().coerceAtLeast(1)
+    if (width == decoded.width && height == decoded.height) return decoded
+    return try {
+        Bitmap.createScaledBitmap(decoded, width, height, true)
+    } finally {
+        if (!decoded.isRecycled) decoded.recycle()
+    }
+}
+
+private fun releaseScrubFrames(frames: Iterable<Bitmap>) {
+    frames.forEach { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() }
+}
+
 @Composable
 fun VideoPage(
     path: String,
@@ -102,6 +154,9 @@ fun VideoPage(
     onInteract: () -> Unit = {},
     modifier: Modifier = Modifier,
     isCurrentPage: Boolean = true,
+    /** Monotonically increasing request id; only the visible page reacts to it. */
+    captureFrameRequest: Int = 0,
+    onCaptureFrame: (Bitmap?) -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -115,6 +170,7 @@ fun VideoPage(
     val speeds = listOf(0.5f, 1f, 1.5f, 2f, 3f)
     var isMuted by remember(path) { mutableStateOf(ctx.config.muteVideos) }
     var trimMode by remember(path) { mutableStateOf(false) }
+    var moreControlsOpen by remember(path) { mutableStateOf(false) }
     var trimStartMs by remember(path) { mutableFloatStateOf(0f) }
     var trimEndMs by remember(path) { mutableFloatStateOf(-1f) }
     var playerError by remember(path) { mutableStateOf<androidx.media3.common.PlaybackException?>(null) }
@@ -166,33 +222,63 @@ fun VideoPage(
             frameMutex.withLock {
                 val dur = try { retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L } catch (_: Exception) { 0L }
                 if (dur <= 0L) return@withLock emptyList<Bitmap>()
-                val n = 24
-                val out = ArrayList<Bitmap>(n)
-                for (i in 0 until n) {
-                    val t = dur * i / (n - 1)
-                    val bmp = try {
-                        if (android.os.Build.VERSION.SDK_INT >= 27) retriever.getScaledFrameAtTime(t * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 256, 144)
-                        else retriever.getFrameAtTime(t * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    } catch (_: Exception) { null }
-                    if (bmp != null) out.add(bmp)
+                val out = ArrayList<Bitmap>(SCRUB_FRAME_COUNT)
+                var retainedBytes = 0
+                try {
+                    for (i in 0 until SCRUB_FRAME_COUNT) {
+                        coroutineContext.ensureActive()
+                        val t = dur * i / (SCRUB_FRAME_COUNT - 1)
+                        val bmp = decodeScrubFrame(retriever, t * 1000)
+                        coroutineContext.ensureActive()
+                        if (bmp == null) continue
+                        val bytes = bmp.allocationByteCount
+                        if (retainedBytes + bytes <= SCRUB_FRAME_BUDGET_BYTES) {
+                            out.add(bmp)
+                            retainedBytes += bytes
+                        } else {
+                            // Keep the cache bounded even if a vendor decoder returns larger-than-
+                            // requested API-27 frames.
+                            if (!bmp.isRecycled) bmp.recycle()
+                        }
+                    }
+                    out
+                } catch (e: CancellationException) {
+                    releaseScrubFrames(out)
+                    throw e
                 }
-                out
             }
         }
-        frameCache = frames
+        try {
+            coroutineContext.ensureActive()
+            frameCache = frames
+        } catch (e: CancellationException) {
+            releaseScrubFrames(frames)
+            throw e
+        }
     }
     DisposableEffect(path) {
         onDispose {
+            val frames = frameCache
+            frameCache = emptyList()
             // MediaMetadataRetriever isn't thread-safe and the frame extraction above holds frameMutex
             // while decoding on an IO thread. Release under that same mutex (on a durable IO scope, so
             // the main thread never blocks) so it can't race a mid-flight getScaledFrameAtTime - an
             // unsynchronised release there could crash natively rather than throw a catchable exception.
-            mmrReleaseScope.launch { frameMutex.withLock { try { retriever.release() } catch (_: Exception) { } } }
+            mmrReleaseScope.launch {
+                frameMutex.withLock {
+                    releaseScrubFrames(frames)
+                    try { retriever.release() } catch (_: Exception) { }
+                }
+            }
         }
     }
 
     val player = remember(path) {
-        ExoPlayer.Builder(ctx).build().apply {
+        ExoPlayer.Builder(ctx)
+            // Automatically pause when headphones are unplugged or Bluetooth audio disconnects.
+            .setHandleAudioBecomingNoisy(true)
+            .build()
+            .apply {
             // `true` here is what actually enables Media3's built-in audio-focus handling (duck on
             // transient loss, pause on an incoming call/another player taking focus, resume after) -
             // without it the player never requests focus at all, so it plays right through calls.
@@ -243,7 +329,7 @@ fun VideoPage(
         onDispose { lifecycleOwner?.lifecycle?.removeObserver(obs) }
     }
 
-    val listener = remember {
+    val listener = remember(path) {
         object : Player.Listener {
             override fun onIsPlayingChanged(p: Boolean) { isPlaying = p }
             override fun onPlaybackStateChanged(state: Int) { isBuffering = state == Player.STATE_BUFFERING }
@@ -267,6 +353,24 @@ fun VideoPage(
             .apply { useController = false }
     }
     LaunchedEffect(player) { spv.player = player; positionMs = player.currentPosition }
+    // Capture from the TextureView first: that is the exact frame the user currently sees, including
+    // the player's real-time position. Some devices briefly report no TextureView bitmap while a
+    // decoder is attaching, so fall back to MediaMetadataRetriever at the player's current time.
+    LaunchedEffect(captureFrameRequest, isCurrentPage, player) {
+        if (captureFrameRequest <= 0 || !isCurrentPage) return@LaunchedEffect
+        val retrieverHasData = retrieverReady
+        val currentPositionUs = player.currentPosition.coerceAtLeast(0L) * 1000L
+        val frame = (spv.videoSurfaceView as? android.view.TextureView)?.bitmap
+            ?: withContext(Dispatchers.IO) {
+                frameMutex.withLock {
+                    try {
+                        if (!retrieverHasData) retriever.setDataSource(path)
+                        retriever.getFrameAtTime(currentPositionUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                    } catch (_: Exception) { null }
+                }
+            }
+        onCaptureFrame(frame)
+    }
     LaunchedEffect(scalingMode) { spv.resizeMode = scalingMode }
     // Keep the screen awake only while a video is actually playing on the current page - a per-view
     // flag (auto-cleared when the view detaches) instead of a window-wide FLAG_KEEP_SCREEN_ON, and
@@ -324,14 +428,21 @@ fun VideoPage(
             // when video gestures are allowed, otherwise every double-tap just zooms.
             .zoomable(zoom, onSingleTap = { onToggleUi() }, onDoubleTap = if (ctx.config.allowVideoGestures) { pos, sz ->
                 val w = sz.width
-                if (pos.x < w / 3f) { val t = (player.currentPosition - 10000).coerceAtLeast(0); player.seekTo(t); positionMs = t; onInteract() }
-                else if (pos.x > w * 2 / 3f) { val t = (player.currentPosition + 10000).coerceAtMost(player.duration); player.seekTo(t); positionMs = t; onInteract() }
-                else zoom.cycleZoom(pos, sz)
+                if (pos.x < w / 3f) {
+                    val t = (player.currentPosition - 10000).coerceAtLeast(0)
+                    player.seekTo(t); positionMs = t; onInteract()
+                } else if (pos.x > w * 2 / 3f) {
+                    val dur = player.duration
+                    if (dur > 0L) {
+                        val t = (player.currentPosition + 10000).coerceAtMost(dur)
+                        player.seekTo(t); positionMs = t; onInteract()
+                    }
+                } else zoom.cycleZoom(pos, sz)
             } else null)
             .privacyBlur(BlurRadius.viewer, BlurState.enabled)
         )
 
-        ZoomMinimap(zoom, modifier = Modifier.align(Alignment.TopEnd).padding(top = 72.dp, end = 12.dp))
+        ZoomMinimap(zoom, modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 72.dp, end = 12.dp))
 
         if (isBuffering && playerError == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -340,13 +451,16 @@ fun VideoPage(
         }
 
         playerError?.let {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.ErrorOutline, null, tint = Color.White, modifier = Modifier.size(48.dp))
-                    Text(stringResource(R.string.error_loading_media), color = Color.White, modifier = Modifier.padding(top = 12.dp))
-                    Text(File(path).name, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
-                }
-            }
+            val file = remember(path) { File(path) }
+            ViewerMediaErrorState(
+                file = file,
+                isAvailable = file.exists(),
+                onRetry = {
+                    playerError = null
+                    player.prepare()
+                    player.playWhenReady = ctx.config.autoplayVideos
+                },
+            )
         }
 
         // Gated on playerError == null too - none of play/pause/seek/mute/trim do anything useful
@@ -363,23 +477,46 @@ fun VideoPage(
 
                 val speedIdx = speeds.indexOf(playbackSpeed)
                 val nextSpeed = speeds[(speedIdx + 1) % speeds.size]
+                val speedLabel = if (playbackSpeed % 1f == 0f) "${playbackSpeed.toInt()}x" else "${playbackSpeed}x"
                 Column(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) {
-                    TextButton(onClick = { playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed); onInteract() }, modifier = Modifier.size(48.dp)) {
-                        val speedLabel = if (playbackSpeed % 1f == 0f) "${playbackSpeed.toInt()}x" else "${playbackSpeed}x"
-                        Text(speedLabel, color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
-                    }
-                    IconButton(onClick = {
-                        val activity = ctx as? android.app.Activity ?: return@IconButton
-                        try {
-                            activity.enterPictureInPictureMode(
-                                android.app.PictureInPictureParams.Builder().setAspectRatio(pipAspect ?: android.util.Rational(16, 9)).build()
-                            )
-                        } catch (e: Exception) { android.util.Log.e("VideoPage", "enterPictureInPictureMode failed", e) }
-                        if (!isPlaying) { if (player.playbackState == Player.STATE_ENDED) player.seekTo(0); player.play() }
-                        onInteract()
-                    }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.PictureInPictureAlt, stringResource(R.string.cd_pip), tint = Color.White, modifier = Modifier.size(22.dp)) }
                     IconButton(onClick = { isMuted = !isMuted; player.volume = if (isMuted) 0f else 1f; onInteract() }, modifier = Modifier.size(48.dp)) { Icon(if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, stringResource(R.string.set_mute_videos), tint = Color.White, modifier = Modifier.size(22.dp)) }
-                    IconButton(onClick = { trimMode = !trimMode; if (trimMode && trimEndMs < 0f) trimEndMs = player.duration.toFloat(); onInteract() }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.ContentCut, stringResource(R.string.trim_save), tint = if (trimMode) MaterialTheme.colorScheme.primary else Color.White, modifier = Modifier.size(22.dp)) }
+                    Box {
+                        IconButton(onClick = { moreControlsOpen = true; onInteract() }, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions), tint = Color.White, modifier = Modifier.size(22.dp))
+                        }
+                        DropdownMenu(expanded = moreControlsOpen, onDismissRequest = { moreControlsOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("${stringResource(R.string.playback_speed)}: $speedLabel") },
+                                onClick = { playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed); moreControlsOpen = false; onInteract() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.cd_pip)) },
+                                onClick = {
+                                    val activity = ctx as? android.app.Activity
+                                    if (activity != null) {
+                                        try {
+                                            activity.enterPictureInPictureMode(
+                                                android.app.PictureInPictureParams.Builder().setAspectRatio(pipAspect ?: android.util.Rational(16, 9)).build()
+                                            )
+                                        } catch (e: Exception) { android.util.Log.e("VideoPage", "enterPictureInPictureMode failed", e) }
+                                        if (!isPlaying) { if (player.playbackState == Player.STATE_ENDED) player.seekTo(0); player.play() }
+                                    }
+                                    moreControlsOpen = false
+                                    onInteract()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.trim_save)) },
+                                leadingIcon = { Icon(Icons.Default.ContentCut, contentDescription = null) },
+                                onClick = {
+                                    trimMode = !trimMode
+                                    if (trimMode && trimEndMs < 0f) trimEndMs = player.duration.toFloat()
+                                    moreControlsOpen = false
+                                    onInteract()
+                                },
+                            )
+                        }
+                    }
                 }
 
                 if (player.duration > 0) {
@@ -406,10 +543,10 @@ fun VideoPage(
                         )
                         Text("%02d:%02d".format((player.duration / 1000) / 60, (player.duration / 1000) % 60), style = MaterialTheme.typography.labelSmall, color = Color.White)
                     }
-                    // Frame preview — show the nearest pre-extracted thumbnail.
+                    // Frame preview — show the nearest pre-extracted thumbnail above the bottom bar.
                     if (scrubFraction >= 0f && frameCache.isNotEmpty()) {
                         val previewBmp = frameCache[(scrubFraction * (frameCache.size - 1)).toInt().coerceIn(0, frameCache.size - 1)]
-                        Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 84.dp), contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 124.dp), contentAlignment = Alignment.Center) {
                             Surface(shape = RoundedCornerShape(Radius.sm), color = Scrim.a85) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Image(
@@ -426,16 +563,26 @@ fun VideoPage(
                     // Trim controls: a two-handle range slider makes the [start, end] cut window
                     // visible and draggable directly on the timeline (dragging a handle scrubs the
                     // player to it for a live preview), replacing the old blind "seek + set start /
-                    // set end" flow. Anchored where the seek bar it replaces sits.
+                    // set end" flow. Anchored cleanly above the viewer's bottom action bar.
                     if (trimMode) {
+                        var isSavingTrim by remember(path) { mutableStateOf(false) }
                         val durF = player.duration.coerceAtLeast(1L).toFloat()
                         val endMs = if (trimEndMs < 0f) durF else trimEndMs
                         val startF = (trimStartMs / durF).coerceIn(0f, 1f)
                         val endF = (endMs / durF).coerceIn(startF, 1f)
-                        val validRange = trimEndMs > trimStartMs
-                        Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Scrim.a60).navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        val validRange = endMs > trimStartMs
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.BottomCenter)
+                                .navigationBarsPadding()
+                                .padding(bottom = 64.dp)
+                                .background(Scrim.a85)
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
                             androidx.compose.material3.RangeSlider(
                                 value = startF..endF,
+                                enabled = !isSavingTrim,
                                 onValueChange = { r ->
                                     val ns = r.start * durF; val ne = r.endInclusive * durF
                                     // Scrub to whichever handle actually moved, for a live preview of that edge.
@@ -452,50 +599,122 @@ fun VideoPage(
                                 Text(" – ", color = Color.White, style = MaterialTheme.typography.labelSmall)
                                 Text("%02d:%02d".format((endMs / 1000).toInt() / 60, (endMs / 1000).toInt() % 60), color = TrimEndColor, style = MaterialTheme.typography.labelSmall)
                                 Spacer(Modifier.weight(1f))
-                                TextButton(enabled = validRange, onClick = {
-                                    onInteract()
-                                    val start = trimStartMs.toLong() * 1000; val end = trimEndMs.toLong() * 1000
-                                    scope.launch(Dispatchers.IO) {
-                                    try {
-                                        // Empty/inverted range would mux zero samples and make muxer.stop() throw.
-                                        if (end <= start) { withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.trim_invalid_range), android.widget.Toast.LENGTH_SHORT) }; return@launch }
-                                        val outFile = File(path.replaceBeforeLast('.', path.substringBeforeLast('.') + "_trimmed"))
-                                        val extractor = android.media.MediaExtractor(); extractor.setDataSource(path)
-                                        val muxer = android.media.MediaMuxer(outFile.absolutePath, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-                                        val trackCount = extractor.trackCount
-                                        val indexMap = IntArray(trackCount) { -1 }
-                                        var bufCap = 1 shl 20
-                                        for (i in 0 until trackCount) {
-                                            val fmt = extractor.getTrackFormat(i)
-                                            extractor.selectTrack(i); indexMap[i] = muxer.addTrack(fmt)
-                                            // A single 4K/high-bitrate keyframe can exceed 1 MB; sizing the copy buffer
-                                            // from the track's declared max sample size avoids readSampleData throwing
-                                            // "buffer too small" and the whole trim failing.
-                                            if (fmt.containsKey(android.media.MediaFormat.KEY_MAX_INPUT_SIZE)) bufCap = maxOf(bufCap, fmt.getInteger(android.media.MediaFormat.KEY_MAX_INPUT_SIZE))
-                                        }
-                                        muxer.start()
-                                        extractor.seekTo(start, android.media.MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-                                        val buf = java.nio.ByteBuffer.allocate(bufCap.coerceAtMost(16 shl 20)); val info = android.media.MediaCodec.BufferInfo()
-                                        // The seek can land on a sync frame slightly before `start`; rebase timestamps on
-                                        // the first copied sample so the output starts at 0 instead of going negative
-                                        // (negative presentationTimeUs corrupts the muxed file), rather than offsetting by start.
-                                        var baseTime = -1L
-                                        while (true) {
-                                            info.offset = 0; info.size = extractor.readSampleData(buf, 0)
-                                            if (info.size < 0) break
-                                            val t = extractor.sampleTime
-                                            if (t > end) break
-                                            if (baseTime < 0L) baseTime = t
-                                            info.presentationTimeUs = (t - baseTime).coerceAtLeast(0L); info.flags = extractor.sampleFlags
-                                            muxer.writeSampleData(indexMap[extractor.sampleTrackIndex], buf, info); extractor.advance()
-                                        }
-                                        muxer.stop(); muxer.release(); extractor.release()
-                                        try { android.media.MediaScannerConnection.scanFile(ctx, arrayOf(outFile.absolutePath), null, null) } catch (_: Exception) { }
-                                        org.fossify.gallery.helpers.RefreshBus.trigger()
-                                        withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.saved_as, outFile.name), android.widget.Toast.LENGTH_SHORT) }
-                                    } catch (e: Exception) { withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.error_generic, e.message), android.widget.Toast.LENGTH_SHORT) } }
+                                TextButton(
+                                    enabled = !isSavingTrim,
+                                    onClick = {
+                                        trimMode = false
+                                        onInteract()
+                                    },
+                                ) {
+                                    Text(stringResource(org.fossify.commons.R.string.cancel), color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelLarge)
                                 }
-                                }) { Text(stringResource(R.string.trim_save), color = if (validRange) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.4f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold) }
+                                TextButton(enabled = validRange && !isSavingTrim, onClick = {
+                                    onInteract()
+                                    val start = trimStartMs.toLong() * 1000
+                                    val end = endMs.toLong() * 1000
+                                    isSavingTrim = true
+                                    scope.launch(Dispatchers.IO) {
+                                        var extractor: android.media.MediaExtractor? = null
+                                        var muxer: android.media.MediaMuxer? = null
+                                        var muxerStarted = false
+                                        var outFile: File? = null
+                                        var succeeded = false
+                                        try {
+                                            if (end <= start) {
+                                                withContext(Dispatchers.Main) { ctx.toast(ctx.getString(R.string.trim_invalid_range), android.widget.Toast.LENGTH_SHORT) }
+                                                return@launch
+                                            }
+                                            val candidate = nextUniqueTrimmedFile(File(path))
+                                            outFile = candidate
+
+                                            val ext = android.media.MediaExtractor()
+                                            extractor = ext
+                                            ext.setDataSource(path)
+                                            val mux = android.media.MediaMuxer(candidate.absolutePath, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+                                            muxer = mux
+                                            val trackCount = ext.trackCount
+                                            val indexMap = IntArray(trackCount) { -1 }
+                                            var bufCap = 1 shl 20
+                                            var addedTracks = 0
+                                            for (i in 0 until trackCount) {
+                                                val fmt = ext.getTrackFormat(i)
+                                                val mime = fmt.getString(android.media.MediaFormat.KEY_MIME).orEmpty()
+                                                if (!mime.startsWith("video/") && !mime.startsWith("audio/")) continue
+                                                try {
+                                                    indexMap[i] = mux.addTrack(fmt)
+                                                    ext.selectTrack(i)
+                                                    addedTracks++
+                                                    if (fmt.containsKey(android.media.MediaFormat.KEY_MAX_INPUT_SIZE)) {
+                                                        bufCap = maxOf(bufCap, fmt.getInteger(android.media.MediaFormat.KEY_MAX_INPUT_SIZE))
+                                                    }
+                                                } catch (_: Exception) {
+                                                    // Skip tracks unsupported by MP4 muxer (e.g., subtitles/unknown).
+                                                }
+                                            }
+                                            if (addedTracks == 0) {
+                                                throw IllegalStateException("Unsupported video/audio tracks for MP4 trimming")
+                                            }
+                                            mux.start()
+                                            muxerStarted = true
+                                            ext.seekTo(start, android.media.MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+                                            val buf = java.nio.ByteBuffer.allocate(bufCap.coerceAtMost(16 shl 20))
+                                            val info = android.media.MediaCodec.BufferInfo()
+                                            var baseTime = -1L
+                                            var samplesWritten = 0
+                                            while (true) {
+                                                info.offset = 0
+                                                info.size = ext.readSampleData(buf, 0)
+                                                if (info.size < 0) break
+                                                val t = ext.sampleTime
+                                                if (t > end) break
+                                                val trackIdx = ext.sampleTrackIndex
+                                                val dstTrack = if (trackIdx in indexMap.indices) indexMap[trackIdx] else -1
+                                                if (dstTrack >= 0) {
+                                                    if (baseTime < 0L) baseTime = t
+                                                    info.presentationTimeUs = (t - baseTime).coerceAtLeast(0L)
+                                                    info.flags = if ((ext.sampleFlags and android.media.MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+                                                        android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME
+                                                    } else 0
+                                                    mux.writeSampleData(dstTrack, buf, info)
+                                                    samplesWritten++
+                                                }
+                                                ext.advance()
+                                            }
+                                            if (samplesWritten == 0) {
+                                                throw IllegalStateException("No media samples found in selected range")
+                                            }
+                                            mux.stop()
+                                            muxerStarted = false
+                                            succeeded = true
+                                            runCatching { android.media.MediaScannerConnection.scanFile(ctx, arrayOf(candidate.absolutePath), null, null) }
+                                            org.fossify.gallery.helpers.RefreshBus.trigger()
+                                            withContext(Dispatchers.Main) {
+                                                trimMode = false
+                                                ctx.toast(ctx.getString(R.string.saved_as, candidate.name), android.widget.Toast.LENGTH_SHORT)
+                                            }
+                                        } catch (e: Exception) {
+                                            withContext(Dispatchers.Main) {
+                                                ctx.toast(ctx.getString(R.string.error_generic, e.message ?: e.javaClass.simpleName), android.widget.Toast.LENGTH_SHORT)
+                                            }
+                                        } finally {
+                                            if (muxerStarted) runCatching { muxer?.stop() }
+                                            runCatching { muxer?.release() }
+                                            runCatching { extractor?.release() }
+                                            if (!succeeded) runCatching { outFile?.delete() }
+                                            withContext(Dispatchers.Main) { isSavingTrim = false }
+                                        }
+                                    }
+                                }) {
+                                    if (isSavingTrim) {
+                                        androidx.compose.material3.CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    } else {
+                                        Text(stringResource(R.string.trim_save), color = if (validRange) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.4f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
                         }
                     }
@@ -503,4 +722,15 @@ fun VideoPage(
             }
         }
     }
+}
+
+internal fun nextUniqueTrimmedFile(sourceFile: File): File {
+    val parentDir = sourceFile.parentFile
+    val baseName = sourceFile.nameWithoutExtension
+    var candidate = File(parentDir, "${baseName}_trimmed.mp4")
+    var suffix = 2
+    while (candidate.exists()) {
+        candidate = File(parentDir, "${baseName}_trimmed_${suffix++}.mp4")
+    }
+    return candidate
 }

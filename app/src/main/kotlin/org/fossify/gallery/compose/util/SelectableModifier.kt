@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -59,6 +60,9 @@ class SelectionDragState {
         anchorPath = null
         anchorOffset = null
         autoScrollSpeed = 0f
+        // Bounds belong to one concrete layout pass. Keeping them after a refresh can make a later
+        // drag hit a recycled item that is no longer visible.
+        itemBounds.clear()
     }
 }
 
@@ -125,10 +129,19 @@ fun Modifier.dragSelectionGesture(
     gridState: LazyGridState? = null,
     staggeredGridState: LazyStaggeredGridState? = null,
     onSelectPath: (String) -> Unit,
+    // Once selection mode is active this ancestor consumes the next long-press before the tile's
+    // combinedClickable can see it. Callers can use this hook to interpret that first hit as a
+    // semantic range-selection endpoint, while [onSelectPath] remains reserved for paths that are
+    // entered while the finger is actually dragged across the selection area.
+    onLongPressSelectPath: ((String) -> Unit)? = null,
 ): Modifier = composed {
     if (!enabled) return@composed this
     val haptic = rememberGalleryHaptics()
-    this.pointerInput(gridState, staggeredGridState) {
+    // Pointer offsets are local to this drag layer, while tile bounds are reported in window space.
+    // Convert gesture points before hit-testing so bars and window insets cannot shift the selection.
+    var layerOrigin by remember { mutableStateOf(Offset.Zero) }
+    this.onGloballyPositioned { coords -> layerOrigin = coords.positionInWindow() }
+        .pointerInput(gridState, staggeredGridState) {
         val edgeThreshold = 80f
         // Tracks which paths this drag session has already fired a tick for, so extending the drag
         // over an already-selected item (or jittering back and forth near the boundary) doesn't
@@ -140,11 +153,15 @@ fun Modifier.dragSelectionGesture(
                 haptic(HapticFeedbackType.LongPress)
                 tickedPaths.clear()
                 state.isDragging = true
-                state.anchorOffset = offset
-                state.dragBounds = Rect(offset, offset)
-                val item = state.findItemAt(offset)
+                val windowOffset = offset + layerOrigin
+                state.anchorOffset = windowOffset
+                state.dragBounds = Rect(windowOffset, windowOffset)
+                val item = state.findItemAt(windowOffset)
                 state.anchorPath = item
-                item?.let { tickedPaths.add(it); onSelectPath(it) }
+                item?.let {
+                    tickedPaths.add(it)
+                    (onLongPressSelectPath ?: onSelectPath)(it)
+                }
             },
             onDrag = { change, _ ->
                 change.consume()
@@ -157,12 +174,13 @@ fun Modifier.dragSelectionGesture(
                 // that sliver is enough to overlap the next item (typically the one above, since
                 // grid rows are tight vertically), silently multi-selecting it on what the user
                 // experiences as a single plain long-press.
-                val anchor = state.anchorOffset ?: change.position
+                val windowPosition = change.position + layerOrigin
+                val anchor = state.anchorOffset ?: windowPosition
                 state.dragBounds = Rect(
-                    left = minOf(anchor.x, change.position.x),
-                    top = minOf(anchor.y, change.position.y),
-                    right = maxOf(anchor.x, change.position.x),
-                    bottom = maxOf(anchor.y, change.position.y),
+                    left = minOf(anchor.x, windowPosition.x),
+                    top = minOf(anchor.y, windowPosition.y),
+                    right = maxOf(anchor.x, windowPosition.x),
+                    bottom = maxOf(anchor.y, windowPosition.y),
                 )
                 state.getItemsInDragArea().forEach { path ->
                     if (tickedPaths.add(path)) haptic(HapticFeedbackType.SegmentTick)
@@ -194,13 +212,13 @@ fun Modifier.dragSelectionGesture(
  * onGloballyPositioned callback is attached at all, sparing every visible tile a bounds computation on
  * every layout pass during normal scrolling (the common case, and the hot path on a large grid).
  */
-fun Modifier.throttledBoundsReporting(enabled: Boolean, throttleMs: Long = 300L, onBoundsChanged: (Rect) -> Unit): Modifier =
+fun Modifier.throttledBoundsReporting(enabled: Boolean, throttleMs: Long = 50L, onBoundsChanged: (Rect) -> Unit): Modifier =
     if (!enabled) this
     else composed {
         var lastUpdate by remember { mutableLongStateOf(0L) }
         this.onGloballyPositioned { coords ->
             val now = System.currentTimeMillis()
-            if (now - lastUpdate > throttleMs) {
+            if (lastUpdate == 0L || now - lastUpdate > throttleMs) {
                 lastUpdate = now
                 val p = coords.positionInWindow()
                 val s = coords.size

@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+
 package org.fossify.gallery.compose.screens.analysis
 
 import android.content.Context

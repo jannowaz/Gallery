@@ -1,19 +1,23 @@
 package org.fossify.gallery.compose.components
 
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,18 +28,30 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import org.fossify.gallery.R
 import org.fossify.gallery.compose.theme.RatingStarColor
-import kotlin.math.abs
+import java.text.NumberFormat
 
-/** Deterministic accent color for a tag-hierarchy branch, hashed from the root tag's own name so
- * the same tag always gets the same color across sessions/screens without persisting anything.
- * Fixed saturation/lightness (mid-tone, moderately saturated) so it stays legible as a thin
- * border accent in both light and dark theme. */
+/** Deterministic, theme-aware accent for a tag-hierarchy branch.
+ * The same root keeps the same accent, while the palette stays inside Material's semantic roles
+ * instead of introducing unrelated rainbow colours that compete with the media. */
+@Composable
 fun tagAccentColor(rootTag: String): Color {
-    val hue = (abs(rootTag.hashCode()) % 360).toFloat()
-    return Color.hsv(hue, 0.45f, 0.75f)
+    val palette = listOf(
+        MaterialTheme.colorScheme.primary,
+        MaterialTheme.colorScheme.secondary,
+        MaterialTheme.colorScheme.tertiary,
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.62f),
+        MaterialTheme.colorScheme.secondary.copy(alpha = 0.62f),
+        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.62f),
+    )
+    return palette[Math.floorMod(rootTag.hashCode(), palette.size)]
 }
 
 /** Full-width section header for a grouped media grid/list (month, tag or rating). Generalizes
@@ -44,6 +60,7 @@ fun tagAccentColor(rootTag: String): Color {
  * accent ([accentColor]), a tree guide line ([showGuideLine], list view only - see MediaScreen/
  * ExplorerScreen call sites), and real star icons instead of text for a rating header
  * ([ratingValue]). */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SectionHeader(
     label: String,
@@ -55,6 +72,8 @@ fun SectionHeader(
     accentColor: Color? = null,
     showGuideLine: Boolean = false,
     ratingValue: Int? = null,
+    onLongClick: (() -> Unit)? = null,
+    onSelectGroup: (() -> Unit)? = null,
 ) {
     val rotation by animateFloatAsState(if (isExpanded) 0f else -90f, label = "sectionHeaderChevron")
     // Root headers stay bold and fully opaque; each level deeper is progressively lighter/smaller,
@@ -63,6 +82,8 @@ fun SectionHeader(
     val textStyle = if (depth == 0) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium
     val alpha = (1f - depth * 0.12f).coerceIn(0.6f, 1f)
     val guideColor = MaterialTheme.colorScheme.outlineVariant
+    val expandedDescription = stringResource(R.string.section_expanded)
+    val collapsedDescription = stringResource(R.string.section_collapsed)
     Surface(
         Modifier
             .fillMaxWidth()
@@ -87,7 +108,19 @@ fun SectionHeader(
     ) {
         Row(
             Modifier
-                .let { if (hasChildren) it.clickable(onClick = onToggle) else it }
+                .let {
+                    if (hasChildren || onLongClick != null) {
+                        it.combinedClickable(
+                            role = Role.Button,
+                            onClick = { if (hasChildren) onToggle() },
+                            onLongClick = onLongClick,
+                        )
+                    } else it
+                }
+                .semantics(mergeDescendants = true) {
+                    if (hasChildren) stateDescription = if (isExpanded) expandedDescription else collapsedDescription
+                }
+                .heightIn(min = 48.dp)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -114,7 +147,12 @@ fun SectionHeader(
                 Text(label, style = textStyle, fontWeight = weight, color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha))
             }
             Spacer(Modifier.width(8.dp))
-            Text("$count", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha))
+            ItemCountBadge(NumberFormat.getIntegerInstance().format(count))
+            onSelectGroup?.let { select ->
+                IconButton(onClick = select, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Default.SelectAll, stringResource(R.string.action_select_all), modifier = Modifier.size(20.dp))
+                }
+            }
         }
     }
 }

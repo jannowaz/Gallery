@@ -20,7 +20,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,9 +29,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -73,6 +75,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -100,7 +103,7 @@ fun StorageAnalysisScreen(
     onNavigateToSwipe: (List<AnalysisResult>) -> Unit = {},
 ) {
     val vm: StorageAnalysisViewModel = viewModel()
-    val state by vm.state.collectAsState()
+    val state by vm.state.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var showConfirmDialog by remember { mutableStateOf(false) }
@@ -119,6 +122,8 @@ fun StorageAnalysisScreen(
     val guardedBack = org.fossify.gallery.compose.util.rememberDoubleBackGuard(
         enabled = state.isScanning || state.results.isNotEmpty(),
         onExit = onBack,
+        running = state.isScanning,
+        onCancel = { vm.cancelScan(); onBack() },
     )
 
     val listState = rememberLazyListState()
@@ -153,6 +158,24 @@ fun StorageAnalysisScreen(
             AnalysisSortMode.SIZE -> visible.sortedByDescending { it.fileSize }
             AnalysisSortMode.NAME -> visible.sortedBy { it.name.lowercase() }
         }
+    }
+    // Selection totals are independent of scan progress, filters and scroll position. Keep the
+    // aggregate keyed only to the two inputs that can change it, so progress updates do not scan
+    // the complete result list again while the user is watching the analysis.
+    val selectedSummary = remember(state.results, state.selectedPaths) {
+        var wastedBytes = 0L
+        var losslessCount = 0
+        var selectedCount = 0
+        state.results.forEach { result ->
+            if (result.path in state.selectedPaths) {
+                selectedCount++
+                wastedBytes += result.wastedBytes
+                if (result.imageFormat in listOf("bmp", "dib", "tiff", "tif") || (result.imageFormat == "png" && result.bpp <= 1.5f)) {
+                    losslessCount++
+                }
+            }
+        }
+        Triple(selectedCount, wastedBytes, losslessCount)
     }
 
     // A filter can go stale after an optimize/compress re-scan drops a folder - fall back to "all".
@@ -197,10 +220,9 @@ fun StorageAnalysisScreen(
             // Anchored at the bottom instead of stacked into the scrolling column, so marking files
             // never shrinks the list you're working through.
             if (state.selectedPaths.isNotEmpty()) {
-                val selSize = state.results.filter { it.path in state.selectedPaths }.sumOf { it.wastedBytes }
                 Surface(color = MaterialTheme.colorScheme.secondaryContainer, tonalElevation = 3.dp, shadowElevation = 8.dp) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.selected_count_saving, state.selectedPaths.size, formatBytes(selSize)), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                    Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.selected_count_saving, selectedSummary.first, formatBytes(selectedSummary.second)), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                         TextButton(onClick = { vm.clearSelection() }) { Text(stringResource(R.string.action_empty)) }
                         TextButton(
                             onClick = { scope.launch { vm.startCompressionAwait(); onNavigateToCompressionReview() } },
@@ -218,7 +240,7 @@ fun StorageAnalysisScreen(
             } else {
                 // No selection: surface the recycle-bin safety net as a visible "Undo" after an
                 // optimize (restores originals) or a delete.
-                org.fossify.gallery.compose.components.UndoBar()
+                org.fossify.gallery.compose.components.UndoBar(Modifier.navigationBarsPadding())
             }
         },
     ) { padding ->
@@ -247,18 +269,12 @@ fun StorageAnalysisScreen(
             // Compact results header with a collapse toggle for the scan form below.
             if (state.results.isNotEmpty()) {
                 val visibleWasted = remember(sortedVisible) { sortedVisible.sumOf { it.wastedBytes } }
-                Surface(color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)) {
-                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(stringResource(R.string.storage_files_wasted, sortedVisible.size, formatBytes(visibleWasted)), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                            state.restoredAt?.let { ts ->
-                                Text(
-                                    stringResource(R.string.restored_scan_from, java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(ts))),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
+                org.fossify.gallery.compose.components.AnalysisResultHeader(
+                    summary = stringResource(R.string.storage_files_wasted, sortedVisible.size, formatBytes(visibleWasted)),
+                    detail = state.restoredAt?.let { ts ->
+                        stringResource(R.string.restored_scan_from, java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(ts)))
+                    },
+                ) {
                         IconButton(onClick = { configExpanded = !configExpanded }) {
                             Icon(
                                 if (configExpanded) Icons.Default.ExpandLess else Icons.Default.Tune,
@@ -266,7 +282,6 @@ fun StorageAnalysisScreen(
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         }
-                    }
                 }
             }
 
@@ -311,18 +326,21 @@ fun StorageAnalysisScreen(
             if (state.results.isNotEmpty()) {
                 var showSortMenu by remember { mutableStateOf(false) }
                 // Filter + sort row (moved out of the old summary card so the list gets more height).
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FilterChip(selected = state.filterMode == FilterMode.ALL, onClick = { vm.setFilterMode(FilterMode.ALL) }, label = { Text(stringResource(R.string.filter_all)) })
-                    FilterChip(selected = state.filterMode == FilterMode.IMAGES, onClick = { vm.setFilterMode(FilterMode.IMAGES) }, label = { Text(stringResource(R.string.images)) })
-                    FilterChip(selected = state.filterMode == FilterMode.VIDEOS, onClick = { vm.setFilterMode(FilterMode.VIDEOS) }, label = { Text(stringResource(R.string.videos)) })
-                    // Only offered once the scan actually turned up GIFs - keeps the row uncluttered
-                    // for the common case, and gives a one-tap "just the GIFs" view when they exist.
-                    if (state.results.any { it.imageFormat == "gif" }) {
-                        FilterChip(selected = state.filterMode == FilterMode.GIFS, onClick = { vm.setFilterMode(FilterMode.GIFS) }, label = { Text("GIF") })
+                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        FilterChip(selected = state.filterMode == FilterMode.ALL, onClick = { vm.setFilterMode(FilterMode.ALL) }, label = { Text(stringResource(R.string.filter_all)) })
+                        FilterChip(selected = state.filterMode == FilterMode.IMAGES, onClick = { vm.setFilterMode(FilterMode.IMAGES) }, label = { Text(stringResource(R.string.images)) })
+                        FilterChip(selected = state.filterMode == FilterMode.VIDEOS, onClick = { vm.setFilterMode(FilterMode.VIDEOS) }, label = { Text(stringResource(R.string.videos)) })
+                        if (state.results.any { it.imageFormat == "gif" }) {
+                            FilterChip(selected = state.filterMode == FilterMode.GIFS, onClick = { vm.setFilterMode(FilterMode.GIFS) }, label = { Text(stringResource(R.string.gifs)) })
+                        }
                     }
-                    Spacer(Modifier.weight(1f))
                     Box {
-                        IconButton(onClick = { showSortMenu = true }, modifier = Modifier.size(36.dp)) {
+                        IconButton(onClick = { showSortMenu = true }, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.AutoMirrored.Filled.Sort, stringResource(R.string.sort_analysis_by), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                         }
                         DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
@@ -458,6 +476,8 @@ fun StorageAnalysisScreen(
                     title = stringResource(R.string.storage_empty_title),
                     subtitle = stringResource(R.string.storage_empty_subtitle),
                     note = stringResource(R.string.dup_safety_note),
+                    actionLabel = stringResource(R.string.analyze),
+                    onAction = { vm.startAnalysis(currentFolder) },
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             }
@@ -466,9 +486,9 @@ fun StorageAnalysisScreen(
 
     // Confirm dialog
     if (showConfirmDialog) {
-        val selCount = state.selectedPaths.size
-        val selWaste = state.results.filter { it.path in state.selectedPaths }.sumOf { it.wastedBytes }
-        val losslessCount = state.results.filter { it.path in state.selectedPaths && (it.imageFormat in listOf("bmp", "dib", "tiff", "tif") || (it.imageFormat == "png" && it.bpp <= 1.5f)) }.size
+        val selCount = selectedSummary.first
+        val selWaste = selectedSummary.second
+        val losslessCount = selectedSummary.third
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
             title = { Text(stringResource(R.string.optimize_confirm_title)) },
@@ -592,7 +612,7 @@ private fun AnalysisCard(item: AnalysisResult, isSelected: Boolean, onClick: () 
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                IconButton(onClick = onView, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onView, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Default.ZoomIn, stringResource(R.string.cd_preview), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.width(4.dp))

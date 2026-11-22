@@ -22,13 +22,35 @@ class MediaAnalyzer(private val context: Context) {
         }
 
         val results = mutableListOf<AnalysisResult>()
+        var lastPublishedResultCount = 0
+        var lastPublishedPercent = -1
+        var lastPublishedAt = 0L
         for ((i, path) in allFiles.withIndex()) {
             val progress = ((i + 1) * 100) / total
-            emit(AnalysisProgress.Scanning(progress, rootPath, i + 1, total))
+            // Scanning used to emit once per file. On a large storage scan that turned a cheap
+            // progress update into a full-screen recomposition thousands of times per second.
+            // Keep the progress visibly live, but publish at most about 8 times per second and
+            // always publish the first and final values.
+            val now = System.currentTimeMillis()
+            if (i == 0 || progress == 100 || (progress != lastPublishedPercent && now - lastPublishedAt >= 120L)) {
+                lastPublishedPercent = progress
+                lastPublishedAt = now
+                emit(AnalysisProgress.Scanning(progress, rootPath, i + 1, total))
+            }
             val result = AnalysisCriteria.analyze(path, context)
-            if (result != null && result.score > 0) {
-                results.add(result)
-                emit(AnalysisProgress.Found(results.toList(), result))
+            if (result != null && result.score > 0) results.add(result)
+
+            // Publishing a copied result list for every matching file makes a large scan recompose
+            // the entire result surface once per file. Publish the first hit immediately, then in
+            // small batches; the final Done event still contains the complete exact result set.
+            val shouldPublish = results.isNotEmpty() && (
+                results.size == 1 ||
+                    results.size - lastPublishedResultCount >= 25 ||
+                    i == allFiles.lastIndex
+            )
+            if (shouldPublish) {
+                lastPublishedResultCount = results.size
+                emit(AnalysisProgress.Found(results.toList(), result ?: results.last()))
             }
         }
         emit(AnalysisProgress.Done(results.sortedByDescending { it.wastedBytes }, rootPath, total))

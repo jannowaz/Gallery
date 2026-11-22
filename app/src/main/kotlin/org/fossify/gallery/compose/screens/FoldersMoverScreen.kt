@@ -2,6 +2,7 @@ package org.fossify.gallery.compose.screens
 import androidx.compose.ui.res.stringResource
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.theme.Radius
+import org.fossify.gallery.extensions.defaultSharedPrefs
 
 import android.content.Intent
 import android.net.Uri
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,6 +36,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -74,8 +77,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fossify.commons.extensions.toast
+import org.fossify.gallery.compose.components.AllFilesAccessSheet
 import org.fossify.gallery.compose.components.ConfirmDestructive
 import org.fossify.gallery.compose.components.EmptyState
+import org.fossify.gallery.compose.components.rememberAllFilesAccessRequester
 import org.fossify.gallery.compose.theme.LocalSpacing
 import org.fossify.gallery.compose.util.rememberMediaStoreConsent
 import org.fossify.gallery.extensions.batchJobItemDB
@@ -96,7 +101,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val s = LocalSpacing.current
-    val defPrefs = remember { android.preference.PreferenceManager.getDefaultSharedPreferences(ctx) }
+    val defPrefs = remember { ctx.defaultSharedPrefs() }
     val pairs = remember { mutableStateListOf<FolderPair>().also { it.addAll(loadMoverPairs(ctx)) } }
     // The Quick Mover widget's button label ("Move N files" vs. "Tap to set up folder pairs")
     // otherwise only reflects an edit made here once the OS's own next periodic refresh happens.
@@ -113,19 +118,22 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     // Source paths of items a finished batch could NOT move - surfaced in a dialog instead of just a
     // "N failed" toast, so the user sees exactly which files stayed behind.
     var failedPaths by remember { mutableStateOf<List<String>>(emptyList()) }
+    var pendingAllFilesItems by remember { mutableStateOf<List<BatchJobItem>?>(null) }
     val storageRoot = Environment.getExternalStorageDirectory().absolutePath
     val moverConsent = rememberMediaStoreConsent()
     val allMovedFormat = stringResource(R.string.folder_mover_all_moved)
     val moveStoppedFormat = stringResource(R.string.folder_mover_stopped)
 
-    // Observe by tag, not unique-work name: enqueue registers under the fixed UNIQUE_WORK_NAME and
-    // adds the jobId only as a tag, so getWorkInfosForUniqueWorkFlow(jobId) returned nothing - the
-    // progress/"moving" state never resolved (isMoving stuck true, counts stuck at 0).
-    val workInfo by remember(activeJobId) {
-        activeJobId?.let { androidx.work.WorkManager.getInstance(ctx).getWorkInfosByTagFlow(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    // Observe the stable batch tag as well as the per-job tag. The mover screen can be recreated
+    // while WorkManager continues in the background; observing only the local activeJobId made the
+    // progress disappear after navigating away and back even though the file operation was still
+    // running.
+    val allBatchWork by remember {
+        androidx.work.WorkManager.getInstance(ctx).getWorkInfosByTagFlow(MediaBatchWorker.UNIQUE_WORK_TAG)
     }.collectAsState(initial = emptyList())
-    val activeWorkInfo = workInfo.firstOrNull()
-    val isMoving = activeJobId != null && activeWorkInfo?.state?.isFinished != true
+    val activeWorkInfo = activeJobId?.let { id -> allBatchWork.firstOrNull { id in it.tags } }
+        ?: allBatchWork.firstOrNull { !it.state.isFinished }
+    val isMoving = activeWorkInfo?.state?.isFinished == false
     // WorkManager clears WorkInfo.progress back to empty once the worker reaches a terminal state -
     // the final counts only survive in outputData (see MediaBatchWorker.doWork()), so once finished
     // that's the one to read, or the toast below always shows 0 regardless of what actually moved.
@@ -134,8 +142,8 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     val moveTotal = moveProgressData?.getInt("total", 1) ?: 1
     val moveFailed = moveProgressData?.getInt("failed", 0) ?: 0
     val moveFailedFormat = stringResource(R.string.notif_batch_done_with_failures)
-    LaunchedEffect(activeWorkInfo?.state) {
-        if (activeWorkInfo?.state?.isFinished == true) {
+    LaunchedEffect(activeJobId, activeWorkInfo?.state) {
+        if (activeJobId != null && activeWorkInfo?.state?.isFinished == true) {
             // WorkInfo.State.SUCCEEDED only means doWork() didn't throw - MediaBatchWorker returns
             // that even when some individual items failed (see its own per-item try/catch), so
             // "SUCCEEDED" alone used to make this say "All N moved" while quietly omitting however
@@ -184,6 +192,17 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
     // Consent (only when the app lacks all-files access) + enqueue for an already-resolved set.
     fun proceedMove(items: List<org.fossify.gallery.models.BatchJobItem>) {
         if (items.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); return }
+        val needsAllFiles = !MediaStoreOps.hasAllFilesAccess(ctx) &&
+            items.any { item ->
+                MediaStoreOps.requiresAllFilesAccessForTarget(
+                    File(item.targetPath).parent ?: "",
+                    MediaStoreOps.isVideoPath(item.sourcePath),
+                )
+            }
+        if (needsAllFiles) {
+            pendingAllFilesItems = items
+            return
+        }
         scope.launch {
             // With MANAGE_EXTERNAL_STORAGE (this app requires it) the app can already read/write/delete
             // any file on shared storage directly - createWriteRequest's consent dialog is redundant,
@@ -200,11 +219,22 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
         }
     }
 
+    val requestAllFilesAccess = rememberAllFilesAccessRequester { granted ->
+        val pending = pendingAllFilesItems
+        pendingAllFilesItems = null
+        if (granted && pending != null) {
+            proceedMove(pending)
+        } else if (pending != null) {
+            ctx.toast(ctx.getString(R.string.cancelled), Toast.LENGTH_SHORT)
+        }
+    }
+
     fun startMove() {
         if (pairs.isEmpty() || isMoving) return
-        val allMoves = flattenMoverPairs(pairs)
-        if (allMoves.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); return }
+        val snapshotPairs = pairs.toList()
         scope.launch {
+            val allMoves = withContext(Dispatchers.IO) { flattenMoverPairs(snapshotPairs) }
+            if (allMoves.isEmpty()) { ctx.toast(ctx.getString(R.string.no_files_found), Toast.LENGTH_SHORT); return@launch }
             val items = allMoves.map { (srcPath, destPath) -> org.fossify.gallery.models.BatchJobItem(jobId = "", sourcePath = srcPath, targetPath = destPath) }
             // Ask before letting same-name collisions fail silently in the worker.
             val conflicts = withContext(Dispatchers.IO) { org.fossify.gallery.helpers.MoveConflicts.conflicting(items) }
@@ -221,7 +251,7 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
         },
         // Visible one-tap undo after a move (the worker pushes an UndoType.MOVE that re-enqueues the
         // reverse move) - the dedicated mover previously only toasted, offering no way back.
-        bottomBar = { org.fossify.gallery.compose.components.UndoBar() },
+        bottomBar = { org.fossify.gallery.compose.components.UndoBar(Modifier.navigationBarsPadding()) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (pairs.isEmpty() && !isMoving) {
@@ -234,9 +264,25 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                         Text("$moveProgress/$moveTotal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+                val pairCounts by androidx.compose.runtime.produceState(initialValue = emptyMap<String, Int>(), pairs.toList(), isMoving) {
+                    value = withContext(Dispatchers.IO) {
+                        pairs.associate { p ->
+                            (p.source + "→" + p.destination) to flattenMoverPairs(listOf(p)).size
+                        }
+                    }
+                }
                 LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(s.md)) {
-                    items(pairs.toList(), key = { it.source + "→" + it.destination }) { pair ->
+                    items(pairs.toList().withIndex().toList(), key = { (_, p) -> p.source + "→" + p.destination }, contentType = { "mover_pair_card" }) { (idx, pair) ->
+                        val pendingCount = pairCounts[pair.source + "→" + pair.destination] ?: 0
+                        val shortSrc = pair.source.removePrefix(storageRoot).trimStart('/').ifBlank { pair.source }
+                        val shortDst = pair.destination.removePrefix(storageRoot).trimStart('/').ifBlank { pair.destination }
                         Card(
+                            onClick = {
+                                if (!isMoving) {
+                                    editingIndex = idx
+                                    showAddDialog = true
+                                }
+                            },
                             modifier = Modifier.fillMaxWidth().padding(vertical = s.xs),
                             shape = RoundedCornerShape(org.fossify.gallery.compose.theme.Radius.md),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
@@ -252,9 +298,26 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                                         Spacer(Modifier.width(4.dp))
                                         Text(pair.destination.substringAfterLast('/'), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
-                                    Text("${pair.source} → ${pair.destination}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                                    Text(
+                                        "$shortSrc → $shortDst · $pendingCount",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(top = 2.dp),
+                                    )
                                 }
-                                IconButton(onClick = { pendingRemove = pair }, modifier = Modifier.size(40.dp), enabled = !isMoving) {
+                                IconButton(
+                                    onClick = {
+                                        editingIndex = idx
+                                        showAddDialog = true
+                                    },
+                                    modifier = Modifier.size(48.dp),
+                                    enabled = !isMoving,
+                                ) {
+                                    Icon(Icons.Default.Edit, stringResource(R.string.edit), modifier = Modifier.size(18.dp))
+                                }
+                                IconButton(onClick = { pendingRemove = pair }, modifier = Modifier.size(48.dp), enabled = !isMoving) {
                                     Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                                 }
                             }
@@ -281,7 +344,11 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
                 }
             } else {
                 TextButton(
-                    onClick = { activeJobId?.let { androidx.work.WorkManager.getInstance(ctx).cancelAllWorkByTag(it) } },
+                    onClick = {
+                        val wm = androidx.work.WorkManager.getInstance(ctx)
+                        val tag = activeJobId ?: MediaBatchWorker.UNIQUE_WORK_TAG
+                        wm.cancelAllWorkByTag(tag)
+                    },
                     modifier = Modifier.align(Alignment.CenterHorizontally).padding(8.dp),
                 ) { Text(stringResource(R.string.cancel)) }
             }
@@ -320,6 +387,13 @@ fun FoldersMoverScreen(onBack: () -> Unit) {
             onReplace = { pendingConflict = null; scope.launch { org.fossify.gallery.helpers.MoveConflicts.freeTargetsForReplace(ctx, items); proceedMove(items) } },
             onSkip = { pendingConflict = null; proceedMove(org.fossify.gallery.helpers.MoveConflicts.withoutConflicts(items)) },
             onCancel = { pendingConflict = null },
+        )
+    }
+
+    if (pendingAllFilesItems != null) {
+        AllFilesAccessSheet(
+            onAllow = { requestAllFilesAccess() },
+            onLater = { pendingAllFilesItems = null },
         )
     }
 
@@ -421,7 +495,7 @@ private fun AddPairDialog(
                         sources.forEach { s ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(s, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                IconButton(onClick = { sources.remove(s) }, modifier = Modifier.size(40.dp)) {
+                                IconButton(onClick = { sources.remove(s) }, modifier = Modifier.size(48.dp)) {
                                     Icon(Icons.Default.Close, stringResource(R.string.action_remove), modifier = Modifier.size(16.dp))
                                 }
                             }
