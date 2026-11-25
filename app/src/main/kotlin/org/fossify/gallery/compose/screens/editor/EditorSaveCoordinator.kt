@@ -4,7 +4,7 @@ import android.app.Activity
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
-import coil.size.Size
+import coil3.size.Size
 import com.canhub.cropper.CropImageView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

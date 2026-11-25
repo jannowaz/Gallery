@@ -12,8 +12,8 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.IntentCompat
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
-import coil.size.Scale
-import coil.size.Size
+import coil3.size.Scale
+import coil3.size.Size
 import com.canhub.cropper.CropImageView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

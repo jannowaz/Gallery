@@ -24,10 +24,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import android.content.Context
 import android.net.Uri
-import coil.compose.AsyncImage
-import coil.compose.AsyncImagePainter
-import coil.memory.MemoryCache
-import coil.request.ImageRequest
+import coil3.BitmapImage
+import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
+import coil3.decode.BitmapFactoryDecoder
+import coil3.memory.MemoryCache
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -65,7 +68,7 @@ internal fun buildViewerImageRequest(
     .placeholderMemoryCacheKey(thumbPlaceholderKey)
     .crossfade(thumbPlaceholderKey == null)
     .memoryCacheKey(viewerImageCacheKey(file.absolutePath, retryNonce))
-    .apply { if (forceStaticFrame) decoderFactory(coil.decode.BitmapFactoryDecoder.Factory()) }
+    .apply { if (forceStaticFrame) decoderFactory(BitmapFactoryDecoder.Factory()) }
     .build()
 
 @Composable
@@ -216,7 +219,7 @@ fun ImagePage(
                     ),
                 onSuccess = {
                     imageState = it
-                    loadedBitmap = (it.result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+                    loadedBitmap = (it.result.image as? BitmapImage)?.bitmap
                 },
                 onError = { imageState = it },
                 onLoading = { imageState = it },

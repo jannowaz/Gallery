@@ -1,7 +1,7 @@
 package org.fossify.gallery.compose.components
 
 import android.util.LruCache
-import coil.memory.MemoryCache
+import coil3.memory.MemoryCache
 
 /**
  * Lightweight in-memory lookup mapping a media file path to the most recent Coil

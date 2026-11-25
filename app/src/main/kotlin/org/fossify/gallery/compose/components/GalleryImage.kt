@@ -26,8 +26,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import coil3.compose.AsyncImage
+import coil3.decode.BitmapFactoryDecoder
+import coil3.request.ImageRequest
+import coil3.request.bitmapConfig
+import coil3.request.crossfade
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.util.BlurState
@@ -83,7 +86,7 @@ fun GalleryImage(
             .crossfade(thumbnailSize == null)
             .apply { if (useRgb565) bitmapConfig(Bitmap.Config.RGB_565) }
             .apply { if (thumbnailSize != null) size(thumbnailSize, thumbnailSize) }
-            .apply { if (forceStaticFrame) decoderFactory(coil.decode.BitmapFactoryDecoder.Factory()) }
+            .apply { if (forceStaticFrame) decoderFactory(BitmapFactoryDecoder.Factory()) }
             .build()
     }
 

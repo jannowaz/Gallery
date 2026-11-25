@@ -22,8 +22,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import coil.size.Scale
-import coil.size.Size
+import coil3.size.Scale
+import coil3.size.Size
 import com.canhub.cropper.CropImageOptions
 import com.canhub.cropper.CropImageView
 import org.fossify.gallery.R

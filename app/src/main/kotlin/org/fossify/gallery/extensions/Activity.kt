@@ -16,8 +16,8 @@ import android.provider.MediaStore.Images
 import android.provider.Settings
 import androidx.appcompat.app.AppCompatActivity
 import androidx.exifinterface.media.ExifInterface
-import coil.Coil
-import coil.annotation.ExperimentalCoilApi
+import coil3.SingletonImageLoader
+import coil3.annotation.ExperimentalCoilApi
 import org.fossify.commons.activities.BaseSimpleActivity
 import org.fossify.commons.dialogs.ConfirmationDialog
 import org.fossify.commons.dialogs.SecurityDialog
@@ -645,7 +645,7 @@ fun Activity.fileRotatedSuccessfully(path: String, lastModified: Long) {
         updateLastModified(path, lastModified)
     }
 
-    val imageLoader = Coil.imageLoader(applicationContext)
+    val imageLoader = SingletonImageLoader.get(applicationContext)
     imageLoader.diskCache?.clear()
     imageLoader.memoryCache?.clear()
 }

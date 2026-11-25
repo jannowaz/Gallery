@@ -231,25 +231,20 @@ fun ViewerScreen(
             if (items.lastIndex - page <= 2) onLoadMore?.invoke(ViewerLoadDirection.AFTER, anchor)
         }
     }
-    // Prefetch 2-ahead neighbor images into Coil's memory cache (beyondViewportPageCount = 1 already
-    // composes +/-1) using ImagePage's exact viewer cache key so rapid swiping hits RAM instead of disk.
-    LaunchedEffect(pagerState, items.size) {
+    // Prefetch 1..2-ahead neighbor images into Coil's memory cache using ImagePage's exact viewer
+    // request and cache key so rapid swiping hits RAM instead of disk.
+    LaunchedEffect(pagerState, items) {
         snapshotFlow { pagerState.currentPage }.collect { page ->
-            val loader = coil.Coil.imageLoader(ctx)
-            val animateGifs = org.fossify.gallery.compose.util.ThumbnailOverlayState.animateGifs
-            listOf(page + 2, page - 2).forEach { targetIndex ->
-                val targetPath = items.getOrNull(targetIndex) ?: return@forEach
-                if (isVideo(targetPath)) return@forEach
-                val file = File(targetPath)
-                val ext = targetPath.substringAfterLast('.', "").lowercase()
-                val forceStatic = (ext == "gif" || ext == "webp") && !animateGifs
-                val req = coil.request.ImageRequest.Builder(ctx)
-                    .data(android.net.Uri.fromFile(file))
-                    .size(2560)
-                    .memoryCacheKey("viewer:${file.absolutePath}:0")
-                    .apply { if (forceStatic) decoderFactory(coil.decode.BitmapFactoryDecoder.Factory()) }
-                    .build()
-                loader.enqueue(req)
+            val neighborPaths = listOf(page + 1, page - 1, page + 2, page - 2)
+                .mapNotNull { idx -> items.getOrNull(idx) }
+                .filter { it.isNotEmpty() && !isVideo(it) }
+            if (neighborPaths.isEmpty()) return@collect
+            val existingFiles = withContext(Dispatchers.IO) {
+                neighborPaths.map(::File).filter(File::exists)
+            }
+            val loader = coil3.SingletonImageLoader.get(ctx)
+            existingFiles.forEach { file ->
+                loader.enqueue(buildViewerImageRequest(ctx = ctx, file = file))
             }
         }
     }
@@ -533,21 +528,6 @@ fun ViewerScreen(
             }
         },
     )
-
-    LaunchedEffect(pagerState.currentPage, items) {
-        val current = pagerState.currentPage
-        val neighborPaths = listOf(current + 1, current - 1, current + 2, current - 2)
-            .mapNotNull { idx -> items.getOrNull(idx) }
-            .filter { it.isNotEmpty() && !isVideo(it) }
-        if (neighborPaths.isEmpty()) return@LaunchedEffect
-        val existingFiles = withContext(Dispatchers.IO) {
-            neighborPaths.map(::File).filter(File::exists)
-        }
-        val imageLoader = coil.Coil.imageLoader(ctx)
-        existingFiles.forEach { file ->
-            imageLoader.enqueue(buildViewerImageRequest(ctx = ctx, file = file))
-        }
-    }
 
     var dragOffset by remember { mutableFloatStateOf(0f) }
     // Tracks whether the drag is currently past either dismiss threshold, so the haptic tick fires

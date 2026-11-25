@@ -2,15 +2,23 @@ package org.fossify.gallery
 
 import android.os.Build
 import android.os.StrictMode
-import coil.ImageLoader
-import coil.ImageLoaderFactory
-import coil.disk.DiskCache
-import coil.memory.MemoryCache
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.disk.DiskCache
+import coil3.gif.AnimatedImageDecoder
+import coil3.gif.GifDecoder
+import coil3.memory.MemoryCache
+import coil3.request.addLastModifiedToFileCacheKey
+import coil3.request.crossfade
+import coil3.svg.SvgDecoder
+import coil3.video.VideoFrameDecoder
 import com.github.ajalt.reprint.core.Reprint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import okio.Path.Companion.toOkioPath
 import org.fossify.commons.FossifyApp
 import org.fossify.gallery.compose.util.BlurState
 import org.fossify.gallery.compose.util.ThumbnailOverlayState
@@ -21,35 +29,35 @@ import org.fossify.gallery.helpers.JxlCoilDecoder
 import org.fossify.gallery.helpers.RefreshBus
 import org.fossify.gallery.navigation.ViewerArgs
 
-class App : FossifyApp(), ImageLoaderFactory {
+class App : FossifyApp(), SingletonImageLoader.Factory {
 
     override val isAppLockFeatureAvailable = true
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    override fun newImageLoader(): ImageLoader {
-        return ImageLoader.Builder(this)
+    override fun newImageLoader(context: PlatformContext): ImageLoader {
+        return ImageLoader.Builder(context)
             .memoryCache {
-                MemoryCache.Builder(this)
-                    .maxSizePercent(0.25)
+                MemoryCache.Builder()
+                    .maxSizePercent(context, 0.25)
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
-                    .directory(cacheDir.resolve("coil_cache"))
+                    .directory(cacheDir.resolve("coil_cache").toOkioPath())
                     .maxSizeBytes(256L * 1024 * 1024)
                     .build()
             }
             .components {
-                add(coil.decode.VideoFrameDecoder.Factory())
-                add(coil.decode.SvgDecoder.Factory())
+                add(VideoFrameDecoder.Factory())
+                add(SvgDecoder.Factory())
                 add(JxlCoilDecoder.Factory())
-                // ImageDecoderDecoder needs API 28's platform ImageDecoder; GifDecoder is the
+                // AnimatedImageDecoder needs API 28's platform ImageDecoder; GifDecoder is the
                 // movie-based fallback for the API 26/27 devices this app's minSdk still covers.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    add(coil.decode.ImageDecoderDecoder.Factory())
+                    add(AnimatedImageDecoder.Factory())
                 } else {
-                    add(coil.decode.GifDecoder.Factory())
+                    add(GifDecoder.Factory())
                 }
             }
             // No global RGB_565 override - it drops the alpha channel for PNG/WebP graphics.
@@ -108,7 +116,7 @@ class App : FossifyApp(), ImageLoaderFactory {
 
         // Warm up Coil's DiskCache journal and secondary SharedPreferences off the main thread
         // before the first Activity composes its grid.
-        appScope.launch { coil.Coil.imageLoader(this@App) }
+        appScope.launch { SingletonImageLoader.get(this@App) }
         appScope.launch {
             defaultSharedPrefs()
             org.fossify.gallery.helpers.AppShortcutsHelper.publish(this@App)

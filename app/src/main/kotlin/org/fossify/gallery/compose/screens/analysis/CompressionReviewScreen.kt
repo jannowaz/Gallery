@@ -86,8 +86,8 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.media3.exoplayer.ExoPlayer

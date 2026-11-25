@@ -3,21 +3,23 @@ package org.fossify.gallery.compose.screens.editor
 import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
-import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.scale
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
-import coil.Coil
-import coil.annotation.ExperimentalCoilApi
-import coil.memory.MemoryCache
-import coil.request.CachePolicy
-import coil.request.ErrorResult
-import coil.request.ImageRequest
-import coil.request.SuccessResult
-import coil.size.Scale
-import coil.size.Size
+import coil3.BitmapImage
+import coil3.SingletonImageLoader
+import coil3.annotation.ExperimentalCoilApi
+import coil3.memory.MemoryCache
+import coil3.request.CachePolicy
+import coil3.request.ErrorResult
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.request.allowHardware
+import coil3.request.bitmapConfig
+import coil3.size.Scale
+import coil3.size.Size
+import coil3.toBitmap
 import com.zomato.photofilters.FilterPack
 import com.zomato.photofilters.imageprocessors.Filter
 import kotlinx.coroutines.Dispatchers
@@ -103,9 +105,9 @@ internal object EditorSaveHelper {
             .memoryCachePolicy(CachePolicy.DISABLED)
             .diskCachePolicy(CachePolicy.DISABLED)
             .build()
-        when (val result = Coil.imageLoader(context.applicationContext).execute(request)) {
+        when (val result = SingletonImageLoader.get(context.applicationContext).execute(request)) {
             is SuccessResult -> {
-                val raw = (result.drawable as? BitmapDrawable)?.bitmap ?: result.drawable.toBitmap()
+                val raw = (result.image as? BitmapImage)?.bitmap ?: result.image.toBitmap()
                 if (raw.config == Bitmap.Config.ARGB_8888 && (!mutable || raw.isMutable)) {
                     raw
                 } else {
@@ -322,7 +324,7 @@ internal object EditorSaveHelper {
     @OptIn(ExperimentalCoilApi::class)
     fun finalizeSavedPath(activity: Activity, path: String, onFinished: () -> Unit) {
         runCatching {
-            val loader = Coil.imageLoader(activity.applicationContext)
+            val loader = SingletonImageLoader.get(activity.applicationContext)
             GalleryThumbnailKeyRegistry.get(path)?.let { key ->
                 loader.memoryCache?.remove(key)
             }

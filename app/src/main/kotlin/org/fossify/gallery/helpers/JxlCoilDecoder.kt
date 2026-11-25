@@ -1,13 +1,13 @@
 package org.fossify.gallery.helpers
 
-import android.graphics.drawable.BitmapDrawable
-import coil.ImageLoader
-import coil.decode.DecodeResult
-import coil.decode.Decoder
-import coil.decode.ImageSource
-import coil.fetch.SourceResult
-import coil.request.Options
-import coil.size.Dimension
+import coil3.ImageLoader
+import coil3.asImage
+import coil3.decode.DecodeResult
+import coil3.decode.Decoder
+import coil3.decode.ImageSource
+import coil3.fetch.SourceFetchResult
+import coil3.request.Options
+import coil3.size.Dimension
 import com.awxkee.jxlcoder.JxlCoder
 import com.awxkee.jxlcoder.ScaleMode
 import java.io.IOException
@@ -46,14 +46,14 @@ class JxlCoilDecoder(
         }
 
         return DecodeResult(
-            drawable = BitmapDrawable(options.context.resources, bitmap),
+            image = bitmap.asImage(),
             isSampled = targetWidth > 0 || targetHeight > 0,
         )
     }
 
     class Factory : Decoder.Factory {
         override fun create(
-            result: SourceResult,
+            result: SourceFetchResult,
             options: Options,
             imageLoader: ImageLoader,
         ): Decoder? {
