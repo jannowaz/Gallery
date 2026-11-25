@@ -1,3 +1,4 @@
 kotlin.collections.List
 kotlin.collections.Set
 kotlin.collections.Map
+org.fossify.gallery.helpers.Config

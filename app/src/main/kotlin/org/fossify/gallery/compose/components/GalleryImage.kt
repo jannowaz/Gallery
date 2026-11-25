@@ -1,5 +1,6 @@
 package org.fossify.gallery.compose.components
 
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -35,6 +36,18 @@ import org.fossify.gallery.compose.util.privacyBlur
 import java.io.File
 
 private val ANIMATED_THUMB_EXTENSIONS = setOf("gif", "webp")
+private val OPAQUE_THUMB_EXTENSIONS = setOf("jpg", "jpeg", "heic", "heif")
+
+/**
+ * Guaranteed opaque camera formats can be decoded as [Bitmap.Config.RGB_565] for grid/list
+ * thumbnails, halving per-bitmap RAM and effectively doubling Coil's memory cache capacity while
+ * keeping full alpha transparency (`ARGB_8888`) for PNG/WebP/SVG/GIF/JXL and full-size loads.
+ */
+internal fun shouldUseRgb565Thumbnail(path: String, thumbnailSize: Int?): Boolean {
+    if (thumbnailSize == null) return false
+    val ext = path.substringAfterLast('.', "").lowercase()
+    return ext in OPAQUE_THUMB_EXTENSIONS
+}
 
 @Composable
 fun GalleryImage(
@@ -61,12 +74,14 @@ fun GalleryImage(
     val imageUri = remember(path) {
         if (path.startsWith("content://")) Uri.parse(path) else Uri.fromFile(File(path))
     }
-    val request = remember(ctx, imageUri, thumbnailSize, forceStaticFrame) {
+    val useRgb565 = remember(path, thumbnailSize) { shouldUseRgb565Thumbnail(path, thumbnailSize) }
+    val request = remember(ctx, imageUri, thumbnailSize, forceStaticFrame, useRgb565) {
         ImageRequest.Builder(ctx)
             .data(imageUri)
             // Crossfades are useful for a full-size image but add animation work to every tile
             // while scrolling a large library.
             .crossfade(thumbnailSize == null)
+            .apply { if (useRgb565) bitmapConfig(Bitmap.Config.RGB_565) }
             .apply { if (thumbnailSize != null) size(thumbnailSize, thumbnailSize) }
             .apply { if (forceStaticFrame) decoderFactory(coil.decode.BitmapFactoryDecoder.Factory()) }
             .build()

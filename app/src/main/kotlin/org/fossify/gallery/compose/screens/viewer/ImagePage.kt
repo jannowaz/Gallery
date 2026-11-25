@@ -22,8 +22,11 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import android.content.Context
+import android.net.Uri
 import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
+import coil.memory.MemoryCache
 import coil.request.ImageRequest
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +40,33 @@ import org.fossify.gallery.compose.util.sharedElementKey
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.helpers.ColorModeHelper
 import java.io.File
+
+internal const val VIEWER_IMAGE_MAX_SIZE_PX = 2560
+
+internal fun shouldForceStaticViewerFrame(path: String): Boolean {
+    val ext = path.substringAfterLast('.', "").lowercase()
+    return (ext == "gif" || ext == "webp") && !ThumbnailOverlayState.animateGifs
+}
+
+internal fun viewerImageCacheKey(absolutePath: String, retryNonce: Int = 0): String =
+    "viewer:$absolutePath:$retryNonce"
+
+internal fun buildViewerImageRequest(
+    ctx: Context,
+    file: File,
+    retryNonce: Int = 0,
+    forceStaticFrame: Boolean = shouldForceStaticViewerFrame(file.absolutePath),
+    thumbPlaceholderKey: MemoryCache.Key? = null,
+): ImageRequest = ImageRequest.Builder(ctx)
+    .data(Uri.fromFile(file))
+    .size(VIEWER_IMAGE_MAX_SIZE_PX)
+    // When the grid thumbnail is already in Coil's memory cache, show it immediately on
+    // frame 0 and upgrade seamlessly without crossfading through a blank frame.
+    .placeholderMemoryCacheKey(thumbPlaceholderKey)
+    .crossfade(thumbPlaceholderKey == null)
+    .memoryCacheKey(viewerImageCacheKey(file.absolutePath, retryNonce))
+    .apply { if (forceStaticFrame) decoderFactory(coil.decode.BitmapFactoryDecoder.Factory()) }
+    .build()
 
 @Composable
 fun ImagePage(
@@ -83,20 +113,18 @@ fun ImagePage(
     // GIFs/WebPs played in the Viewer regardless of the "Play animated GIFs" setting - the toggle was
     // dead here. When it's off, force a plain BitmapFactory decode of these formats, which yields the
     // first frame as a static image (matches the legacy PhotoFragment's "decode as bitmap" path).
-    val ext = remember(path) { path.substringAfterLast('.', "").lowercase() }
-    val forceStaticFrame = (ext == "gif" || ext == "webp") && !ThumbnailOverlayState.animateGifs
+    val forceStaticFrame = remember(path, ThumbnailOverlayState.animateGifs) {
+        shouldForceStaticViewerFrame(path)
+    }
     val thumbPlaceholderKey = remember(path) { GalleryThumbnailKeyRegistry.get(path) }
     val viewerImageRequest = remember(ctx, file.absolutePath, retryNonce, forceStaticFrame, thumbPlaceholderKey) {
-        ImageRequest.Builder(ctx)
-            .data(android.net.Uri.fromFile(file))
-            .size(2560)
-            // When the grid thumbnail is already in Coil's memory cache, show it immediately on
-            // frame 0 and upgrade seamlessly without crossfading through a blank frame.
-            .placeholderMemoryCacheKey(thumbPlaceholderKey)
-            .crossfade(thumbPlaceholderKey == null)
-            .memoryCacheKey("viewer:${file.absolutePath}:$retryNonce")
-            .apply { if (forceStaticFrame) decoderFactory(coil.decode.BitmapFactoryDecoder.Factory()) }
-            .build()
+        buildViewerImageRequest(
+            ctx = ctx,
+            file = file,
+            retryNonce = retryNonce,
+            forceStaticFrame = forceStaticFrame,
+            thumbPlaceholderKey = thumbPlaceholderKey,
+        )
     }
 
     var exifOrientation by remember(path) { mutableIntStateOf(0) }

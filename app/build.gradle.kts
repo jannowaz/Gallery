@@ -75,7 +75,6 @@ android {
     }
 
     buildFeatures {
-        viewBinding = true
         buildConfig = true
     }
 
@@ -157,12 +156,10 @@ android {
     }
 
     packaging {
-        // A few of the third-party image decoders still ship 4 KB ELF segments. Keeping their
-        // native libraries compressed makes Android extract them before loading instead of trying
-        // to mmap an incompatible APK entry on 16 KB-page devices. This is the documented
-        // compatibility bridge while those upstream artifacts are replaced with 16 KB builds.
+        // All bundled arm64-v8a native libraries are 16-KB ELF page-aligned, so Android can mmap
+        // them directly from the APK without legacy extraction overhead.
         jniLibs {
-            useLegacyPackaging = true
+            useLegacyPackaging = false
         }
         resources {
             excludes += "META-INF/library_release.kotlin_module"
@@ -216,7 +213,6 @@ dependencies {
     implementation(libs.fossify.commons)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
-    implementation(libs.androidx.media3.ui.compose)
     implementation(libs.androidx.media3.transformer)
     implementation(libs.androidx.media3.effect)
     implementation(libs.androidx.print)
@@ -226,7 +222,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation("com.drewnoakes:metadata-extractor:2.19.0")
-    implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.documentfile)
     legacyPhotoFilters(libs.androidphotofilters) {
         isTransitive = false
@@ -256,7 +251,6 @@ dependencies {
     implementation(libs.androidx.navigationevent)
     implementation(libs.androidx.navigationevent.compose)
     implementation(libs.kotlinx.serialization.json)
-    implementation("androidx.compose.runtime:runtime-livedata")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-video:2.7.0")
     implementation("io.coil-kt:coil-svg:2.7.0")

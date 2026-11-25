@@ -534,6 +534,21 @@ fun ViewerScreen(
         },
     )
 
+    LaunchedEffect(pagerState.currentPage, items) {
+        val current = pagerState.currentPage
+        val neighborPaths = listOf(current + 1, current - 1, current + 2, current - 2)
+            .mapNotNull { idx -> items.getOrNull(idx) }
+            .filter { it.isNotEmpty() && !isVideo(it) }
+        if (neighborPaths.isEmpty()) return@LaunchedEffect
+        val existingFiles = withContext(Dispatchers.IO) {
+            neighborPaths.map(::File).filter(File::exists)
+        }
+        val imageLoader = coil.Coil.imageLoader(ctx)
+        existingFiles.forEach { file ->
+            imageLoader.enqueue(buildViewerImageRequest(ctx = ctx, file = file))
+        }
+    }
+
     var dragOffset by remember { mutableFloatStateOf(0f) }
     // Tracks whether the drag is currently past either dismiss threshold, so the haptic tick fires
     // once on crossing into the zone rather than continuously every frame the drag stays past it.

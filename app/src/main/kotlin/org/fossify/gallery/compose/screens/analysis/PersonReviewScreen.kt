@@ -39,13 +39,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -91,9 +91,10 @@ fun PersonReviewScreen(
     val context = LocalContext.current
     val repo = LocalMediaRepository.current
     val normalizedFolderPath = remember(folderPath) { PersonScanWorker.normalizeFolderPath(folderPath) }
-    val workInfos by WorkManager.getInstance(context)
-        .getWorkInfosForUniqueWorkLiveData(PersonScanWorker.uniqueWorkName(normalizedFolderPath))
-        .observeAsState(emptyList())
+    val workInfos by remember(context, normalizedFolderPath) {
+        WorkManager.getInstance(context)
+            .getWorkInfosForUniqueWorkFlow(PersonScanWorker.uniqueWorkName(normalizedFolderPath))
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
     val activeWork = workInfos.firstOrNull { !it.state.isFinished }
     val completedWork = workInfos.firstOrNull { it.state == WorkInfo.State.SUCCEEDED }
     val isScanning = activeWork != null

@@ -4,14 +4,12 @@ import android.os.Build
 import android.os.StrictMode
 import coil.ImageLoader
 import coil.ImageLoaderFactory
-import coil.decode.Decoder
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
-import coil.size.Precision
-import coil.util.DebugLogger
 import com.github.ajalt.reprint.core.Reprint
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.fossify.commons.FossifyApp
 import org.fossify.gallery.compose.util.BlurState
@@ -26,6 +24,8 @@ import org.fossify.gallery.navigation.ViewerArgs
 class App : FossifyApp(), ImageLoaderFactory {
 
     override val isAppLockFeatureAvailable = true
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun newImageLoader(): ImageLoader {
         return ImageLoader.Builder(this)
@@ -52,11 +52,8 @@ class App : FossifyApp(), ImageLoaderFactory {
                     add(coil.decode.GifDecoder.Factory())
                 }
             }
-            // No RGB_565 override - it drops the alpha channel entirely, flattening transparent
-            // PNG/WEBP (screenshots, stickers, exported graphics) onto an opaque background. Coil's
-            // default (ARGB_8888) is what actually renders transparency correctly; the size cap on
-            // individual requests (e.g. ImagePage's 2560px viewer request) already bounds per-image
-            // memory regardless of bit depth.
+            // No global RGB_565 override - it drops the alpha channel for PNG/WebP graphics.
+            // GalleryImage selectively uses RGB_565 only for guaranteed opaque camera thumbnails.
             // Coil's default FileKeyer calls File.lastModified() synchronously on the main thread
             // when building every memory cache key (AsyncImagePainter.onRemembered). On Android 11+
             // FUSE-backed storage that triggers 100-250ms StrictMode DiskReadViolations right in
@@ -90,51 +87,29 @@ class App : FossifyApp(), ImageLoaderFactory {
         }
         super.onCreate()
         ViewerArgs.configure(this)
-        Reprint.initialize(this)
 
         // Gates RefreshBus on the process being in the foreground. Registered here, before any
         // Activity exists, so the very first onStart is the one that opens the gate - and so a
         // trigger fired by a worker in a headless process is recorded for replay rather than lost.
         RefreshBus.startForegroundTracking()
 
-        // HotThreadSampler is deliberately NOT started here. It costs real CPU of its own
-        // (Thread.getAllStackTraces() over ~56 threads twice a second), which distorts exactly the
-        // kind of measurement it exists to support - call HotThreadSampler.start() by hand when
-        // investigating, don't leave it wired into startup.
-
-        // Seed the Compose-observable blur mirror from the persisted setting - BlurState (not
-        // Config directly) is what every blur call site and toggle reads/writes through, since
-        // flipping a plain SharedPreferences-backed boolean doesn't recompose anything that
-        // already read it. Read eagerly/synchronously (not in the async warm-up block below) so
-        // there's no window on cold start where a persisted "on" reads back as off.
+        // Seed the Compose-observable blur mirror from the persisted setting eagerly so there is
+        // no cold-start frame where a persisted privacy blur reads back as off.
         BlurState.enabled = config.blurAllMedia
         ThumbnailOverlayState.sync(config)
 
-        // Coil's ImageLoader (see newImageLoader() above) is built lazily on whatever thread
-        // first requests an image - building its DiskCache does I/O (creates the cache dir and
-        // opens/creates the journal file), which without this warm-up happened synchronously on
-        // the main thread during the very first AsyncImage composition, confirmed via a
-        // StrictMode DiskReadViolation (~440ms) and two ~780ms dropped frames right after first
-        // launch. Dispatched on Dispatchers.IO's already-warm worker pool rather than a freshly
-        // spun-up Thread - a brand-new Thread's own startup latency (allocating a stack,
-        // registering with the OS scheduler, all while cold-start is already saturating every
-        // core with classloading/JIT work) was still frequently losing the race to the main
-        // thread's first AsyncImage request. GlobalScope is deliberate here: this warm-up must
-        // outlive whatever Activity happens to be first, isn't cancellable, and there is no
-        // Application-scoped CoroutineScope available to launch it on instead.
-        @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
-        GlobalScope.launch(Dispatchers.IO) { coil.Coil.imageLoader(this@App) }
+        // Reprint uses reflection to load the fingerprint module; only block cold-start if app
+        // lock is actually enabled, otherwise warm it up off the main thread.
+        if (config.isAppPasswordProtectionOn) {
+            Reprint.initialize(this)
+        } else {
+            appScope.launch { Reprint.initialize(this@App) }
+        }
 
-        // Same idea for the app's own SharedPreferences (config) and the legacy default-named
-        // prefs file some ViewModels also read (ViewSettingsViewModel, ExplorerViewModel, ...):
-        // the first access to each triggers a synchronous-if-not-yet-loaded disk read on whichever
-        // thread makes it. Application.onCreate() runs well before any Activity/ViewModel, giving
-        // this a real head start - unlike the previous attempt in ComposeExplorerActivity.onCreate(),
-        // which fired the same warm-up mere microseconds before setContent() triggered the same
-        // reads on the main thread and lost that race often enough to still show up in StrictMode.
-        @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
-        GlobalScope.launch(Dispatchers.IO) {
-            config
+        // Warm up Coil's DiskCache journal and secondary SharedPreferences off the main thread
+        // before the first Activity composes its grid.
+        appScope.launch { coil.Coil.imageLoader(this@App) }
+        appScope.launch {
             defaultSharedPrefs()
             org.fossify.gallery.helpers.AppShortcutsHelper.publish(this@App)
         }
