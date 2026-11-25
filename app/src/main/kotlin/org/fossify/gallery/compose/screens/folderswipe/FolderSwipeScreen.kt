@@ -25,7 +25,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -120,6 +119,7 @@ fun FolderSwipeScreen(
     var isMoving by remember(folderPath) { mutableStateOf(false) }
     var errorMessage by remember(folderPath) { mutableStateOf<String?>(null) }
     var showAllFilesSheet by remember(folderPath) { mutableStateOf(false) }
+    var swipeVideosMuted by rememberSaveable { mutableStateOf(true) }
 
     suspend fun load(preserveIndex: Boolean = false) {
         val loaded = withContext(Dispatchers.IO) { repo.getMediaFromPath(folderPath) }
@@ -276,46 +276,25 @@ fun FolderSwipeScreen(
                                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
                                         ) {
                                             Box(Modifier.fillMaxSize()) {
-                                                GalleryImage(
-                                                    path = current.path,
-                                                    contentDescription = current.name,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    contentScale = ContentScale.Fit,
-                                                    thumbnailSize = 1536,
-                                                    backgroundColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                                )
                                                 if (current.isVideo()) {
-                                                    Surface(
-                                                        modifier = Modifier.align(Alignment.Center),
-                                                        shape = RoundedCornerShape(50),
-                                                        color = org.fossify.gallery.compose.theme.Scrim.a60,
-                                                    ) {
-                                                        Row(
-                                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                                            verticalAlignment = Alignment.CenterVertically,
-                                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                        ) {
-                                                            Icon(
-                                                                Icons.Default.PlayArrow,
-                                                                contentDescription = null,
-                                                                tint = androidx.compose.ui.graphics.Color.White,
-                                                                modifier = Modifier.size(22.dp),
-                                                            )
-                                                            if (current.videoDuration > 0) {
-                                                                val mins = current.videoDuration / 60
-                                                                val secs = current.videoDuration % 60
-                                                                val durStyle = MaterialTheme.typography.labelLarge.copy(
-                                                                    fontFeatureSettings = "tnum",
-                                                                )
-                                                                Text(
-                                                                    "%d:%02d".format(mins, secs),
-                                                                    style = durStyle,
-                                                                    color = androidx.compose.ui.graphics.Color.White,
-                                                                    fontWeight = FontWeight.SemiBold,
-                                                                )
-                                                            }
-                                                        }
-                                                    }
+                                                    FolderSwipeVideoPreview(
+                                                        path = current.path,
+                                                        name = current.name,
+                                                        durationSec = current.videoDuration,
+                                                        muted = swipeVideosMuted,
+                                                        onToggleMute = { swipeVideosMuted = !swipeVideosMuted },
+                                                        modifier = Modifier.fillMaxSize(),
+                                                    )
+                                                } else {
+                                                    GalleryImage(
+                                                        path = current.path,
+                                                        contentDescription = current.name,
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        contentScale = ContentScale.Fit,
+                                                        thumbnailSize = 1536,
+                                                        backgroundColor =
+                                                            MaterialTheme.colorScheme.surfaceContainerHigh,
+                                                    )
                                                 }
                                             }
                                         }

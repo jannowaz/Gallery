@@ -104,6 +104,21 @@ private const val SCRUB_FRAME_COUNT = 24
 private const val SCRUB_FRAME_WIDTH = 256
 private const val SCRUB_FRAME_HEIGHT = 144
 private const val SCRUB_FRAME_BUDGET_BYTES = 8 * 1024 * 1024
+private const val SPEED_HALF = 0.5f
+private const val SPEED_NORMAL = 1f
+private const val SPEED_ONE_HALF = 1.5f
+private const val SPEED_DOUBLE = 2f
+private const val SPEED_TRIPLE = 3f
+internal val VIDEO_PLAYBACK_SPEEDS = listOf(
+    SPEED_HALF,
+    SPEED_NORMAL,
+    SPEED_ONE_HALF,
+    SPEED_DOUBLE,
+    SPEED_TRIPLE,
+)
+
+internal fun sanitizeVideoPlaybackSpeed(speed: Float): Float =
+    if (speed in VIDEO_PLAYBACK_SPEEDS) speed else SPEED_NORMAL
 
 /** API 26 has no scaled retriever API. Decode one frame, immediately scale it, and release the
  * decoder-sized bitmap before retaining anything in the scrub cache. */
@@ -157,6 +172,10 @@ fun VideoPage(
     /** Monotonically increasing request id; only the visible page reacts to it. */
     captureFrameRequest: Int = 0,
     onCaptureFrame: (Bitmap?) -> Unit = {},
+    sessionMuted: Boolean? = null,
+    onMutedChange: ((Boolean) -> Unit)? = null,
+    sessionPlaybackSpeed: Float? = null,
+    onPlaybackSpeedChange: ((Float) -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     val res = androidx.compose.ui.platform.LocalResources.current
@@ -167,9 +186,11 @@ fun VideoPage(
     // ViewerScreen.kt), and without this these UI states (mute/speed/trim/...) used to carry over
     // from the deleted video's session onto whatever now occupies that slot.
     var isPlaying by remember(path) { mutableStateOf(ctx.config.autoplayVideos) }
-    var playbackSpeed by remember(path) { mutableFloatStateOf(1f) }
-    val speeds = listOf(0.5f, 1f, 1.5f, 2f, 3f)
-    var isMuted by remember(path) { mutableStateOf(ctx.config.muteVideos) }
+    val speeds = VIDEO_PLAYBACK_SPEEDS
+    var localSpeed by remember(path) { mutableFloatStateOf(sanitizeVideoPlaybackSpeed(ctx.config.playbackSpeed)) }
+    val playbackSpeed = sessionPlaybackSpeed ?: localSpeed
+    var localMuted by remember(path) { mutableStateOf(ctx.config.muteVideos) }
+    val isMuted = sessionMuted ?: localMuted
     var trimMode by remember(path) { mutableStateOf(false) }
     var moreControlsOpen by remember(path) { mutableStateOf(false) }
     var trimStartMs by remember(path) { mutableFloatStateOf(0f) }
@@ -292,13 +313,16 @@ fun VideoPage(
             )
             setMediaItem(MediaItem.fromUri(Uri.fromFile(File(path))))
             repeatMode = if (ctx.config.loopVideos) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
-            volume = if (ctx.config.muteVideos) 0f else 1f
+            volume = if (isMuted) 0f else 1f
+            setPlaybackSpeed(playbackSpeed)
             if (ctx.config.rememberLastVideoPosition) {
                 val savedPos = ctx.config.getLastVideoPosition(path)
                 if (savedPos > 0) seekTo(savedPos.toLong())
             }
         }
     }
+    LaunchedEffect(player, isMuted) { player.volume = if (isMuted) 0f else 1f }
+    LaunchedEffect(player, playbackSpeed) { player.setPlaybackSpeed(playbackSpeed) }
     LaunchedEffect(player, isCurrentPage) {
         if (isCurrentPage) {
             // Only allocate the decoder/codec once this page is actually the visible one.
@@ -480,12 +504,18 @@ fun VideoPage(
                     modifier = Modifier.align(Alignment.Center).size(56.dp).clip(CircleShape).background(Scrim.a50)
                 ) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(R.string.cd_play_pause), tint = Color.White, modifier = Modifier.size(28.dp)) }
 
-                val speedIdx = speeds.indexOf(playbackSpeed)
+                val speedIdx = speeds.indexOf(playbackSpeed).coerceAtLeast(0)
                 val nextSpeed = speeds[(speedIdx + 1) % speeds.size]
                 val speedLabel = if (playbackSpeed % 1f == 0f) "${playbackSpeed.toInt()}x" else "${playbackSpeed}x"
                 Column(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) {
                     IconButton(
-                        onClick = { isMuted = !isMuted; player.volume = if (isMuted) 0f else 1f; onInteract() },
+                        onClick = {
+                            val updatedMuted = !isMuted
+                            localMuted = updatedMuted
+                            onMutedChange?.invoke(updatedMuted)
+                            player.volume = if (updatedMuted) 0f else 1f
+                            onInteract()
+                        },
                         modifier = Modifier.size(48.dp),
                     ) {
                         Icon(
@@ -506,7 +536,14 @@ fun VideoPage(
                         DropdownMenu(expanded = moreControlsOpen, onDismissRequest = { moreControlsOpen = false }) {
                             DropdownMenuItem(
                                 text = { Text("${stringResource(R.string.playback_speed)}: $speedLabel") },
-                                onClick = { playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed); moreControlsOpen = false; onInteract() },
+                                onClick = {
+                                    localSpeed = nextSpeed
+                                    onPlaybackSpeedChange?.invoke(nextSpeed)
+                                    ctx.config.playbackSpeed = nextSpeed
+                                    player.setPlaybackSpeed(nextSpeed)
+                                    moreControlsOpen = false
+                                    onInteract()
+                                },
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.cd_pip)) },

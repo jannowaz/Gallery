@@ -43,4 +43,14 @@ class ViewerOverlaysTest {
         assertNull(formatExifDate("", Locale.US))
         assertNull(formatExifDate("   ", Locale.US))
     }
+
+    @Test
+    fun `sanitizeVideoPlaybackSpeed keeps supported speeds and falls back to 1x`() {
+        VIDEO_PLAYBACK_SPEEDS.forEach { speed ->
+            assertEquals(speed, sanitizeVideoPlaybackSpeed(speed), 0.0001f)
+        }
+        assertEquals(1f, sanitizeVideoPlaybackSpeed(0f), 0.0001f)
+        assertEquals(1f, sanitizeVideoPlaybackSpeed(4f), 0.0001f)
+        assertEquals(1f, sanitizeVideoPlaybackSpeed(Float.NaN), 0.0001f)
+    }
 }

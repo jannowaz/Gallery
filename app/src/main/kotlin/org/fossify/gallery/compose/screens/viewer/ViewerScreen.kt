@@ -254,6 +254,8 @@ fun ViewerScreen(
     // seconds regardless of media type, so dropping the video branch here doesn't leave the chrome
     // stuck on-screen - it just gives a video the same brief, visible-on-open moment a photo gets.
     var showUI by remember { mutableStateOf(true) }
+    var videoSessionMuted by remember { mutableStateOf(ctx.config.muteVideos) }
+    var videoSessionSpeed by remember { mutableFloatStateOf(sanitizeVideoPlaybackSpeed(ctx.config.playbackSpeed)) }
     var showActionSheet by remember { mutableStateOf(false) }
     var showRateAndTagSheet by remember { mutableStateOf(false) }
     var slideshowActive by remember { mutableStateOf(false) }
@@ -734,6 +736,10 @@ fun ViewerScreen(
                             bitmap?.recycle()
                         }
                     },
+                    sessionMuted = videoSessionMuted,
+                    onMutedChange = { videoSessionMuted = it },
+                    sessionPlaybackSpeed = videoSessionSpeed,
+                    onPlaybackSpeedChange = { videoSessionSpeed = it },
                 )
                 else -> ImagePage(
                     path = path, file = file, onClose = onClose,
