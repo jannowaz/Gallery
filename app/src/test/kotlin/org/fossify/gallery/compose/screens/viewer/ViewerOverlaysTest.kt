@@ -53,4 +53,32 @@ class ViewerOverlaysTest {
         assertEquals(1f, sanitizeVideoPlaybackSpeed(4f), 0.0001f)
         assertEquals(1f, sanitizeVideoPlaybackSpeed(Float.NaN), 0.0001f)
     }
+
+    @Test
+    fun `formatVideoSeconds formats zero, short, and long durations as mm ss`() {
+        assertEquals("00:00", formatVideoSeconds(-5))
+        assertEquals("00:09", formatVideoSeconds(9))
+        assertEquals("01:05", formatVideoSeconds(65))
+        assertEquals("62:03", formatVideoSeconds(3723))
+    }
+
+    @Test
+    fun `nextUniqueTrimmedFile avoids overwriting existing files`() {
+        val tempDir = kotlin.io.path.createTempDirectory("trim-test").toFile()
+        try {
+            val source = java.io.File(tempDir, "clip.mp4").apply { createNewFile() }
+            val first = nextUniqueTrimmedFile(source)
+            assertEquals("clip_trimmed.mp4", first.name)
+            first.createNewFile()
+
+            val second = nextUniqueTrimmedFile(source)
+            assertEquals("clip_trimmed_2.mp4", second.name)
+            second.createNewFile()
+
+            val third = nextUniqueTrimmedFile(source)
+            assertEquals("clip_trimmed_3.mp4", third.name)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
 }

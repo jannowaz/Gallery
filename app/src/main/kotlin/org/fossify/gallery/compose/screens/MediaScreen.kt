@@ -254,7 +254,6 @@ fun MediaScreen(
 ) {
     val ctx = LocalContext.current
     val res = androidx.compose.ui.platform.LocalResources.current
-    var showColumnIndicator by remember { mutableStateOf(false) }
     val viewModel: MediaViewModel = viewModel(key = viewModelKey)
     val state by viewModel.state.collectAsStateWithLifecycle()
     val filteredSelectionCount by viewModel.filteredResultCount.collectAsStateWithLifecycle()
@@ -501,7 +500,6 @@ fun MediaScreen(
     val collapsibleKeys = remember(groupRows) { collapsibleGroupKeys(groupRows) }
     val allGroupsExpanded = collapsibleKeys.isNotEmpty() && collapsibleKeys.none { it in collapsedGroupKeys }
     val scrollItemIndexByPath = remember(groupRows) { lazyItemIndexByPath(groupRows) }
-    var didRestoreSemanticScroll by remember(scrollPositionKey) { mutableStateOf(false) }
     val cornerShape = if (viewSettings.roundedCorners) RoundedCornerShape(Radius.sm) else RoundedCornerShape(0.dp)
     val itemSpacing = viewSettings.spacing.dp
     val mediaCardColor = when (viewSettings.displayMode) { DisplayMode.COMPACT,DisplayMode.NORMAL->MaterialTheme.colorScheme.surface; DisplayMode.DARK->MaterialTheme.colorScheme.surfaceVariant }
@@ -781,394 +779,58 @@ fun MediaScreen(
                 modifier = Modifier.align(Alignment.TopCenter),
             )
         } else {
-        when {
-            fullListTagGrouping && state.isFullListGroupingLoading -> MediaSkeleton(
-                columns = columnCount,
-                viewType = viewSettings.viewType,
+            MediaScreenStandardContent(
+                state = state,
+                viewSettings = viewSettings,
+                columnCount = columnCount,
                 itemSpacing = itemSpacing,
-                showFileName = viewSettings.showFileNames,
-                reserveGridCaptionSpace = false,
-                listDensity = viewSettings.listDensity,
+                contentTopInset = contentTopInset,
+                isGrid = isGrid,
+                isMosaic = isMosaic,
+                fullListTagGrouping = fullListTagGrouping,
+                initialOverrideMosaicPaths = initialOverrideMosaicPaths,
+                initialOverrideMosaicReady = initialOverrideMosaicReady,
+                displayMedia = displayMedia,
+                hasFilter = hasFilter,
+                isBuildingGroupRows = isBuildingGroupRows,
+                completeGroupRows = completeGroupRows,
+                groupRows = groupRows,
+                pathIndexMap = pathIndexMap,
+                selectedPaths = selectedPaths,
+                hasSelection = hasSelection,
+                pickMultiple = pickMultiple,
+                taggedPaths = taggedPaths,
+                cornerShape = cornerShape,
+                mediaCardColor = mediaCardColor,
+                cropThumbnails = cropThumbnails,
+                showThumbnailFileTypes = showThumbnailFileTypes,
+                markFavoriteItems = markFavoriteItems,
+                isNarrowMediaTile = isNarrowMediaTile,
+                dragSelection = dragSelection,
+                scrollPositionKey = scrollPositionKey,
+                restoredScrollPosition = restoredOverrideScrollPosition,
+                initialScrollIndex = initialOverrideScrollIndex,
+                initialScrollOffset = initialOverrideScrollOffset,
+                scrollItemIndexByPath = scrollItemIndexByPath,
+                scrollKeyToPath = scrollKeyToPath,
+                tabIndex = tabIndex,
+                onClearFilter = onClearFilter,
+                onSaveScrollPosition = ::saveOverrideScrollPosition,
+                onReportFirstVisiblePath = onFirstVisibleMediaPathChanged,
+                onToggleGroupKey = { key ->
+                    collapsedGroupKeys = org.fossify.gallery.helpers.toggleGroupKey(collapsedGroupKeys, key)
+                },
+                onSelectGroup = ::selectGroup,
+                onSelectDisplayItem = { path, idx, start ->
+                    selectDisplayItem(path, idx, startSelection = start)
+                },
+                onOpenViewer = ::openViewer,
+                onAddSelectedPath = { path -> selectedPaths = selectedPaths + path },
+                onRequestAspect = viewModel::requestAspect,
+                onTagClick = onTagClick,
+                onColumnCountChange = onColumnCountChange,
             )
-            isMosaic && initialOverrideMosaicPaths.isNotEmpty() && !initialOverrideMosaicReady -> MediaSkeleton(
-                columns = columnCount,
-                viewType = ViewType.MOSAIC,
-                itemSpacing = itemSpacing,
-                showFileName = viewSettings.showFileNames,
-            )
-            displayMedia.isEmpty() -> {
-                EmptyState(
-                    icon = if (hasFilter) Icons.Default.SearchOff else Icons.Default.Search,
-                    title = if (hasFilter) stringResource(R.string.no_results) else stringResource(R.string.no_media_found),
-                    subtitle = stringResource(if (hasFilter) R.string.no_results_hint else R.string.no_media_found_hint),
-                    actionLabel = if (hasFilter) stringResource(R.string.clear_filter) else null,
-                    onAction = if (hasFilter) onClearFilter else null,
-                )
-            }
-            isBuildingGroupRows && completeGroupRows.isEmpty() -> MediaSkeleton(
-                columns = columnCount,
-                viewType = viewSettings.viewType,
-                itemSpacing = itemSpacing,
-                showFileName = viewSettings.showFileNames,
-                reserveGridCaptionSpace = isGrid,
-                listDensity = viewSettings.listDensity,
-            )
-            isGrid -> {
-                Column(Modifier.padding(top = contentTopInset)) {
-                    val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = initialOverrideScrollIndex, initialFirstVisibleItemScrollOffset = initialOverrideScrollOffset)
-                    LaunchedEffect(gridState, groupRows, scrollPositionKey) {
-                        if (scrollPositionKey != null && !didRestoreSemanticScroll && restoredOverrideScrollPosition.anchorPath.isNotBlank()) {
-                            scrollItemIndexByPath[restoredOverrideScrollPosition.anchorPath]?.let { index ->
-                                if (gridState.firstVisibleItemIndex != index || gridState.firstVisibleItemScrollOffset != restoredOverrideScrollPosition.offset) {
-                                    gridState.scrollToItem(index, restoredOverrideScrollPosition.offset)
-                                }
-                                didRestoreSemanticScroll = true
-                            }
-                        }
-                        snapshotFlow {
-                            val firstVisibleMedia = gridState.layoutInfo.visibleItemsInfo
-                                .asSequence()
-                                .mapNotNull { pathForScrollKey(it.key, scrollKeyToPath) }
-                                .firstOrNull()
-                            Triple(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset, firstVisibleMedia)
-                        }.collect { (i, o, path) ->
-                            saveOverrideScrollPosition(i, o, path.orEmpty())
-                            onFirstVisibleMediaPathChanged(path)
-                        }
-                    }
-                    ScrollToTopEffect(tabIndex) { gridState.animateScrollToItem(0) }
-                    val isScrolling by remember { derivedStateOf { gridState.isScrollInProgress } }
-                    LaunchedEffect(dragSelection.isDragging) {
-                        if (dragSelection.isDragging) {
-                            var targetIdx = gridState.firstVisibleItemIndex
-                            while (dragSelection.isDragging) {
-                                val s = dragSelection.autoScrollSpeed
-                                if (s < -0.5f) targetIdx = maxOf(targetIdx - 1, 0)
-                                else if (s > 0.5f) {
-                                    val last = (gridState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
-                                    targetIdx = (targetIdx + 1).coerceAtMost(last)
-                                }
-                                else { kotlinx.coroutines.delay(50); continue }
-                                gridState.animateScrollToItem(targetIdx, 0)
-                                kotlinx.coroutines.delay((100 / kotlin.math.abs(s).coerceAtLeast(0.5f)).toLong().coerceIn(50, 150))
-                            }
-                        }
-                    }
-                    CompositionLocalProvider(LocalOverscrollFactory provides null) {
-                Box(
-                    Modifier
-                        .pinchToChangeColumns(
-                            enabled = onColumnCountChange != null && !hasSelection,
-                            currentColumns = viewSettings.columnCount,
-                            minColumns = 2,
-                            maxColumns = 6,
-                            onColumnsChange = { next ->
-                                onColumnCountChange?.invoke(next)
-                                showColumnIndicator = true
-                            },
-                        )
-                        .dragSelectionGesture(
-                            dragSelection,
-                            enabled = false,
-                            gridState = gridState,
-                            onSelectPath = { path -> selectedPaths = selectedPaths + path },
-                            onLongPressSelectPath = null,
-                        ),
-                ) {
-                    LazyVerticalGrid(state = gridState, columns = GridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
-                    groupRows.forEach { row ->
-                        when (row) {
-                            is GroupRow.SectionHeader -> item(key = "hdr_${row.key}", span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
-                                SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = org.fossify.gallery.helpers.toggleGroupKey(collapsedGroupKeys, row.key) }, ratingValue = row.ratingValue, accentColor = row.rootKey?.let { tagAccentColor(it) }, onSelectGroup = { selectGroup(row) })
-                            }
-                            is GroupRow.Items -> {
-                        val groupItems = row.media
-                        items(groupItems.size, key = { "${row.sectionKey}/${groupItems[it].path}" }, contentType = { groupItems[it].type }) { idx ->
-                            val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val isVideo = remember(m.path, m.type) { m.type == TYPE_VIDEOS || m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
-                            val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
-                            MediaTile(
-                                medium = m,
-                                isVideo = isVideo,
-                                isSelected = isSelected,
-                                isSelectionMode = hasSelection,
-                                hasTag = m.path in taggedPaths,
-                                tags = state.tagsByPath[m.path].orEmpty(),
-                                onTagClick = if (!hasSelection && !pickMultiple) onTagClick else null,
-                                showOverlays = true,
-                                aspectRatio = 1f,
-                                cornerShape = cornerShape,
-                                cardColor = mediaCardColor,
-                                itemSpacing = itemSpacing,
-                                showFileName = viewSettings.showFileNames,
-                                reserveGridCaptionSpace = false,
-                                showVideoDuration = org.fossify.gallery.compose.util.ThumbnailOverlayState.showVideoDuration,
-                                cropThumbnails = cropThumbnails,
-                                showRating = org.fossify.gallery.compose.util.ThumbnailOverlayState.showRating,
-                                showFileType = showThumbnailFileTypes,
-                                markFavorite = markFavoriteItems,
-                                isNarrowTile = isNarrowMediaTile,
-                                onClick = {
-                                    if (hasSelection || pickMultiple) {
-                                        selectDisplayItem(m.path, originalIdx)
-                                    } else openViewer(originalIdx)
-                                },
-                                onLongClick = {
-                                    selectDisplayItem(m.path, originalIdx, startSelection = true)
-                                },
-                                onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
-                                onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
-                                onBoundsRemoved = { dragSelection.unregisterItemBounds(m.path) },
-                            )
-                        }
-                    }
-                        }
-                    }
-                }
-                    val currentBreadcrumbLabel by remember(groupRows) { derivedStateOf { currentBreadcrumb(groupRows, gridState.firstVisibleItemIndex) } }
-                    FloatingSectionLabel(currentBreadcrumbLabel, isScrolling, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
-                    ColumnCountIndicator(
-                        columnCount = viewSettings.columnCount,
-                        visible = showColumnIndicator,
-                        onAutoHide = { showColumnIndicator = false },
-                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
-                    )
-                    FastScrollBar(
-                        state = gridState,
-                        positionLabel = { index -> currentBreadcrumb(groupRows, index) },
-                        modifier = Modifier.align(Alignment.CenterEnd).padding(vertical = 8.dp),
-                    )
-                    }
-                    }
-                }
-            }
-            isMosaic -> {
-                Column(Modifier.padding(top = contentTopInset)) {
-                    val mosaicState = rememberLazyStaggeredGridState(initialFirstVisibleItemIndex = initialOverrideScrollIndex, initialFirstVisibleItemScrollOffset = initialOverrideScrollOffset)
-                    LaunchedEffect(mosaicState, groupRows, scrollPositionKey) {
-                        if (scrollPositionKey != null && !didRestoreSemanticScroll && restoredOverrideScrollPosition.anchorPath.isNotBlank()) {
-                            scrollItemIndexByPath[restoredOverrideScrollPosition.anchorPath]?.let { index ->
-                                if (mosaicState.firstVisibleItemIndex != index || mosaicState.firstVisibleItemScrollOffset != restoredOverrideScrollPosition.offset) {
-                                    mosaicState.scrollToItem(index, restoredOverrideScrollPosition.offset)
-                                }
-                                didRestoreSemanticScroll = true
-                            }
-                        }
-                        snapshotFlow {
-                            val firstVisibleMedia = mosaicState.layoutInfo.visibleItemsInfo
-                                .asSequence()
-                                .mapNotNull { pathForScrollKey(it.key, scrollKeyToPath) }
-                                .firstOrNull()
-                            Triple(mosaicState.firstVisibleItemIndex, mosaicState.firstVisibleItemScrollOffset, firstVisibleMedia)
-                        }.collect { (i, o, path) ->
-                            saveOverrideScrollPosition(i, o, path.orEmpty())
-                            onFirstVisibleMediaPathChanged(path)
-                        }
-                    }
-                    ScrollToTopEffect(tabIndex) { mosaicState.animateScrollToItem(0) }
-                    val isScrollingStag by remember { derivedStateOf { mosaicState.isScrollInProgress } }
-                    var appliedAspectRatios by remember { mutableStateOf(state.aspectRatios) }
-                    LaunchedEffect(state.aspectRatios, isScrollingStag) {
-                        if (!isScrollingStag) {
-                            delay(120)
-                            appliedAspectRatios = state.aspectRatios
-                        }
-                    }
-                    LaunchedEffect(dragSelection.isDragging) {
-                        if (dragSelection.isDragging) {
-                            var targetIdx = mosaicState.firstVisibleItemIndex
-                            while (dragSelection.isDragging) {
-                                val s = dragSelection.autoScrollSpeed
-                                if (s < -0.5f) targetIdx = maxOf(targetIdx - 1, 0)
-                                else if (s > 0.5f) {
-                                    val last = (mosaicState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
-                                    targetIdx = (targetIdx + 1).coerceAtMost(last)
-                                }
-                                else { kotlinx.coroutines.delay(50); continue }
-                                mosaicState.animateScrollToItem(targetIdx, 0)
-                                kotlinx.coroutines.delay((120 / kotlin.math.abs(s).coerceAtLeast(0.5f)).toLong().coerceIn(60, 200))
-                            }
-                        }
-                    }
-                    CompositionLocalProvider(LocalOverscrollFactory provides null) {
-                    Box(
-                        Modifier
-                            .pinchToChangeColumns(
-                                enabled = onColumnCountChange != null && !hasSelection,
-                                currentColumns = viewSettings.columnCount,
-                                minColumns = 2,
-                                maxColumns = 6,
-                                onColumnsChange = { next ->
-                                    onColumnCountChange?.invoke(next)
-                                    showColumnIndicator = true
-                                },
-                            )
-                            .dragSelectionGesture(
-                                dragSelection,
-                                enabled = false,
-                                staggeredGridState = mosaicState,
-                                onSelectPath = { path -> selectedPaths = selectedPaths + path },
-                                onLongPressSelectPath = null,
-                            ),
-                    ) {
-                    LazyVerticalStaggeredGrid(state = mosaicState, columns = StaggeredGridCells.Fixed(columnCount), reverseLayout = viewSettings.anchorBottom, contentPadding = PaddingValues(itemSpacing / 2)) {
-                    groupRows.forEach { row ->
-                        when (row) {
-                            is GroupRow.SectionHeader -> item(key = "hdr_${row.key}", span = StaggeredGridItemSpan.FullLine, contentType = "header") {
-                                SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = org.fossify.gallery.helpers.toggleGroupKey(collapsedGroupKeys, row.key) }, ratingValue = row.ratingValue, accentColor = row.rootKey?.let { tagAccentColor(it) }, onSelectGroup = { selectGroup(row) })
-                            }
-                            is GroupRow.Items -> {
-                        val groupItems = row.media
-                        items(groupItems.size, key = { "${row.sectionKey}/${groupItems[it].path}" }, contentType = { groupItems[it].type }) { idx ->
-                            val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val isVideo = remember(m.path, m.type) { m.type == TYPE_VIDEOS || m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
-                            if (!isVideo) LaunchedEffect(m.path) { viewModel.requestAspect(m.path) }
-                            val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
-                            MediaTile(
-                                medium = m,
-                                isVideo = isVideo,
-                                isSelected = isSelected,
-                                isSelectionMode = hasSelection,
-                                hasTag = m.path in taggedPaths,
-                                tags = state.tagsByPath[m.path].orEmpty(),
-                                onTagClick = if (!hasSelection && !pickMultiple) onTagClick else null,
-                                showOverlays = true,
-                                aspectRatio = if (isVideo) 1f else (appliedAspectRatios[m.path] ?: 1f),
-                                cornerShape = cornerShape,
-                                cardColor = mediaCardColor,
-                                itemSpacing = itemSpacing,
-                                showFileName = viewSettings.showFileNames,
-                                showVideoDuration = org.fossify.gallery.compose.util.ThumbnailOverlayState.showVideoDuration,
-                                cropThumbnails = cropThumbnails,
-                                showRating = org.fossify.gallery.compose.util.ThumbnailOverlayState.showRating,
-                                showFileType = showThumbnailFileTypes,
-                                markFavorite = markFavoriteItems,
-                                isNarrowTile = isNarrowMediaTile,
-                                onClick = {
-                                    if (hasSelection || pickMultiple) {
-                                        selectDisplayItem(m.path, originalIdx)
-                                    } else openViewer(originalIdx)
-                                },
-                                onLongClick = {
-                                    selectDisplayItem(m.path, originalIdx, startSelection = true)
-                                },
-                                onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
-                                onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
-                                onBoundsRemoved = { dragSelection.unregisterItemBounds(m.path) },
-                            )
-                        }
-                    }
-                        }
-                    }
-                }
-                    val currentBreadcrumbLabelStag by remember(groupRows) { derivedStateOf { currentBreadcrumb(groupRows, mosaicState.firstVisibleItemIndex) } }
-                    FloatingSectionLabel(currentBreadcrumbLabelStag, isScrollingStag, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
-                    ColumnCountIndicator(
-                        columnCount = viewSettings.columnCount,
-                        visible = showColumnIndicator,
-                        onAutoHide = { showColumnIndicator = false },
-                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
-                    )
-                    FastScrollBar(
-                        state = mosaicState,
-                        positionLabel = { index -> currentBreadcrumb(groupRows, index) },
-                        modifier = Modifier.align(Alignment.CenterEnd).padding(vertical = 8.dp),
-                    )
-                    }
-                    }
-                }
-            }
-            else -> {
-                val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialOverrideScrollIndex, initialFirstVisibleItemScrollOffset = initialOverrideScrollOffset)
-                LaunchedEffect(listState, groupRows, scrollPositionKey) {
-                    if (scrollPositionKey != null && !didRestoreSemanticScroll && restoredOverrideScrollPosition.anchorPath.isNotBlank()) {
-                        scrollItemIndexByPath[restoredOverrideScrollPosition.anchorPath]?.let { index ->
-                            if (listState.firstVisibleItemIndex != index || listState.firstVisibleItemScrollOffset != restoredOverrideScrollPosition.offset) {
-                                listState.scrollToItem(index, restoredOverrideScrollPosition.offset)
-                            }
-                            didRestoreSemanticScroll = true
-                        }
-                    }
-                    snapshotFlow {
-                        val firstVisibleMedia = listState.layoutInfo.visibleItemsInfo
-                            .asSequence()
-                            .mapNotNull { pathForScrollKey(it.key, scrollKeyToPath) }
-                            .firstOrNull()
-                        Triple(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, firstVisibleMedia)
-                    }.collect { (i, o, path) ->
-                        saveOverrideScrollPosition(i, o, path.orEmpty())
-                        onFirstVisibleMediaPathChanged(path)
-                    }
-                }
-                ScrollToTopEffect(tabIndex) { listState.animateScrollToItem(0) }
-                val listGap = ((viewSettings.spacing - 2) / 2).coerceAtLeast(0).dp
-                Column(Modifier.padding(top = contentTopInset)) {
-                Box(
-                    Modifier
-                        .clipToBounds()
-                        .dragSelectionGesture(
-                            dragSelection,
-                            enabled = false,
-                            onSelectPath = { path -> selectedPaths = selectedPaths + path },
-                            onLongPressSelectPath = null,
-                        ),
-                ) {
-                LazyColumn(
-                    state = listState,
-                    reverseLayout = viewSettings.anchorBottom,
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(listGap),
-                ) {
-                    groupRows.forEach { row ->
-                        when (row) {
-                            is GroupRow.SectionHeader -> stickyHeader(key = "hdr_${row.key}", contentType = "header") {
-                                SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = org.fossify.gallery.helpers.toggleGroupKey(collapsedGroupKeys, row.key) }, ratingValue = row.ratingValue, accentColor = row.rootKey?.let { tagAccentColor(it) }, showGuideLine = true, onSelectGroup = { selectGroup(row) })
-                            }
-                            is GroupRow.Items -> {
-                        val groupItems = row.media
-                        items(groupItems.size, key = { "${row.sectionKey}/${groupItems[it].path}" }, contentType = { groupItems[it].type }) { idx ->
-                            val m = groupItems[idx]; val originalIdx = pathIndexMap[m.path] ?: 0; val isVideo = remember(m.path, m.type) { m.type == TYPE_VIDEOS || m.path.substringAfterLast('.',"").lowercase() in VIDEO_EXTENSIONS }
-                            val isSelected by remember(m.path) { derivedStateOf { m.path in selectedPaths } }
-                            MediaListRow(
-                                medium = m,
-                                isVideo = isVideo,
-                                isSelected = isSelected,
-                                hasSelection = hasSelection,
-                                cardColor = mediaCardColor,
-                                fileSizeLabel = remember(m.size) { formatFileSize(m.size) },
-                                onClick = {
-                                    if (hasSelection || pickMultiple) {
-                                        selectDisplayItem(m.path, originalIdx)
-                                    } else openViewer(originalIdx)
-                                },
-                                onLongClick = {
-                                    selectDisplayItem(m.path, originalIdx, startSelection = true)
-                                },
-                                onSwipeToSelect = { selectedPaths = selectedPaths + m.path },
-                                onBoundsChanged = { r -> dragSelection.registerItemBounds(m.path, r) },
-                                onBoundsRemoved = { dragSelection.unregisterItemBounds(m.path) },
-                                showRating = org.fossify.gallery.compose.util.ThumbnailOverlayState.showRating,
-                                showVideoDuration = org.fossify.gallery.compose.util.ThumbnailOverlayState.showVideoDuration,
-                                compact = viewSettings.listDensity == ListDensity.COMPACT,
-                                roundedCorners = viewSettings.roundedCorners,
-                                hasTag = m.path in taggedPaths,
-                                tags = state.tagsByPath[m.path].orEmpty(),
-                                onTagClick = if (!hasSelection && !pickMultiple) onTagClick else null,
-                                markFavorite = markFavoriteItems,
-                            )
-                        }
-                    }
-                        }
-                    }
-                }
-                FastScrollBar(
-                    state = listState,
-                    positionLabel = { index -> currentBreadcrumb(groupRows, index) },
-                    modifier = Modifier.align(Alignment.CenterEnd).padding(vertical = 8.dp),
-                )
-                }
-                }
-                }
-                }
-            }
+        }
         }
         }
         }

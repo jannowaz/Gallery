@@ -150,7 +150,6 @@
     <ID>CyclomaticComplexMethod:TagHierarchyPickerDialog.kt$@Composable fun TagHierarchyPickerDialog( title: String, subtitle: String? = null, tags: Collection&lt;String&gt;, hierarchy: Map&lt;String, String&gt;, tagCounts: Map&lt;String, Int&gt; = emptyMap(), allowNoParent: Boolean = false, noParentLabel: String? = null, confirmLabel: String, onDismiss: () -&gt; Unit, onConfirm: (String?) -&gt; Unit, )</ID>
     <ID>CyclomaticComplexMethod:TagInputDialog.kt$@OptIn(ExperimentalLayoutApi::class) @Composable fun TagInputDialog( initialTags: Set&lt;String&gt;, onAddTag: (String) -&gt; Unit, onRemoveTag: (String) -&gt; Unit, suggestedTags: List&lt;String&gt; = emptyList(), suggestedTagCounts: Map&lt;String, Int&gt; = emptyMap(), recentTags: List&lt;String&gt; = emptyList(), folderSuggestions: Map&lt;String, Int&gt; = emptyMap(), tagHierarchy: Map&lt;String, String&gt; = emptyMap(), onSetTagParent: (String, String?) -&gt; Unit = { _, _ -&gt; }, onDismiss: () -&gt; Unit, batchCount: Int = 1, )</ID>
     <ID>CyclomaticComplexMethod:UndoBar.kt$@Composable fun UndoBar(modifier: Modifier = Modifier, onActionLabel: ((UndoAction) -&gt; String)? = null)</ID>
-    <ID>CyclomaticComplexMethod:VideoPage.kt$@Composable fun VideoPage( path: String, scalingMode: Int, onScalingModeChange: (Int) -&gt; Unit, onToggleUi: () -&gt; Unit = {}, onZoomChange: (Boolean) -&gt; Unit = {}, showUi: Boolean = true, onInteract: () -&gt; Unit = {}, modifier: Modifier = Modifier, isCurrentPage: Boolean = true, /** Monotonically increasing request id; only the visible page reacts to it. */ captureFrameRequest: Int = 0, onCaptureFrame: (Bitmap?) -&gt; Unit = {}, sessionMuted: Boolean? = null, onMutedChange: ((Boolean) -&gt; Unit)? = null, sessionPlaybackSpeed: Float? = null, onPlaybackSpeedChange: ((Float) -&gt; Unit)? = null, )</ID>
     <ID>CyclomaticComplexMethod:VideoTrimmerSheet.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun VideoTrimmerSheet( videoPath: String, onDismiss: () -&gt; Unit, onTrimSaved: (String) -&gt; Unit, )</ID>
     <ID>CyclomaticComplexMethod:ViewSettingsSummary.kt$@Composable fun viewSettingsSummary(settings: ViewSettings, includeGrouping: Boolean = true): String</ID>
     <ID>CyclomaticComplexMethod:ViewerOverlays.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun ViewerActionSheet( currentPath: String, currentIsVideo: Boolean, currentRating: Int, showRatingOverlay: Boolean, slideshowActive: Boolean, canRunSlideshow: Boolean, onRate: (Int) -&gt; Unit, onToggleRatingOverlay: () -&gt; Unit, onRename: () -&gt; Unit, onCopy: () -&gt; Unit, onMove: () -&gt; Unit, onInfo: () -&gt; Unit, onTrimVideo: () -&gt; Unit, onVideoDisplaySettings: () -&gt; Unit, onSaveFrame: () -&gt; Unit, onOpenFrameGrabber: () -&gt; Unit, onEditImage: () -&gt; Unit, onToggleSlideshow: () -&gt; Unit, onOpenTags: () -&gt; Unit, onDismiss: () -&gt; Unit, )</ID>
@@ -159,8 +158,6 @@
     <ID>CyclomaticComplexMethod:XmpWriter.kt$XmpWriter$private fun writeXmpToJpeg(file: File, xmpData: ByteArray): Boolean</ID>
     <ID>EmptyCatchBlock:MediaFetcher.kt$MediaFetcher${ }</ID>
     <ID>EmptyElseBlock:GifInspect.kt$GifInspect$if (s.read() &lt; 0) return</ID>
-    <ID>EmptyElseBlock:VideoPage.kt$if (player.playbackState == Player.STATE_ENDED) player.seekTo(0)</ID>
-    <ID>EmptyElseBlock:VideoPage.kt$if (seekPos &gt;= 0) positionMs = seekPos.toLong()</ID>
     <ID>EmptyFunctionBlock:ImagePage.kt$&lt;no name provided&gt;${}</ID>
     <ID>EmptyFunctionBlock:SettingsBackupRoundTripTest.kt$SettingsBackupRoundTripTest.FakeEditor${}</ID>
     <ID>ExplicitItLambdaParameter:CompressionReviewScreen.kt${ _, it -&gt; "d${it.id}" }</ID>
@@ -172,7 +169,6 @@
     <ID>LambdaParameterEventTrailing:ActiveFilterChip.kt$onRemove</ID>
     <ID>LambdaParameterEventTrailing:SelectionRow.kt$onClick</ID>
     <ID>LambdaParameterInRestartableEffect:AlbumsScreen.kt$onSelectionActiveChanged</ID>
-    <ID>LambdaParameterInRestartableEffect:ComposeExplorerActivity.kt$onContentReady</ID>
     <ID>LambdaParameterInRestartableEffect:ComposeExternalViewerActivity.kt$onTempFileCreated</ID>
     <ID>LambdaParameterInRestartableEffect:CompressionReviewScreen.kt$onDismiss</ID>
     <ID>LambdaParameterInRestartableEffect:ExplorerScreen.kt$onPathChange</ID>
@@ -184,12 +180,9 @@
     <ID>LambdaParameterInRestartableEffect:FolderRenameDialog.kt$onDismiss</ID>
     <ID>LambdaParameterInRestartableEffect:FolderRenameDialog.kt$onRenamed</ID>
     <ID>LambdaParameterInRestartableEffect:ImagePage.kt$onZoomChange</ID>
-    <ID>LambdaParameterInRestartableEffect:MediaScreen.kt$onFirstVisibleMediaPathChanged</ID>
     <ID>LambdaParameterInRestartableEffect:MediaScreen.kt$onSelectionActiveChanged</ID>
     <ID>LambdaParameterInRestartableEffect:RenameDialog.kt$onDismiss</ID>
     <ID>LambdaParameterInRestartableEffect:RenameDialog.kt$onRenamed</ID>
-    <ID>LambdaParameterInRestartableEffect:VideoPage.kt$onCaptureFrame</ID>
-    <ID>LambdaParameterInRestartableEffect:VideoPage.kt$onZoomChange</ID>
     <ID>LargeClass:Config.kt$Config : BaseConfig</ID>
     <ID>LargeClass:MediaFetcher.kt$MediaFetcher</ID>
     <ID>LargeClass:MediaRepository.kt$MediaRepository : MediaRepositoryInterface</ID>
@@ -213,7 +206,6 @@
     <ID>LoopWithTooManyJumpStatements:String.kt$for</ID>
     <ID>LoopWithTooManyJumpStatements:String.kt$while</ID>
     <ID>LoopWithTooManyJumpStatements:VideoFrameExtractor.kt$VideoFrameExtractor$for</ID>
-    <ID>LoopWithTooManyJumpStatements:VideoPage.kt$while</ID>
     <ID>MagicNumber:Activity.kt$10</ID>
     <ID>MagicNumber:Activity.kt$11</ID>
     <ID>MagicNumber:Activity.kt$360</ID>
@@ -312,10 +304,6 @@
     <ID>MagicNumber:Color.kt$0xFFFFD8ED</ID>
     <ID>MagicNumber:Color.kt$0xFFFFDAD6</ID>
     <ID>MagicNumber:Color.kt$0xFFFFFFFF</ID>
-    <ID>MagicNumber:ComposeExplorerActivity.kt$ComposeExplorerActivity$24</ID>
-    <ID>MagicNumber:ComposeExplorerActivity.kt$ComposeExplorerActivity$34</ID>
-    <ID>MagicNumber:ComposeExplorerActivity.kt$ComposeExplorerActivity$60</ID>
-    <ID>MagicNumber:ComposeExplorerActivity.kt$ComposeExplorerActivity.&lt;no name provided&gt;$1500</ID>
     <ID>MagicNumber:ComposeExternalViewerActivity.kt$64</ID>
     <ID>MagicNumber:ComposeExternalViewerActivity.kt$8</ID>
     <ID>MagicNumber:CompressionEngine.kt$CompressionEngine$500</ID>
@@ -611,8 +599,6 @@
     <ID>MagicNumber:VideoFrameExtractor.kt$VideoFrameExtractor$64</ID>
     <ID>MagicNumber:VideoFrameExtractor.kt$VideoFrameExtractor$8</ID>
     <ID>MagicNumber:VideoFrameExtractor.kt$VideoFrameExtractor$95</ID>
-    <ID>MagicNumber:VideoPage.kt$27</ID>
-    <ID>MagicNumber:VideoPage.kt$3</ID>
     <ID>MagicNumber:VideoTrimmerSheet.kt$250</ID>
     <ID>MagicNumber:VideoTrimmerSheet.kt$3600L</ID>
     <ID>MagicNumber:VideoTrimmerSheet.kt$60L</ID>
@@ -736,37 +722,12 @@
     <ID>MaxLineLength:CollectionsScreen.kt$selectedCollectionIds = selectionForAll(selectedCollectionIds, selectableCollectionIds, invert = true)</ID>
     <ID>MaxLineLength:CollectionsScreen.kt$var minSizeMb by remember(editingColl) { mutableStateOf(((editingColl?.minSize ?: 0L) / 1_000_000L).takeIf { it &gt; 0L }?.toString().orEmpty()) }</ID>
     <ID>MaxLineLength:CollectionsScreen.kt$var selectedCollectionIds by rememberSaveable(stateSaver = collectionSelectionSaver) { mutableStateOf&lt;Set&lt;String&gt;&gt;(emptySet()) }</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$ComposeExplorerActivity$.</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$ComposeExplorerActivity$Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(48.dp))</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$ComposeExplorerActivity$imagesGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$ComposeExplorerActivity$startActivity</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$ComposeExplorerActivity$try { batchJobItemDB.deleteStale(System.currentTimeMillis() - 24 * 60 * 60 * 1000L) } catch (e: Exception) { android.util.Log.e("Explorer", "Stale batch-job cleanup failed", e) }</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$ComposeExplorerActivity$val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$ComposeExplorerActivity$videosGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$HorizontalPager</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$allFilesLauncher.launch(Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${ctx.packageName}")))</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$if</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$isBackEnabled = uiState.hasActiveFilter || searchActive || suspendedSearchOriginTab &gt;= 0 || uiState.tabHistory.isNotEmpty() || (uiState.selectedTab != 1 &amp;&amp; !isMediaSelectionActive &amp;&amp; !(uiState.selectedTab == 2 &amp;&amp; explorerCanGoUp))</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$onClearPathFilter = { mainVM.setPathFilter(null); mainVM.setTextQueryFilter(""); mainVM.setExcludePathFilter(null); mainVM.setCollectionName(null); mainVM.setCollectionMediaPaths(emptySet()); mainVM.setFolderFilterName(null) }</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$onConfirmPick = { paths -&gt; (ctx as? android.app.Activity)?.let { org.fossify.gallery.helpers.PickIntent.returnMultiple(it, paths) } }</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$onFolderClick = { dir -&gt; openFolderChecked(ctx, dir.path) { navController.navigate(Folder(dir.path)) { launchSingleTop = true } } }</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$onFolderClick = { path -&gt; openFolderChecked(ctx, path) { navController.navigate(Folder(path)) { launchSingleTop = true } } }</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$onNavigate = { route -&gt; scope.launch { drawerState.close(); navController.navigate(route) { launchSingleTop = true } } }</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$onNavigateToViewer = { paths, startIndex -&gt; org.fossify.gallery.helpers.PickIntent.handleMediaTap(ctx as? android.app.Activity, paths, startIndex) { navController.navigateToViewer(paths, startIndex) } }</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$onOpenCollection = { collection -&gt; scope.launch { drawerState.close(); applyCollection(collection, mainVM, ctx) } }</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$onOpenFolder = { path -&gt; scope.launch { drawerState.close(); mainVM.setExplorerPath(path); mainVM.setSelectedTab(2) } }</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$onOpenRating = { rating -&gt; scope.launch { drawerState.close(); mainVM.clearFilters(); mainVM.setPreFilterTab(0); mainVM.setRatingFilter(rating); mainVM.setSelectedTab(0) } }</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$pickMultiple = (ctx as? android.app.Activity)?.let { org.fossify.gallery.helpers.PickIntent.isPick(it.intent) &amp;&amp; org.fossify.gallery.helpers.PickIntent.allowsMultiple(it.intent) } ?: false</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$try { allFilesLauncher.launch(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) } catch (_: Exception) { }</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$val activityManager = ctx.getSystemService(android.content.Context.ACTIVITY_SERVICE) as? android.app.ActivityManager</ID>
-    <ID>MaxLineLength:ComposeExplorerActivity.kt$val name = if (paths.size == 1) java.io.File(paths.first()).name else ctx.getString(R.string.selected_folders_count, paths.size)</ID>
     <ID>MaxLineLength:CompressionEngine.kt$CompressionEngine$.</ID>
     <ID>MaxLineLength:CompressionEngine.kt$CompressionEngine$suspend</ID>
     <ID>MaxLineLength:CompressionEngine.kt$CompressionEngine$val presentation = Presentation.createForWidthAndHeight(targetWidth, targetHeight, Presentation.LAYOUT_SCALE_TO_FIT)</ID>
     <ID>MaxLineLength:CompressionEngine.kt$CompressionEngine.&lt;no name provided&gt;$override</ID>
     <ID>MaxLineLength:CompressionKeeper.kt$CompressionKeeper$val moved = temp.renameTo(target) || runCatching { temp.copyTo(target, overwrite = false); temp.delete() }.isSuccess</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$(LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView).apply { useController = false }</ID>
-    <ID>MaxLineLength:CompressionReviewScreen.kt$(LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView).apply { useController = true }</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$AsyncImage(model = ImageRequest.Builder(ctx).data(File(path)).build(), contentDescription = stringResource(R.string.compare_before), contentScale = ContentScale.Fit, modifier = modifier)</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$Card</ID>
     <ID>MaxLineLength:CompressionReviewScreen.kt$FilterChip(selected = !showAfter, onClick = { showAfter = false }, label = { Text(stringResource(R.string.compare_before)) })</ID>
@@ -809,7 +770,6 @@
     <ID>MaxLineLength:CompressionReviewViewModel.kt$CompressionReviewViewModel$val newPath = runCatching { CompressionKeeper.keepNew(getApplication(), item.originalPath, item.tempResultPath) }.getOrNull()</ID>
     <ID>MaxLineLength:CompressionReviewViewModel.kt$CompressionReviewViewModel$val referenced = runCatching { getApplication&lt;Application&gt;().compressionReviewDB.getAllTempPaths().toSet() }.getOrDefault(emptySet())</ID>
     <ID>MaxLineLength:CompressionReviewViewModel.kt$CompressionReviewViewModel$viewModelScope.launch(Dispatchers.IO) { item.id?.let { getApplication&lt;Application&gt;().compressionReviewDB.deleteItem(it) } }</ID>
-    <ID>MaxLineLength:CompressionSwipeScreen.kt$(LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView).apply { useController = true }</ID>
     <ID>MaxLineLength:CompressionSwipeScreen.kt$ActionRow(leftText = stringResource(R.string.swipe_keep_original), rightText = stringResource(R.string.swipe_keep_new), onLeft = onKeepOriginal, onRight = onKeepNew)</ID>
     <ID>MaxLineLength:CompressionSwipeScreen.kt$ActionRow(leftText = stringResource(R.string.swipe_skip), rightText = stringResource(R.string.swipe_convert), onLeft = onSkip, onRight = onConvert)</ID>
     <ID>MaxLineLength:CompressionSwipeScreen.kt$Column</ID>
@@ -995,7 +955,6 @@
     <ID>MaxLineLength:ExplorerModelsAndCache.kt$if (e.type == 2 || e.path.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS) agg.videoCount++ else agg.imageCount++</ID>
     <ID>MaxLineLength:ExplorerNameFilterTest.kt$ExplorerNameFilterTest$val item = ExplorerItem(name = "photo.jpg", path = "/sdcard/DCIM/photo.jpg", isDirectory = false, type = TYPE_IMAGES)</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$"$path|${folderSettings.sortBy}|${folderSettings.sortDesc}|${mediaSettings.sortBy}|${mediaSettings.sortDesc}|${mediaSettings.groupBy}|${if (needsTags) "tags" else "no-tags"}"</ID>
-    <ID>MaxLineLength:ExplorerScreen.kt$Crossfade</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$ExplorerContentCache.get("$seedPath|${folderSettings.sortBy}|${folderSettings.sortDesc}|${mediaSettings.sortBy}|${mediaSettings.sortDesc}|${mediaSettings.groupBy}|${if (needsTags) "tags" else "no-tags"}")</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$ExplorerScrollCache.put(currentPath, ExplorerScrollPosition(index, offset, anchorPath.orEmpty()))</ID>
     <ID>MaxLineLength:ExplorerScreen.kt$LaunchedEffect</ID>
@@ -1170,7 +1129,6 @@
     <ID>MaxLineLength:FolderSwipeScreen.kt$Text(stringResource(R.string.swipe_mode_finished), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)</ID>
     <ID>MaxLineLength:FolderSwipeScreen.kt$colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)</ID>
     <ID>MaxLineLength:FolderSwipeScreen.kt$colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f))</ID>
-    <ID>MaxLineLength:FolderSwipeScreen.kt$modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)</ID>
     <ID>MaxLineLength:FolderSwipeScreen.kt$onClick = { onNavigateToViewer?.invoke(loaded.map { it.path }, currentIndex) }</ID>
     <ID>MaxLineLength:FolderSwipeScreen.kt$stringResource(R.string.swipe_mode_position, currentIndex + 1, loaded.size)</ID>
     <ID>MaxLineLength:FoldersMoverScreen.kt$)</ID>
@@ -1467,72 +1425,29 @@
     <ID>MaxLineLength:MediaRepositoryViewerQueries.kt$val dateKey = "CASE WHEN ${col("date_sort_key")} &gt; 0 THEN ${col("date_sort_key")} WHEN ${col("date_taken")} &gt; 0 THEN ${col("date_taken")} ELSE ${col("last_modified")} END"</ID>
     <ID>MaxLineLength:MediaScreen.kt$Crossfade</ID>
     <ID>MaxLineLength:MediaScreen.kt$EmptyState(Icons.Default.Search, stringResource(R.string.no_media_in_folder), subtitle = stringResource(R.string.no_media_in_folder_hint))</ID>
-    <ID>MaxLineLength:MediaScreen.kt$FloatingSectionLabel(currentBreadcrumbLabel, isScrolling, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))</ID>
-    <ID>MaxLineLength:MediaScreen.kt$FloatingSectionLabel(currentBreadcrumbLabelStag, isScrollingStag, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))</ID>
-    <ID>MaxLineLength:MediaScreen.kt$GalleryImage(path = peekPath, contentDescription = peekPath.substringAfterLast('/'), modifier = Modifier.fillMaxWidth(0.92f).fillMaxHeight(0.75f), contentScale = ContentScale.Fit, thumbnailSize = 1024)</ID>
     <ID>MaxLineLength:MediaScreen.kt$GroupBy.TAG -&gt; buildTagGroupRows(media, tagsByPath, hierarchy, groupOrder, onlyTopLevelTags, emptySet(), untaggedLabel)</ID>
-    <ID>MaxLineLength:MediaScreen.kt$IconButton(onClick = { selectedPaths = emptySet() }) { Icon(Icons.Default.Close, stringResource(org.fossify.commons.R.string.cancel), tint = MaterialTheme.colorScheme.onPrimaryContainer) }</ID>
     <ID>MaxLineLength:MediaScreen.kt$LaunchedEffect</ID>
-    <ID>MaxLineLength:MediaScreen.kt$LazyVerticalGrid</ID>
-    <ID>MaxLineLength:MediaScreen.kt$LazyVerticalStaggeredGrid</ID>
-    <ID>MaxLineLength:MediaScreen.kt$Row</ID>
-    <ID>MaxLineLength:MediaScreen.kt$SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = org.fossify.gallery.helpers.toggleGroupKey(collapsedGroupKeys, row.key) }, ratingValue = row.ratingValue, accentColor = row.rootKey?.let { tagAccentColor(it) }, onSelectGroup = { selectGroup(row) })</ID>
-    <ID>MaxLineLength:MediaScreen.kt$SectionHeader(label = row.label, count = if (row.isExpanded) row.exactCount else row.totalCount, depth = row.depth, hasChildren = row.hasChildren, isExpanded = row.isExpanded, onToggle = { collapsedGroupKeys = org.fossify.gallery.helpers.toggleGroupKey(collapsedGroupKeys, row.key) }, ratingValue = row.ratingValue, accentColor = row.rootKey?.let { tagAccentColor(it) }, showGuideLine = true, onSelectGroup = { selectGroup(row) })</ID>
-    <ID>MaxLineLength:MediaScreen.kt$SnackbarHost(hostState=snackbarHostState,modifier=Modifier.align(Alignment.BottomCenter).padding(bottom = if (pendingUndo.isNotEmpty()) 64.dp else 0.dp))</ID>
-    <ID>MaxLineLength:MediaScreen.kt$Surface</ID>
-    <ID>MaxLineLength:MediaScreen.kt$Text("${selectedPaths.size}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(start = 8.dp).weight(1f))</ID>
-    <ID>MaxLineLength:MediaScreen.kt$Triple(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset, firstVisibleMedia)</ID>
-    <ID>MaxLineLength:MediaScreen.kt$Triple(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, firstVisibleMedia)</ID>
-    <ID>MaxLineLength:MediaScreen.kt$Triple(mosaicState.firstVisibleItemIndex, mosaicState.firstVisibleItemScrollOffset, firstVisibleMedia)</ID>
-    <ID>MaxLineLength:MediaScreen.kt$VideoThumbnail(videoPath = peekPath, modifier = Modifier.fillMaxWidth(0.92f).fillMaxHeight(0.75f), contentScale = ContentScale.Fit, thumbnailSize = 1024)</ID>
     <ID>MaxLineLength:MediaScreen.kt$android.util.Log.e("MediaScreen", "Paging refresh failed; retrying ($attempt/2)", refreshState.error)</ID>
-    <ID>MaxLineLength:MediaScreen.kt$androidx.compose.material3</ID>
-    <ID>MaxLineLength:MediaScreen.kt$ctx.toast(res.getString(R.string.media_added_to_collection, batch.size, collection.name))</ID>
-    <ID>MaxLineLength:MediaScreen.kt$ctx.withRecycleBinDeletePasswordCheck { viewModel.softDeletePaths(d); UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE)); selectedPaths = emptySet() }</ID>
-    <ID>MaxLineLength:MediaScreen.kt$dismissButton = { androidx.compose.material3.TextButton(onClick = { showSaveCollection = false }) { Text(stringResource(org.fossify.commons.R.string.cancel)) } }</ID>
-    <ID>MaxLineLength:MediaScreen.kt$dismissButton = { androidx.compose.material3.TextButton(onClick = { showUpdateCollection = false }) { Text(stringResource(org.fossify.commons.R.string.cancel)) } }</ID>
-    <ID>MaxLineLength:MediaScreen.kt$excludedPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(excludePathFilter?.toList() ?: emptyList())</ID>
     <ID>MaxLineLength:MediaScreen.kt$hasFilter &amp;&amp; filteredSelectionCount != null -&gt; stringResource(R.string.selection_scope_results, filteredSelectionCount!!)</ID>
-    <ID>MaxLineLength:MediaScreen.kt$if</ID>
-    <ID>MaxLineLength:MediaScreen.kt$if (showFolderPicker) { val batch=selectedPaths.toList(); FolderPickerSheet(isMoveOperation=folderPickerIsMove,sourcePaths=batch,onDismiss={showFolderPicker=false;selectedPaths=emptySet()}) }</ID>
-    <ID>MaxLineLength:MediaScreen.kt$if (showRenameDialog) { val batch=selectedPaths.toList(); RenameDialog(paths=batch,onRenamed={mapping-&gt;selectedPaths=selectedPaths.map{mapping[it]?:it}.toSet()},onDismiss={showRenameDialog=false;viewModel.silentRefresh()}) }</ID>
-    <ID>MaxLineLength:MediaScreen.kt$includedPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(pathFilter?.toList() ?: emptyList())</ID>
-    <ID>MaxLineLength:MediaScreen.kt$is GroupRow.SectionHeader</ID>
-    <ID>MaxLineLength:MediaScreen.kt$items</ID>
-    <ID>MaxLineLength:MediaScreen.kt$kotlinx.coroutines.delay((100 / kotlin.math.abs(s).coerceAtLeast(0.5f)).toLong().coerceIn(50, 150))</ID>
-    <ID>MaxLineLength:MediaScreen.kt$kotlinx.coroutines.delay((120 / kotlin.math.abs(s).coerceAtLeast(0.5f)).toLong().coerceIn(60, 200))</ID>
     <ID>MaxLineLength:MediaScreen.kt$listOf(GroupRow.SectionHeader(key, g.label, 0, g.items.size, g.items.size, false, true, mediaPaths = g.items.mapTo(linkedSetOf()) { it.path }), GroupRow.Items(key, g.items))</ID>
-    <ID>MaxLineLength:MediaScreen.kt$mediaPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(batch.toList())</ID>
     <ID>MaxLineLength:MediaScreen.kt$mutableIntStateOf(with(density) { androidx.compose.material3.TopAppBarDefaults.TopAppBarExpandedHeight.roundToPx() })</ID>
     <ID>MaxLineLength:MediaScreen.kt$onDelete = { if (ctx.config.skipDeleteConfirmation) { val d = selectedPaths.toSet(); viewModel.softDeletePaths(d); UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE)); selectedPaths = emptySet() } else showDeleteConfirm = true }</ID>
     <ID>MaxLineLength:MediaScreen.kt$onInvert = { scope.launch { val all = mediaOverride?.map { it.path }?.toSet() ?: (if (hasFilter) viewModel.activePathsSortedFiltered().toSet() else viewModel.activePaths()); selectedPaths = all - selectedPaths } }</ID>
     <ID>MaxLineLength:MediaScreen.kt$onNavigateToViewerFast: ((startPath: String, resolveWindow: suspend () -&gt; org.fossify.gallery.helpers.ViewerPathWindow, loadMore: suspend (String, ViewerLoadDirection, Int) -&gt; org.fossify.gallery.helpers.ViewerPathChunk) -&gt; Unit)? = null</ID>
     <ID>MaxLineLength:MediaScreen.kt$onSelectAll = { scope.launch { selectedPaths = mediaOverride?.map { it.path }?.toSet() ?: (if (hasFilter) viewModel.activePathsSortedFiltered().toSet() else viewModel.activePaths()) } }</ID>
     <ID>MaxLineLength:MediaScreen.kt$resultCount = if (showPaged) (filteredSelectionCount ?: lazyPagingItems.itemCount) else displayMedia.size</ID>
-    <ID>MaxLineLength:MediaScreen.kt$scope.launch { withContext(Dispatchers.IO) { repo.insertCollection(coll); repo.refreshCollectionsCache() }; ctx.toast(res.getString(R.string.collection_saved, n)) }</ID>
     <ID>MaxLineLength:MediaScreen.kt$selectAllLabel = stringResource(if (hasFilter) R.string.action_select_all_results else R.string.action_select_all)</ID>
     <ID>MaxLineLength:MediaScreen.kt$selectionMode == MediaSelectionMode.RANGE &amp;&amp; anchor != null -&gt; selectedPaths + pathsInDisplayRange(anchor, targetIndex)</ID>
     <ID>MaxLineLength:MediaScreen.kt$selectionMode == MediaSelectionMode.RANGE -&gt; rangeAnchorPath?.let { stringResource(R.string.selection_range_from, java.io.File(it).name) }</ID>
-    <ID>MaxLineLength:MediaScreen.kt$showVideoDuration = org.fossify.gallery.compose.util.ThumbnailOverlayState.showVideoDuration</ID>
     <ID>MaxLineLength:MediaScreen.kt$subtitle = stringResource(if (hasFilter) R.string.no_results_hint else R.string.no_media_found_hint)</ID>
-    <ID>MaxLineLength:MediaScreen.kt$text = { androidx.compose.material3.OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text(stringResource(R.string.name)) }) }</ID>
     <ID>MaxLineLength:MediaScreen.kt$title = if (hasFilter) stringResource(R.string.no_results) else stringResource(R.string.no_media_found)</ID>
     <ID>MaxLineLength:MediaScreen.kt$val</ID>
-    <ID>MaxLineLength:MediaScreen.kt$val currentBreadcrumbLabel by remember(groupRows) { derivedStateOf { currentBreadcrumb(groupRows, gridState.firstVisibleItemIndex) } }</ID>
-    <ID>MaxLineLength:MediaScreen.kt$val currentBreadcrumbLabelStag by remember(groupRows) { derivedStateOf { currentBreadcrumb(groupRows, mosaicState.firstVisibleItemIndex) } }</ID>
     <ID>MaxLineLength:MediaScreen.kt$val fullListTagGrouping = mediaOverride == null &amp;&amp; activeCollectionName != null &amp;&amp; viewSettings.groupBy == GroupBy.TAG</ID>
-    <ID>MaxLineLength:MediaScreen.kt$val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = initialOverrideScrollIndex, initialFirstVisibleItemScrollOffset = initialOverrideScrollOffset)</ID>
     <ID>MaxLineLength:MediaScreen.kt$val hasCollapsedPagedGroups = collapsedPagedRatingKeysState.value.isNotEmpty() &amp;&amp; groupSummaries.isNotEmpty()</ID>
     <ID>MaxLineLength:MediaScreen.kt$val hasFilter = ratingFilter &gt; 0 || tagFilterNames != null || pathFilter != null || excludePathFilter != null || minSizeFilter &gt; 0 || dateRangeFilter &gt; 0 || addedSince &gt; 0L || typeFilter &gt; 0 || additionalMediaPaths.isNotEmpty() || activeCollectionName != null || reviewFilter != MediaReviewFilter.NONE || textQuery.isNotBlank()</ID>
-    <ID>MaxLineLength:MediaScreen.kt$val id = repo.insertCollection(current.copy(mediaPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(merged)))</ID>
-    <ID>MaxLineLength:MediaScreen.kt$val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialOverrideScrollIndex, initialFirstVisibleItemScrollOffset = initialOverrideScrollOffset)</ID>
-    <ID>MaxLineLength:MediaScreen.kt$val m = groupItems[idx]</ID>
     <ID>MaxLineLength:MediaScreen.kt$val mediaCardColor = when (viewSettings.displayMode) { DisplayMode.COMPACT,DisplayMode.NORMAL-&gt;MaterialTheme.colorScheme.surface; DisplayMode.DARK-&gt;MaterialTheme.colorScheme.surfaceVariant }</ID>
-    <ID>MaxLineLength:MediaScreen.kt$val mosaicState = rememberLazyStaggeredGridState(initialFirstVisibleItemIndex = initialOverrideScrollIndex, initialFirstVisibleItemScrollOffset = initialOverrideScrollOffset)</ID>
     <ID>MaxLineLength:MediaScreen.kt$val onSaveAsCollection: (() -&gt; Unit)? = { if (activeCollectionName != null) showUpdateCollection = true else showSaveCollection = true }</ID>
-    <ID>MaxLineLength:MediaScreen.kt$val question = res.getString(if (ctx.config.useRecycleBin) org.fossify.commons.R.string.move_to_recycle_bin_confirmation else org.fossify.commons.R.string.deletion_confirmation, itemsText)</ID>
     <ID>MaxLineLength:MediaScreen.kt$viewModel.setFilter(ratingFilter, tagFilterNames, pathFilter, excludePathFilter, minSizeFilter, dateRangeFilter, typeFilter, tagMatchAll, effectiveAdditionalPaths, addedSince, reviewFilter, textQuery)</ID>
-    <ID>MaxLineLength:MediaScreen.kt$when (dateRangeFilter) { 1 -&gt; add(res.getString(R.string.today)); 2 -&gt; add(res.getString(R.string.date_range_last_7_days)); 3 -&gt; add(res.getString(R.string.date_range_last_30_days)); 4 -&gt; add(res.getString(R.string.date_range_last_year)) }</ID>
     <ID>MaxLineLength:MediaScreenPagedContent.kt$FloatingSectionLabel(currentLabel, isScrolling, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))</ID>
     <ID>MaxLineLength:MediaScreenPagedContent.kt$FloatingSectionLabel(currentLabelStag, isScrollingStag, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))</ID>
     <ID>MaxLineLength:MediaScreenPagedContent.kt$LazyVerticalGrid</ID>
@@ -2023,43 +1938,6 @@
     <ID>MaxLineLength:VideoFrameExtractor.kt$VideoFrameExtractor$val bmp = try { r.getFrameAtTime(t * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC) } catch (_: Exception) { null }</ID>
     <ID>MaxLineLength:VideoFrameExtractor.kt$VideoFrameExtractor$val dur = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: return@withContext emptyList()</ID>
     <ID>MaxLineLength:VideoFrameExtractor.kt$VideoFrameExtractor$val gray = DoubleArray(w * h) { val c = px[it]; 0.299 * (c shr 16 and 0xff) + 0.587 * (c shr 8 and 0xff) + 0.114 * (c and 0xff) }</ID>
-    <ID>MaxLineLength:VideoPage.kt$(android.view.LayoutInflater.from(ctx).inflate(R.layout.compose_video_player_view, null) as androidx.media3.ui.PlayerView)</ID>
-    <ID>MaxLineLength:VideoPage.kt$)</ID>
-    <ID>MaxLineLength:VideoPage.kt$.</ID>
-    <ID>MaxLineLength:VideoPage.kt$AnimatedVisibility</ID>
-    <ID>MaxLineLength:VideoPage.kt$Box</ID>
-    <ID>MaxLineLength:VideoPage.kt$Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions), tint = Color.White, modifier = Modifier.size(22.dp))</ID>
-    <ID>MaxLineLength:VideoPage.kt$IconButton</ID>
-    <ID>MaxLineLength:VideoPage.kt$Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Scrim.a60).padding(horizontal = 12.dp, vertical = 8.dp).navigationBarsPadding()</ID>
-    <ID>MaxLineLength:VideoPage.kt$Text(stringResource(R.string.trim_save), color = if (validRange) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.4f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)</ID>
-    <ID>MaxLineLength:VideoPage.kt$Text(stringResource(org.fossify.commons.R.string.cancel), color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelLarge)</ID>
-    <ID>MaxLineLength:VideoPage.kt$ZoomMinimap(zoom, modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 72.dp, end = 12.dp))</ID>
-    <ID>MaxLineLength:VideoPage.kt$android.app.PictureInPictureParams.Builder().setAspectRatio(pipAspect ?: android.util.Rational(16, 9)).build()</ID>
-    <ID>MaxLineLength:VideoPage.kt$bufCap = maxOf(bufCap, fmt.getInteger(android.media.MediaFormat.KEY_MAX_INPUT_SIZE))</ID>
-    <ID>MaxLineLength:VideoPage.kt$colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color.White.copy(alpha = 0.3f))</ID>
-    <ID>MaxLineLength:VideoPage.kt$colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = MaterialTheme.colorScheme.primary, inactiveTrackColor = Color.White.copy(alpha = 0.3f))</ID>
-    <ID>MaxLineLength:VideoPage.kt$ctx.toast(res.getString(R.string.error_generic, e.message ?: e.javaClass.simpleName), android.widget.Toast.LENGTH_SHORT)</ID>
-    <ID>MaxLineLength:VideoPage.kt$ctx.toast(res.getString(R.string.saved_as, candidate.name), android.widget.Toast.LENGTH_SHORT)</ID>
-    <ID>MaxLineLength:VideoPage.kt$if (!isPlaying) { if (player.playbackState == Player.STATE_ENDED) player.seekTo(0); player.play() }</ID>
-    <ID>MaxLineLength:VideoPage.kt$if (ctx.config.rememberLastVideoPosition &amp;&amp; !nearEnd) ctx.config.saveLastVideoPosition(path, player.currentPosition.toInt())</ID>
-    <ID>MaxLineLength:VideoPage.kt$info.flags</ID>
-    <ID>MaxLineLength:VideoPage.kt$modifier = Modifier.size(width = 160.dp, height = 90.dp).privacyBlur(BlurRadius.scrubPreview, BlurState.enabled)</ID>
-    <ID>MaxLineLength:VideoPage.kt$onClick = { if (isPlaying) player.pause() else { if (player.playbackState == Player.STATE_ENDED) player.seekTo(0); player.play() }; onInteract() }</ID>
-    <ID>MaxLineLength:VideoPage.kt$onClick = { playbackSpeed = nextSpeed; player.setPlaybackSpeed(nextSpeed); moreControlsOpen = false; onInteract() }</ID>
-    <ID>MaxLineLength:VideoPage.kt$onValueChangeFinished = { if (seekPos &gt;= 0) positionMs = seekPos.toLong(); seekPos = -1f; scrubFraction = -1f }</ID>
-    <ID>MaxLineLength:VideoPage.kt$runCatching { android.media.MediaScannerConnection.scanFile(ctx, arrayOf(candidate.absolutePath), null, null) }</ID>
-    <ID>MaxLineLength:VideoPage.kt$throw IllegalStateException("Unsupported video/audio tracks for MP4 trimming")</ID>
-    <ID>MaxLineLength:VideoPage.kt$try { activity.setPictureInPictureParams(android.app.PictureInPictureParams.Builder().setAutoEnterEnabled(false).build()) } catch (_: Exception) { }</ID>
-    <ID>MaxLineLength:VideoPage.kt$val dstTrack = if (trackIdx in indexMap.indices) indexMap[trackIdx] else -1</ID>
-    <ID>MaxLineLength:VideoPage.kt$val dur = try { retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L } catch (_: Exception) { 0L }</ID>
-    <ID>MaxLineLength:VideoPage.kt$val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toFloatOrNull() ?: 0f</ID>
-    <ID>MaxLineLength:VideoPage.kt$val mux = android.media.MediaMuxer(candidate.absolutePath, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)</ID>
-    <ID>MaxLineLength:VideoPage.kt$val previewBmp = frameCache[(scrubFraction * (frameCache.size - 1)).toInt().coerceIn(0, frameCache.size - 1)]</ID>
-    <ID>MaxLineLength:VideoPage.kt$val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0</ID>
-    <ID>MaxLineLength:VideoPage.kt$val seekMs = (if (kotlin.math.abs(ns - trimStartMs) &gt;= kotlin.math.abs(ne - endMs)) ns else ne).toLong()</ID>
-    <ID>MaxLineLength:VideoPage.kt$val w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toFloatOrNull() ?: 0f</ID>
-    <ID>MaxLineLength:VideoPage.kt$withContext(Dispatchers.Main) { ctx.toast(R.string.trim_invalid_range, android.widget.Toast.LENGTH_SHORT) }</ID>
-    <ID>MaxLineLength:VideoPage.kt$}</ID>
     <ID>MaxLineLength:VideoTrimmerSheet.kt$(LayoutInflater.from(context).inflate(R.layout.compose_video_player_view, null) as PlayerView)</ID>
     <ID>MaxLineLength:VideoTrimmerSheet.kt$&lt;no name provided&gt;$override</ID>
     <ID>MaxLineLength:VideoTrimmerSheet.kt$MediaScannerConnection.scanFile(ctx.applicationContext, arrayOf(outFile.absolutePath), arrayOf("video/mp4"), null)</ID>
@@ -2089,31 +1967,17 @@
     <ID>MaxLineLength:ViewerOverlays.kt$val rawWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0</ID>
     <ID>MaxLineLength:ViewerOverlays.kt$val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0</ID>
     <ID>MaxLineLength:ViewerScreen.kt$Column</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$Icon(Icons.AutoMirrored.Filled.Label, stringResource(R.string.action_tags), tint = Color.White)</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = Color(0xFFFFB4AB))</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), tint = if (isFavorite) FavoriteColor else Color.White)</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$IconButton(onClick = { uiInteractionTick++; showActionSheet = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions), tint = Color.White) }</ID>
     <ID>MaxLineLength:ViewerScreen.kt$Row</ID>
     <ID>MaxLineLength:ViewerScreen.kt$Surface</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$Text(stringResource(R.string.viewer_gesture_hint_brightness), color = Color.White, style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center)</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$Text(stringResource(R.string.viewer_gesture_hint_down), color = Color.White, style = MaterialTheme.typography.bodySmall)</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$Text(stringResource(R.string.viewer_gesture_hint_tap), color = Color.White, style = MaterialTheme.typography.bodySmall)</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$Text(stringResource(R.string.viewer_gesture_hint_up), color = Color.White, style = MaterialTheme.typography.bodySmall)</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$Text(stringResource(R.string.viewer_gesture_hint_volume), color = Color.White, style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center)</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$android.media.MediaScannerConnection.scanFile(ctx, arrayOf(output.absolutePath), arrayOf("image/jpeg"), null)</ID>
     <ID>MaxLineLength:ViewerScreen.kt$animate(dragOffset, 0f, animationSpec = AppMotion.gestureSpring) { v, _ -&gt; dragOffset = v }</ID>
     <ID>MaxLineLength:ViewerScreen.kt$captureFrameRequest = if (page == pagerState.currentPage &amp;&amp; path == captureFramePath) captureFrameRequest else 0</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$check(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, stream)) { "Could not encode screenshot" }</ID>
     <ID>MaxLineLength:ViewerScreen.kt$controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, res.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$ctx.toast(res.getString(R.string.error_generic, res.getString(R.string.frame_capture_failed)), Toast.LENGTH_SHORT)</ID>
     <ID>MaxLineLength:ViewerScreen.kt$dragOffset = if (ctx.config.allowDownGesture) nextOffset else nextOffset.coerceAtMost(0f)</ID>
     <ID>MaxLineLength:ViewerScreen.kt$extendedDetailsText = if (ctx.config.showExtendedDetails) withContext(Dispatchers.IO) { buildExtendedDetailsText(ctx, currentPath, currentIsVideo) } else ""</ID>
     <ID>MaxLineLength:ViewerScreen.kt$if</ID>
     <ID>MaxLineLength:ViewerScreen.kt$if (crossed &amp;&amp; !dismissThresholdCrossed) haptic(HapticFeedbackType.GestureThresholdActivate)</ID>
     <ID>MaxLineLength:ViewerScreen.kt$if (ctx.config.hideSystemUI) androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).show(androidx.core.view.WindowInsetsCompat.Type.systemBars())</ID>
     <ID>MaxLineLength:ViewerScreen.kt$if (ctx.config.keepScreenOn) window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$imageVector = if (i &lt;= currentRating) Icons.Default.Star else Icons.Default.StarBorder</ID>
     <ID>MaxLineLength:ViewerScreen.kt$isBackEnabled = slideshowActive || showSlideshowDialog || infoDialogPath != null || showActionSheet || showRateAndTagSheet || showVideoSettings || showFolderPicker || showRenameDialog</ID>
     <ID>MaxLineLength:ViewerScreen.kt$modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp, start = 16.dp, end = 16.dp)</ID>
     <ID>MaxLineLength:ViewerScreen.kt$val audioManager = remember { ctx.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager }</ID>
@@ -2121,8 +1985,6 @@
     <ID>MaxLineLength:ViewerScreen.kt$val current = if (attrs.screenBrightness in 0f..1f) attrs.screenBrightness else 0.5f</ID>
     <ID>MaxLineLength:ViewerScreen.kt$val hasModalOpen = showActionSheet || showRateAndTagSheet || showRenameDialog || showFolderPicker || infoDialogPath != null || showDeleteConfirm</ID>
     <ID>MaxLineLength:ViewerScreen.kt$val maxVol = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$val question = stringResource(if (ctx.config.useRecycleBin) org.fossify.commons.R.string.are_you_sure_recycle_bin else org.fossify.commons.R.string.are_you_sure_delete)</ID>
-    <ID>MaxLineLength:ViewerScreen.kt$val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", targetFile)</ID>
     <ID>MaxLineLength:ViewerScreen.kt$window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES }</ID>
     <ID>MaxLineLength:ViewerWindowMath.kt$ViewerWindowMath$val merged = (if (direction == ViewerLoadDirection.BEFORE) incoming + current else current + incoming).distinct()</ID>
     <ID>MaxLineLength:WipeCompareImage.kt$Surface</ID>
@@ -2144,13 +2006,9 @@
     <ID>MaxLineLength:ZoomableBox.kt$ZoomState$animate</ID>
     <ID>MaxLineLength:ZoomableBox.kt$ZoomState$if (contentAspect &gt; viewAspect) { dispW = w; dispH = w / contentAspect } else { dispH = h; dispW = h * contentAspect }</ID>
     <ID>MaxLineLength:ZoomableBox.kt$if (!state.isZoomed &amp;&amp; !zoomStartNotified) { zoomStartNotified = true; onZoomGestureStart?.invoke() }</ID>
-    <ID>MayBeConst:VideoPage.kt$val SCALING_FILL_WIDTH = 3</ID>
-    <ID>MayBeConst:VideoPage.kt$val SCALING_FIT = 0</ID>
-    <ID>MayBeConst:VideoPage.kt$val SCALING_ZOOM = 2</ID>
     <ID>ModifierComposed:SelectableModifier.kt$dragSelectionGesture</ID>
     <ID>ModifierMissing:AboutScreen.kt$AboutScreen</ID>
     <ID>ModifierMissing:CleanupHubScreen.kt$CleanupHubScreen</ID>
-    <ID>ModifierMissing:ComposeExplorerActivity.kt$MainScreen</ID>
     <ID>ModifierMissing:CompressionReviewScreen.kt$CompressionReviewScreen</ID>
     <ID>ModifierMissing:CompressionSwipeScreen.kt$CompressionSwipeScreen</ID>
     <ID>ModifierMissing:DuplicateFinderScreen.kt$DuplicateFinderScreen</ID>
@@ -2180,7 +2038,6 @@
     <ID>MultipleEmitters:DuplicateFinderScreen.kt$MarkedBadge</ID>
     <ID>MultipleEmitters:FolderPickerSheet.kt$FolderResultRow</ID>
     <ID>MultipleEmitters:MediaInfoDialog.kt$InfoDivider</ID>
-    <ID>MultipleEmitters:MediaListRow.kt$MediaListRow</ID>
     <ID>MutableStateAutoboxing:CompressionReviewScreen.kt$mutableStateOf(0L)</ID>
     <ID>MutableStateAutoboxing:PersonReviewScreen.kt$mutableStateOf(0L)</ID>
     <ID>MutableStateAutoboxing:SelectableModifier.kt$SelectionDragState$mutableStateOf(0f)</ID>
@@ -2233,9 +2090,6 @@
     <ID>NestedBlockDepth:XmpWriter.kt$XmpWriter$private fun readXmpFromJpeg(file: File): String?</ID>
     <ID>NestedBlockDepth:XmpWriter.kt$XmpWriter$private fun writeXmpToJpeg(file: File, xmpData: ByteArray): Boolean</ID>
     <ID>ParameterNaming:AlbumsScreen.kt$onSelectionActiveChanged</ID>
-    <ID>ParameterNaming:ComposeExplorerActivity.kt$onExplorerCanGoUpChanged</ID>
-    <ID>ParameterNaming:ComposeExplorerActivity.kt$onMarkNewMediaSeen</ID>
-    <ID>ParameterNaming:ComposeExplorerActivity.kt$onMediaSelectionChanged</ID>
     <ID>ParameterNaming:ComposeExternalViewerActivity.kt$onTempFileCreated</ID>
     <ID>ParameterNaming:DuplicateFinderScreen.kt$onApplySelected</ID>
     <ID>ParameterNaming:ExplorerScreen.kt$onCanGoUpChanged</ID>
@@ -2288,7 +2142,6 @@
     <ID>ThrowsCount:ExplorerScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, FlowPreview::class) @Composable fun ExplorerScreen( internalStoragePath: String, nameFilter: String = "", onClearNameFilter: () -&gt; Unit = {}, filterState: LibraryFilterState = LibraryFilterState(), filterActions: LibraryFilterActions = LibraryFilterActions(), modifier: Modifier = Modifier, folderSettings: ViewSettings = ViewSettings(), mediaSettings: ViewSettings = ViewSettings(), onPathChange: (String) -&gt; Unit = {}, onSelectionActiveChanged: (Boolean) -&gt; Unit = {}, onCanGoUpChanged: (Boolean) -&gt; Unit = {}, externalBackHandlerActive: Boolean = false, onNavigateToViewer: (List&lt;String&gt;, Int) -&gt; Unit = { _, _ -&gt; }, initialScrollIndex: Int = 0, initialScrollOffset: Int = 0, onScrollPositionChanged: (Int, Int) -&gt; Unit = { _, _ -&gt; }, // "In Medien öffnen" - opens the Media tab filtered (recursively, via MediaRepository's // directory-prefix LIKE match) to everything under the given folder(s). onOpenInMedia: (Set&lt;String&gt;) -&gt; Unit = {}, onRescan: () -&gt; Unit = {}, onScanMetadata: () -&gt; Unit = {}, onOpenSwipeMode: (String, String?) -&gt; Unit = { _, _ -&gt; }, onOpenPersonReview: (String) -&gt; Unit = {}, onOpenViewSettings: (() -&gt; Unit)? = null, onTagClick: (String) -&gt; Unit = {}, tabIndex: Int? = null, onMediaColumnCountChange: ((Int) -&gt; Unit)? = null, onFolderColumnCountChange: ((Int) -&gt; Unit)? = null, )</ID>
     <ID>ThrowsCount:MainOmniSearchPanel.kt$fun performSearch()</ID>
     <ID>ThrowsCount:MediaViewModel.kt$MediaViewModel$private fun rescanAndLoad()</ID>
-    <ID>ThrowsCount:VideoPage.kt$@Composable fun VideoPage( path: String, scalingMode: Int, onScalingModeChange: (Int) -&gt; Unit, onToggleUi: () -&gt; Unit = {}, onZoomChange: (Boolean) -&gt; Unit = {}, showUi: Boolean = true, onInteract: () -&gt; Unit = {}, modifier: Modifier = Modifier, isCurrentPage: Boolean = true, /** Monotonically increasing request id; only the visible page reacts to it. */ captureFrameRequest: Int = 0, onCaptureFrame: (Bitmap?) -&gt; Unit = {}, sessionMuted: Boolean? = null, onMutedChange: ((Boolean) -&gt; Unit)? = null, sessionPlaybackSpeed: Float? = null, onPlaybackSpeedChange: ((Float) -&gt; Unit)? = null, )</ID>
     <ID>TooGenericExceptionCaught:Activity.kt$e: Exception</ID>
     <ID>TooGenericExceptionCaught:AlbumsViewModel.kt$AlbumsViewModel$e: Exception</ID>
     <ID>TooGenericExceptionCaught:BootScanWorker.kt$BootScanWorker$e: Exception</ID>
@@ -2335,8 +2188,6 @@
     <ID>TooGenericExceptionCaught:StorageAnalysisViewModel.kt$TransformationEngine$e: Exception</ID>
     <ID>TooGenericExceptionCaught:TagBrowserScreen.kt$e: Exception</ID>
     <ID>TooGenericExceptionCaught:UndoManager.kt$UndoManager$e: Exception</ID>
-    <ID>TooGenericExceptionCaught:VideoPage.kt$e: Exception</ID>
-    <ID>TooGenericExceptionCaught:ViewerScreen.kt$e: Exception</ID>
     <ID>TooGenericExceptionCaught:XmpBatch.kt$XmpBatch$e: Exception</ID>
     <ID>TooManyFunctions:Activity.kt$org.fossify.gallery.extensions.Activity.kt</ID>
     <ID>TooManyFunctions:AnalysisCriteria.kt$AnalysisCriteria</ID>
@@ -2367,8 +2218,6 @@
     <ID>TooManyFunctions:ViewSettingsViewModel.kt$ViewSettingsViewModel : AndroidViewModel</ID>
     <ID>TooManyFunctions:XmpWriter.kt$XmpWriter</ID>
     <ID>UnusedParameter:AlbumsViewModel.kt$AlbumsViewModel$dirs: List&lt;Directory&gt;</ID>
-    <ID>UnusedParameter:ComposeExplorerActivity.kt$scope: kotlinx.coroutines.CoroutineScope</ID>
-    <ID>UnusedParameter:ComposeExplorerActivity.kt$settingsMode: SettingsMode</ID>
     <ID>UnusedParameter:GifOptimizer.kt$GifOptimizer$context: Context</ID>
     <ID>UnusedParameter:ImagePage.kt$onClose: () -&gt; Unit = {}</ID>
     <ID>UnusedParameter:MainOmniSearchPanel.kt$onQueryChange: (String) -&gt; Unit</ID>
@@ -2381,7 +2230,6 @@
     <ID>UnusedParameter:SelectableModifier.kt$onSwipeToSelect: () -&gt; Unit = {}</ID>
     <ID>UnusedParameter:SettingsDialogs.kt$conf: org.fossify.gallery.helpers.Config</ID>
     <ID>UnusedParameter:StorageAnalysisViewModel.kt$StorageAnalysisViewModel$losslessOnly: Boolean = true</ID>
-    <ID>UnusedParameter:VideoPage.kt$onScalingModeChange: (Int) -&gt; Unit</ID>
     <ID>UnusedParameter:ZoomableBox.kt$ZoomState$size: IntSize</ID>
     <ID>UnusedPrivateMember:FoldersMoverScreen.kt$private fun uriToPath(uri: Uri, storageRoot: String): String?</ID>
     <ID>UnusedPrivateMember:MediaViewModel.kt$MediaViewModel$private fun applySort(list: List&lt;Medium&gt;): List&lt;Medium&gt;</ID>
@@ -2396,17 +2244,11 @@
     <ID>UnusedPrivateProperty:ViewerScreen.kt$var showPersistentTags by remember { mutableStateOf(true) }</ID>
     <ID>UnusedPrivateProperty:ViewerScreen.kt$var showQuickTags by remember { mutableStateOf(false) }</ID>
     <ID>UnusedPrivateProperty:ViewerScreen.kt$var tagRefreshTrigger by remember { mutableIntStateOf(0) }</ID>
-    <ID>UseCheckOrError:VideoPage.kt$throw IllegalStateException("No media samples found in selected range")</ID>
-    <ID>UseCheckOrError:VideoPage.kt$throw IllegalStateException("Unsupported video/audio tracks for MP4 trimming")</ID>
     <ID>VariableNaming:Activity.kt$val BATCH_SIZE = 50</ID>
     <ID>VariableNaming:Activity.kt$val OTGPath = config.OTGPath</ID>
     <ID>VariableNaming:Context.kt$val OTGPath = config.OTGPath</ID>
     <ID>VariableNaming:MediaFetcher.kt$MediaFetcher$val OTGPath = config.OTGPath</ID>
     <ID>VariableNaming:MediaFetcher.kt$MediaFetcher$val OTGPath = context.config.OTGPath</ID>
-    <ID>ViewModelForwarding:ComposeExplorerActivity.kt$AlbumsScreen( viewModel = albumsViewModel, onFolderClick = { dir -&gt; openFolderChecked(ctx, dir.path) { navController.navigate(Folder(dir.path)) { launchSingleTop = true } } }, viewSettings = tabSettings.albums, externalSearchQuery = tabSearchQuery, onClearExternalSearch = onClearTabSearch, onOpenViewSettings = onOpenViewSettings, onSelectionActiveChanged = onMediaSelectionChanged, tabIndex = 1, onColumnCountChange = { next -&gt; viewSettingsVM.updateAlbums(tabSettings.albums.copy(columnCount = next)) }, )</ID>
-    <ID>ViewModelInjection:ComposeExplorerActivity.kt$albumsViewModel</ID>
-    <ID>ViewModelInjection:ComposeExplorerActivity.kt$mainVM</ID>
-    <ID>ViewModelInjection:ComposeExplorerActivity.kt$viewSettingsVM</ID>
     <ID>ViewModelInjection:CompressionReviewScreen.kt$vm</ID>
     <ID>ViewModelInjection:CompressionSwipeScreen.kt$vm</ID>
     <ID>ViewModelInjection:DuplicateFinderScreen.kt$vm</ID>
