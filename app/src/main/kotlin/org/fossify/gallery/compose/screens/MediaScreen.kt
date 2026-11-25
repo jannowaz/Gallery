@@ -1243,49 +1243,21 @@ fun MediaScreen(
                 selectAllLabel = stringResource(if (hasFilter) R.string.action_select_all_results else R.string.action_select_all),
             )
         }
-        // Picker multi-select confirm bar - replaces the normal selection bar (gated above) while
-        // acting as a picker. Returns the chosen paths to the caller via onConfirmPick.
         if (pickMultiple && hasSelection) {
-            Surface(color = MaterialTheme.colorScheme.primaryContainer, tonalElevation = 3.dp, modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { selectedPaths = emptySet() }) { Icon(Icons.Default.Close, stringResource(org.fossify.commons.R.string.cancel), tint = MaterialTheme.colorScheme.onPrimaryContainer) }
-                    Text("${selectedPaths.size}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(start = 8.dp).weight(1f))
-                    androidx.compose.material3.Button(onClick = { onConfirmPick?.invoke(selectedPaths.toList()) }, enabled = selectedPaths.isNotEmpty()) {
-                        Text(stringResource(R.string.pick_confirm_count, selectedPaths.size))
-                    }
-                }
-            }
+            MediaPickerConfirmBar(
+                selectedCount = selectedPaths.size,
+                onClearSelection = { selectedPaths = emptySet() },
+                onConfirmPick = { onConfirmPick?.invoke(selectedPaths.toList()) },
+            )
         }
-        SnackbarHost(hostState=snackbarHostState,modifier=Modifier.align(Alignment.BottomCenter).padding(bottom = if (pendingUndo.isNotEmpty()) 64.dp else 0.dp))
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = if (pendingUndo.isNotEmpty()) 64.dp else 0.dp),
+        )
         UndoBar(modifier = Modifier.align(Alignment.BottomCenter))
-        // Selection-mode "peek" (see MediaTile's eye icon): a large, inline, tap-anywhere-to-dismiss
-        // preview - deliberately not the full Viewer, so checking an item never costs the grid's
-        // scroll position or risks the current selection the way navigating away and back would.
-        // Must be a child of this same Box (not a sibling statement after it) to actually paint on
-        // top - a same-named Box emitted as a separate top-level statement elsewhere in this function
-        // composes and updates state fine but never becomes visible, since it isn't laid out as part
-        // of this stack at all.
-        peekState.path?.let { peekPath ->
-            // Registered after (so it takes priority over) the selection-clearing handler above -
-            // otherwise system back while peeking fell through to that one and wiped the selection
-            // instead of just closing the preview.
-            val peekBackState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
-            NavigationBackHandler(state = peekBackState, isBackEnabled = true, onBackCompleted = { peekState.hide() })
-            Box(
-                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.85f)).clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = { peekState.hide() },
-                ),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (peekState.isVideo) {
-                    VideoThumbnail(videoPath = peekPath, modifier = Modifier.fillMaxWidth(0.92f).fillMaxHeight(0.75f), contentScale = ContentScale.Fit, thumbnailSize = 1024)
-                } else {
-                    GalleryImage(path = peekPath, contentDescription = peekPath.substringAfterLast('/'), modifier = Modifier.fillMaxWidth(0.92f).fillMaxHeight(0.75f), contentScale = ContentScale.Fit, thumbnailSize = 1024)
-                }
-            }
-        }
+        MediaPeekOverlay(peekState = peekState)
         }
     if (pullRefreshEnabled) {
         PullToRefreshBox(
@@ -1305,230 +1277,53 @@ fun MediaScreen(
     } else {
         Box(Modifier.fillMaxSize(), content = mediaContent)
     }
-    // Rate/Tag/Rename keep the selection alive on purpose: the core workflow (rename -> tag ->
-    // rate -> move for freshly downloaded files) chains these actions on the same batch, and
-    // forcing a re-select between every step was the single biggest UX cost in that flow. Move
-    // and Delete still clear the selection since the files leave the current view either way.
-    if (showRateTagSheet) {
-        val batch = selectedPaths.toList()
-        LaunchedEffect(Unit) { viewModel.loadAllTags() }
-        RateAndTagSheet(
-            batchCount = batch.size,
-            currentRating = currentRating,
-            ratingIsMixed = ratingIsMixed,
-            onRate = { i ->
-                currentRating = i
-                ratingIsMixed = false
-                viewModel.setRatingFor(batch, i)
-            },
-            initialTags = selectedCommonTags,
-            mixedTagCounts = selectedTagCounts,
-            onAddTag = { viewModel.addTagFor(batch, it) },
-            onRemoveTag = { viewModel.removeTagFor(batch, it) },
-            suggestedTags = state.allTags,
-            suggestedTagCounts = state.tagCounts,
-            recentTags = remember(quickTagsVersion) { ctx.config.recentTags },
-            tagHierarchy = ctx.config.tagHierarchy,
-            onSetTagParent = { child, parent ->
-                val hierarchy = ctx.config.tagHierarchy.toMutableMap()
-                if (parent.isNullOrBlank()) hierarchy.remove(child) else hierarchy[child] = parent
-                ctx.config.tagHierarchy = hierarchy
-            },
-            onDismiss = { showRateTagSheet = false },
-        )
-    }
-    if (showFolderPicker) { val batch=selectedPaths.toList(); FolderPickerSheet(isMoveOperation=folderPickerIsMove,sourcePaths=batch,onDismiss={showFolderPicker=false;selectedPaths=emptySet()}) }
-    if (showRenameDialog) { val batch=selectedPaths.toList(); RenameDialog(paths=batch,onRenamed={mapping->selectedPaths=selectedPaths.map{mapping[it]?:it}.toSet()},onDismiss={showRenameDialog=false;viewModel.silentRefresh()}) }
-    infoDialogPath?.let { path -> MediaInfoDialog(path = path, onDismiss = { infoDialogPath = null }) }
-    if (showDeleteConfirm) {
-        val itemsCnt = selectedPaths.size
-        val itemsText = res.getQuantityString(org.fossify.commons.R.plurals.delete_items, itemsCnt, itemsCnt)
-        val question = res.getString(if (ctx.config.useRecycleBin) org.fossify.commons.R.string.move_to_recycle_bin_confirmation else org.fossify.commons.R.string.deletion_confirmation, itemsText)
-        ConfirmDestructive(
-            title = stringResource(org.fossify.commons.R.string.delete),
-            text = question,
-            confirmLabel = stringResource(org.fossify.commons.R.string.delete),
-            onConfirm = {
-                showDeleteConfirm = false
-                val d = selectedPaths.toSet()
-                ctx.withRecycleBinDeletePasswordCheck { viewModel.softDeletePaths(d); UndoManager.push(UndoAction(paths = d, type = UndoType.DELETE)); selectedPaths = emptySet() }
-            },
-            onDismiss = { showDeleteConfirm = false },
-        )
-    }
-
-    if (showAddToCollection) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { showAddToCollection = false },
-            title = { Text(stringResource(R.string.add_to_collection)) },
-            text = {
-                Column(
-                    Modifier
-                        .heightIn(max = 360.dp)
-                        .verticalScroll(rememberScrollState()),
-                ) {
-                    if (collectionOptions.isNotEmpty()) {
-                        Text(
-                            stringResource(R.string.choose_collection),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 4.dp),
-                        )
-                        collectionOptions.forEach { collection ->
-                            androidx.compose.material3.TextButton(
-                                onClick = {
-                                    val batch = selectedPaths.toSet()
-                                    scope.launch {
-                                        val added = withContext(Dispatchers.IO) {
-                                            val current = repo.getCollections().firstOrNull { it.id == collection.id }
-                                            if (current != null) {
-                                                val merged = (current.getMediaPaths() + batch).distinct()
-                                                val id = repo.insertCollection(current.copy(mediaPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(merged)))
-                                                if (id > 0L) { repo.refreshCollectionsCache(); true } else false
-                                            } else false
-                                        }
-                                        if (added) {
-                                            selectedPaths = emptySet()
-                                            showAddToCollection = false
-                                            ctx.toast(res.getString(R.string.media_added_to_collection, batch.size, collection.name))
-                                        } else {
-                                            ctx.toast(R.string.collection_add_failed)
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(collection.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-                        androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                    }
-                    Text(
-                        stringResource(R.string.new_collection),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 4.dp),
-                    )
-                    androidx.compose.material3.OutlinedTextField(
-                        value = newCollectionName,
-                        onValueChange = { newCollectionName = it },
-                        singleLine = true,
-                        label = { Text(stringResource(R.string.name)) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            },
-            confirmButton = {
-                androidx.compose.material3.TextButton(
-                    enabled = newCollectionName.isNotBlank() && selectedPaths.isNotEmpty(),
-                    onClick = {
-                        val n = newCollectionName.trim()
-                        val batch = selectedPaths.toSet()
-                        scope.launch {
-                            val saved = withContext(Dispatchers.IO) {
-                                repo.insertCollection(
-                                    org.fossify.gallery.models.MediaCollection(
-                                        name = n,
-                                        mediaPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(batch.toList()),
-                                    )
-                                ).also { id -> if (id > 0L) repo.refreshCollectionsCache() } > 0L
-                            }
-                            if (saved) {
-                                selectedPaths = emptySet()
-                                showAddToCollection = false
-                                ctx.toast(res.getString(R.string.collection_saved, n))
-                            } else {
-                                ctx.toast(R.string.collection_add_failed)
-                            }
-                        }
-                    },
-                ) { Text(stringResource(org.fossify.commons.R.string.save)) }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { showAddToCollection = false }) {
-                    Text(stringResource(org.fossify.commons.R.string.cancel))
-                }
-            },
-        )
-    }
-
-    if (showSaveCollection) {
-        // A sensible default name from whatever filter dimensions are active, e.g. "★4 · Images · > 10 MB".
-        val defaultName = remember {
-            buildList {
-                if (ratingFilter > 0) add("★$ratingFilter")
-                activeTagName?.takeIf { it.isNotBlank() }?.let { add("#$it") }
-                when (typeFilter) {
-                    org.fossify.gallery.helpers.TYPE_IMAGES -> add(res.getString(R.string.images))
-                    org.fossify.gallery.helpers.TYPE_VIDEOS -> add(res.getString(R.string.videos))
-                    org.fossify.gallery.helpers.TYPE_GIFS -> add(res.getString(R.string.gif))
-                    org.fossify.gallery.helpers.TYPE_RAWS -> add(res.getString(R.string.raw))
-                    org.fossify.gallery.helpers.TYPE_SVGS -> add(res.getString(R.string.svg))
-                }
-                if (minSizeFilter > 0) add("> ${formatFileSize(minSizeFilter)}")
-                when (dateRangeFilter) { 1 -> add(res.getString(R.string.today)); 2 -> add(res.getString(R.string.date_range_last_7_days)); 3 -> add(res.getString(R.string.date_range_last_30_days)); 4 -> add(res.getString(R.string.date_range_last_year)) }
-                activeFolderFilterName?.let { add(it) }
-            }.joinToString(" · ").ifBlank { res.getString(R.string.save_as_collection) }
-        }
-        var name by remember { mutableStateOf(defaultName) }
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { showSaveCollection = false },
-            title = { Text(stringResource(R.string.save_as_collection)) },
-            text = { androidx.compose.material3.OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text(stringResource(R.string.name)) }) },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    val n = name.trim().ifBlank { defaultName }
-                    val coll = org.fossify.gallery.models.MediaCollection(
-                        name = n,
-                        includedPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(pathFilter?.toList() ?: emptyList()),
-                        excludedPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(excludePathFilter?.toList() ?: emptyList()),
-                        tagFilter = activeTagName ?: "",
-                        ratingFilter = ratingFilter,
-                        minSize = minSizeFilter,
-                        dateRange = dateRangeFilter,
-                        typeFilter = typeFilter,
-                        mediaPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(selectedPaths.toList()),
-                    )
-                    scope.launch { withContext(Dispatchers.IO) { repo.insertCollection(coll); repo.refreshCollectionsCache() }; ctx.toast(res.getString(R.string.collection_saved, n)) }
-                    showSaveCollection = false
-                }) { Text(stringResource(org.fossify.commons.R.string.ok)) }
-            },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { showSaveCollection = false }) { Text(stringResource(org.fossify.commons.R.string.cancel)) } },
-        )
-    }
-
-    if (showUpdateCollection && activeCollectionName != null) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { showUpdateCollection = false },
-            title = { Text(stringResource(R.string.update_collection)) },
-            text = { Text(stringResource(R.string.update_collection_confirm, activeCollectionName)) },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    val target = activeCollectionName
-                    scope.launch {
-                        withContext(Dispatchers.IO) {
-                            val existing = repo.getCollections().find { it.name == target }
-                            if (existing != null) {
-                                // Keep id/name/searchQuery/sortOrder; overwrite only the filter dimensions
-                                // with the current (possibly refined) filter.
-                                repo.insertCollection(existing.copy(
-                                    includedPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(pathFilter?.toList() ?: emptyList()),
-                                    excludedPaths = org.fossify.gallery.models.MediaCollection.createPathsJson(excludePathFilter?.toList() ?: emptyList()),
-                                    tagFilter = activeTagName ?: "",
-                                    ratingFilter = ratingFilter,
-                                    minSize = minSizeFilter,
-                                    dateRange = dateRangeFilter,
-                                    typeFilter = typeFilter,
-                                ))
-                                repo.refreshCollectionsCache()
-                            }
-                        }
-                        ctx.toast(res.getString(R.string.collection_updated, target))
-                    }
-                    showUpdateCollection = false
-                }) { Text(stringResource(org.fossify.commons.R.string.ok)) }
-            },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { showUpdateCollection = false }) { Text(stringResource(org.fossify.commons.R.string.cancel)) } },
-        )
-    }
+    MediaScreenDialogs(
+        selectedPaths = selectedPaths,
+        state = state,
+        viewModel = viewModel,
+        repo = repo,
+        scope = scope,
+        quickTagsVersion = quickTagsVersion,
+        currentRating = currentRating,
+        ratingIsMixed = ratingIsMixed,
+        selectedCommonTags = selectedCommonTags,
+        selectedTagCounts = selectedTagCounts,
+        showRateTagSheet = showRateTagSheet,
+        showFolderPicker = showFolderPicker,
+        folderPickerIsMove = folderPickerIsMove,
+        showRenameDialog = showRenameDialog,
+        infoDialogPath = infoDialogPath,
+        showDeleteConfirm = showDeleteConfirm,
+        showAddToCollection = showAddToCollection,
+        collectionOptions = collectionOptions,
+        newCollectionName = newCollectionName,
+        onNewCollectionNameChange = { newCollectionName = it },
+        showSaveCollection = showSaveCollection,
+        showUpdateCollection = showUpdateCollection,
+        activeCollectionName = activeCollectionName,
+        activeTagName = activeTagName,
+        activeFolderFilterName = activeFolderFilterName,
+        pathFilter = pathFilter,
+        excludePathFilter = excludePathFilter,
+        ratingFilter = ratingFilter,
+        minSizeFilter = minSizeFilter,
+        dateRangeFilter = dateRangeFilter,
+        typeFilter = typeFilter,
+        onSelectRating = { rating ->
+            currentRating = rating
+            ratingIsMixed = false
+        },
+        onDismissRateTagSheet = { showRateTagSheet = false },
+        onDismissFolderPicker = { showFolderPicker = false },
+        onRenameComplete = { mapping ->
+            selectedPaths = selectedPaths.map { mapping[it] ?: it }.toSet()
+        },
+        onDismissRenameDialog = { showRenameDialog = false },
+        onDismissInfoDialog = { infoDialogPath = null },
+        onDismissDeleteConfirm = { showDeleteConfirm = false },
+        onClearSelection = { selectedPaths = emptySet() },
+        onDismissAddToCollection = { showAddToCollection = false },
+        onDismissSaveCollection = { showSaveCollection = false },
+        onDismissUpdateCollection = { showUpdateCollection = false },
+    )
 }

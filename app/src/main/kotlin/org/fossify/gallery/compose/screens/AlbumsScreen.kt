@@ -133,9 +133,9 @@ private const val ALBUM_PREVIEW_COUNT = 4
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun AlbumsScreen(
-    viewModel: AlbumsViewModel,
     onFolderClick: (Directory) -> Unit,
     modifier: Modifier = Modifier,
+    viewModel: AlbumsViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     viewSettings: ViewSettings = ViewSettings(),
     externalSearchQuery: String = "",
     onClearExternalSearch: () -> Unit = {},

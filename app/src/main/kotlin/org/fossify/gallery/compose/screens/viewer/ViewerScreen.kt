@@ -474,41 +474,16 @@ fun ViewerScreen(
 
     fun saveVideoFrame(sourcePath: String, bitmap: android.graphics.Bitmap?) {
         if (bitmap == null) {
-            ctx.toast(res.getString(R.string.error_generic, res.getString(R.string.frame_capture_failed)), Toast.LENGTH_SHORT)
+            val msg = res.getString(R.string.error_generic, res.getString(R.string.frame_capture_failed))
+            ctx.toast(msg, Toast.LENGTH_SHORT)
             return
         }
-        scope.launch(Dispatchers.IO) {
-            try {
-                val sourceFile = File(sourcePath)
-                val parent = sourceFile.parentFile ?: error("Video has no parent directory")
-                val screensDir = File(parent, "screens")
-                if (!screensDir.isDirectory && !screensDir.mkdirs() && !screensDir.isDirectory) {
-                    error("Could not create ${screensDir.absolutePath}")
-                }
-                val stem = sourceFile.nameWithoutExtension.ifBlank { "video" }
-                var suffix = 0
-                var output: File
-                do {
-                    val suffixText = if (suffix == 0) "" else "_$suffix"
-                    output = File(screensDir, "${stem}_screen_${System.currentTimeMillis()}$suffixText.jpg")
-                    suffix++
-                } while (output.exists())
-                output.outputStream().use { stream ->
-                    check(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, stream)) { "Could not encode screenshot" }
-                }
-                bitmap.recycle()
-                runCatching {
-                    android.media.MediaScannerConnection.scanFile(ctx, arrayOf(output.absolutePath), arrayOf("image/jpeg"), null)
-                }
-                org.fossify.gallery.helpers.RefreshBus.trigger(affectedPaths = listOf(output.absolutePath))
-                withContext(Dispatchers.Main) {
-                    ctx.toast(res.getString(R.string.frame_saved, "screens/${output.name}"), Toast.LENGTH_SHORT)
-                }
-            } catch (e: Exception) {
-                runCatching { bitmap.recycle() }
-                withContext(Dispatchers.Main) {
-                    ctx.toast(res.getString(R.string.error_generic, e.message ?: ""), Toast.LENGTH_SHORT)
-                }
+        scope.launch {
+            val result = saveCapturedVideoFrame(ctx, sourcePath, bitmap)
+            result.onSuccess { output ->
+                ctx.toast(res.getString(R.string.frame_saved, "screens/${output.name}"), Toast.LENGTH_SHORT)
+            }.onFailure { err ->
+                ctx.toast(res.getString(R.string.error_generic, err.message ?: ""), Toast.LENGTH_SHORT)
             }
         }
     }
@@ -848,399 +823,135 @@ fun ViewerScreen(
         // One-time hint for the vertical drag gestures (swipe up = actions sheet, down = close) -
         // neither has any visual affordance otherwise. Shown once ever, dismissed by any drag,
         // tap, or after a few seconds on its own.
-        AnimatedVisibility(
-            visible = showGestureHint,
-            enter = fadeIn(AppMotion.medium),
-            exit = fadeOut(AppMotion.medium),
-            modifier = Modifier.align(Alignment.Center),
-        ) {
-            Surface(
-                shape = RoundedCornerShape(Radius.lg),
-                color = Scrim.a60,
-                modifier = Modifier.clickable { dismissGestureHint() },
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.KeyboardArrowUp, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(R.string.viewer_gesture_hint_up), color = Color.White, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.KeyboardArrowDown, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(R.string.viewer_gesture_hint_down), color = Color.White, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text(stringResource(R.string.viewer_gesture_hint_tap), color = Color.White, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
+        ViewerGestureHints(
+            showGestureHint = showGestureHint,
+            showVideoGestureHintNow = showVideoGestureHintNow,
+            onDismissGestureHint = ::dismissGestureHint,
+        )
 
-        // One-time hint for the invisible video-only left/right drag zones (brightness/volume) -
-        // otherwise a tap near either edge can silently dim the screen or change volume with no
-        // explanation. Independent of the swipe up/down hint above.
-        AnimatedVisibility(
-            visible = showVideoGestureHintNow,
-            enter = fadeIn(AppMotion.medium),
-            exit = fadeOut(AppMotion.medium),
-            // Offset below center so it doesn't overlap the swipe up/down hint above on the rare
-            // first-ever-video-open case where both are shown at once.
-            modifier = Modifier.align(Alignment.Center).offset(y = 100.dp).padding(horizontal = 24.dp),
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Surface(shape = RoundedCornerShape(Radius.lg), color = Scrim.a60) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        Icon(Icons.Default.BrightnessMedium, null, tint = Color.White, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.height(4.dp))
-                        Text(stringResource(R.string.viewer_gesture_hint_brightness), color = Color.White, style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                    }
-                }
-                Surface(shape = RoundedCornerShape(Radius.lg), color = Scrim.a60) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.VolumeUp,
-                            null,
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(stringResource(R.string.viewer_gesture_hint_volume), color = Color.White, style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                    }
-                }
-            }
-        }
-
-        // Soft bottom scrim for control legibility, anchored to the screen bottom so it never floats
-        // with a hard edge even when the controls are lifted above the video seek bar.
-        AnimatedVisibility(
-            visible = showUI && !inPip,
-            enter = fadeIn(AppMotion.medium),
-            exit = fadeOut(AppMotion.medium),
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-        ) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-                    .background(Brush.verticalGradient(0f to Color.Transparent, 1f to Scrim.a60)),
-            )
-        }
-
-        // Bottom overlays in one column: direct rating rail above the action bar (with the UI), so
-        // rating and actions never overlap and the rail slides smoothly with the viewer chrome. For
-        // videos the group sits permanently above the seek bar (constant offset).
-        val bottomGroupOffset = if (currentIsVideo) 64.dp else 0.dp
-        val showFilmstrip = showUI && !inPip && items.size > 1
-        Column(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .graphicsLayer {
-                    alpha = (1f - (abs(dragOffset) / 160f)).coerceIn(0f, 1f)
-                }
-                .navigationBarsPadding()
-                .padding(bottom = bottomGroupOffset),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            if (showUI && !inPip) {
-                // A quiet, persistent handle makes the swipe-up action sheet discoverable without
-                // adding another text label to the already dense viewer chrome.
-                Box(
-                    Modifier.padding(bottom = 2.dp).width(32.dp).height(4.dp).clip(RoundedCornerShape(2.dp))
-                    .background(Color.White.copy(alpha = 0.58f))
-                )
-            }
-            AnimatedVisibility(
-                visible = showFilmstrip,
-                enter = fadeIn(AppMotion.medium),
-                exit = fadeOut(AppMotion.medium),
-            ) {
-                ViewerFilmstrip(
-                    items = items,
-                    currentPage = pagerState.currentPage,
-                    onSelectPage = { targetIdx ->
-                        uiInteractionTick++
-                        scope.launch { pagerState.animateScrollToPage(targetIdx) }
-                    },
-                    modifier = Modifier.padding(bottom = 2.dp),
-                )
-            }
-            AnimatedVisibility(
-                visible = showRatingOverlay && showUI && !inPip,
-                enter = fadeIn(AppMotion.medium),
-                exit = fadeOut(AppMotion.medium),
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(Radius.xl),
-                    color = Scrim.a40,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    ) {
-                        for (i in 1..5) {
-                            IconButton(
-                                onClick = { rateCurrent(i) },
-                                modifier = Modifier.size(48.dp),
-                            ) {
-                                Icon(
-                                    imageVector = if (i <= currentRating) Icons.Default.Star else Icons.Default.StarBorder,
-                                    contentDescription = stringResource(R.string.cd_rating_star, i),
-                                    tint = if (i <= currentRating) RatingStarColor else Color.White.copy(alpha = 0.72f),
-                                    modifier = Modifier.size(28.dp),
-                                )
-                            }
-                        }
-                        IconButton(
-                            onClick = {
-                                uiInteractionTick++
-                                toggleFavorite()
-                            },
-                            modifier = Modifier.size(48.dp),
-                        ) {
-                            Icon(
-                                if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                stringResource(R.string.favorite),
-                                tint = if (isFavorite) FavoriteColor else Color.White.copy(alpha = 0.72f),
-                                modifier = Modifier.size(26.dp),
-                            )
-                        }
-                    }
-                }
-            }
-            AnimatedVisibility(
-                visible = showUI && !inPip,
-                enter = fadeIn(AppMotion.medium),
-                exit = fadeOut(AppMotion.medium),
-            ) {
-                Box(Modifier.fillMaxWidth()) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        IconButton(onClick = {
-                            uiInteractionTick++
-                            try {
-                                val targetFile = File(currentPath)
-                                if (!targetFile.exists()) {
-                                    ctx.toast(R.string.no_files_found)
-                                } else {
-                                    val u = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", targetFile)
-                                    ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = if (currentIsVideo) "video/*" else "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, u); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }, res.getString(R.string.action_share)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-                                }
-                            } catch (e: Exception) {
-                                android.util.Log.e("Viewer", "Share failed for $currentPath", e)
-                                ctx.toast(R.string.viewer_share_failed)
-                            }
-                        }) { Icon(Icons.Default.Share, stringResource(R.string.action_share), tint = Color.White) }
-                        IconButton(onClick = {
-                            uiInteractionTick++
-                            showRateAndTagSheet = true
-                        }) {
-                            Icon(Icons.AutoMirrored.Filled.Label, stringResource(R.string.action_tags), tint = Color.White)
-                        }
-                        if (!showRatingOverlay) {
-                            IconButton(onClick = {
-                                uiInteractionTick++
-                                toggleFavorite()
-                            }) {
-                                Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.favorite), tint = if (isFavorite) FavoriteColor else Color.White)
-                            }
-                        }
-                        // Rating and favorite already have their dedicated rail above. Keep this
-                        // row for the frequent actions and move edit/frame capture into More;
-                        // six equally weighted icons made it hard to find the next action.
-                        IconButton(onClick = { uiInteractionTick++; deleteCurrent() }) {
-                            Icon(Icons.Default.Delete, stringResource(org.fossify.commons.R.string.delete), tint = Color(0xFFFFB4AB))
-                        }
-                        IconButton(onClick = { uiInteractionTick++; showActionSheet = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions), tint = Color.White) }
-                    }
-                }
-            }
-        }
-
-        // Keep the undo affordance above the viewer action row AND rating rail so it never
-        // covers either the delete button or the rating stars.
-        if (!inPip) {
-            val filmstripClearance = if (showFilmstrip) 56.dp else 0.dp
-            val undoClearance = if (showUI) {
-                (if (showRatingOverlay) 128.dp else 72.dp) + filmstripClearance
-            } else 0.dp
-            UndoBar(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = bottomGroupOffset + undoClearance),
-            )
-        }
-    }
-
-    if (showActionSheet) {
-        ViewerActionSheet(
-            currentPath = currentPath,
+        ViewerBottomChrome(
+            showUI = showUI,
+            inPip = inPip,
             currentIsVideo = currentIsVideo,
-            currentRating = currentRating,
+            dragOffset = dragOffset,
+            items = items,
+            currentPage = pagerState.currentPage,
             showRatingOverlay = showRatingOverlay,
-            slideshowActive = slideshowActive,
-            canRunSlideshow = items.size > 1,
+            currentRating = currentRating,
+            isFavorite = isFavorite,
+            onSelectPage = { targetIdx ->
+                uiInteractionTick++
+                scope.launch { pagerState.animateScrollToPage(targetIdx) }
+            },
             onRate = ::rateCurrent,
-            onToggleRatingOverlay = {
-                showRatingOverlay = !showRatingOverlay
-                ctx.config.viewerShowRatingBar = showRatingOverlay
-                showActionSheet = false
+            onToggleFavorite = {
+                uiInteractionTick++
+                toggleFavorite()
             },
-            onRename = { showRenameDialog = true; showActionSheet = false },
-            onCopy = { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false },
-            onMove = { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false },
-            onInfo = { infoDialogPath = currentPath; showActionSheet = false },
-            onTrimVideo = { showVideoTrimmer = true; showActionSheet = false },
-            onVideoDisplaySettings = { showVideoSettings = true; showActionSheet = false },
-            onSaveFrame = { captureFramePath = currentPath; captureFrameRequest++; showActionSheet = false },
-            onOpenFrameGrabber = { showFrameGrabber = true; showActionSheet = false },
-            onEditImage = {
-                (ctx as? android.app.Activity)?.openEditor(currentPath)
-                showActionSheet = false
-            },
-            onToggleSlideshow = {
-                showActionSheet = false
-                if (slideshowActive) slideshowActive = false else showSlideshowDialog = true
+            onShare = {
+                uiInteractionTick++
+                shareViewerMedia(ctx, currentPath, currentIsVideo)
             },
             onOpenTags = {
-                showActionSheet = false
+                uiInteractionTick++
                 showRateAndTagSheet = true
             },
-            onDismiss = { showActionSheet = false },
+            onDelete = {
+                uiInteractionTick++
+                deleteCurrent()
+            },
+            onOpenMore = {
+                uiInteractionTick++
+                showActionSheet = true
+            },
         )
     }
 
-    if (showSlideshowDialog) {
-        ViewerSlideshowDialog(
-            onStart = { intervalSec, loopEnabled, randomEnabled ->
-                ctx.config.slideshowInterval = intervalSec
-                ctx.config.loopSlideshow = loopEnabled
-                ctx.config.slideshowRandomOrder = randomEnabled
-                showSlideshowDialog = false
-                slideshowActive = true
-            },
-            onDismiss = { showSlideshowDialog = false },
-        )
-    }
-
-    if (showRateAndTagSheet) {
-        val editorPath = currentPath
-        val isJpeg = editorPath.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg")
-        RateAndTagSheet(
-            batchCount = 1,
-            currentRating = currentRating,
-            onRate = ::rateCurrent,
-            initialTags = editorTags,
-            onAddTag = { tag ->
-                scope.launch(Dispatchers.IO) {
-                    val saved = repo.addTag(editorPath, tag)
-                    withContext(Dispatchers.Main) {
-                        if (saved) ctx.config.rememberRecentTag(tag)
-                        else ctx.toast(R.string.tag_write_failed, Toast.LENGTH_SHORT)
-                    }
-                }
-            },
-            onRemoveTag = { tag ->
-                scope.launch(Dispatchers.IO) {
-                    if (!repo.removeTag(editorPath, tag)) {
-                        withContext(Dispatchers.Main) { ctx.toast(R.string.tag_write_failed, Toast.LENGTH_SHORT) }
-                    }
-                }
-            },
-            suggestedTags = (quickTags + editorTagSuggestions.map { it.first }).distinct(),
-            suggestedTagCounts = editorTagSuggestions.toMap(),
-            recentTags = recentTags,
-            tagHierarchy = ctx.config.tagHierarchy,
-            metadataStorageHint = if (isJpeg) null else stringResource(R.string.metadata_sidecar_hint),
-            onSetTagParent = { child, parent ->
-                val hierarchy = ctx.config.tagHierarchy.toMutableMap()
-                if (parent.isNullOrBlank()) hierarchy.remove(child) else hierarchy[child] = parent
-                ctx.config.tagHierarchy = hierarchy
-            },
-            onDismiss = { showRateAndTagSheet = false },
-        )
-    }
-
-    if (showFrameGrabber) {
-        org.fossify.gallery.compose.screens.framegrabber.FrameGrabberScreen(currentPath) { deletedOriginal ->
+    ViewerDialogsHost(
+        currentPath = currentPath,
+        currentIsVideo = currentIsVideo,
+        currentRating = currentRating,
+        itemCount = items.size,
+        showRatingOverlay = showRatingOverlay,
+        slideshowActive = slideshowActive,
+        videoScalingMode = videoScalingMode,
+        showActionSheet = showActionSheet,
+        showSlideshowDialog = showSlideshowDialog,
+        showRateAndTagSheet = showRateAndTagSheet,
+        showFrameGrabber = showFrameGrabber,
+        showVideoTrimmer = showVideoTrimmer,
+        showVideoSettings = showVideoSettings,
+        showFolderPicker = showFolderPicker,
+        pendingFolderPickerIsMove = pendingFolderPickerIsMove,
+        showRenameDialog = showRenameDialog,
+        infoDialogPath = infoDialogPath,
+        showDeleteConfirm = showDeleteConfirm,
+        editorTags = editorTags,
+        quickTags = quickTags,
+        editorTagSuggestions = editorTagSuggestions,
+        recentTags = recentTags,
+        repo = repo,
+        scope = scope,
+        onRate = ::rateCurrent,
+        onToggleRatingOverlay = {
+            showRatingOverlay = !showRatingOverlay
+            ctx.config.viewerShowRatingBar = showRatingOverlay
+            showActionSheet = false
+        },
+        onDismissActionSheet = { showActionSheet = false },
+        onRequestRename = { showRenameDialog = true; showActionSheet = false },
+        onRequestCopy = { pendingFolderPickerIsMove = false; showFolderPicker = true; showActionSheet = false },
+        onRequestMove = { pendingFolderPickerIsMove = true; showFolderPicker = true; showActionSheet = false },
+        onRequestInfo = { infoDialogPath = currentPath; showActionSheet = false },
+        onRequestTrimVideo = { showVideoTrimmer = true; showActionSheet = false },
+        onRequestVideoSettings = { showVideoSettings = true; showActionSheet = false },
+        onRequestSaveFrame = { captureFramePath = currentPath; captureFrameRequest++; showActionSheet = false },
+        onRequestFrameGrabber = { showFrameGrabber = true; showActionSheet = false },
+        onToggleSlideshow = {
+            showActionSheet = false
+            if (slideshowActive) slideshowActive = false else showSlideshowDialog = true
+        },
+        onRequestTags = { showActionSheet = false; showRateAndTagSheet = true },
+        onStartSlideshow = { intervalSec, loopEnabled, randomEnabled ->
+            ctx.config.slideshowInterval = intervalSec
+            ctx.config.loopSlideshow = loopEnabled
+            ctx.config.slideshowRandomOrder = randomEnabled
+            showSlideshowDialog = false
+            slideshowActive = true
+        },
+        onDismissSlideshowDialog = { showSlideshowDialog = false },
+        onDismissRateAndTagSheet = { showRateAndTagSheet = false },
+        onCloseFrameGrabber = { deletedOriginal ->
             showFrameGrabber = false
             if (deletedOriginal) {
-                // The source video was moved to the recycle bin - drop it from the pager exactly like
-                // an in-viewer delete so we don't keep showing a now-binned item.
                 val idx = pagerState.currentPage
-                if (items.size <= 1) onClose() else {
+                if (items.size <= 1) {
+                    onClose()
+                } else {
                     items.removeAt(idx)
                     if (idx >= items.size) scope.launch { pagerState.scrollToPage(items.size - 1) }
                 }
             }
-        }
-    }
-
-    if (showVideoTrimmer) {
-        VideoTrimmerSheet(
-            videoPath = currentPath,
-            onDismiss = { showVideoTrimmer = false },
-            onTrimSaved = { savedPath ->
-                showVideoTrimmer = false
-                val insertAt = (pagerState.currentPage + 1).coerceAtMost(items.size)
-                items.add(insertAt, savedPath)
-                scope.launch { pagerState.animateScrollToPage(insertAt) }
-            },
-        )
-    }
-
-    if (showVideoSettings) {
-        ViewerVideoScalingDialog(
-            currentMode = videoScalingMode,
-            onSelectMode = { videoScalingMode = it },
-            onDismiss = { showVideoSettings = false },
-        )
-    }
-
-    if (showFolderPicker) {
-        FolderPickerSheet(
-            isMoveOperation = pendingFolderPickerIsMove,
-            sourcePaths = listOf(currentPath),
-            onDismiss = { showFolderPicker = false },
-        )
-    }
-
-    if (showRenameDialog) {
-        val renamePath = currentPath
-        RenameDialog(
-            paths = listOf(renamePath),
-            onDismiss = { showRenameDialog = false },
-            onRenamed = { mapping ->
-                val newPath = mapping[renamePath] ?: return@RenameDialog
-                val idx = items.indexOf(renamePath)
-                if (idx >= 0) items[idx] = newPath
-                ctx.config.lastViewedPath = newPath
-            },
-        )
-    }
-
-    infoDialogPath?.let { path ->
-        MediaInfoDialog(
-            path = path,
-            onDismiss = { infoDialogPath = null },
-        )
-    }
-
-    if (showDeleteConfirm) {
-        val question = stringResource(if (ctx.config.useRecycleBin) org.fossify.commons.R.string.are_you_sure_recycle_bin else org.fossify.commons.R.string.are_you_sure_delete)
-        ConfirmDestructive(
-            title = stringResource(org.fossify.commons.R.string.delete),
-            text = question,
-            confirmLabel = stringResource(org.fossify.commons.R.string.delete),
-            onConfirm = { showDeleteConfirm = false; performDelete() },
-            onDismiss = { showDeleteConfirm = false },
-        )
-    }
+        },
+        onDismissVideoTrimmer = { showVideoTrimmer = false },
+        onSaveTrim = { savedPath ->
+            showVideoTrimmer = false
+            val insertAt = (pagerState.currentPage + 1).coerceAtMost(items.size)
+            items.add(insertAt, savedPath)
+            scope.launch { pagerState.animateScrollToPage(insertAt) }
+        },
+        onSelectVideoScalingMode = { videoScalingMode = it },
+        onDismissVideoSettings = { showVideoSettings = false },
+        onDismissFolderPicker = { showFolderPicker = false },
+        onDismissRenameDialog = { showRenameDialog = false },
+        onCompleteRename = { mapping ->
+            val newPath = mapping[currentPath] ?: return@ViewerDialogsHost
+            val idx = items.indexOf(currentPath)
+            if (idx >= 0) items[idx] = newPath
+            ctx.config.lastViewedPath = newPath
+        },
+        onDismissInfoDialog = { infoDialogPath = null },
+        onConfirmDelete = { showDeleteConfirm = false; performDelete() },
+        onDismissDeleteConfirm = { showDeleteConfirm = false },
+    )
 }
