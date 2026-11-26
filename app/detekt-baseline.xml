@@ -19,11 +19,9 @@
     <ID>ComplexCondition:MetadataSyncWorker.kt$MetadataSyncWorker$!fullScan &amp;&amp; folderPath == null &amp;&amp; cached != null &amp;&amp; cached.lastScanned &gt; staleThreshold</ID>
     <ID>ComplexCondition:MetadataSyncWorker.kt$MetadataSyncWorker$fullScan &amp;&amp; folderPath == null &amp;&amp; dateStart == 0L &amp;&amp; !incremental</ID>
     <ID>ComplexCondition:ViewerScreen.kt$extendedDetailsText.isNotEmpty() &amp;&amp; !inPip &amp;&amp; (showUI || !ctx.config.hideExtendedDetails)</ID>
-    <ID>ComposableNaming:DuplicateFinderScreen.kt$sortItem</ID>
     <ID>ComposableParamOrder:AnalysisResultHeader.kt$AnalysisResultHeader</ID>
     <ID>ComposableParamOrder:BottomSearchField.kt$BottomSearchField</ID>
     <ID>ComposableParamOrder:CollectionsScreen.kt$CollectionsScreen</ID>
-    <ID>ComposableParamOrder:DuplicateFinderScreen.kt$AutoSelectAction</ID>
     <ID>ComposableParamOrder:ExplorerScreen.kt$ExplorerScreen</ID>
     <ID>ComposableParamOrder:FilterSheetContent.kt$FilterSheetContent</ID>
     <ID>ComposableParamOrder:FolderSwipeScreen.kt$FolderSwipeScreen</ID>
@@ -73,8 +71,6 @@
     <ID>CyclomaticComplexMethod:Context.kt$fun Context.getCachedDirectories( getVideosOnly: Boolean = false, getImagesOnly: Boolean = false, forceShowHidden: Boolean = false, forceShowExcluded: Boolean = false, callback: (ArrayList&lt;Directory&gt;) -&gt; Unit, )</ID>
     <ID>CyclomaticComplexMethod:Context.kt$fun Context.getCachedMedia( path: String, getVideosOnly: Boolean = false, getImagesOnly: Boolean = false, callback: (ArrayList&lt;ThumbnailItem&gt;) -&gt; Unit )</ID>
     <ID>CyclomaticComplexMethod:Context.kt$fun Context.getDirectParentSubfolders( dirs: ArrayList&lt;Directory&gt;, currentPathPrefix: String ): ArrayList&lt;Directory&gt;</ID>
-    <ID>CyclomaticComplexMethod:DuplicateFinderScreen.kt$@OptIn(ExperimentalFoundationApi::class) @Composable private fun DuplicateGroupCard( group: DuplicateGroup, similar: Boolean, selected: Set&lt;String&gt;, groupSelected: Boolean, onToggleGroup: () -&gt; Unit, onToggle: (String) -&gt; Unit, onView: (List&lt;String&gt;, Int) -&gt; Unit, onSelectFolder: (String) -&gt; Unit, )</ID>
-    <ID>CyclomaticComplexMethod:DuplicateFinderScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun DuplicateFinderScreen(onBack: () -&gt; Unit, initialFolder: String = "", onNavigateToViewer: (List&lt;String&gt;, Int) -&gt; Unit = { _, _ -&gt; })</ID>
     <ID>CyclomaticComplexMethod:DuplicateSelection.kt$DuplicateSelection$fun applyKeepStrategy( groups: List&lt;DuplicateGroup&gt;, selected: Set&lt;String&gt;, strategy: KeepStrategy, targetGroupKeys: Set&lt;String&gt;? = null, additive: Boolean = targetGroupKeys != null, restrictToFolder: String? = null, ): Set&lt;String&gt;</ID>
     <ID>CyclomaticComplexMethod:ExplorerModelsAndCache.kt$internal fun ExplorerItem.matchesLibraryFilter( filter: LibraryFilterState, tags: Set&lt;String&gt;, reviewStatus: MediaReviewStatus?, ): Boolean</ID>
     <ID>CyclomaticComplexMethod:ExplorerModelsAndCache.kt$internal suspend fun loadExplorerFolderContents( context: Context, repo: MediaRepository, path: String, storageRoot: String, allEntries: List&lt;MediaStoreOps.MediaEntry&gt;?, folderSettings: ViewSettings, mediaSettings: ViewSettings, needsTags: Boolean, ): ExplorerContent</ID>
@@ -128,8 +124,6 @@
     <ID>CyclomaticComplexMethod:MediaStoreOps.kt$MediaStoreOps$internal fun moveFileDirectly(context: Context?, sourcePath: String, targetPath: String): Boolean</ID>
     <ID>CyclomaticComplexMethod:MediaStoreOps.kt$MediaStoreOps$private fun copyFileToTarget(src: File, dst: File, origSize: Long, origModified: Long): Boolean</ID>
     <ID>CyclomaticComplexMethod:MediaTile.kt$@Composable fun MediaTile( medium: Medium, isVideo: Boolean, isSelected: Boolean, isSelectionMode: Boolean, hasTag: Boolean, tags: List&lt;String&gt; = emptyList(), onTagClick: ((String) -&gt; Unit)? = null, showOverlays: Boolean, aspectRatio: Float, cornerShape: Shape, cardColor: Color, itemSpacing: Dp, showFileName: Boolean, // A regular grid must keep each row on a common baseline. Masonry deliberately does not use // this, because its varying item heights are the point of that layout. reserveGridCaptionSpace: Boolean = false, showVideoDuration: Boolean, cropThumbnails: Boolean = true, showRating: Boolean = true, showFileType: Boolean = true, markFavorite: Boolean = true, isNarrowTile: Boolean = false, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, onSwipeToSelect: () -&gt; Unit, onBoundsChanged: (Rect) -&gt; Unit, onBoundsRemoved: (() -&gt; Unit)? = null, modifier: Modifier = Modifier, )</ID>
-    <ID>CyclomaticComplexMethod:MediaViewModel.kt$MediaViewModel$private fun applySortFor(list: List&lt;Medium&gt;, field: SortField, desc: Boolean): List&lt;Medium&gt;</ID>
-    <ID>CyclomaticComplexMethod:MediaViewModel.kt$MediaViewModel$private suspend fun applyFilterForOverride(list: List&lt;Medium&gt;, filter: MediaFilter): List&lt;Medium&gt;</ID>
     <ID>CyclomaticComplexMethod:MetadataSyncWorker.kt$MetadataSyncWorker$private suspend fun dbScan(fullScan: Boolean, folderPath: String?, dateStart: Long = 0L, dateEnd: Long = Long.MAX_VALUE, incremental: Boolean = false)</ID>
     <ID>CyclomaticComplexMethod:MetadataSyncWorker.kt$MetadataSyncWorker$private suspend fun fullScanFromMediaStore()</ID>
     <ID>CyclomaticComplexMethod:MetadataSyncWorker.kt$MetadataSyncWorker$private suspend fun processDbScanPage( page: List&lt;MetadataScanRow&gt;, existingCache: Map&lt;String, MediaCache&gt;, fullScan: Boolean, folderPath: String?, dateStart: Long, dateEnd: Long, incremental: Boolean, lastSync: Long, staleThreshold: Long, now: Long, batch: MutableList&lt;MediaCache&gt;, stats: FullScanStats, onDataFound: (Boolean) -&gt; Unit, )</ID>
@@ -163,8 +157,6 @@
     <ID>ExplicitItLambdaParameter:CompressionReviewScreen.kt${ _, it -&gt; "d${it.id}" }</ID>
     <ID>InstanceOfCheckForException:Activity.kt$e !is IOException</ID>
     <ID>InstanceOfCheckForException:ExplorerViewModel.kt$ExplorerViewModel$e is CancellationException</ID>
-    <ID>InstanceOfCheckForException:MediaViewModel.kt$MediaViewModel$e is CancellationException</ID>
-    <ID>InstanceOfCheckForException:MediaViewModel.kt$MediaViewModel$t is CancellationException</ID>
     <ID>InstanceOfCheckForException:XmpBatch.kt$XmpBatch$e is CancellationException</ID>
     <ID>LambdaParameterEventTrailing:ActiveFilterChip.kt$onRemove</ID>
     <ID>LambdaParameterEventTrailing:SelectionRow.kt$onClick</ID>
@@ -521,15 +513,6 @@
     <ID>MagicNumber:MediaSyncWorker.kt$MediaSyncWorker.Companion$168</ID>
     <ID>MagicNumber:MediaSyncWorker.kt$MediaSyncWorker.Companion$5</ID>
     <ID>MagicNumber:MediaSyncWorker.kt$MediaSyncWorker.Companion$750</ID>
-    <ID>MagicNumber:MediaViewModel.kt$MediaViewModel$20</ID>
-    <ID>MagicNumber:MediaViewModel.kt$MediaViewModel$200</ID>
-    <ID>MagicNumber:MediaViewModel.kt$MediaViewModel$3</ID>
-    <ID>MagicNumber:MediaViewModel.kt$MediaViewModel$30</ID>
-    <ID>MagicNumber:MediaViewModel.kt$MediaViewModel$365</ID>
-    <ID>MagicNumber:MediaViewModel.kt$MediaViewModel$4</ID>
-    <ID>MagicNumber:MediaViewModel.kt$MediaViewModel$5000</ID>
-    <ID>MagicNumber:MediaViewModel.kt$MediaViewModel$7</ID>
-    <ID>MagicNumber:MediaViewModel.kt$MediaViewModel$86_400_000L</ID>
     <ID>MagicNumber:MetadataSyncWorker.kt$MetadataSyncWorker$1024</ID>
     <ID>MagicNumber:MetadataSyncWorker.kt$MetadataSyncWorker$1024L</ID>
     <ID>MagicNumber:MetadataSyncWorker.kt$MetadataSyncWorker$10_000</ID>
@@ -841,79 +824,6 @@
     <ID>MaxLineLength:DoubleBackGuard.kt$Text(stringResource(if (currentRunning &amp;&amp; currentOnCancel != null) R.string.analysis_cancel_and_exit else R.string.leave))</ID>
     <ID>MaxLineLength:DoubleBackGuard.kt$text = { Text(stringResource(if (currentRunning) R.string.analysis_exit_running_body else R.string.analysis_exit_body)) }</ID>
     <ID>MaxLineLength:DoubleBackGuard.kt$title = { Text(stringResource(if (currentRunning) R.string.analysis_exit_running_title else R.string.analysis_exit_title)) }</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Box</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Column</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$FilterChip(selected = scope == AutoSelectScope.ALL, onClick = { scope = AutoSelectScope.ALL }, label = { Text(stringResource(R.string.dup_batch_all)) })</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$FilterChip(selected = scope == nextScope, onClick = { scope = nextScope }, label = { Text(stringResource(R.string.dup_batch_next, n)) })</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$GalleryImage(path = file.path, contentDescription = file.name, modifier = Modifier.size(64.dp).sharedElementKey("media_${file.path}"))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$GalleryImage(path = file.path, contentDescription = file.name, modifier = Modifier.size(72.dp).sharedElementKey("media_${file.path}"))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Icon(Icons.AutoMirrored.Filled.PlaylistAddCheck, contentDescription = null, modifier = Modifier.size(18.dp))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Icon(Icons.AutoMirrored.Filled.Sort, stringResource(R.string.dup_sort), tint = MaterialTheme.colorScheme.primary)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF43A047), modifier = Modifier.size(15.dp))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Icon(Icons.Default.ContentCopy, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Icon(Icons.Default.FolderOpen, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Icon(Icons.Default.FolderOpen, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(14.dp))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(26.dp))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Icon(Icons.Default.Star, null, tint = RatingStarColor, modifier = Modifier.size(12.dp))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(13.dp))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(15.dp))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$LazyColumn</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Row</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Surface</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text("${file.rating}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text("${folder.substringAfterLast('/')} · $count", maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(file.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(file.path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(file.tags.joinToString(", "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(if (state.isScanning) stringResource(R.string.cancel) else stringResource(R.string.cd_search))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(state.phase, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.dup_confirm_all_deleted, fullyMarked), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.dup_confirm_keeps_copies, keepingCopy), style = MaterialTheme.typography.labelMedium, color = Color(0xFF43A047))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.dup_confirm_rated, ratedAffected), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.dup_confirm_similar), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.dup_stays), Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, color = keepGreen, fontWeight = FontWeight.SemiBold)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.dup_verified_exact), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.files_scanned_count, state.totalScanned), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.newest), Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.select_folder_duplicates_short), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$Text(stringResource(R.string.tolerance), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$allVisibleSelected = visibleGroupKeys.isNotEmpty() &amp;&amp; selectedVisibleGroupKeys.size == visibleGroupKeys.size</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$android.widget.Toast.makeText(ctx, res.getString(R.string.similar_select_caution), android.widget.Toast.LENGTH_SHORT).show()</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$androidx.compose.material3</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.keep_largest)) }, onClick = { apply(KeepStrategy.LARGEST) })</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.keep_newest)) }, onClick = { apply(KeepStrategy.NEWEST) })</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.keep_oldest)) }, onClick = { apply(KeepStrategy.OLDEST) })</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.keep_shortest_name)) }, onClick = { apply(KeepStrategy.SHORTEST_NAME) })</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.keep_shortest_path)) }, onClick = { apply(KeepStrategy.SHORTEST_PATH) })</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.keep_smallest)) }, onClick = { apply(KeepStrategy.SMALLEST) })</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.selection_clear)) }, onClick = { onClear(); expanded = false })</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$color = if (hasSelection) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$confirmButton = { TextButton(onClick = { showConfirmDialog = false; vm.deleteSelected() }) { Text(stringResource(org.fossify.commons.R.string.delete), color = MaterialTheme.colorScheme.error) } }</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 4.dp)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$currentFolder.substringAfterLast('/').ifEmpty { stringResource(R.string.internal_storage) }</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$dismissButton = { TextButton(onClick = { showConfirmDialog = false }) { Text(stringResource(R.string.cancel)) } }</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$fun</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$if</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$if (state.folderFilter != null &amp;&amp; filteredGroups.isEmpty() &amp;&amp; state.groups.isNotEmpty()) vm.setFolderFilter(null)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$if (state.mode == DuplicateMode.SIMILAR) stringResource(R.string.dup_desc_similar) else stringResource(R.string.dup_desc_exact)</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$label = { Text(stringResource(R.string.dup_select_in_filtered_folder, folderName), maxLines = 1, overflow = TextOverflow.Ellipsis) }</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$leadingIcon = { Icon(Icons.AutoMirrored.Filled.PlaylistAddCheck, null, Modifier.size(AssistChipDefaults.IconSize)) }</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$leadingIcon = { Icon(Icons.Default.Block, null, Modifier.size(AssistChipDefaults.IconSize)) }</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$leadingIcon = { Icon(Icons.Default.FolderOpen, null, Modifier.size(AssistChipDefaults.IconSize)) }</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$leadingIcon = { if (sortMode == mode) Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary) }</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$modifier = Modifier.weight(1f).clip(RoundedCornerShape(Radius.sm)).clickable { expanded = !expanded }</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$navigationIcon = { IconButton(onClick = guardedBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back)) } }</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$stringResource(R.string.restored_scan_from, java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(ts)))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$summary = stringResource(R.string.duplicate_scan_summary, state.groups.size, totalDupes, formatBytes(totalWasted))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$tint = if (hasSelection) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$val affected = remember(state.groups, sel) { state.groups.filter { g -&gt; g.files.any { it.path in sel } } }</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$val groupKeys = filteredGroups.subList(start, min(start + n, filteredGroups.size)).map { it.targetKey }.toSet()</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$val ratedAffected = state.groups.flatMap { it.files }.count { it.path in sel &amp;&amp; (it.rating &gt; 0 || it.isFavorite) }</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$val shown = if (f == null) state.groups else state.groups.filter { g -&gt; g.files.any { File(it.path).parent == f } }</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$val start = listState.firstVisibleItemIndex.coerceIn(0, (filteredGroups.size - 1).coerceAtLeast(0))</ID>
-    <ID>MaxLineLength:DuplicateFinderScreen.kt$vm.applyKeepStrategy(strategy, groupKeys, additive = true, restrictToFolder = state.folderFilter)</ID>
     <ID>MaxLineLength:DuplicateFinderViewModel.kt$DuplicateFinderViewModel$Medium(null, f.name, path, File(path).parent ?: "", f.modified, f.modified, f.size, f.mediaType, 0, false, 0L, 0L, f.rating)</ID>
     <ID>MaxLineLength:DuplicateFinderViewModel.kt$DuplicateFinderViewModel$_state.update { it.copy(mode = mode, groups = emptyList(), selectedForDeletion = emptySet(), scanDone = false, folderFilter = null) }</ID>
     <ID>MaxLineLength:DuplicateFinderViewModel.kt$DuplicateFinderViewModel$_state.update { s -&gt; s.copy(selectedForDeletion = DuplicateSelection.bySubstring(s.groups, s.selectedForDeletion, s.folderFilter, substring, contains)) }</ID>
@@ -1501,34 +1411,6 @@
     <ID>MaxLineLength:MediaTile.kt$if</ID>
     <ID>MaxLineLength:MediaTile.kt$val mediaTypeDescription = if (isVideo) stringResource(R.string.media_type_video) else stringResource(R.string.media_type_image)</ID>
     <ID>MaxLineLength:MediaTypes.kt$val MEDIA_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "avif", "bmp", "svg", "apng", "jxl") + VIDEO_EXTENSIONS</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaFilter$val isActive: Boolean get() = rating &gt; 0 || tagNames != null || pathFilter != null || excludePaths != null || minSize &gt; 0 || dateRange &gt; 0 || typeFilter &gt; 0 || addedSince &gt; 0L || additionalPaths != null || reviewFilter != MediaReviewFilter.NONE || textQuery.isNotBlank()</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$(filter.addedSince &lt;= 0L || (if (item.dateSortKey &gt; 0L) item.dateSortKey else maxOf(item.dateAdded, item.modified)) &gt; filter.addedSince)</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$(filter.tagNames == null || if (filter.tagMatchAll) filter.tagNames.all { it in tags } else filter.tagNames.any { it in tags })</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$.</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$SortField.COUNT -&gt; if (desc) list.sortedWith(compareByDescending&lt;Medium&gt; { it.name.lowercase() }.thenBy { it.path.lowercase() }) else list.sortedWith(compareBy&lt;Medium&gt; { it.name.lowercase() }.thenBy { it.path.lowercase() })</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$SortField.DATE -&gt; if (desc) list.sortedWith(compareByDescending&lt;Medium&gt; { if (it.dateSortKey &gt; 0) it.dateSortKey else if (it.taken &gt; 0) it.taken else it.modified }.thenBy { it.path.lowercase() }) else list.sortedWith(compareBy&lt;Medium&gt; { if (it.dateSortKey &gt; 0) it.dateSortKey else if (it.taken &gt; 0) it.taken else it.modified }.thenBy { it.path.lowercase() })</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$SortField.NAME, SortField.RECENT -&gt; if (desc) list.sortedWith(compareByDescending&lt;Medium&gt; { it.name.lowercase() }.thenBy { it.path.lowercase() }) else list.sortedWith(compareBy&lt;Medium&gt; { it.name.lowercase() }.thenBy { it.path.lowercase() })</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$SortField.SIZE -&gt; if (desc) list.sortedWith(compareByDescending&lt;Medium&gt; { it.size }.thenBy { it.path.lowercase() }) else list.sortedWith(compareBy&lt;Medium&gt; { it.size }.thenBy { it.path.lowercase() })</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$XmpBatch.run(getApplication(), paths.toList().distinct(), onSuccess = { successful += it }) { repository.addTag(it, tag) }</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$XmpBatch.run(getApplication(), paths.toList().distinct(), onSuccess = { successful += it }) { repository.removeTag(it, tag) }</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$cachedFilteredPaths?.takeIf { cachedFilteredPathsKey == key &amp;&amp; cachedFilteredPathsGeneration == RefreshBus.pathGeneration }?.let { return@withLock it }</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$cachedFilteredPaths?.takeIf { cachedFilteredPathsKey == key &amp;&amp; cachedFilteredPathsGeneration == generation }?.let { return@withContext it }</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$cachedSortedPaths?.takeIf { cachedSortedPathsKey == key &amp;&amp; cachedSortedPathsGeneration == RefreshBus.pathGeneration }?.let { return@withLock it }</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$cachedSortedPaths?.takeIf { cachedSortedPathsKey == key &amp;&amp; cachedSortedPathsGeneration == generation }?.let { return@withContext it }</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$else</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$else -&gt; if (paths.isEmpty()) emptyList() else list.filter { isUnder(it.path, paths) &amp;&amp; (filter.reviewFilter != MediaReviewFilter.UNDECIDED || reviewByPath[it.path] == null) }</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$fun</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$if</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$if (cachedFilteredPaths != null &amp;&amp; cachedFilteredPathsGeneration == generation &amp;&amp; cachedFilteredPathsKey == key) return</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$if (cachedSortedPaths != null &amp;&amp; cachedSortedPathsGeneration == generation &amp;&amp; cachedSortedPathsKey == key) return</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$if (successful.isNotEmpty()) org.fossify.gallery.helpers.UndoManager.push(org.fossify.gallery.helpers.UndoAction(successful, org.fossify.gallery.helpers.UndoType.TAG_REMOVE, mapOf("tag" to tag)))</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$org.fossify.gallery.helpers.UndoManager.push(org.fossify.gallery.helpers.UndoAction(successful, org.fossify.gallery.helpers.UndoType.TAG_ADD, mapOf("tag" to tag)))</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$private</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$repository.getTagsForPaths(requested).mapValues { (_, tags) -&gt; tags.distinct().sortedBy { it.lowercase(Locale.ROOT) } }</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$return</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$suspend</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$type = if (removeWhenCommon) org.fossify.gallery.helpers.UndoType.TAG_REMOVE else org.fossify.gallery.helpers.UndoType.TAG_ADD</ID>
-    <ID>MaxLineLength:MediaViewModel.kt$MediaViewModel$val</ID>
     <ID>MaxLineLength:Medium.kt$Medium$fun isHeic()</ID>
     <ID>MaxLineLength:MediumDao.kt$MediumDao$@Query("SELECT COUNT(*) FROM media WHERE deleted_ts = 0 AND (parent_path = :folderPath COLLATE NOCASE OR parent_path LIKE :subfolderPattern ESCAPE '\\') AND type = 1")</ID>
     <ID>MaxLineLength:MediumDao.kt$MediumDao$@Query("SELECT filename, full_path, parent_path, last_modified, date_taken, size, type, video_duration, is_favorite, deleted_ts, media_store_id, rating, date_sort_key, date_added FROM media WHERE deleted_ts != 0 AND full_path IN (:paths)")</ID>
@@ -2011,7 +1893,6 @@
     <ID>ModifierMissing:CleanupHubScreen.kt$CleanupHubScreen</ID>
     <ID>ModifierMissing:CompressionReviewScreen.kt$CompressionReviewScreen</ID>
     <ID>ModifierMissing:CompressionSwipeScreen.kt$CompressionSwipeScreen</ID>
-    <ID>ModifierMissing:DuplicateFinderScreen.kt$DuplicateFinderScreen</ID>
     <ID>ModifierMissing:FilterSheetContent.kt$FilterSheetContent</ID>
     <ID>ModifierMissing:FolderMediaScreen.kt$FolderMediaScreen</ID>
     <ID>ModifierMissing:FolderSwipeScreen.kt$FolderSwipeScreen</ID>
@@ -2035,7 +1916,6 @@
     <ID>ModifierWithoutDefault:CompressionReviewScreen.kt$modifier</ID>
     <ID>ModifierWithoutDefault:CompressionSwipeScreen.kt$modifier</ID>
     <ID>ModifierWithoutDefault:FolderSwipeScreen.kt$modifier</ID>
-    <ID>MultipleEmitters:DuplicateFinderScreen.kt$MarkedBadge</ID>
     <ID>MultipleEmitters:FolderPickerSheet.kt$FolderResultRow</ID>
     <ID>MultipleEmitters:MediaInfoDialog.kt$InfoDivider</ID>
     <ID>MutableStateAutoboxing:CompressionReviewScreen.kt$mutableStateOf(0L)</ID>
@@ -2091,7 +1971,6 @@
     <ID>NestedBlockDepth:XmpWriter.kt$XmpWriter$private fun writeXmpToJpeg(file: File, xmpData: ByteArray): Boolean</ID>
     <ID>ParameterNaming:AlbumsScreen.kt$onSelectionActiveChanged</ID>
     <ID>ParameterNaming:ComposeExternalViewerActivity.kt$onTempFileCreated</ID>
-    <ID>ParameterNaming:DuplicateFinderScreen.kt$onApplySelected</ID>
     <ID>ParameterNaming:ExplorerScreen.kt$onCanGoUpChanged</ID>
     <ID>ParameterNaming:ExplorerScreen.kt$onScrollPositionChanged</ID>
     <ID>ParameterNaming:ExplorerScreen.kt$onSelectionActiveChanged</ID>
@@ -2141,7 +2020,6 @@
     <ID>ThrowsCount:Activity.kt$fun BaseSimpleActivity.saveRotatedImageToFile(oldPath: String, newPath: String, degrees: Int, showToasts: Boolean, callback: () -&gt; Unit)</ID>
     <ID>ThrowsCount:ExplorerScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, FlowPreview::class) @Composable fun ExplorerScreen( internalStoragePath: String, nameFilter: String = "", onClearNameFilter: () -&gt; Unit = {}, filterState: LibraryFilterState = LibraryFilterState(), filterActions: LibraryFilterActions = LibraryFilterActions(), modifier: Modifier = Modifier, folderSettings: ViewSettings = ViewSettings(), mediaSettings: ViewSettings = ViewSettings(), onPathChange: (String) -&gt; Unit = {}, onSelectionActiveChanged: (Boolean) -&gt; Unit = {}, onCanGoUpChanged: (Boolean) -&gt; Unit = {}, externalBackHandlerActive: Boolean = false, onNavigateToViewer: (List&lt;String&gt;, Int) -&gt; Unit = { _, _ -&gt; }, initialScrollIndex: Int = 0, initialScrollOffset: Int = 0, onScrollPositionChanged: (Int, Int) -&gt; Unit = { _, _ -&gt; }, // "In Medien öffnen" - opens the Media tab filtered (recursively, via MediaRepository's // directory-prefix LIKE match) to everything under the given folder(s). onOpenInMedia: (Set&lt;String&gt;) -&gt; Unit = {}, onRescan: () -&gt; Unit = {}, onScanMetadata: () -&gt; Unit = {}, onOpenSwipeMode: (String, String?) -&gt; Unit = { _, _ -&gt; }, onOpenPersonReview: (String) -&gt; Unit = {}, onOpenViewSettings: (() -&gt; Unit)? = null, onTagClick: (String) -&gt; Unit = {}, tabIndex: Int? = null, onMediaColumnCountChange: ((Int) -&gt; Unit)? = null, onFolderColumnCountChange: ((Int) -&gt; Unit)? = null, )</ID>
     <ID>ThrowsCount:MainOmniSearchPanel.kt$fun performSearch()</ID>
-    <ID>ThrowsCount:MediaViewModel.kt$MediaViewModel$private fun rescanAndLoad()</ID>
     <ID>TooGenericExceptionCaught:Activity.kt$e: Exception</ID>
     <ID>TooGenericExceptionCaught:AlbumsViewModel.kt$AlbumsViewModel$e: Exception</ID>
     <ID>TooGenericExceptionCaught:BootScanWorker.kt$BootScanWorker$e: Exception</ID>
@@ -2175,8 +2053,6 @@
     <ID>TooGenericExceptionCaught:MediaStoreOps.kt$MediaStoreOps$e: Exception</ID>
     <ID>TooGenericExceptionCaught:MediaStoreOps.kt$MediaStoreOps$retryEx: Exception</ID>
     <ID>TooGenericExceptionCaught:MediaSyncWorker.kt$MediaSyncWorker$e: Exception</ID>
-    <ID>TooGenericExceptionCaught:MediaViewModel.kt$MediaViewModel$e: Exception</ID>
-    <ID>TooGenericExceptionCaught:MediaViewModel.kt$MediaViewModel$t: Throwable</ID>
     <ID>TooGenericExceptionCaught:MetadataSyncWorker.kt$MetadataSyncWorker$e: Exception</ID>
     <ID>TooGenericExceptionCaught:PersonPresenceDetector.kt$PersonPresenceDetector$e: Exception</ID>
     <ID>TooGenericExceptionCaught:PersonScanWorker.kt$PersonScanWorker$e: Exception</ID>
@@ -2231,15 +2107,10 @@
     <ID>UnusedParameter:SettingsDialogs.kt$conf: org.fossify.gallery.helpers.Config</ID>
     <ID>UnusedParameter:StorageAnalysisViewModel.kt$StorageAnalysisViewModel$losslessOnly: Boolean = true</ID>
     <ID>UnusedParameter:ZoomableBox.kt$ZoomState$size: IntSize</ID>
-    <ID>UnusedPrivateMember:FoldersMoverScreen.kt$private fun uriToPath(uri: Uri, storageRoot: String): String?</ID>
-    <ID>UnusedPrivateMember:MediaViewModel.kt$MediaViewModel$private fun applySort(list: List&lt;Medium&gt;): List&lt;Medium&gt;</ID>
-    <ID>UnusedPrivateMember:MediaViewModel.kt$MediaViewModel$private fun prefetchFilteredPathsAsync()</ID>
-    <ID>UnusedPrivateMember:MediaViewModel.kt$MediaViewModel$private fun prefetchSortedPathsAsync()</ID>
     <ID>UnusedPrivateProperty:AlbumsScreen.kt$val containerColor = when (viewSettings.displayMode) { // Not colorScheme.surface - this app's custom ColorScheme sets background == surface, so a // folder tile with no thumbnail (empty folder) would be visually indistinguishable from the // screen behind it, leaving no indication a tappable card is even there. DisplayMode.COMPACT, DisplayMode.NORMAL -&gt; MaterialTheme.colorScheme.surfaceContainerHigh DisplayMode.DARK -&gt; MaterialTheme.colorScheme.surfaceVariant }</ID>
     <ID>UnusedPrivateProperty:AlbumsScreen.kt$val itemSpacing = viewSettings.spacing.dp</ID>
     <ID>UnusedPrivateProperty:FolderMediaScreen.kt$val ctx = LocalContext.current</ID>
     <ID>UnusedPrivateProperty:FolderPickerSheet.kt$val parentPath = File(dest).parent ?: rootPath</ID>
-    <ID>UnusedPrivateProperty:MediaViewModelTest.kt$MediaViewModelTest$private lateinit var viewModel: MediaViewModel</ID>
     <ID>UnusedPrivateProperty:String.kt$i</ID>
     <ID>UnusedPrivateProperty:ViewerScreen.kt$var showPersistentTags by remember { mutableStateOf(true) }</ID>
     <ID>UnusedPrivateProperty:ViewerScreen.kt$var showQuickTags by remember { mutableStateOf(false) }</ID>
@@ -2251,7 +2122,6 @@
     <ID>VariableNaming:MediaFetcher.kt$MediaFetcher$val OTGPath = context.config.OTGPath</ID>
     <ID>ViewModelInjection:CompressionReviewScreen.kt$vm</ID>
     <ID>ViewModelInjection:CompressionSwipeScreen.kt$vm</ID>
-    <ID>ViewModelInjection:DuplicateFinderScreen.kt$vm</ID>
     <ID>ViewModelInjection:FolderMediaScreen.kt$viewSettingsVM</ID>
     <ID>ViewModelInjection:MediaScreen.kt$viewModel</ID>
     <ID>ViewModelInjection:StorageAnalysisScreen.kt$vm</ID>

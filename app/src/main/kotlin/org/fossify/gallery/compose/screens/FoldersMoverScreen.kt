@@ -543,15 +543,3 @@ private fun FolderPickField(label: String, path: String, iconTint: androidx.comp
         }
     }
 }
-
-private fun uriToPath(uri: Uri, storageRoot: String): String? {
-    return try {
-        val docId = DocumentsContract.getTreeDocumentId(uri)
-        val split = docId.indexOf(':')
-        if (split >= 0) {
-            val type = docId.substring(0, split)
-            val relative = docId.substring(split + 1)
-            (if (type == "primary") "$storageRoot/$relative" else "/storage/$type/$relative").trimEnd('/')
-        } else null
-    } catch (_: Exception) { null }
-}
