@@ -480,7 +480,7 @@ class Config(context: Context) : BaseConfig(context) {
         set(fileLoadingPriority) = prefs.edit().putInt(FILE_LOADING_PRIORITY, fileLoadingPriority).apply()
 
     var loopVideos: Boolean
-        get() = prefs.getBoolean(LOOP_VIDEOS, false)
+        get() = prefs.getBoolean(LOOP_VIDEOS, true)
         set(loop) = prefs.edit().putBoolean(LOOP_VIDEOS, loop).apply()
 
     var muteVideos: Boolean

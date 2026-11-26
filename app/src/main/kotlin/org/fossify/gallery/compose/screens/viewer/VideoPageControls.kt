@@ -1,6 +1,10 @@
 package org.fossify.gallery.compose.screens.viewer
 
 import android.graphics.Bitmap
+import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -19,6 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.ContentCut
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -35,8 +41,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,7 +57,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import org.fossify.gallery.R
+import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.BlurRadius
 import org.fossify.gallery.compose.theme.Radius
 import org.fossify.gallery.compose.theme.Scrim
@@ -68,11 +79,53 @@ private const val SCRUB_PREVIEW_BOTTOM_DP = 124
 private const val SCRUB_PREVIEW_WIDTH_DP = 160
 private const val SCRUB_PREVIEW_HEIGHT_DP = 90
 private const val TRIM_BAR_BOTTOM_OFFSET_DP = 64
+private const val ZOOM_HUD_HIDE_MS = 1100L
+
+internal class VideoZoomHudState {
+    var labelResId by mutableStateOf<Int?>(null)
+        private set
+    var seq by mutableIntStateOf(0)
+        private set
+
+    fun show(filled: Boolean) {
+        labelResId = if (filled) R.string.video_scale_zoom else R.string.video_scale_fit
+        seq++
+    }
+
+    fun clear() {
+        labelResId = null
+    }
+}
+
+@Composable
+internal fun rememberVideoZoomHudState(key: Any): VideoZoomHudState {
+    val state = remember(key) { VideoZoomHudState() }
+    LaunchedEffect(state.seq) {
+        if (state.seq > 0) {
+            delay(ZOOM_HUD_HIDE_MS)
+            state.clear()
+        }
+    }
+    return state
+}
+
+internal fun toggleVideoFillZoom(
+    zoom: ZoomState,
+    scalingMode: Int,
+    onScalingModeChange: (Int) -> Unit,
+): Boolean = if (scalingMode != SCALING_FIT) {
+    onScalingModeChange(SCALING_FIT)
+    zoom.reset(animated = true)
+    false
+} else {
+    zoom.cycleZoom(preferFill = true)
+}
 
 @Composable
 internal fun VideoPageOverlayControls(
     isPlaying: Boolean,
     isMuted: Boolean,
+    isFilledZoom: Boolean,
     playbackSpeed: Float,
     moreControlsOpen: Boolean,
     trimMode: Boolean,
@@ -84,6 +137,7 @@ internal fun VideoPageOverlayControls(
     trimStartMs: Float,
     trimEndMs: Float,
     onTogglePlayPause: () -> Unit,
+    onToggleFillZoom: () -> Unit,
     onToggleMute: () -> Unit,
     onOpenMoreControls: () -> Unit,
     onDismissMoreControls: () -> Unit,
@@ -114,9 +168,11 @@ internal fun VideoPageOverlayControls(
         }
 
         VideoRightActionColumn(
+            isFilledZoom = isFilledZoom,
             isMuted = isMuted,
             playbackSpeed = playbackSpeed,
             moreControlsOpen = moreControlsOpen,
+            onToggleFillZoom = onToggleFillZoom,
             onToggleMute = onToggleMute,
             onOpenMoreControls = onOpenMoreControls,
             onDismissMoreControls = onDismissMoreControls,
@@ -158,10 +214,36 @@ internal fun VideoPageOverlayControls(
 }
 
 @Composable
+internal fun VideoZoomHudPill(
+    @StringRes labelResId: Int?,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedVisibility(
+        visible = labelResId != null,
+        modifier = modifier,
+        enter = fadeIn(AppMotion.short),
+        exit = fadeOut(AppMotion.medium),
+    ) {
+        if (labelResId != null) {
+            Surface(shape = RoundedCornerShape(Radius.xl), color = Scrim.a85) {
+                Text(
+                    text = stringResource(labelResId),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun VideoRightActionColumn(
+    isFilledZoom: Boolean,
     isMuted: Boolean,
     playbackSpeed: Float,
     moreControlsOpen: Boolean,
+    onToggleFillZoom: () -> Unit,
     onToggleMute: () -> Unit,
     onOpenMoreControls: () -> Unit,
     onDismissMoreControls: () -> Unit,
@@ -178,6 +260,31 @@ private fun VideoRightActionColumn(
         "${playbackSpeed}x"
     }
     Column(modifier) {
+        IconButton(
+            onClick = onToggleFillZoom,
+            modifier = Modifier
+                .size(48.dp)
+                .then(
+                    if (isFilledZoom) {
+                        Modifier.clip(CircleShape).background(Scrim.a50)
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
+            Icon(
+                imageVector = if (isFilledZoom) {
+                    Icons.Default.FullscreenExit
+                } else {
+                    Icons.Default.Fullscreen
+                },
+                contentDescription = stringResource(
+                    if (isFilledZoom) R.string.video_scale_fit else R.string.video_scale_zoom,
+                ),
+                tint = Color.White,
+                modifier = Modifier.size(22.dp),
+            )
+        }
         IconButton(onClick = onToggleMute, modifier = Modifier.size(48.dp)) {
             Icon(
                 imageVector = if (isMuted) {

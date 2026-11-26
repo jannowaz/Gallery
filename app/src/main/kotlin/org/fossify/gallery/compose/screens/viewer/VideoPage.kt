@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.dp
@@ -71,7 +72,7 @@ import org.fossify.gallery.extensions.config
 import java.io.File
 
 const val SCALING_FIT = 0
-const val SCALING_ZOOM = 2
+const val SCALING_ZOOM = 4
 const val SCALING_FILL_WIDTH = 3
 
 private val mmrReleaseScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -104,7 +105,7 @@ internal fun sanitizeVideoPlaybackSpeed(speed: Float): Float =
 fun VideoPage(
     path: String,
     scalingMode: Int,
-    @Suppress("UnusedParameter") onScalingModeChange: (Int) -> Unit,
+    onScalingModeChange: (Int) -> Unit,
     onToggleUi: () -> Unit = {},
     onZoomChange: (Boolean) -> Unit = {},
     showUi: Boolean = true,
@@ -143,6 +144,7 @@ fun VideoPage(
     var frameCache by remember(path) { mutableStateOf<List<Bitmap>>(emptyList()) }
     var positionMs by remember(path) { mutableLongStateOf(0L) }
     var pipAspect by remember(path) { mutableStateOf<Rational?>(null) }
+    val zoomHud = rememberVideoZoomHudState(path)
 
     LaunchedEffect(isCurrentPage) { if (!isCurrentPage) zoom.reset() }
     LaunchedEffect(zoom.isZoomed, isCurrentPage) {
@@ -211,9 +213,23 @@ fun VideoPage(
             playerView = playerView,
             player = player,
             zoom = zoom,
+            scalingMode = scalingMode,
             allowVideoGestures = ctx.config.allowVideoGestures,
             onToggleUi = onToggleUi,
             onSeekPosition = { positionMs = it; onInteract() },
+            onScalingModeChange = onScalingModeChange,
+            onZoomToggle = { filled ->
+                zoomHud.show(filled)
+                onInteract()
+            },
+        )
+
+        VideoZoomHudPill(
+            labelResId = zoomHud.labelResId,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 64.dp),
         )
 
         ZoomMinimap(
@@ -243,6 +259,7 @@ fun VideoPage(
             VideoPageOverlayControls(
                 isPlaying = isPlaying,
                 isMuted = isMuted,
+                isFilledZoom = zoom.isZoomed || scalingMode == SCALING_ZOOM,
                 playbackSpeed = playbackSpeed,
                 moreControlsOpen = moreControlsOpen,
                 trimMode = trimMode,
@@ -255,6 +272,10 @@ fun VideoPage(
                 trimEndMs = trimEndMs,
                 onTogglePlayPause = {
                     togglePlayerPlayback(player, isPlaying)
+                    onInteract()
+                },
+                onToggleFillZoom = {
+                    zoomHud.show(toggleVideoFillZoom(zoom, scalingMode, onScalingModeChange))
                     onInteract()
                 },
                 onToggleMute = {
@@ -388,14 +409,18 @@ private fun VideoPlayerSurface(
     playerView: PlayerView,
     player: ExoPlayer,
     zoom: ZoomState,
+    scalingMode: Int,
     allowVideoGestures: Boolean,
     onToggleUi: () -> Unit,
     onSeekPosition: (Long) -> Unit,
+    onScalingModeChange: (Int) -> Unit,
+    onZoomToggle: (Boolean) -> Unit,
 ) {
     AndroidView(
         factory = { playerView },
         modifier = Modifier
             .fillMaxSize()
+            .onSizeChanged { zoom.updateViewSize(it) }
             .graphicsLayer {
                 scaleX = zoom.scale
                 scaleY = zoom.scale
@@ -403,20 +428,30 @@ private fun VideoPlayerSurface(
                 translationY = zoom.offset.y
             }
             .zoomable(
-                zoom,
+                state = zoom,
                 onSingleTap = onToggleUi,
-                onDoubleTap = if (allowVideoGestures) {
-                    { pos, sz ->
+                onDoubleTap = { pos, sz ->
+                    val runZoom = {
+                        if (scalingMode != SCALING_FIT) onScalingModeChange(SCALING_FIT)
+                        onZoomToggle(zoom.cycleZoom(pos, sz, preferFill = true))
+                    }
+                    if (allowVideoGestures) {
                         handleVideoDoubleTap(
                             x = pos.x,
                             width = sz.width.toFloat(),
                             player = player,
                             onSeek = onSeekPosition,
-                            onZoom = { zoom.cycleZoom(pos, sz) },
+                            onZoom = runZoom,
                         )
+                    } else {
+                        runZoom()
                     }
-                } else {
-                    null
+                },
+                preferFillOnDoubleTap = true,
+                snapToFill = true,
+                onSnapToFill = {
+                    if (scalingMode != SCALING_FIT) onScalingModeChange(SCALING_FIT)
+                    onZoomToggle(true)
                 },
             )
             .privacyBlur(BlurRadius.viewer, BlurState.enabled),
@@ -496,6 +531,11 @@ private fun rememberVideoExoPlayer(
     LaunchedEffect(player, playbackSpeed) { player.setPlaybackSpeed(playbackSpeed) }
     LaunchedEffect(player, isCurrentPage) {
         if (isCurrentPage) {
+            player.repeatMode = if (ctx.config.loopVideos) {
+                Player.REPEAT_MODE_ONE
+            } else {
+                Player.REPEAT_MODE_OFF
+            }
             if (player.playbackState == Player.STATE_IDLE) {
                 player.prepare()
             } else if (player.playbackState == Player.STATE_ENDED && ctx.config.autoplayVideos) {
