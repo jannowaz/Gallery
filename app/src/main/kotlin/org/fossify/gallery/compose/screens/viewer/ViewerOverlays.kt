@@ -34,7 +34,9 @@ import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.Slideshow
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
@@ -95,6 +97,8 @@ import java.util.Date
 import java.util.Locale
 
 private const val EXIF_DATE_PREFIX_LEN = 10
+private const val ROTATION_QUARTER = 90
+private const val ROTATION_THREE_QUARTERS = 270
 
 /** Parses EXIF date headers (`yyyy:MM:dd ...` or `yyyy-MM-dd ...`) into a localized short date. */
 internal fun formatExifDate(rawExifDate: String?, locale: Locale = Locale.getDefault()): String? {
@@ -172,6 +176,7 @@ internal fun ViewerActionSheet(
     showRatingOverlay: Boolean,
     slideshowActive: Boolean,
     canRunSlideshow: Boolean,
+    videoPlaybackSpeed: Float,
     onRate: (Int) -> Unit,
     onToggleRatingOverlay: () -> Unit,
     onRename: () -> Unit,
@@ -180,6 +185,8 @@ internal fun ViewerActionSheet(
     onInfo: () -> Unit,
     onTrimVideo: () -> Unit,
     onVideoDisplaySettings: () -> Unit,
+    onCycleVideoPlaybackSpeed: () -> Unit,
+    onEnterVideoPip: () -> Unit,
     onSaveFrame: () -> Unit,
     onOpenFrameGrabber: () -> Unit,
     onEditImage: () -> Unit,
@@ -196,57 +203,26 @@ internal fun ViewerActionSheet(
     val labelAperture = stringResource(R.string.exif_aperture)
     val labelExposure = stringResource(R.string.exif_exposure)
     val labelSize = stringResource(R.string.sort_size)
+    val labels = remember(labelDate, labelResolution, labelDuration, labelCamera, labelFocal, labelAperture, labelExposure, labelSize) {
+        SheetMetadataLabels(
+            date = labelDate,
+            resolution = labelResolution,
+            duration = labelDuration,
+            camera = labelCamera,
+            focal = labelFocal,
+            aperture = labelAperture,
+            exposure = labelExposure,
+            size = labelSize,
+        )
+    }
     var exifLines by remember(currentPath) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
-    LaunchedEffect(currentPath, currentIsVideo) {
+    LaunchedEffect(currentPath, currentIsVideo, labels) {
         exifLines = withContext(Dispatchers.IO) {
-            val lines = mutableListOf<Pair<String, String>>()
-            val file = File(currentPath)
-            if (!currentIsVideo) {
-                try {
-                    val exif = ExifInterface(currentPath)
-                    formatExifDate(exif.getAttribute(ExifInterface.TAG_DATETIME))?.let { lines.add(labelDate to it) }
-                    val dimensions = exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, 0).takeIf { it > 0 }?.let { width ->
-                        exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, 0).takeIf { it > 0 }?.let { height -> width to height }
-                    } ?: currentPath.getDecodedImageDimensions()
-                    dimensions?.let { (width, height) -> lines.add(labelResolution to "$width × $height") }
-                    val make = exif.getAttribute(ExifInterface.TAG_MAKE) ?: ""
-                    val model = exif.getAttribute(ExifInterface.TAG_MODEL) ?: ""
-                    if (make.isNotBlank() || model.isNotBlank()) lines.add(labelCamera to "$make $model".trim())
-                    exif.getAttribute(ExifInterface.TAG_FOCAL_LENGTH)?.let { lines.add(labelFocal to it) }
-                    exif.getAttribute(ExifInterface.TAG_F_NUMBER)?.let { lines.add(labelAperture to "f/$it") }
-                    exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME)?.let { lines.add(labelExposure to "${it}s") }
-                    exif.getAttribute(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY)?.let { lines.add("ISO" to it) }
-                    if (file.exists()) lines.add(labelSize to Formatter.formatShortFileSize(ctx, file.length()))
-                } catch (_: Exception) { }
+            if (currentIsVideo) {
+                loadVideoSheetMetadata(ctx, currentPath, labels)
             } else {
-                val retriever = MediaMetadataRetriever()
-                try {
-                    retriever.setDataSource(currentPath)
-                    val rawWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
-                    val rawHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
-                    val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
-                    val (w, h) = if (rotation == 90 || rotation == 270) rawHeight to rawWidth else rawWidth to rawHeight
-                    if (w > 0 && h > 0) lines.add(labelResolution to "$w × $h")
-                    val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-                    if (durationMs > 0L) {
-                        val totalSec = durationMs / 1000L
-                        val hours = totalSec / 3600L
-                        val mins = (totalSec % 3600L) / 60L
-                        val secs = totalSec % 60L
-                        val formatted = if (hours > 0L) "%d:%02d:%02d".format(hours, mins, secs) else "%02d:%02d".format(mins, secs)
-                        lines.add(labelDuration to formatted)
-                    }
-                } catch (_: Exception) { } finally {
-                    try { retriever.release() } catch (_: Exception) { }
-                }
-                if (file.exists()) {
-                    if (file.lastModified() > 0L) {
-                        lines.add(labelDate to DateFormat.getDateInstance(DateFormat.SHORT).format(Date(file.lastModified())))
-                    }
-                    lines.add(labelSize to Formatter.formatShortFileSize(ctx, file.length()))
-                }
+                loadImageSheetMetadata(ctx, currentPath, labels)
             }
-            lines
         }
     }
 
@@ -351,30 +327,148 @@ internal fun ViewerActionSheet(
             }
             Spacer(Modifier.height(10.dp))
             SheetSectionLabel(stringResource(R.string.viewer_sheet_section_view))
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                ActionChip(
-                    Icons.Default.Star,
-                    stringResource(R.string.viewer_toggle_rating_bar),
-                    selected = showRatingOverlay,
-                    onClick = onToggleRatingOverlay,
-                )
-                if (canRunSlideshow) {
-                    ActionChip(
-                        Icons.Default.Slideshow,
-                        stringResource(R.string.action_slideshow),
-                        selected = slideshowActive,
-                        onClick = onToggleSlideshow,
-                    )
-                }
-                if (currentIsVideo) {
-                    ActionChip(Icons.Default.AspectRatio, stringResource(R.string.video_display), onClick = onVideoDisplaySettings)
-                }
-            }
+            ViewerActionSheetViewSection(
+                currentIsVideo = currentIsVideo,
+                showRatingOverlay = showRatingOverlay,
+                slideshowActive = slideshowActive,
+                canRunSlideshow = canRunSlideshow,
+                videoPlaybackSpeed = videoPlaybackSpeed,
+                onToggleRatingOverlay = onToggleRatingOverlay,
+                onToggleSlideshow = onToggleSlideshow,
+                onCycleVideoPlaybackSpeed = onCycleVideoPlaybackSpeed,
+                onEnterVideoPip = onEnterVideoPip,
+                onVideoDisplaySettings = onVideoDisplaySettings,
+            )
             Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+private data class SheetMetadataLabels(
+    val date: String,
+    val resolution: String,
+    val duration: String,
+    val camera: String,
+    val focal: String,
+    val aperture: String,
+    val exposure: String,
+    val size: String,
+)
+
+private fun loadImageSheetMetadata(
+    ctx: Context,
+    path: String,
+    labels: SheetMetadataLabels,
+): List<Pair<String, String>> {
+    val lines = mutableListOf<Pair<String, String>>()
+    val file = File(path)
+    runCatching {
+        val exif = ExifInterface(path)
+        formatExifDate(exif.getAttribute(ExifInterface.TAG_DATETIME))?.let { lines.add(labels.date to it) }
+        val w = exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, 0)
+        val h = exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, 0)
+        val dims = if (w > 0 && h > 0) w to h else path.getDecodedImageDimensions()
+        dims?.let { (width, height) -> lines.add(labels.resolution to "$width × $height") }
+        val make = exif.getAttribute(ExifInterface.TAG_MAKE).orEmpty()
+        val model = exif.getAttribute(ExifInterface.TAG_MODEL).orEmpty()
+        val camera = "$make $model".trim()
+        if (camera.isNotBlank()) lines.add(labels.camera to camera)
+        exif.getAttribute(ExifInterface.TAG_FOCAL_LENGTH)?.let { lines.add(labels.focal to it) }
+        exif.getAttribute(ExifInterface.TAG_F_NUMBER)?.let { lines.add(labels.aperture to "f/$it") }
+        exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME)?.let { lines.add(labels.exposure to "${it}s") }
+        exif.getAttribute(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY)?.let { lines.add("ISO" to it) }
+        if (file.exists()) lines.add(labels.size to Formatter.formatShortFileSize(ctx, file.length()))
+    }
+    return lines
+}
+
+private fun loadVideoSheetMetadata(
+    ctx: Context,
+    path: String,
+    labels: SheetMetadataLabels,
+): List<Pair<String, String>> {
+    val lines = mutableListOf<Pair<String, String>>()
+    val file = File(path)
+    val retriever = MediaMetadataRetriever()
+    try {
+        retriever.setDataSource(path)
+        val rawW = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+        val rawH = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+        val rot = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+        val (w, h) = if (rot == ROTATION_QUARTER || rot == ROTATION_THREE_QUARTERS) {
+            rawH to rawW
+        } else {
+            rawW to rawH
+        }
+        if (w > 0 && h > 0) lines.add(labels.resolution to "$w × $h")
+        val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        if (durationMs > 0L) {
+            lines.add(labels.duration to formatTrimTimestamp(durationMs))
+        }
+    } catch (_: Exception) {
+    } finally {
+        runCatching { retriever.release() }
+    }
+    if (file.exists()) {
+        if (file.lastModified() > 0L) {
+            lines.add(labels.date to DateFormat.getDateInstance(DateFormat.SHORT).format(Date(file.lastModified())))
+        }
+        lines.add(labels.size to Formatter.formatShortFileSize(ctx, file.length()))
+    }
+    return lines
+}
+
+@Composable
+private fun ViewerActionSheetViewSection(
+    currentIsVideo: Boolean,
+    showRatingOverlay: Boolean,
+    slideshowActive: Boolean,
+    canRunSlideshow: Boolean,
+    videoPlaybackSpeed: Float,
+    onToggleRatingOverlay: () -> Unit,
+    onToggleSlideshow: () -> Unit,
+    onCycleVideoPlaybackSpeed: () -> Unit,
+    onEnterVideoPip: () -> Unit,
+    onVideoDisplaySettings: () -> Unit,
+) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (!currentIsVideo) {
+            ActionChip(
+                Icons.Default.Star,
+                stringResource(R.string.viewer_toggle_rating_bar),
+                selected = showRatingOverlay,
+                onClick = onToggleRatingOverlay,
+            )
+        }
+        if (canRunSlideshow) {
+            ActionChip(
+                Icons.Default.Slideshow,
+                stringResource(R.string.action_slideshow),
+                selected = slideshowActive,
+                onClick = onToggleSlideshow,
+            )
+        }
+        if (currentIsVideo) {
+            ActionChip(
+                Icons.Default.Speed,
+                formatPlaybackSpeed(videoPlaybackSpeed),
+                selected = videoPlaybackSpeed != 1f,
+                onClick = onCycleVideoPlaybackSpeed,
+            )
+            ActionChip(
+                Icons.Default.PictureInPictureAlt,
+                stringResource(R.string.cd_pip),
+                onClick = onEnterVideoPip,
+            )
+            ActionChip(
+                Icons.Default.AspectRatio,
+                stringResource(R.string.video_display),
+                onClick = onVideoDisplaySettings,
+            )
         }
     }
 }

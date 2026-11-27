@@ -75,12 +75,13 @@ private const val HANDLE_ALPHA = 0.58f
 private const val UNSELECTED_ICON_ALPHA = 0.72f
 private const val DELETE_TINT_ARGB = 0xFFFFB4AB
 private const val FRAME_JPEG_QUALITY = 95
-private const val VIDEO_BOTTOM_OFFSET_DP = 64
+private const val VIDEO_UNDO_CLEARANCE_DP = 116
 private const val FILMSTRIP_UNDO_CLEARANCE_DP = 56
 private const val RATING_UNDO_CLEARANCE_DP = 128
 private const val COMPACT_UNDO_CLEARANCE_DP = 72
 private const val VIDEO_HINT_OFFSET_Y_DP = 100
 private const val BOTTOM_SCRIM_HEIGHT_DP = 200
+private const val VIDEO_BOTTOM_SCRIM_HEIGHT_DP = 156
 
 @Composable
 internal fun BoxScope.ViewerGestureHints(
@@ -201,6 +202,7 @@ internal fun BoxScope.ViewerBottomChrome(
     showUI: Boolean,
     inPip: Boolean,
     currentIsVideo: Boolean,
+    isVideoScrubbing: Boolean,
     dragOffset: Float,
     items: List<String>,
     currentPage: Int,
@@ -215,8 +217,10 @@ internal fun BoxScope.ViewerBottomChrome(
     onDelete: () -> Unit,
     onOpenMore: () -> Unit,
 ) {
+    val showChrome = showUI && !inPip && !isVideoScrubbing
+    val scrimHeight = if (currentIsVideo) VIDEO_BOTTOM_SCRIM_HEIGHT_DP.dp else BOTTOM_SCRIM_HEIGHT_DP.dp
     AnimatedVisibility(
-        visible = showUI && !inPip,
+        visible = showChrome,
         enter = fadeIn(AppMotion.medium),
         exit = fadeOut(AppMotion.medium),
         modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
@@ -224,13 +228,13 @@ internal fun BoxScope.ViewerBottomChrome(
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(BOTTOM_SCRIM_HEIGHT_DP.dp)
+                .height(scrimHeight)
                 .background(Brush.verticalGradient(0f to Color.Transparent, 1f to Scrim.a60)),
         )
     }
 
-    val bottomGroupOffset = if (currentIsVideo) VIDEO_BOTTOM_OFFSET_DP.dp else 0.dp
-    val showFilmstrip = showUI && !inPip && items.size > 1
+    val showFilmstrip = showChrome && !currentIsVideo && items.size > 1
+    val showRatingRail = showChrome && showRatingOverlay && !currentIsVideo
     Column(
         Modifier
             .align(Alignment.BottomCenter)
@@ -238,11 +242,10 @@ internal fun BoxScope.ViewerBottomChrome(
             .graphicsLayer {
                 alpha = (1f - (abs(dragOffset) / DRAG_FADE_DISTANCE_PX)).coerceIn(0f, 1f)
             }
-            .navigationBarsPadding()
-            .padding(bottom = bottomGroupOffset),
+            .navigationBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (showUI && !inPip) {
+        if (showChrome && !currentIsVideo) {
             Box(
                 Modifier
                     .padding(bottom = 2.dp)
@@ -265,7 +268,7 @@ internal fun BoxScope.ViewerBottomChrome(
             )
         }
         AnimatedVisibility(
-            visible = showRatingOverlay && showUI && !inPip,
+            visible = showRatingRail,
             enter = fadeIn(AppMotion.medium),
             exit = fadeOut(AppMotion.medium),
         ) {
@@ -277,12 +280,12 @@ internal fun BoxScope.ViewerBottomChrome(
             )
         }
         AnimatedVisibility(
-            visible = showUI && !inPip,
+            visible = showChrome,
             enter = fadeIn(AppMotion.medium),
             exit = fadeOut(AppMotion.medium),
         ) {
             ViewerActionBarRow(
-                showFavoriteButton = !showRatingOverlay,
+                showFavoriteButton = !showRatingOverlay || currentIsVideo,
                 isFavorite = isFavorite,
                 onShare = onShare,
                 onOpenTags = onOpenTags,
@@ -294,20 +297,32 @@ internal fun BoxScope.ViewerBottomChrome(
     }
 
     if (!inPip) {
-        val filmstripClearance = if (showFilmstrip) FILMSTRIP_UNDO_CLEARANCE_DP.dp else 0.dp
-        val baseClearance = if (showRatingOverlay) {
-            RATING_UNDO_CLEARANCE_DP.dp
-        } else {
-            COMPACT_UNDO_CLEARANCE_DP.dp
-        }
-        val undoClearance = if (showUI) baseClearance + filmstripClearance else 0.dp
+        val undoClearance = computeViewerUndoClearance(
+            showChrome = showChrome,
+            currentIsVideo = currentIsVideo,
+            showFilmstrip = showFilmstrip,
+            showRatingOverlay = showRatingOverlay,
+        )
         UndoBar(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = bottomGroupOffset + undoClearance),
+                .padding(bottom = undoClearance.dp),
         )
     }
+}
+
+private fun computeViewerUndoClearance(
+    showChrome: Boolean,
+    currentIsVideo: Boolean,
+    showFilmstrip: Boolean,
+    showRatingOverlay: Boolean,
+): Int {
+    if (!showChrome) return 0
+    if (currentIsVideo) return VIDEO_UNDO_CLEARANCE_DP
+    val filmstripClearance = if (showFilmstrip) FILMSTRIP_UNDO_CLEARANCE_DP else 0
+    val baseClearance = if (showRatingOverlay) RATING_UNDO_CLEARANCE_DP else COMPACT_UNDO_CLEARANCE_DP
+    return baseClearance + filmstripClearance
 }
 
 @Composable
@@ -383,7 +398,7 @@ private fun ViewerActionBarRow(
 ) {
     Box(Modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {

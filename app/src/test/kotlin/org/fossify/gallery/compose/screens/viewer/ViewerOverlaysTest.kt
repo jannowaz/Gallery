@@ -63,6 +63,23 @@ class ViewerOverlaysTest {
     }
 
     @Test
+    fun `nextVideoPlaybackSpeed cycles through supported speeds and wraps around`() {
+        assertEquals(1f, nextVideoPlaybackSpeed(0.5f), 0.0001f)
+        assertEquals(1.5f, nextVideoPlaybackSpeed(1f), 0.0001f)
+        assertEquals(2f, nextVideoPlaybackSpeed(1.5f), 0.0001f)
+        assertEquals(3f, nextVideoPlaybackSpeed(2f), 0.0001f)
+        assertEquals(0.5f, nextVideoPlaybackSpeed(3f), 0.0001f)
+    }
+
+    @Test
+    fun `formatPlaybackSpeed formats integer and fractional speeds concisely`() {
+        assertEquals("0.5x", formatPlaybackSpeed(0.5f))
+        assertEquals("1x", formatPlaybackSpeed(1f))
+        assertEquals("1.5x", formatPlaybackSpeed(1.5f))
+        assertEquals("2x", formatPlaybackSpeed(2f))
+    }
+
+    @Test
     fun `nextUniqueTrimmedFile avoids overwriting existing files`() {
         val tempDir = kotlin.io.path.createTempDirectory("trim-test").toFile()
         try {

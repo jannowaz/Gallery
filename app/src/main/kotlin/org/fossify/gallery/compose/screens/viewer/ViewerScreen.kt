@@ -254,8 +254,9 @@ fun ViewerScreen(
     // seconds regardless of media type, so dropping the video branch here doesn't leave the chrome
     // stuck on-screen - it just gives a video the same brief, visible-on-open moment a photo gets.
     var showUI by remember { mutableStateOf(true) }
-    var videoSessionMuted by remember { mutableStateOf(ctx.config.muteVideos) }
     var videoSessionSpeed by remember { mutableFloatStateOf(sanitizeVideoPlaybackSpeed(ctx.config.playbackSpeed)) }
+    var videoPipRequest by remember { mutableIntStateOf(0) }
+    var isVideoScrubbing by remember { mutableStateOf(false) }
     var showActionSheet by remember { mutableStateOf(false) }
     var showRateAndTagSheet by remember { mutableStateOf(false) }
     var slideshowActive by remember { mutableStateOf(false) }
@@ -366,6 +367,7 @@ fun ViewerScreen(
     LaunchedEffect(showVideoGestureHintNow) { if (showVideoGestureHintNow) { delay(3000); dismissVideoGestureHint() } }
     LaunchedEffect(pagerState.currentPage) {
         isCurrentZoomed = false
+        isVideoScrubbing = false
         withContext(Dispatchers.IO) {
             isFavorite = repo.isFavorite(currentPath)
             currentRating = try { repo.getRating(currentPath) } catch (_: Exception) { 0 }
@@ -377,7 +379,12 @@ fun ViewerScreen(
     }
 
     val autoHideMs = ctx.config.viewerAutoHideMs
-    LaunchedEffect(showUI, uiInteractionTick) { if (showUI) { delay(autoHideMs.toLong()); showUI = false } }
+    LaunchedEffect(showUI, uiInteractionTick, isVideoScrubbing, showActionSheet) {
+        if (showUI && !isVideoScrubbing && !showActionSheet) {
+            delay(autoHideMs.toLong())
+            showUI = false
+        }
+    }
 
     // "Hide system UI" ties the status/nav bars to the same auto-hide chrome state as the in-app
     // overlay (mirrors the legacy ViewPagerActivity's hideSystemUI()/showSystemUI() calls, which
@@ -711,10 +718,9 @@ fun ViewerScreen(
                             bitmap?.recycle()
                         }
                     },
-                    sessionMuted = videoSessionMuted,
-                    onMutedChange = { videoSessionMuted = it },
+                    pipRequest = if (page == pagerState.currentPage) videoPipRequest else 0,
                     sessionPlaybackSpeed = videoSessionSpeed,
-                    onPlaybackSpeedChange = { videoSessionSpeed = it },
+                    onScrubbingChange = { if (page == pagerState.currentPage) isVideoScrubbing = it },
                 )
                 else -> ImagePage(
                     path = path, file = file, onClose = onClose,
@@ -756,7 +762,7 @@ fun ViewerScreen(
         // The main viewer chrome is one stable state. It appears/disappears as a single layer so
         // the top bar, bottom actions and scrim cannot drift through separate fade timelines.
         AnimatedVisibility(
-            visible = showUI && !inPip,
+            visible = showUI && !inPip && !isVideoScrubbing,
             enter = fadeIn(AppMotion.medium),
             exit = fadeOut(AppMotion.medium),
             modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
@@ -833,6 +839,7 @@ fun ViewerScreen(
             showUI = showUI,
             inPip = inPip,
             currentIsVideo = currentIsVideo,
+            isVideoScrubbing = isVideoScrubbing,
             dragOffset = dragOffset,
             items = items,
             currentPage = pagerState.currentPage,
@@ -875,6 +882,7 @@ fun ViewerScreen(
         showRatingOverlay = showRatingOverlay,
         slideshowActive = slideshowActive,
         videoScalingMode = videoScalingMode,
+        videoPlaybackSpeed = videoSessionSpeed,
         showActionSheet = showActionSheet,
         showSlideshowDialog = showSlideshowDialog,
         showRateAndTagSheet = showRateAndTagSheet,
@@ -905,6 +913,15 @@ fun ViewerScreen(
         onRequestInfo = { infoDialogPath = currentPath; showActionSheet = false },
         onRequestTrimVideo = { showVideoTrimmer = true; showActionSheet = false },
         onRequestVideoSettings = { showVideoSettings = true; showActionSheet = false },
+        onCycleVideoPlaybackSpeed = {
+            val next = nextVideoPlaybackSpeed(videoSessionSpeed)
+            videoSessionSpeed = next
+            ctx.config.playbackSpeed = next
+        },
+        onEnterVideoPip = {
+            showActionSheet = false
+            videoPipRequest++
+        },
         onRequestSaveFrame = { captureFramePath = currentPath; captureFrameRequest++; showActionSheet = false },
         onRequestFrameGrabber = { showFrameGrabber = true; showActionSheet = false },
         onToggleSlideshow = {

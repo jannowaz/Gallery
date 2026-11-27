@@ -10,7 +10,6 @@ import android.net.Uri
 import android.util.Rational
 import android.view.LayoutInflater
 import android.view.TextureView
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -28,7 +27,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -38,7 +36,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -61,7 +58,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import org.fossify.commons.extensions.toast
 import org.fossify.gallery.R
 import org.fossify.gallery.compose.theme.AppMotion
 import org.fossify.gallery.compose.theme.BlurRadius
@@ -114,30 +110,18 @@ fun VideoPage(
     isCurrentPage: Boolean = true,
     captureFrameRequest: Int = 0,
     onCaptureFrame: (Bitmap?) -> Unit = {},
-    sessionMuted: Boolean? = null,
-    onMutedChange: ((Boolean) -> Unit)? = null,
+    pipRequest: Int = 0,
     sessionPlaybackSpeed: Float? = null,
-    onPlaybackSpeedChange: ((Float) -> Unit)? = null,
+    onScrubbingChange: (Boolean) -> Unit = {},
 ) {
     val ctx = LocalContext.current
-    val res = LocalResources.current
-    val scope = rememberCoroutineScope()
     val zoom = rememberZoomState()
     val latestOnZoomChange by rememberUpdatedState(onZoomChange)
     val latestOnCaptureFrame by rememberUpdatedState(onCaptureFrame)
+    val latestOnScrubbingChange by rememberUpdatedState(onScrubbingChange)
 
     var isPlaying by remember(path) { mutableStateOf(ctx.config.autoplayVideos) }
-    var localSpeed by remember(path) {
-        mutableFloatStateOf(sanitizeVideoPlaybackSpeed(ctx.config.playbackSpeed))
-    }
-    val playbackSpeed = sessionPlaybackSpeed ?: localSpeed
-    var localMuted by remember(path) { mutableStateOf(ctx.config.muteVideos) }
-    val isMuted = sessionMuted ?: localMuted
-    var trimMode by remember(path) { mutableStateOf(false) }
-    var isSavingTrim by remember(path) { mutableStateOf(false) }
-    var moreControlsOpen by remember(path) { mutableStateOf(false) }
-    var trimStartMs by remember(path) { mutableFloatStateOf(0f) }
-    var trimEndMs by remember(path) { mutableFloatStateOf(-1f) }
+    val playbackSpeed = sessionPlaybackSpeed ?: sanitizeVideoPlaybackSpeed(ctx.config.playbackSpeed)
     var playerError by remember(path) { mutableStateOf<PlaybackException?>(null) }
     var isBuffering by remember(path) { mutableStateOf(false) }
     var scrubFraction by remember { mutableFloatStateOf(-1f) }
@@ -146,7 +130,15 @@ fun VideoPage(
     var pipAspect by remember(path) { mutableStateOf<Rational?>(null) }
     val zoomHud = rememberVideoZoomHudState(path)
 
-    LaunchedEffect(isCurrentPage) { if (!isCurrentPage) zoom.reset() }
+    LaunchedEffect(isCurrentPage) {
+        if (!isCurrentPage) {
+            zoom.reset()
+            if (scrubFraction >= 0f) {
+                scrubFraction = -1f
+                latestOnScrubbingChange(false)
+            }
+        }
+    }
     LaunchedEffect(zoom.isZoomed, isCurrentPage) {
         if (isCurrentPage) latestOnZoomChange(zoom.isZoomed)
     }
@@ -177,7 +169,6 @@ fun VideoPage(
 
     val player = rememberVideoExoPlayer(
         path = path,
-        isMuted = isMuted,
         playbackSpeed = playbackSpeed,
         isCurrentPage = isCurrentPage,
         onPlayingChange = { isPlaying = it },
@@ -192,6 +183,11 @@ fun VideoPage(
     LaunchedEffect(player) { playerView.player = player; positionMs = player.currentPosition }
     LaunchedEffect(scalingMode) { playerView.resizeMode = scalingMode }
     LaunchedEffect(isPlaying, isCurrentPage) { playerView.keepScreenOn = isPlaying && isCurrentPage }
+    LaunchedEffect(pipRequest, isCurrentPage) {
+        if (pipRequest > 0 && isCurrentPage) {
+            enterVideoPip(ctx as? Activity, pipAspect, player, isPlaying)
+        }
+    }
 
     VideoFrameCaptureAndPipEffects(
         path = path,
@@ -258,18 +254,11 @@ fun VideoPage(
         ) {
             VideoPageOverlayControls(
                 isPlaying = isPlaying,
-                isMuted = isMuted,
                 isFilledZoom = zoom.isZoomed || scalingMode == SCALING_ZOOM,
-                playbackSpeed = playbackSpeed,
-                moreControlsOpen = moreControlsOpen,
-                trimMode = trimMode,
-                isSavingTrim = isSavingTrim,
                 durationMs = player.duration,
                 positionMs = positionMs,
                 scrubFraction = scrubFraction,
                 frameCache = frameCache,
-                trimStartMs = trimStartMs,
-                trimEndMs = trimEndMs,
                 onTogglePlayPause = {
                     togglePlayerPlayback(player, isPlaying)
                     onInteract()
@@ -278,35 +267,8 @@ fun VideoPage(
                     zoomHud.show(toggleVideoFillZoom(zoom, scalingMode, onScalingModeChange))
                     onInteract()
                 },
-                onToggleMute = {
-                    val updatedMuted = !isMuted
-                    localMuted = updatedMuted
-                    onMutedChange?.invoke(updatedMuted)
-                    player.volume = if (updatedMuted) 0f else 1f
-                    onInteract()
-                },
-                onOpenMoreControls = { moreControlsOpen = true; onInteract() },
-                onDismissMoreControls = { moreControlsOpen = false },
-                onCycleSpeed = { nextSpeed ->
-                    localSpeed = nextSpeed
-                    onPlaybackSpeedChange?.invoke(nextSpeed)
-                    ctx.config.playbackSpeed = nextSpeed
-                    player.setPlaybackSpeed(nextSpeed)
-                    moreControlsOpen = false
-                    onInteract()
-                },
-                onEnterPip = {
-                    enterVideoPip(ctx as? Activity, pipAspect, player, isPlaying)
-                    moreControlsOpen = false
-                    onInteract()
-                },
-                onToggleTrimMode = {
-                    trimMode = !trimMode
-                    if (trimMode && trimEndMs < 0f) trimEndMs = player.duration.toFloat()
-                    moreControlsOpen = false
-                    onInteract()
-                },
                 onSeekDrag = { fraction ->
+                    if (scrubFraction < 0f) latestOnScrubbingChange(true)
                     scrubFraction = fraction
                     player.seekTo((fraction * player.duration).toLong())
                     onInteract()
@@ -314,38 +276,8 @@ fun VideoPage(
                 onSeekFinish = { finalPos ->
                     positionMs = finalPos
                     scrubFraction = -1f
-                },
-                onUpdateTrimRange = { start, end, seekMs ->
-                    trimStartMs = start
-                    trimEndMs = end
-                    player.seekTo(seekMs)
-                    positionMs = seekMs
+                    latestOnScrubbingChange(false)
                     onInteract()
-                },
-                onCancelTrim = { trimMode = false; onInteract() },
-                onSaveTrim = { startMs, endMs ->
-                    onInteract()
-                    if (endMs <= startMs) {
-                        ctx.toast(R.string.trim_invalid_range, Toast.LENGTH_SHORT)
-                    } else {
-                        isSavingTrim = true
-                        scope.launch {
-                            val result = exportTrimmedMp4(
-                                ctx = ctx,
-                                path = path,
-                                startUs = startMs.toLong() * MICROS_PER_MILLI,
-                                endUs = endMs.toLong() * MICROS_PER_MILLI,
-                            )
-                            isSavingTrim = false
-                            result.onSuccess { file ->
-                                trimMode = false
-                                ctx.toast(res.getString(R.string.saved_as, file.name), Toast.LENGTH_SHORT)
-                            }.onFailure { err ->
-                                val msg = err.message ?: err.javaClass.simpleName
-                                ctx.toast(res.getString(R.string.error_generic, msg), Toast.LENGTH_SHORT)
-                            }
-                        }
-                    }
                 },
             )
         }
@@ -484,7 +416,6 @@ private fun VideoPlaybackStatusOverlay(
 private fun buildVideoExoPlayer(
     ctx: android.content.Context,
     path: String,
-    isMuted: Boolean,
     playbackSpeed: Float,
 ): ExoPlayer = ExoPlayer.Builder(ctx)
     .setHandleAudioBecomingNoisy(true)
@@ -503,7 +434,7 @@ private fun buildVideoExoPlayer(
         } else {
             Player.REPEAT_MODE_OFF
         }
-        volume = if (isMuted) 0f else 1f
+        volume = if (ctx.config.muteVideos) 0f else 1f
         setPlaybackSpeed(playbackSpeed)
         if (ctx.config.rememberLastVideoPosition) {
             val savedPos = ctx.config.getLastVideoPosition(path)
@@ -514,7 +445,6 @@ private fun buildVideoExoPlayer(
 @Composable
 private fun rememberVideoExoPlayer(
     path: String,
-    isMuted: Boolean,
     playbackSpeed: Float,
     isCurrentPage: Boolean,
     onPlayingChange: (Boolean) -> Unit,
@@ -526,8 +456,7 @@ private fun rememberVideoExoPlayer(
     val latestOnBuffering by rememberUpdatedState(onBufferingChange)
     val latestOnError by rememberUpdatedState(onError)
 
-    val player = remember(path) { buildVideoExoPlayer(ctx, path, isMuted, playbackSpeed) }
-    LaunchedEffect(player, isMuted) { player.volume = if (isMuted) 0f else 1f }
+    val player = remember(path) { buildVideoExoPlayer(ctx, path, playbackSpeed) }
     LaunchedEffect(player, playbackSpeed) { player.setPlaybackSpeed(playbackSpeed) }
     LaunchedEffect(player, isCurrentPage) {
         if (isCurrentPage) {
